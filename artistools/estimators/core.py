@@ -3,9 +3,11 @@
 Examples are temperatures, populations, and heating/cooling rates.
 """
 
+import argparse
 import contextlib
 import dataclasses as dc
 import datetime as dt
+import math
 import string
 import textwrap
 import time
@@ -20,6 +22,7 @@ from itertools import pairwise
 from pathlib import Path
 from types import MappingProxyType
 
+import numpy as np
 import polars as pl
 from polars import selectors as cs
 from polars.io.plugins import register_io_source
@@ -32,10 +35,15 @@ from artistools.atomic import get_elsymbolset
 from artistools.atomic import get_ion_levels
 from artistools.atomic import roman_numerals
 from artistools.codecomparison import read_reference_estimators
+from artistools.constants import C_cm_per_s
+from artistools.constants import km_to_cm
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import scan_modeldata
+from artistools.inputmodel.slice1dfromconein3dmodel import get_profile_along_axis
+from artistools.inputmodel.slice1dfromconein3dmodel import make_cone
 from artistools.misc import COMPRESSED_EXTENSIONS
 from artistools.misc import contiguous_runs
+from artistools.misc import exit_with_error
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_artis_option
 from artistools.misc import get_file_identity
@@ -64,6 +72,8 @@ from artistools.rustext import estimtimesteps
 if t.TYPE_CHECKING:
     from collections.abc import Iterator
     from concurrent.futures import Future
+
+    import numpy.typing as npt
 
 # Suffixes that give the units of a derived name, e.g. vel_r_min_kmps and init_kinetic_en_erg. A name
 # carries its quantity at its end more often than at its start, thus get_units tries these first.
@@ -1862,3 +1872,188 @@ def get_temperature_limits(modelpath: Path | str) -> dict[str, float]:
         with contextlib.suppress(TypeError, ValueError):
             limits[name] = float(str(value).rstrip("fF"))
     return limits
+
+
+def get_layer_index(velocity_cmps: float, vmax_cmps: float, ncells: int) -> int:
+    """Return the index of the layer of cells that holds a velocity on one axis of a 3D model.
+
+    A velocity between two layers takes the layer above it. The quotient of such a velocity can lie one
+    rounding step below the whole number, e.g. 24.999999999999996 for vmax = 6724085530.798534 cm/s and 50
+    cells, thus a small part of a cell goes on before the floor.
+    """
+    return min(math.floor((velocity_cmps + vmax_cmps) / (2.0 * vmax_cmps / ncells) + 1e-6), ncells - 1)
+
+
+@on_model_host
+def get_cells_of_slice(modelpath: Path, conditions: Sequence[tuple[str, float, str]]) -> list[int]:
+    """Return the cells of a 3D model that hold the plane or the line of --slice.
+
+    The host of a remote model reads it.
+    """
+    lzmodel, modelmeta = scan_modeldata(modelpath)
+    if modelmeta["dimensions"] != 3:
+        exit_with_error(
+            f"--slice needs a 3D model, and this model has {modelmeta['dimensions']} dimension(s)",
+            "Remove --slice to plot the variables against the velocity",
+        )
+    vmax_cmps = float(modelmeta["vmax_cmps"])
+    for axisname, velocity_cmps, label in conditions:
+        if abs(velocity_cmps) >= vmax_cmps:
+            exit_with_error(
+                f"{label} lies outside the model, which ends at {vmax_cmps / C_cm_per_s:.3g}c",
+                "Give a velocity inside the model",
+            )
+        layerindex = get_layer_index(velocity_cmps, vmax_cmps, int(modelmeta[f"ncoordgrid{axisname}"]))
+        poscolumn = pl.col(f"pos_{axisname}_min")
+        lzmodel = lzmodel.filter(poscolumn == poscolumn.unique().sort().get(layerindex))
+
+    return lzmodel.select("modelgridindex").collect()["modelgridindex"].to_list()
+
+
+@on_model_host
+def get_cells_along_axis(modelpath: Path, args: argparse.Namespace) -> list[int]:
+    """Return the cells with matter on an axis or in a cone of a 3D model. The host of a remote model reads it."""
+    lzmodel, modelmeta = scan_modeldata(modelpath)
+    # the selection reads the positions of the cells on three axes, which only a 3D model gives
+    if modelmeta["dimensions"] != 3:
+        exit_with_error(
+            f"--readonlymgi {args.readonlymgi} needs a 3D model, and this model has {modelmeta['dimensions']}"
+            " dimension(s)",
+            "Remove --readonlymgi to plot every cell against the velocity",
+        )
+    if args.readonlymgi == "alongaxis":
+        print(f"Getting mgi along {args.axis} axis")
+        dfmodel = lzmodel.select("modelgridindex", "rho", "pos_x_min", "pos_y_min", "pos_z_min").collect()
+        dfselectedcells = get_profile_along_axis(dfmodel, args)
+    elif args.readonlymgi == "cone":
+        print(f"Getting mgi lying within a cone around the {args.axis} half-axis")
+        # the cone selection reads the mid-point positions, which are derived columns
+        lzmodel = add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
+        dfselectedcells = make_cone(args, lzmodel, logprint=print)
+    else:
+        msg = f"Invalid args.readonlymgi: {args.readonlymgi}"
+        raise ValueError(msg)
+
+    # the estimators hold the zero-based modelgridindex, not the one-based inputcellid
+    return list(dfselectedcells.filter(pl.col("rho") > 0)["modelgridindex"])
+
+
+def format_cell_edge(velocity_cmps: float, unit: str) -> str:
+    """Return a velocity in the unit of the user, "c" or "kmps", with the digits that the edge of a cell needs."""
+    if velocity_cmps == 0.0:
+        return "0"
+    return f"{velocity_cmps / C_cm_per_s:.4g}c" if unit == "c" else f"{velocity_cmps / km_to_cm:.6g} km/s"
+
+
+def get_cell_edges(axisname: str, modelmeta: Mapping[str, t.Any]) -> "npt.NDArray[np.float64]":
+    """Return the edges of the cells of a 3D model on one axis [cm/s], from -vmax to vmax."""
+    vmax_cmps = float(modelmeta["vmax_cmps"])
+    edges = np.linspace(-vmax_cmps, vmax_cmps, int(modelmeta[f"ncoordgrid{axisname}"]) + 1)
+    # the middle edge of an even number of cells lies at zero, and the arithmetic leaves a rounding error there
+    return np.where(np.abs(edges) < 1e-9 * vmax_cmps, 0.0, edges)
+
+
+def get_layer_bounds(condition: tuple[str, float, str], modelmeta: Mapping[str, t.Any]) -> str:
+    """Return the edges of the layer of cells that holds a condition of --slice, e.g. "-0.01c ≤ z < 0.01c".
+
+    parse_slice_argument of plotestimators gives the condition with a label in the unit of the user, e.g. "z = 5000
+    km/s". The edges take km/s for a position in km/s, and c for each other position. get_cells_of_slice rejects a
+    position outside the grid, thus the text then gives the range of the grid.
+    """
+    axisname, velocity_cmps, label = condition
+    unit = "kmps" if label.endswith("km/s") else "c"
+    edges = get_cell_edges(axisname, modelmeta)
+    vmax_cmps = float(edges[-1])
+    if abs(velocity_cmps) >= vmax_cmps:
+        return f"{label}, outside the grid of |{axisname}| < {format_cell_edge(vmax_cmps, unit)}"
+    index = get_layer_index(velocity_cmps, vmax_cmps, len(edges) - 1)
+    return f"{format_cell_edge(edges[index], unit)} ≤ {axisname} < {format_cell_edge(edges[index + 1], unit)}"
+
+
+# the weight of a cell in each mean over the cells and the timesteps of a colour image
+MEAN_WEIGHT_TEXT: t.Final = (
+    "The weight is the volume times the timestep duration, times n_element for an average ion charge."
+)
+
+
+def get_cell_selection_description(
+    args: argparse.Namespace, conditions: Sequence[tuple[str, float, str]], modelmeta: Mapping[str, t.Any]
+) -> str:
+    """Return the cells that the plot reads in the terms of the model grid, or an empty text for listed cells.
+
+    args holds the arguments after resolve_snapshot_arguments of plotestimators, and conditions holds the conditions
+    of --slice that it returns. x, y, and z are the velocity coordinates of the grid, and (x_c, y_c, z_c) is the centre
+    of a cell. The edges of the cells come from the grid of the model, thus the text gives the range of each
+    coordinate that the selected cells cover. plotestimators logs this text, and its window shows it.
+    """
+    dimensions = int(modelmeta["dimensions"])
+    vmaxtext = format_cell_edge(float(modelmeta["vmax_cmps"]), "c")
+    if len(conditions) == 1:
+        normal = conditions[0][0]
+        plane = [axisname for axisname in "xyz" if axisname != normal]
+        bounds = get_layer_bounds(conditions[0], modelmeta)
+        return f"The 2D plane slice of cells with {bounds}, as an image in {plane[0]} and {plane[1]}."
+    if conditions:
+        lineaxis = next(axisname for axisname in "xyz" if axisname not in {condition[0] for condition in conditions})
+        bounds = " and ".join(get_layer_bounds(condition, modelmeta) for condition in sorted(conditions))
+        xtext = f"v_{lineaxis}" if args.x == f"vel_{lineaxis}_mid_on_c" else f"-x {args.x}"
+        return f"The full line of cells through the grid along the {lineaxis} axis with {bounds}, against {xtext}."
+    if args.projection:
+        # prepare_snapshot of plotestimators rejects a projection of a model that is not 3D
+        if dimensions != 3:
+            return ""
+        first, second = (axisname for axisname in "xyz" if axisname != args.projection)
+        width = format_cell_edge(float(np.diff(get_cell_edges(first, modelmeta))[0]), "c")
+        return (
+            f"Pixel (i, j) is the mean of the line of cells along {args.projection} in layer i of {first} and layer j"
+            f" of {second}. Each layer is {width} wide. {MEAN_WEIGHT_TEXT}"
+        )
+    if args.dimensionreduce == 2:
+        if dimensions == 1:
+            return "At each cylindrical radius r and each z, the value of the shell at the radius √(r² + z²)."
+        if dimensions == 2:
+            return f"The cells of the model grid in the cylindrical radius r and z. {MEAN_WEIGHT_TEXT}"
+        ringwidth = format_cell_edge(float(modelmeta["vmax_cmps"]) / (int(modelmeta["ncoordgridx"]) // 2), "c")
+        return (
+            f"Pixel (i, j) is the mean of the cells in layer j of z whose centre has i Δr ≤ √(x_c² + y_c²) < (i + 1)"
+            f" Δr, with Δr = {ringwidth}. The image leaves out the cells with √(x_c² + y_c²) ≥ v_max = {vmaxtext}."
+            f" A cell or a timestep with no value does not count. {MEAN_WEIGHT_TEXT}"
+        )
+    ispositive = not args.axis.startswith("-")
+    axisname = args.axis.lstrip("+-")
+    first, second = (other for other in "xyz" if other != axisname)
+    if args.readonlymgi == "alongaxis":
+        # get_profile_along_axis takes the lower cell edge nearest to 0 on the second axis for both of the other
+        # axes. That edge is 0 for an even number of cells, and -Δ/2 for an odd number
+        secondedges = get_cell_edges(second, modelmeta)
+        middle = (len(secondedges) - 1) // 2
+        lowertext = format_cell_edge(float(secondedges[middle]), "c")
+        uppertext = format_cell_edge(float(secondedges[middle + 1]), "c")
+        axisedges = get_cell_edges(axisname, modelmeta)
+        if ispositive:
+            start = float(axisedges[:-1][axisedges[:-1] >= 0.0].min())
+            axisrange = f"{format_cell_edge(start, 'c')} ≤ {axisname} < {format_cell_edge(float(axisedges[-1]), 'c')}"
+        else:
+            end = float(axisedges[1:][axisedges[:-1] < 0.0].max())
+            axisrange = f"{format_cell_edge(float(axisedges[0]), 'c')} ≤ {axisname} < {format_cell_edge(end, 'c')}"
+        return (
+            f"The half line of cells from the centre along the {args.axis} axis, with {lowertext} ≤ {first} <"
+            f" {uppertext}, {lowertext} ≤ {second} < {uppertext}, and {axisrange}."
+        )
+    if args.readonlymgi == "cone":
+        halfangle = args.coneangle / 2.0
+        signedname = f"{axisname}_c" if ispositive else f"-{axisname}_c"
+        if math.isclose(halfangle, 90.0):
+            # 1 / tan 90° is not 0 in floating point, thus make_cone leaves out the other cells of the central plane
+            return f"The cells on the side of the {args.axis} half-axis: {signedname} > 0, and the cell at the centre."
+        return (
+            f"The cells whose centre lies within {halfangle:g}° of the {args.axis} half-axis:"
+            f" {signedname} ≥ √({first}_c² + {second}_c²) / tan {halfangle:g}°."
+        )
+    if args.modelgridindex is not None or dimensions == 1:
+        return ""
+    # add_plot_columns of plotestimators leaves out each cell with a centre beyond vmax
+    return (
+        f"The cells whose centre has √(x_c² + y_c² + z_c²) ≤ v_max = {vmaxtext}. The plot leaves out the cells in"
+        " the corners of the grid."
+    )

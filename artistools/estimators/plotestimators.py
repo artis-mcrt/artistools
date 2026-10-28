@@ -36,6 +36,9 @@ from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g
 from artistools.estimators.core import get_averageexcitation
+from artistools.estimators.core import get_cell_selection_description
+from artistools.estimators.core import get_cells_along_axis
+from artistools.estimators.core import get_cells_of_slice
 from artistools.estimators.core import get_levelpop_modeldata
 from artistools.estimators.core import get_prefix_group
 from artistools.estimators.core import get_temperature_limits
@@ -62,11 +65,7 @@ from artistools.estimators.plotitems import SERIES_STYLE_MARK
 from artistools.estimators.plotitems import SERIESTYPES
 from artistools.estimators.plotitems import split_plotitem_styles
 from artistools.estimators.plotitems import VARIABLE_ALIASES
-from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_costheta_selection
-from artistools.inputmodel import scan_modeldata
-from artistools.inputmodel.slice1dfromconein3dmodel import get_profile_along_axis
-from artistools.inputmodel.slice1dfromconein3dmodel import make_cone
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_costhetarange
 from artistools.misc import addarg_darkmode
@@ -3054,16 +3053,6 @@ def parse_slice_argument(slicetext: str) -> list[tuple[str, float, str]]:
     return conditions
 
 
-def get_layer_index(velocity_cmps: float, vmax_cmps: float, ncells: int) -> int:
-    """Return the index of the layer of cells that holds a velocity on one axis of a 3D model.
-
-    A velocity between two layers takes the layer above it. The quotient of such a velocity can lie one
-    rounding step below the whole number, e.g. 24.999999999999996 for vmax = 6724085530.798534 cm/s and 50
-    cells, thus a small part of a cell goes on before the floor.
-    """
-    return min(math.floor((velocity_cmps + vmax_cmps) / (2.0 * vmax_cmps / ncells) + 1e-6), ncells - 1)
-
-
 def resolve_snapshot_arguments(args: argparse.Namespace) -> list[tuple[str, float, str]]:
     """Apply --slice and --dimensionreduce to the arguments, and return the conditions of --slice.
 
@@ -3141,32 +3130,6 @@ def select_cells_of_slice(
     print(f"Getting the {len(args.modelgridindex)} cells that hold {args.slicelabel}")
 
 
-@on_model_host
-def get_cells_of_slice(modelpath: Path, conditions: Sequence[tuple[str, float, str]]) -> list[int]:
-    """Return the cells of a 3D model that hold the plane or the line of --slice.
-
-    The host of a remote model reads it.
-    """
-    lzmodel, modelmeta = scan_modeldata(modelpath)
-    if modelmeta["dimensions"] != 3:
-        exit_with_error(
-            f"--slice needs a 3D model, and this model has {modelmeta['dimensions']} dimension(s)",
-            "Remove --slice to plot the variables against the velocity",
-        )
-    vmax_cmps = float(modelmeta["vmax_cmps"])
-    for axisname, velocity_cmps, label in conditions:
-        if abs(velocity_cmps) >= vmax_cmps:
-            exit_with_error(
-                f"{label} lies outside the model, which ends at {vmax_cmps / C_cm_per_s:.3g}c",
-                "Give a velocity inside the model",
-            )
-        layerindex = get_layer_index(velocity_cmps, vmax_cmps, int(modelmeta[f"ncoordgrid{axisname}"]))
-        poscolumn = pl.col(f"pos_{axisname}_min")
-        lzmodel = lzmodel.filter(poscolumn == poscolumn.unique().sort().get(layerindex))
-
-    return lzmodel.select("modelgridindex").collect()["modelgridindex"].to_list()
-
-
 def select_cells(args: argparse.Namespace, modelpath: Path) -> None:
     """Select the cells of --slice or of --readonlymgi. The cells of the plot then come back with the data."""
     if args.slice is not None:
@@ -3185,34 +3148,6 @@ def select_cells_along_axis(args: argparse.Namespace, modelpath: Path) -> None:
     args.other_axis1, args.other_axis2 = otheraxes[0], otheraxes[1]
 
     args.modelgridindex = get_cells_along_axis(modelpath, args)
-
-
-@on_model_host
-def get_cells_along_axis(modelpath: Path, args: argparse.Namespace) -> list[int]:
-    """Return the cells with matter on an axis or in a cone of a 3D model. The host of a remote model reads it."""
-    lzmodel, modelmeta = scan_modeldata(modelpath)
-    # the selection reads the positions of the cells on three axes, which only a 3D model gives
-    if modelmeta["dimensions"] != 3:
-        exit_with_error(
-            f"--readonlymgi {args.readonlymgi} needs a 3D model, and this model has {modelmeta['dimensions']}"
-            " dimension(s)",
-            "Remove --readonlymgi to plot every cell against the velocity",
-        )
-    if args.readonlymgi == "alongaxis":
-        print(f"Getting mgi along {args.axis} axis")
-        dfmodel = lzmodel.select("modelgridindex", "rho", "pos_x_min", "pos_y_min", "pos_z_min").collect()
-        dfselectedcells = get_profile_along_axis(dfmodel, args)
-    elif args.readonlymgi == "cone":
-        print(f"Getting mgi lying within a cone around the {args.axis} half-axis")
-        # the cone selection reads the mid-point positions, which are derived columns
-        lzmodel = add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
-        dfselectedcells = make_cone(args, lzmodel, logprint=print)
-    else:
-        msg = f"Invalid args.readonlymgi: {args.readonlymgi}"
-        raise ValueError(msg)
-
-    # the estimators hold the zero-based modelgridindex, not the one-based inputcellid
-    return list(dfselectedcells.filter(pl.col("rho") > 0)["modelgridindex"])
 
 
 @on_model_host
@@ -3465,15 +3400,10 @@ def add_plot_columns(
     args: argparse.Namespace, estimators: pl.LazyFrame, modelmeta: dict[str, t.Any]
 ) -> tuple[pl.LazyFrame, list[str]]:
     """Return the estimators with the columns that the plot reads, and the names of all the columns."""
-    # the average around the z axis reads all the cells, and it applies the limit of the cylindrical radius itself
+    # the average around the z axis applies the limit of the cylindrical radius itself. The corners of a cube hold
+    # matter, thus get_cell_selection_description gives the limit in the log
     if args.modelgridindex is None and args.dimensionreduce == 1:
         estimators = estimators.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
-        if modelmeta["dimensions"] == 3:
-            # the corners of the cube hold matter, thus a mean of the plot differs from a mean of all the cells
-            print_detail(
-                f"The plot leaves out each cell with vel_r_mid above vmax = {modelmeta['vmax_cmps'] / km_to_cm:.5g}"
-                " km/s. These cells are the corners of the 3D grid, and the velocity of the model ends at vmax"
-            )
 
     if (costhetarange := get_costheta_range(args, quiet=True)) is not None:
         estimators = estimators.filter(get_costheta_selection(costhetarange, estimators.collect_schema().names()))
@@ -3518,6 +3448,9 @@ def get_figures_data(
 
     estimators, modelmeta = get_plot_estimators(args, modelpath, timesteps_included, batchcaches)
     estimators, estimatorcolumns = add_plot_columns(args, estimators, modelmeta)
+    conditions = parse_slice_argument(args.slice) if args.slice is not None else []
+    if description := get_cell_selection_description(args, conditions, modelmeta):
+        print_detail(description)
     plotlist = resolve_plotlist(args, estimatorcolumns, modelpath)
 
     assert args.x is not None

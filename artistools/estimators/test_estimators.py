@@ -3116,7 +3116,7 @@ def test_image_values_leave_out_a_nan_and_take_an_empty_frame() -> None:
 
 def test_layer_index_of_a_plane_between_two_layers() -> None:
     """A plane between two layers takes the layer above it, also when the quotient lies below the whole number."""
-    get_layer_index = at.estimators.plotestimators.get_layer_index
+    get_layer_index = at.estimators.core.get_layer_index
     # (0 + vmax) / (2 vmax / 50) gives 24.999999999999996 for this vmax
     assert get_layer_index(0.0, 6724085530.798534, 50) == 25
     assert get_layer_index(0.0, 2892020000.0, 10) == 5
@@ -5464,10 +5464,10 @@ def test_interactive_geometry_modes_draw() -> None:
     # has 10 cells on each axis from -0.09647c to 0.09647c, thus each cell is 0.01929c wide
     def describe(mode: str, slicetext: str | None = None, dimensions: int = 3) -> str:
         values = interactive.set_geometry_mode(viewer, viewer.values, mode)
-        if slicetext is not None:
-            values = dc.replace(values, otheroptions=(("--slice", (slicetext,)),))
+        rows = (("--slice", (slicetext,)),) if slicetext is not None else values.otheroptions
+        values = dc.replace(values, otheroptions=viewercore.set_row_values(rows, {"--axis": ("-y",)}))
         modelmeta = viewer.modelmeta | {"dimensions": dimensions}
-        return interactive.get_geometry_description(values, modelmeta, "-y", 30.0)
+        return interactive.get_geometry_description(viewer.get_plot_tokens(values), modelmeta)
 
     assert describe("alongaxis") == (
         "The half line of cells from the centre along the -y axis, with 0 ≤ x < 0.01929c, 0 ≤ z < 0.01929c, and"
@@ -5478,7 +5478,8 @@ def test_interactive_geometry_modes_draw() -> None:
     )
     # 1 / tan 90° is not 0 in floating point, thus the cone of 180° leaves out the central plane
     values180 = interactive.set_geometry_mode(viewer, viewer.values, "cone")
-    assert interactive.get_geometry_description(values180, viewer.modelmeta, "+z", 180.0) == (
+    values180 = dc.replace(values180, otheroptions=(*values180.otheroptions, ("--coneangle", ("180",))))
+    assert interactive.get_geometry_description(viewer.get_plot_tokens(values180), viewer.modelmeta) == (
         "The cells on the side of the +z half-axis: z_c > 0, and the cell at the centre."
     )
     assert describe("plane") == "The 2D plane slice of cells with 0 ≤ z < 0.01929c, as an image in x and y."
@@ -5494,7 +5495,8 @@ def test_interactive_geometry_modes_draw() -> None:
     )
     # a line keeps a -x of the user, e.g. time, and the text named v_x
     linevalues = dc.replace(viewer.values, x="time", otheroptions=(("--slice", ("z=0,y=0",)),))
-    assert interactive.get_geometry_description(linevalues, viewer.modelmeta, "+z", 30.0).endswith("against -x time.")
+    linetokens = viewer.get_plot_tokens(linevalues)
+    assert interactive.get_geometry_description(linetokens, viewer.modelmeta).endswith("against -x time.")
     assert "Δr = 0.01929c" in describe("average")
     assert describe("projection").startswith(
         "Pixel (i, j) is the mean of the line of cells along z in layer i of x and layer j of y. Each layer is"
@@ -5508,7 +5510,7 @@ def test_interactive_geometry_modes_draw() -> None:
     # an odd number of cells has its middle cell edge at -Δ/2, which plotestimators takes for a half line
     oddgrid = {"ncoordgridx": 11, "ncoordgridy": 11, "ncoordgridz": 11, "vmax_cmps": 2297436514.4767036}
     oddvalues = interactive.set_geometry_mode(viewer, viewer.values, "alongaxis")
-    oddtext = interactive.get_geometry_description(oddvalues, viewer.modelmeta | oddgrid, "+z", 30.0)
+    oddtext = interactive.get_geometry_description(viewer.get_plot_tokens(oddvalues), viewer.modelmeta | oddgrid)
     assert "-0.006967c ≤ x < 0.006967c" in oddtext
     rows = (("--slice", ("xy",)), ("--coneangle", ("20",)))
     assert viewercore.set_row_values(rows, {"--slice": None, "--axis": ("-x",), "--coneangle": ("40",)}) == (

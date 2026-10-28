@@ -7563,7 +7563,7 @@ def test_plot_summaries_give_the_statistics_of_each_series(capsys: pytest.Captur
     assert re.search(r"  Te: subplot 0, 540 points, .*min 3500 K at x = .*max 1\.4e\+05 K", captured.out)
     assert "Te: 258 points are at MAXTEMP" in captured.err
     # 155 cells of the 695 with matter are in the corners of the cube, and the mean of the summary leaves them out
-    assert "The plot leaves out each cell with vel_r_mid above vmax = 28920 km/s" in captured.out
+    assert "The cells whose centre has √(x_c² + y_c² + z_c²) ≤ v_max = 0.09647c" in captured.out
     assert "Te: 44 points are at MINTEMP" in captured.err
 
     at.lightcurve.plot(argsraw=[], modelpath=[modelpath], filter=["B"], timemin=250, timemax=300, outputfile=tmp_path)

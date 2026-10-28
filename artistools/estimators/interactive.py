@@ -23,6 +23,7 @@ from artistools.constants import C_cm_per_s
 from artistools.constants import km_to_cm
 from artistools.estimators.core import convert_estimator_batch_caches
 from artistools.estimators.core import format_units
+from artistools.estimators.core import get_cell_selection_description
 from artistools.estimators.core import get_estimator_batch_states
 from artistools.estimators.core import get_prefix_group
 from artistools.estimators.core import get_units_string
@@ -37,7 +38,6 @@ from artistools.estimators.plotestimators import draw_plot
 from artistools.estimators.plotestimators import get_default_colours
 from artistools.estimators.plotestimators import get_default_x
 from artistools.estimators.plotestimators import get_gid_series_name
-from artistools.estimators.plotestimators import get_layer_index
 from artistools.estimators.plotestimators import get_model_default_plotlist
 from artistools.estimators.plotestimators import get_panel_axes_label
 from artistools.estimators.plotestimators import get_styled_series
@@ -92,7 +92,6 @@ from artistools.plottools import DARKMODE_COLOURS
 from artistools.plottools import get_legend_entries_in_draw_order
 from artistools.plottools import get_light_grey
 from artistools.plottools import LABELWIDTH_INCHES
-from artistools.plottools import parse_velocity_argument
 from artistools.plottools import plain_label
 from artistools.plottools import RIGHTMARGIN_INCHES
 from artistools.viewertools.application import open_model_folder
@@ -607,133 +606,20 @@ def get_line_label(axis: str, slicetext: str) -> str:
     return f"{axis} ({positions})"
 
 
-def format_velocity(velocity_cmps: float, unit: str) -> str:
-    """Return a velocity in the unit of the user, "c" or "kmps", with the digits that the edge of a cell needs."""
-    if velocity_cmps == 0.0:
-        return "0"
-    return f"{velocity_cmps / C_cm_per_s:.4g}c" if unit == "c" else f"{velocity_cmps / km_to_cm:.6g} km/s"
+def get_geometry_description(tokens: "Sequence[str]", modelmeta: "Mapping[str, t.Any]") -> str:
+    """Return the text that plotestimators logs for the cells of the plot of the command tokens.
 
-
-def get_cell_edges(axisname: str, modelmeta: "Mapping[str, t.Any]") -> "npt.NDArray[np.float64]":
-    """Return the edges of the cells of a 3D model on one axis [cm/s], from --vmax to vmax."""
-    vmax_cmps = float(modelmeta["vmax_cmps"])
-    edges = np.linspace(-vmax_cmps, vmax_cmps, int(modelmeta[f"ncoordgrid{axisname}"]) + 1)
-    # the middle edge of an even number of cells lies at zero, and the arithmetic leaves a rounding error there
-    return np.where(np.abs(edges) < 1e-9 * vmax_cmps, 0.0, edges)
-
-
-def get_layer_bounds(axisname: str, positiontext: str, modelmeta: "Mapping[str, t.Any]") -> str:
-    """Return the edges of the plane slice of cells that holds a position on an axis, e.g. "-0.01c ≤ z < 0.01c".
-
-    plotestimators reads this plane slice for --slice. A number with no unit is in km/s, as plotestimators reads it.
-    The edges take km/s for a position in km/s, and c for each other position. plotestimators rejects a position
-    outside the grid, thus the text then gives the range of the grid.
+    The tokens that plotestimators rejects give an empty text, and the status line gives the reason.
     """
-    try:
-        velocity_kmps, _ = parse_velocity_argument(positiontext)
-    except argparse.ArgumentTypeError:
-        return f"{axisname} = '{positiontext}', which is not a velocity"
-    unit = "kmps" if positiontext.strip().lower().endswith("km/s") else "c"
-    edges = get_cell_edges(axisname, modelmeta)
-    vmax_cmps = float(edges[-1])
-    velocity_cmps = velocity_kmps * km_to_cm
-    if abs(velocity_cmps) >= vmax_cmps:
-        gridedge = format_velocity(vmax_cmps, unit)
-        return f"{axisname} = {positiontext.strip()}, outside the grid of |{axisname}| < {gridedge}"
-    index = get_layer_index(velocity_cmps, vmax_cmps, len(edges) - 1)
-    return f"{format_velocity(edges[index], unit)} ≤ {axisname} < {format_velocity(edges[index + 1], unit)}"
+    descriptions: list[str] = []
 
+    def describe() -> None:
+        args = parse_cli_args(addargs, None, None, tokens)
+        conditions = resolve_snapshot_arguments(args)
+        descriptions.append(get_cell_selection_description(args, conditions, modelmeta))
 
-# the weight of a cell in each mean over the cells and the timesteps of a colour image
-MEAN_WEIGHT_TEXT: t.Final = (
-    "The weight is the volume times the timestep duration, times n_element for an average ion charge."
-)
-
-
-def get_geometry_description(
-    values: "ControlValues", modelmeta: "Mapping[str, t.Any]", axis: str, coneangle: float
-) -> str:
-    """Return the cells that the plot reads in the terms of the model grid, or an empty text for listed cells.
-
-    x, y, and z are the velocity coordinates of the grid, and (x_c, y_c, z_c) is the centre of a cell. The edges of
-    the cells come from the grid of the model, thus the text gives the range of each coordinate that the selected
-    cells cover. plotestimators selects the same cells. axis and coneangle are the values of --axis and --coneangle.
-    """
-    mode = get_geometry_mode(values)
-    dimensions = int(modelmeta["dimensions"])
-    vmaxtext = format_velocity(float(modelmeta["vmax_cmps"]), "c")
-    slicetext = (get_row_values(values.otheroptions, "--slice") or ("",))[0]
-    if mode == "all":
-        if dimensions == 1:
-            return ""
-        # add_plot_columns of plotestimators leaves out each cell with a centre beyond vmax
-        return (
-            f"The cells whose centre has √(x_c² + y_c² + z_c²) ≤ v_max = {vmaxtext}. The plot leaves out the cells in"
-            " the corners of the grid."
-        )
-    if mode == "alongaxis":
-        sign, name = axis[0], axis[1]
-        first, second = (other for other in "xyz" if other != name)
-        # plotestimators takes the lower cell edge nearest to 0 on the second axis for both of the other axes. That
-        # edge is 0 for an even number of cells, and -Δ/2 for an odd number
-        secondedges = get_cell_edges(second, modelmeta)
-        middle = (len(secondedges) - 1) // 2
-        lowertext = format_velocity(float(secondedges[middle]), "c")
-        uppertext = format_velocity(float(secondedges[middle + 1]), "c")
-        axisedges = get_cell_edges(name, modelmeta)
-        if sign == "+":
-            start = float(axisedges[:-1][axisedges[:-1] >= 0.0].min())
-            axisrange = f"{format_velocity(start, 'c')} ≤ {name} < {format_velocity(float(axisedges[-1]), 'c')}"
-        else:
-            end = float(axisedges[1:][axisedges[:-1] < 0.0].max())
-            axisrange = f"{format_velocity(float(axisedges[0]), 'c')} ≤ {name} < {format_velocity(end, 'c')}"
-        return (
-            f"The half line of cells from the centre along the {axis} axis, with {lowertext} ≤ {first} < {uppertext},"
-            f" {lowertext} ≤ {second} < {uppertext}, and {axisrange}."
-        )
-    if mode == "cone":
-        sign, name = axis[0], axis[1]
-        first, second = (other for other in "xyz" if other != name)
-        halfangle = coneangle / 2.0
-        signedname = f"{name}_c" if sign == "+" else f"-{name}_c"
-        if math.isclose(halfangle, 90.0):
-            # 1 / tan 90° is not 0 in floating point, thus make_cone leaves out the other cells of the central plane
-            return f"The cells on the side of the {axis} half-axis: {signedname} > 0, and the cell at the centre."
-        return (
-            f"The cells whose centre lies within {halfangle:g}° of the {axis} half-axis:"
-            f" {signedname} ≥ √({first}_c² + {second}_c²) / tan {halfangle:g}°."
-        )
-    if mode == "plane":
-        plane, offset = get_slice_parts(slicetext)
-        normal = next(normalaxis for normalaxis, planeaxes in PLANE_OF_NORMAL.items() if planeaxes == plane)
-        bounds = get_layer_bounds(normal, offset or "0", modelmeta)
-        return f"The 2D plane slice of cells with {bounds}, as an image in {plane[0]} and {plane[1]}."
-    if mode == "line":
-        conditions = get_slice_conditions(slicetext)
-        lineaxis = get_line_axis(slicetext)
-        bounds = " and ".join(get_layer_bounds(name, conditions[name], modelmeta) for name in sorted(conditions))
-        xtext = f"v_{lineaxis}" if values.x == f"vel_{lineaxis}_mid_on_c" else f"-x {values.x}"
-        return f"The full line of cells through the grid along the {lineaxis} axis with {bounds}, against {xtext}."
-    if mode == "projection":
-        projectionaxis = (get_row_values(values.otheroptions, "--projection") or ("z",))[0]
-        first, second = (other for other in "xyz" if other != projectionaxis)
-        width = format_velocity(float(np.diff(get_cell_edges(first, modelmeta))[0]), "c")
-        return (
-            f"Pixel (i, j) is the mean of the line of cells along {projectionaxis} in layer i of {first} and layer j"
-            f" of {second}. Each layer is {width} wide. {MEAN_WEIGHT_TEXT}"
-        )
-    if mode == "average":
-        if dimensions == 1:
-            return "At each cylindrical radius r and each z, the value of the shell at the radius √(r² + z²)."
-        if dimensions == 2:
-            return f"The cells of the model grid in the cylindrical radius r and z. {MEAN_WEIGHT_TEXT}"
-        ringwidth = format_velocity(float(modelmeta["vmax_cmps"]) / (int(modelmeta["ncoordgridx"]) // 2), "c")
-        return (
-            f"Pixel (i, j) is the mean of the cells in layer j of z whose centre has i Δr ≤ √(x_c² + y_c²) < (i + 1)"
-            f" Δr, with Δr = {ringwidth}. The image leaves out the cells with √(x_c² + y_c²) ≥ v_max = {vmaxtext}."
-            f" A cell or a timestep with no value does not count. {MEAN_WEIGHT_TEXT}"
-        )
-    return ""
+    run_command_step(describe, echo=False)
+    return descriptions[0] if descriptions else ""
 
 
 def set_geometry_mode(viewer: "EstimatorViewer", values: "ControlValues", mode: str) -> "ControlValues":
@@ -2854,11 +2740,7 @@ def open_window(
         projectionaxisbox.setCurrentText((get_row_values(rows, "--projection") or ("z",))[0])
         plane, offset = get_slice_parts(slicetext)
         planebox.setCurrentText(plane)
-        coneangletext = (get_row_values(rows, "--coneangle") or (str(viewer.parser.get_default("coneangle")),))[0]
-        axistext = (get_row_values(rows, "--axis") or (viewer.parser.get_default("axis"),))[0]
-        description = ""
-        with contextlib.suppress(ValueError):
-            description = get_geometry_description(values, viewer.modelmeta, axistext, float(coneangletext))
+        description = get_geometry_description(viewer.get_plot_tokens(values), viewer.modelmeta)
         set_note_text(geometrydescription, get_first_sentence(description), description)
         normal = next(axis for axis, planeaxes in PLANE_OF_NORMAL.items() if planeaxes == plane)
         planeatlabel.setText(f"at {normal}:")
