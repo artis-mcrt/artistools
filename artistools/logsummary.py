@@ -29,9 +29,9 @@ from artistools.misc import print_detail
 from artistools.misc import print_product
 from artistools.misc import print_warning
 from artistools.misc import zopen
-from artistools.misc.cliutils import format_range_list
 from artistools.misc.fileio import get_decompress_errors
 from artistools.misc.fileio import without_compressed_extension
+from artistools.misc.general import format_range_list
 from artistools.misc.modelinfo import get_dfrankassignments
 from artistools.misc.modelinfo import get_npts_model
 from artistools.misc.modelinfo import get_ranks_of_cells_in_layout

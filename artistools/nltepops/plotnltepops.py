@@ -58,8 +58,8 @@ from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_positional_modelpath
 from artistools.misc.cliutils import CellListAction
 from artistools.misc.cliutils import get_cell_list
-from artistools.misc.cliutils import time_days_range_arg
-from artistools.misc.cliutils import TIME_UNIT_HELP
+from artistools.misc.units import time_days_range_arg
+from artistools.misc.units import TIME_UNIT_HELP
 from artistools.nltepops.core import add_lte_pops
 from artistools.nltepops.core import read_nltepops
 from artistools.nltepops.core import texifyconfiguration

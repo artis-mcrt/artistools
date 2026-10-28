@@ -47,8 +47,8 @@ from artistools.misc import output_data
 from artistools.misc import parallel_map
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
-from artistools.misc.cliutils import time_days_arg
-from artistools.misc.cliutils import TIME_UNIT_HELP
+from artistools.misc.units import time_days_arg
+from artistools.misc.units import TIME_UNIT_HELP
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend

@@ -57,7 +57,7 @@ from artistools.misc import print_detail
 from artistools.misc import print_or_write_table
 from artistools.misc import print_warning
 from artistools.misc import resolve_table_outputfile
-from artistools.misc.cliutils import format_range_list
+from artistools.misc.general import format_range_list
 from artistools.misc.remote import on_model_host
 
 STATUSES: t.Final = ("ok", "warning", "error", "not checked")

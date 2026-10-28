@@ -49,7 +49,7 @@ from artistools.misc import parse_range_list
 from artistools.misc import print_saved
 from artistools.misc import read_rank_outputfiles
 from artistools.misc import resolve_frameset_paths
-from artistools.misc.cliutils import format_range_list
+from artistools.misc.general import format_range_list
 from artistools.plottools import addarg_cellvelocity
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure

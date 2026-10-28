@@ -29,6 +29,8 @@ from artistools.misc import parse_cli_args
 from artistools.misc.argparser import get_standard_flag
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.remote import is_remote_path
+from artistools.misc.units import get_xunit
+from artistools.misc.units import XUNITS
 from artistools.packets.core import has_packets_files
 from artistools.paths import get_path
 from artistools.plottools import LABELWIDTH_INCHES
@@ -37,8 +39,6 @@ from artistools.spectra.core import convert_angstroms_to_unit
 from artistools.spectra.core import convert_unit_to_angstroms
 from artistools.spectra.core import EmissionEvent
 from artistools.spectra.core import get_x_quantity_label
-from artistools.spectra.core import get_xunit
-from artistools.spectra.core import XUNITS
 from artistools.spectra.plotspectra import addargs
 from artistools.spectra.plotspectra import DEFAULT_MAXSERIESCOUNT
 from artistools.spectra.plotspectra import DELTALOGX_SCALES

@@ -46,7 +46,7 @@ from artistools.misc import print_warning
 from artistools.misc import resolve_positional_modelpath
 from artistools.misc import resolve_table_outputfile
 from artistools.misc import suggest_names
-from artistools.misc.cliutils import format_range_list
+from artistools.misc.general import format_range_list
 
 # the columns of each row before the variables. The variables cannot repeat them
 INDEXCOLUMNS = ("timestep", "time_days", "modelgridindex", "vel_r_mid_kmps")

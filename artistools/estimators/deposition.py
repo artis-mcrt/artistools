@@ -31,7 +31,7 @@ from artistools.misc import print_saved
 from artistools.misc import print_warning
 from artistools.misc import resolve_table_outputfile
 from artistools.misc.cliutils import CommaJoinAction
-from artistools.misc.cliutils import get_provenance_lines
+from artistools.misc.commandoutput import get_provenance_lines
 
 DEPOSITIONPREFIX = "deposition_"
 DEFAULTOUTPUTNAME = "deposition.txt"

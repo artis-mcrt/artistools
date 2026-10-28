@@ -14,7 +14,6 @@ from artistools.misc import addarg_averageoverphi
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
 from artistools.misc import addarg_figscale
-from artistools.misc import addarg_maxpacketfiles
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_plotinvalidpart
@@ -36,6 +35,7 @@ from artistools.misc import print_warning
 from artistools.misc.dirbins import check_dirbin
 from artistools.misc.dirbins import get_dirbin_labels
 from artistools.misc.general import get_bin_index_expr
+from artistools.packets.core import addarg_maxpacketfiles
 from artistools.packets.core import addarg_velocitykind
 from artistools.packets.core import get_last_interaction_velocity_expr
 from artistools.packets.core import get_packets

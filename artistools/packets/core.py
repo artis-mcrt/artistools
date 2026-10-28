@@ -40,6 +40,7 @@ from artistools.misc import print_detail
 from artistools.misc import print_warning
 from artistools.misc import write_parquet_atomic
 from artistools.misc import zopen
+from artistools.misc.argparser import arggroup
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import make_cache_folder
 from artistools.misc.fileio import modelpath_cache
@@ -1399,3 +1400,18 @@ def sum_virtual_packets_by_observer(
         # solid-angle factor of the real packets
         result[vspecindex] = observersums._replace(solidanglefactor=4 * math.pi)
     return result
+
+
+def addarg_maxpacketfiles(parser: argparse.ArgumentParser) -> None:
+    """Add the --maxpacketfiles argument limiting how many packet files are read."""
+    arggroup(parser, "Packets").add_argument(
+        "-maxpacketfiles",
+        "-maxpacketsfiles",
+        type=int,
+        default=None,
+        help=(
+            f"Set the maximum number of packet files to read. The reader reads whole batches of {RANKS_PER_BATCH}"
+            f" files, thus give a value of at least {RANKS_PER_BATCH}. The reader rounds the value down to a multiple"
+            f" of {RANKS_PER_BATCH}"
+        ),
+    )

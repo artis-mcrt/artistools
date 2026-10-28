@@ -810,3 +810,16 @@ def take_back_swallowed_folder(
         f"{flag} read the ARTIS {folderword} {', '.join(folders)} as a value. The model path gets "
         f"the {folderword} back. Write the model path in front of {flag}"
     )
+
+
+def arggroup(parser: argparse.ArgumentParser, title: str) -> "argparse._ArgumentGroup":  # pyright: ignore[reportPrivateUsage]
+    """Return the argument group of the parser with this title, and make it if the parser has none.
+
+    The flagship commands hold more than 70 options, thus a flat listing is hard to read. Each shared
+    helper puts its arguments into a titled group, and the help of every command gains the same shape.
+    """
+    for group in parser._action_groups:  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        if group.title == title:
+            return group
+
+    return parser.add_argument_group(title)

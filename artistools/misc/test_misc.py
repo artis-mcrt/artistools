@@ -346,7 +346,7 @@ def test_add_cli_arg_helpers() -> None:
     at.misc.addarg_seriesstyle(parser, colordefault=["C0", "C1"], include_linealpha=True)
     at.misc.addarg_figscale(parser, include_figwidthscale=True)
     at.misc.addarg_filter(parser)
-    at.misc.addarg_maxpacketfiles(parser)
+    at.packets.core.addarg_maxpacketfiles(parser)
 
     args = parser.parse_args([
         "-modelpath",
@@ -442,8 +442,8 @@ def test_the_cells_of_modelgridindex_are_a_list_from_every_source() -> None:
         at.misc.set_args_from_dict(keywordparser, {"cell": keywordvalue})
         assert keywordparser.parse_args([]).modelgridindex == expectedcells
 
-    assert at.misc.cliutils.format_range_list([9, 3, 4, 5, 7, 6, 12]) == "3-7,9,12"
-    assert at.misc.parse_range_list(at.misc.cliutils.format_range_list([-1, 0, 2])) == [-1, 0, 2]
+    assert at.misc.general.format_range_list([9, 3, 4, 5, 7, 6, 12]) == "3-7,9,12"
+    assert at.misc.parse_range_list(at.misc.general.format_range_list([-1, 0, 2])) == [-1, 0, 2]
 
 
 def test_get_cell_list_takes_a_numpy_integer_and_rejects_a_float() -> None:
@@ -1981,7 +1981,7 @@ def test_write_data_table_replaces_a_link_and_leaves_its_target(tmp_path: Path) 
 
     The table went through the link into its target, thus a label of the model could reach a file of the user.
     """
-    from artistools.misc.cliutils import write_data_table
+    from artistools.misc.commandoutput import write_data_table
 
     target = tmp_path / "bashrc"
     target.write_text("export KEEP=1\n", encoding="utf-8")
@@ -4146,15 +4146,15 @@ def test_time_days_range_arg_splits_at_the_range_hyphen_only(text: str, expected
 
     A hyphen of an exponent, e.g. 1e-2, is not the hyphen of the range. deposition reads a list such as 1,5,30.
     """
-    from artistools.misc.cliutils import time_days_range_arg
+    from artistools.misc.units import time_days_range_arg
 
     assert time_days_range_arg(text) == expected
 
 
 def test_wavelength_and_time_units_convert_to_the_unit_of_the_command() -> None:
     """Give a wavelength in Angstroms and a time in days, and refuse a unit of a different quantity."""
-    from artistools.misc.cliutils import time_days_arg
-    from artistools.misc.cliutils import wavelength_angstroms_arg
+    from artistools.misc.units import time_days_arg
+    from artistools.misc.units import wavelength_angstroms_arg
 
     assert [wavelength_angstroms_arg(text) for text in ("6000", "600nm", "0.6micron", "6000Å")] == [6000.0] * 4
     assert np.isclose(time_days_arg("2.592e6s"), 30.0, rtol=1e-12)
@@ -4194,7 +4194,7 @@ def test_write_data_table_takes_the_format_of_the_suffix(tmp_path: Path) -> None
     """Write JSON with null for NaN, because JSON has no NaN, and keep the comment lines in each format."""
     import json
 
-    from artistools.misc.cliutils import write_data_table
+    from artistools.misc.commandoutput import write_data_table
 
     dftable = pl.DataFrame({"name": ["a", "b"], "value": [1.5, math.nan]})
     write_data_table(dftable, tmp_path / "table.json", commentlines=["made by a test"])

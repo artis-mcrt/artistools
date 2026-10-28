@@ -38,9 +38,11 @@ from artistools.misc import exit_with_error
 from artistools.misc import get_phibin_rank_ascending
 from artistools.misc import get_viewingdirection_costhetabincount
 from artistools.misc import get_viewingdirection_phibincount
+from artistools.misc import makelist
 from artistools.misc import print_detail
 from artistools.misc import print_saved
 from artistools.misc import print_warning
+from artistools.misc import trim_or_pad
 from artistools.misc.argparser import get_standard_flag
 from artistools.misc.cliutils import positive_int_arg
 from artistools.paths import get_path
@@ -2182,3 +2184,19 @@ def get_velocity_bin_index_expr(velocity_kmps: pl.Expr, velocityedges_kmps: Sequ
     lower, upper = velocityedges_kmps[0], velocityedges_kmps[-1]
     binindex = ((velocity_kmps - lower) / (upper - lower) * nbins).floor().cast(pl.Int64).clip(upper_bound=nbins - 1)
     return pl.when(velocity_kmps.is_between(lower, upper)).then(binindex)
+
+
+def resolve_series_styles(
+    args: argparse.Namespace, isreference: Sequence[bool], usercolors: Sequence[str | None], *stylenames: str
+) -> list[str]:
+    """Return one colour for each series.
+
+    The function also pads each style list in args to one entry for each series. A colour in usercolors
+    has priority. A reference series gets black and then greys, and an ARTIS
+    model gets a colour of the cycle. A style list gets None where the user gave no entry.
+    """
+    seriescount = len(isreference)
+    for stylename in stylenames:
+        setattr(args, stylename, trim_or_pad(seriescount, getattr(args, stylename))[0])
+
+    return get_series_colors(isreference, makelist(usercolors))

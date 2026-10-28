@@ -44,7 +44,6 @@ from artistools.misc import get_timesteps
 from artistools.misc import path_is_codecomparison
 from artistools.misc import print_warning
 from artistools.misc import write_parquet_atomic
-from artistools.misc.cliutils import contiguous_runs
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import firstexisting_or_none
 from artistools.misc.fileio import mtime_matches_stamp
@@ -52,6 +51,7 @@ from artistools.misc.fileio import MTIME_TOLERANCE_S
 from artistools.misc.fileio import parquet_is_readable
 from artistools.misc.fileio import rankbatch_parquet_staleness
 from artistools.misc.fileio import temporary_parts_folder
+from artistools.misc.general import contiguous_runs
 from artistools.misc.modelinfo import get_nonempty_cellcounts
 from artistools.misc.modelinfo import get_rank_outputfiles
 from artistools.misc.modelinfo import get_runfolder_timesteps_cached

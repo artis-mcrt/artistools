@@ -4,6 +4,7 @@ __all__ = ["plot"]
 
 from artistools.packets.core import add_derived_columns_lazy as add_derived_columns_lazy
 from artistools.packets.core import add_packet_directions_lazypolars as add_packet_directions_lazypolars
+from artistools.packets.core import addarg_maxpacketfiles as addarg_maxpacketfiles
 from artistools.packets.core import bin_packet_directions_polars as bin_packet_directions_polars
 from artistools.packets.core import count_packets_textfiles as count_packets_textfiles
 from artistools.packets.core import filter_packets_dirbin as filter_packets_dirbin

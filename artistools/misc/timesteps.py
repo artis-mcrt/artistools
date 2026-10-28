@@ -13,8 +13,6 @@ import numpy as np
 import polars as pl
 
 from artistools.constants import C_cm_per_s
-from artistools.misc.cliutils import parse_float_range
-from artistools.misc.cliutils import parse_range_list
 from artistools.misc.console import exit_with_error
 from artistools.misc.console import print_warning
 from artistools.misc.fileio import firstexisting
@@ -24,6 +22,8 @@ from artistools.misc.fileio import path_is_codecomparison
 from artistools.misc.fileio import polars_source_open
 from artistools.misc.fileio import read_wsv
 from artistools.misc.fileio import resolve_modelpath
+from artistools.misc.general import parse_float_range
+from artistools.misc.general import parse_range_list
 from artistools.misc.modelinfo import get_inputparams
 from artistools.misc.modelinfo import get_model_logname
 from artistools.misc.remote import on_model_host

@@ -35,7 +35,6 @@ from artistools.misc import addarg_dpi
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_filter
 from artistools.misc import addarg_legend
-from artistools.misc import addarg_maxpacketfiles
 from artistools.misc import addarg_notitle
 from artistools.misc import addarg_output
 from artistools.misc import addarg_pathoption
@@ -85,13 +84,16 @@ from artistools.misc import print_theta_phi_definitions
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
-from artistools.misc import resolve_series_styles
-from artistools.misc.cliutils import arggroup
+from artistools.misc.argparser import arggroup
 from artistools.misc.fileio import modelpath_cache
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import model_path_from_text
 from artistools.misc.timesteps import parse_timedays_range
+from artistools.misc.units import convert_xunit_aliases_to_canonical
+from artistools.misc.units import get_xunit
+from artistools.misc.units import parse_xunit_argument
+from artistools.packets import addarg_maxpacketfiles
 from artistools.packets import get_packets
 from artistools.packets import get_packets_column_names
 from artistools.paths import get_path
@@ -107,6 +109,7 @@ from artistools.plottools import plain_label
 from artistools.plottools import print_dirbin_summary
 from artistools.plottools import print_series_summary
 from artistools.plottools import ResidualSeries
+from artistools.plottools import resolve_series_styles
 from artistools.plottools import save_figure
 from artistools.plottools import set_auto_yscale
 from artistools.plottools import set_axis_properties
@@ -119,7 +122,6 @@ from artistools.spectra.core import bin_spectrum
 from artistools.spectra.core import check_time_range_overlaps_time_bins
 from artistools.spectra.core import convert_angstroms_to_unit
 from artistools.spectra.core import convert_xlimits_to_lambda_range
-from artistools.spectra.core import convert_xunit_aliases_to_canonical
 from artistools.spectra.core import DEFAULT_YE_SHELLS
 from artistools.spectra.core import EmissionEvent
 from artistools.spectra.core import FluxContributionTuple
@@ -138,11 +140,9 @@ from artistools.spectra.core import get_spectra
 from artistools.spectra.core import get_vspecpol_data
 from artistools.spectra.core import get_vspecpol_spectrum
 from artistools.spectra.core import get_x_quantity_label
-from artistools.spectra.core import get_xunit
 from artistools.spectra.core import make_averaged_vspecfiles
 from artistools.spectra.core import make_virtual_spectra_summed_file
 from artistools.spectra.core import NO_SAMPLED_EMISSION_HELP
-from artistools.spectra.core import parse_xunit_argument
 from artistools.spectra.core import print_integrated_flux
 from artistools.spectra.core import SHELLCOLUMNS
 from artistools.spectra.core import sort_and_reduce_flux_contribution_list

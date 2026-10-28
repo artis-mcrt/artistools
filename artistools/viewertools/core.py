@@ -20,8 +20,8 @@ from artistools.misc import get_dirbins
 from artistools.misc import path_is_file
 from artistools.misc import print_error
 from artistools.misc import separate_trailing_folders
-from artistools.misc.cliutils import SERIES_DEFAULT
-from artistools.misc.cliutils import SERIES_STYLE_KEYS
+from artistools.misc.seriesstyles import SERIES_DEFAULT
+from artistools.misc.seriesstyles import SERIES_STYLE_KEYS
 from artistools.plottools import ExponentLabelFormatter
 from artistools.plottools import get_series_colors
 

@@ -38,9 +38,9 @@ from artistools.misc import print_detail
 from artistools.misc import print_modelpath
 from artistools.misc import print_product
 from artistools.misc import print_warning
-from artistools.misc.cliutils import wavelength_angstroms_arg
-from artistools.misc.cliutils import WAVELENGTH_UNIT_HELP
 from artistools.misc.general import get_bin_index_expr
+from artistools.misc.units import wavelength_angstroms_arg
+from artistools.misc.units import WAVELENGTH_UNIT_HELP
 from artistools.rustext import sum_binned_line_opacities
 
 HCLIGHTOVERFOURPI = h_erg_s * C_cm_per_s / 4 / math.pi

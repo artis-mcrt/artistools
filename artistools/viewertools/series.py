@@ -9,13 +9,13 @@ from functools import cache
 from functools import partial
 from pathlib import Path
 
-from artistools.misc.cliutils import dashes_arg
-from artistools.misc.cliutils import LINESTYLE_ALIASES
-from artistools.misc.cliutils import LINESTYLE_NAMES
-from artistools.misc.cliutils import SERIES_DEFAULT
 from artistools.misc.fileio import without_compressed_extension
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import split_remote_path
+from artistools.misc.seriesstyles import dashes_arg
+from artistools.misc.seriesstyles import LINESTYLE_ALIASES
+from artistools.misc.seriesstyles import LINESTYLE_NAMES
+from artistools.misc.seriesstyles import SERIES_DEFAULT
 from artistools.viewertools.application import add_recent_model
 from artistools.viewertools.application import get_recent_models
 from artistools.viewertools.application import set_drop_handler

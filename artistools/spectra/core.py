@@ -29,7 +29,6 @@ from artistools.atomic import get_linelist_pldf
 from artistools.atomic import get_nuclides
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
-from artistools.constants import EV_to_erg
 from artistools.constants import km_to_cm
 from artistools.constants import MEV_to_erg
 from artistools.misc import average_direction_bins
@@ -60,6 +59,8 @@ from artistools.misc.fileio import read_complete_lines
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.general import get_bin_index_expr
 from artistools.misc.remote import on_model_host
+from artistools.misc.units import get_xunit
+from artistools.misc.units import XUnit
 from artistools.packets import filter_packets_dirbin
 from artistools.packets import get_emission_velocity_expr
 from artistools.packets import get_emission_velocity_lineofsight_expr
@@ -312,77 +313,11 @@ def get_lambda_bin_edges(
     return lambda_bin_edges
 
 
-class XUnit(t.NamedTuple):
-    """One unit of the horizontal axis of a spectrum, and the spellings that a user can give for it.
-
-    The conversions work in a base unit of each kind: the angstrom for a wavelength, the hertz for
-    a frequency, and the electronvolt for an energy. unit_in_base_units gives the size of this unit
-    in that base unit, e.g. 10.0 for a nanometre and 1000.0 for a kiloelectronvolt.
-    """
-
-    kind: t.Literal["wavelength", "frequency", "energy"]
-    unit_in_base_units: float
-    label: str
-    aliases: tuple[str, ...]
-
-
-# one table gives the conversion factor and the axis label. The unit message and the name
-# suggestion also read it, thus a new unit needs one entry only
-XUNITS: t.Final[Mapping[str, XUnit]] = MappingProxyType({
-    # each canonical name is singular, as micron and erg are. A script can still give angstroms
-    "angstrom": XUnit("wavelength", 1.0, "\u00c5", ("angstroms", "a", "ang", "\u00e5", "\u00e5ngstr\u00f6m")),
-    "nm": XUnit("wavelength", 10.0, "nm", ("nanometer", "nanometers")),
-    "micron": XUnit("wavelength", 10000.0, "\u03bcm", ("microns", "mu", "\u03bc", "\u03bcm")),
-    "hz": XUnit("frequency", 1.0, "Hz", ()),
-    "erg": XUnit("energy", 1.0 / EV_to_erg, "erg", ("ergs",)),
-    "ev": XUnit("energy", 1.0, "eV", ("electronvolt",)),
-    "kev": XUnit("energy", 1.0e3, "keV", ("kiloelectronvolt",)),
-    "mev": XUnit("energy", 1.0e6, "MeV", ("megaelectronvolt",)),
-})
-
-
-def get_xunit_names() -> list[str]:
-    """Return every spelling of a unit of the horizontal axis that a user can give."""
-    return [name for canonical, unit in XUNITS.items() for name in (canonical, *unit.aliases)]
-
-
-def get_xunit(xunit: str) -> XUnit:
-    """Return the unit of the horizontal axis for its canonical name or an alias, e.g. "angstroms" or "nanometers"."""
-    return XUNITS[convert_xunit_aliases_to_canonical(xunit)]
-
-
 def get_x_quantity_label(xunit: XUnit) -> str:
     """Return the quantity and the unit of the x axis, e.g. "Rest-frame wavelength [Å]"."""
     # ARTIS gives the spectra in the rest frame of the source. get_reference_spectrum removes the redshift z of a
     # reference, and it takes a reference with no z to be in the rest frame
     return f"Rest-frame {xunit.kind} [{xunit.label}]"
-
-
-def parse_xunit_argument(value: str) -> str:
-    """Return the canonical unit of the horizontal axis, or refuse a name that no unit takes.
-
-    argparse calls this while it reads the command line, thus a name with a mistake stops the
-    command before it reads a file. convert_xunit_aliases_to_canonical guards the keyword of the API.
-    """
-    from artistools.misc import suggest_names
-
-    try:
-        return convert_xunit_aliases_to_canonical(value)
-    except ValueError:
-        suggestion = suggest_names(value, get_xunit_names()) or f"The units are {', '.join(XUNITS)}"
-        msg = f"'{value}' is not a unit of the horizontal axis. {suggestion}"
-        raise argparse.ArgumentTypeError(msg) from None
-
-
-def convert_xunit_aliases_to_canonical(xunit: str) -> str:
-    """Return the canonical spelling of a spectrum x-axis unit name."""
-    lowered = xunit.lower()
-    for canonical, unit in XUNITS.items():
-        if lowered == canonical or lowered in unit.aliases:
-            return canonical
-
-    msg = f"Unknown xunit {xunit}"
-    raise ValueError(msg)
 
 
 @t.overload

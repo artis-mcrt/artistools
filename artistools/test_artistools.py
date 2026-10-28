@@ -4595,7 +4595,7 @@ def test_figures_of_one_command_print_one_document(tmp_path: Path, capsys: pytes
 
 def test_json_rows_give_null_for_nan_and_infinity() -> None:
     """A strict parser of JSON refuses NaN and Infinity, thus the JSON output gives null for each of them."""
-    from artistools.misc.cliutils import get_json_rows
+    from artistools.misc.commandoutput import get_json_rows
 
     dfdata = pl.DataFrame({"x": [1.5, float("nan"), float("inf"), float("-inf"), None], "n": [1, 2, 3, 4, 5]})
     rows = get_json_rows(dfdata)
@@ -4913,9 +4913,9 @@ def test_every_time_and_wavelength_option_takes_a_unit() -> None:
     plotspectra reads -lambdamin as a number in the unit of -xunit, thus it alone takes a plain float.
     """
     import artistools.__main__
-    from artistools.misc.cliutils import time_days_arg
-    from artistools.misc.cliutils import time_days_range_arg
-    from artistools.misc.cliutils import wavelength_angstroms_arg
+    from artistools.misc.units import time_days_arg
+    from artistools.misc.units import time_days_range_arg
+    from artistools.misc.units import wavelength_angstroms_arg
 
     unittypes = {
         "-timemin": {time_days_arg},

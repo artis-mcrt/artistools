@@ -31,7 +31,7 @@ from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
 from artistools.misc import print_detail
 from artistools.misc import print_saved
-from artistools.misc.cliutils import get_provenance_lines
+from artistools.misc.commandoutput import get_provenance_lines
 from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.fileio import without_compressed_extension
 from artistools.misc.fileio import write_text_file_atomic

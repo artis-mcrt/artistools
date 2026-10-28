@@ -53,7 +53,7 @@ def run_command(func: "Callable[..., None]", args: argparse.Namespace) -> None:
     """
     import time
 
-    from artistools.misc.cliutils import print_collected_data
+    from artistools.misc.commandoutput import print_collected_data
 
     quiet = getattr(args, "quiet", False)
     starttime = time.monotonic()

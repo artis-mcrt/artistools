@@ -54,7 +54,6 @@ from artistools.misc import addarg_figscale
 from artistools.misc import addarg_filter
 from artistools.misc import addarg_labelfontsize
 from artistools.misc import addarg_legend
-from artistools.misc import addarg_maxpacketfiles
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_notitle
 from artistools.misc import addarg_output
@@ -94,12 +93,12 @@ from artistools.misc import print_heading
 from artistools.misc import print_theta_phi_definitions
 from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
-from artistools.misc import resolve_series_styles
 from artistools.misc import trim_or_pad
+from artistools.misc.argparser import arggroup
 from artistools.misc.argparser import get_standard_flag
-from artistools.misc.cliutils import arggroup
 from artistools.misc.cliutils import positive_int_arg
 from artistools.misc.remote import on_model_host
+from artistools.packets import addarg_maxpacketfiles
 from artistools.paths import get_path
 from artistools.plottools import AxesTree
 from artistools.plottools import draw_residual_panel
@@ -118,6 +117,7 @@ from artistools.plottools import print_dirbin_summary
 from artistools.plottools import print_series_summary
 from artistools.plottools import RESIDUALROWHEIGHT
 from artistools.plottools import ResidualSeries
+from artistools.plottools import resolve_series_styles
 from artistools.plottools import save_figure
 from artistools.plottools import set_auto_yscale
 from artistools.plottools import set_axis_labels

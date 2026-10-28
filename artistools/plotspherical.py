@@ -23,7 +23,6 @@ from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
 from artistools.misc import addarg_dpi
 from artistools.misc import addarg_figscale
-from artistools.misc import addarg_maxpacketfiles
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_notitle
 from artistools.misc import addarg_output
@@ -44,6 +43,7 @@ from artistools.misc import print_warning
 from artistools.misc import resolve_frameset_paths
 from artistools.misc.dirbins import get_phi_bin_edges_ascending
 from artistools.packets import add_derived_columns_lazy
+from artistools.packets import addarg_maxpacketfiles
 from artistools.packets import bin_packet_directions_polars
 from artistools.packets import get_packets
 from artistools.plottools import ExponentLabelFormatter
