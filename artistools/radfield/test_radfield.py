@@ -1,5 +1,5 @@
-import inspect
 import typing as t
+from collections.abc import Callable
 from pathlib import Path
 from unittest import mock
 
@@ -15,37 +15,17 @@ modelpath = at.get_path("testdata") / "testmodel"
 outputpath = at.get_path("testoutput")
 
 
-def funcname() -> str:
-    """Get the name of the calling function."""
-    thisframe = inspect.currentframe()
-    try:
-        if thisframe is None or thisframe.f_back is None:
-            msg = "Could not get the name of the calling function."
-            raise RuntimeError(msg)
-
-        return thisframe.f_back.f_code.co_name
-    finally:
-        # a frame held in one of its own locals is a reference cycle, so drop it as the inspect docs advise
-        del thisframe
-
-
-def get_plot_xy(callargs: t.Any) -> tuple[np.ndarray, np.ndarray]:
-    return np.array(callargs[0][1], dtype=float), np.array(callargs[0][2], dtype=float)
-
-
-def read_data_file(path: Path) -> pl.DataFrame:
-    """Read a table that --write_data wrote."""
-    return pl.read_csv(path, separator=" ", null_values="nan", comment_prefix="#")
-
-
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @mock.patch.object(mplax.Axes, "step", side_effect=mplax.Axes.step, autospec=True)
 @pytest.mark.benchmark
-def test_radfield(mockstep: mock.MagicMock, mockplot: mock.MagicMock) -> None:
-    funcoutpath = outputpath / funcname()
-    funcoutpath.mkdir(exist_ok=True, parents=True)
+def test_radfield(
+    mockstep: mock.MagicMock,
+    mockplot: mock.MagicMock,
+    get_plot_xy: Callable[[t.Any], tuple[np.ndarray, np.ndarray]],
+    tmp_path: Path,
+) -> None:
     at.radfield.plotradfield.main(
-        argsraw=[], modelpath=modelpath, modelgridindex=0, outputfile=funcoutpath, showbinedges=True
+        argsraw=[], modelpath=modelpath, modelgridindex=0, outputfile=tmp_path, showbinedges=True
     )
 
     plot_calls = {
@@ -221,7 +201,7 @@ def test_plotradfield_table_follows_the_sole_frame_to_the_product(tmp_path: Path
 @mock.patch.object(mplax.Axes, "step", side_effect=mplax.Axes.step, autospec=True)
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_plotradfield_writes_the_drawn_values(
-    mockplot: mock.MagicMock, mockstep: mock.MagicMock, tmp_path: Path
+    mockplot: mock.MagicMock, mockstep: mock.MagicMock, tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
 ) -> None:
     """--write_data gives the drawn points of each series in one long table, because each series has its own grid."""
     at.radfield.plotradfield.main(

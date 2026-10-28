@@ -5,6 +5,7 @@ import lzma
 import math
 import re
 import typing as t
+from collections.abc import Callable
 from pathlib import Path
 from unittest import mock
 
@@ -420,7 +421,9 @@ def test_spectra_element_contributions_sum_the_ions() -> None:
             assert np.allclose(getattr(contribution, arrayname), iontotal, rtol=1e-6, atol=0.0)
 
 
-def test_spectra_gamma_element_contributions(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_spectra_gamma_element_contributions(
+    monkeypatch: pytest.MonkeyPatch, patch_scan_packets: Callable[[pl.DataFrame], None]
+) -> None:
     """The element of a gamma packet is the element of its nuclide, thus Ni56 and Ni57 give one series."""
     dfpackets = pl.DataFrame({
         "e_rf": [1.0, 2.0, 4.0, 8.0],
@@ -428,9 +431,6 @@ def test_spectra_gamma_element_contributions(monkeypatch: pytest.MonkeyPatch) ->
         "pellet_nucindex": [0, 1, 2, -1],
         "nu_rf": [at.constants.c_ang_per_s / 5000.0] * 4,
     })
-
-    def scan_packets(*_args: t.Any, **_kwargs: t.Any) -> tuple[int, pl.LazyFrame]:
-        return 1, dfpackets.lazy()
 
     def scan_nuclides(modelpath: Path | str) -> pl.LazyFrame:
         del modelpath
@@ -440,7 +440,7 @@ def test_spectra_gamma_element_contributions(monkeypatch: pytest.MonkeyPatch) ->
             "nucname": ["initial energy", "Ni56", "Co56", "Ni57"],
         })
 
-    monkeypatch.setattr(atspectra, "scan_packets", scan_packets)
+    patch_scan_packets(dfpackets)
     monkeypatch.setattr(atspectra, "scan_nuclides", scan_nuclides)
     contributions, array_flambda_emission_total, _ = atspectra.get_flux_contributions_from_packets(
         modelpath=Path(),
@@ -1063,7 +1063,7 @@ def test_spectraemissionplot_refuses_ion_groups_of_gamma_packets(
     assert f"does not accept --groupby {groupby}" in capsys.readouterr().err
 
 
-def test_spectra_gamma_packets_group_by_emission_velocity(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_spectra_gamma_packets_group_by_emission_velocity(patch_scan_packets: Callable[[pl.DataFrame], None]) -> None:
     """Each gamma packet goes to the shell of the velocity of its decay, and the shells sum to the whole spectrum.
 
     ARTIS records the decay position of a gamma packet since artis-mcrt/artis#637. Before that change, plotspectra
@@ -1085,10 +1085,7 @@ def test_spectra_gamma_packets_group_by_emission_velocity(monkeypatch: pytest.Mo
         "dirz": [0.0] * 3,
     })
 
-    def scan_packets(*_args: t.Any, **_kwargs: t.Any) -> tuple[int, pl.LazyFrame]:
-        return 1, dfpackets.lazy()
-
-    monkeypatch.setattr(atspectra, "scan_packets", scan_packets)
+    patch_scan_packets(dfpackets)
     lambda_bin_edges = np.array([4000.0, 5000.0, 6000.0])
     expected = {
         "radialvelocity": {"[0, 10000) km/s": 1.0, "[10000, 20000) km/s": 2.0, "[20000, 30000) km/s": 4.0},
@@ -1329,7 +1326,7 @@ def test_spectra_contribution_plot_forwards_packet_time(
     assert mockgetcontributions.call_args.kwargs["use_time"] == expected_use_time
 
 
-def test_spectra_gamma_emission_time_uses_decay(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_spectra_gamma_emission_time_uses_decay(patch_scan_packets: Callable[[pl.DataFrame], None]) -> None:
     """Gamma packet selection must use the decay time and not the radiation packet emission time."""
     dfpackets = pl.DataFrame({
         "e_rf": [1.0, 2.0],
@@ -1339,10 +1336,7 @@ def test_spectra_gamma_emission_time_uses_decay(monkeypatch: pytest.MonkeyPatch)
         "nu_rf": [at.constants.c_ang_per_s / 5000.0] * 2,
     })
 
-    def scan_packets(*_args: t.Any, **_kwargs: t.Any) -> tuple[int, pl.LazyFrame]:
-        return 1, dfpackets.lazy()
-
-    monkeypatch.setattr(atspectra, "scan_packets", scan_packets)
+    patch_scan_packets(dfpackets)
     dfspectrum = atspectra.scan_spectra_from_packets(
         modelpath=Path(),
         timelowdays=0.5,
@@ -1363,7 +1357,10 @@ def test_spectra_gamma_emission_time_uses_decay(monkeypatch: pytest.MonkeyPatch)
 # The first packet leaves the window at beta 0.8, where 1.5 d * 0.6 = 0.9 d.
 @pytest.mark.parametrize(("beta", "expected_e_cmf_sum"), [(0.0, 10.0), (0.6, 30.0), (0.8, 20.0)])
 def test_spectra_contributions_use_escape_time(
-    monkeypatch: pytest.MonkeyPatch, beta: float, expected_e_cmf_sum: float
+    monkeypatch: pytest.MonkeyPatch,
+    beta: float,
+    expected_e_cmf_sum: float,
+    patch_scan_packets: Callable[[pl.DataFrame], None],
 ) -> None:
     """Contribution spectra must use the same escape-time packet set and energy as the total spectrum."""
     nu_rf = at.constants.c_ang_per_s / 5000.0
@@ -1377,9 +1374,6 @@ def test_spectra_contributions_use_escape_time(
     })
     lambda_bin_edges = np.array([4000.0, 5000.0, 6000.0])
 
-    def scan_packets(*_args: t.Any, **_kwargs: t.Any) -> tuple[int, pl.LazyFrame]:
-        return 1, dfpackets.lazy()
-
     def get_escape_surface_gamma(_modelpath: Path | str) -> float:
         return math.sqrt(1.0 - beta**2)
 
@@ -1387,7 +1381,7 @@ def test_spectra_contributions_use_escape_time(
         del modelpath
         return pl.LazyFrame({"pellet_nucindex": [0], "nucname": ["Ni56"]})
 
-    monkeypatch.setattr(atspectra, "scan_packets", scan_packets)
+    patch_scan_packets(dfpackets)
     monkeypatch.setattr(atspectra, "get_escape_surface_gamma", get_escape_surface_gamma)
     monkeypatch.setattr(atspectra, "scan_nuclides", scan_nuclides)
 
@@ -2939,7 +2933,9 @@ def test_vspecpol_spectrum_refuses_a_time_outside_the_time_bins() -> None:
     assert dfspectrum["f_nu"].sum() > 0.0
 
 
-def test_absorption_from_packets_skips_free_free_and_bound_free(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_absorption_from_packets_skips_free_free_and_bound_free(
+    monkeypatch: pytest.MonkeyPatch, patch_scan_packets: Callable[[pl.DataFrame], None]
+) -> None:
     """ARTIS records no absorption frequency for a free-free or a bound-free absorption.
 
     The packet keeps the frequency of an earlier line absorption, thus such a series had the wavelength of an
@@ -2960,13 +2956,10 @@ def test_absorption_from_packets_skips_free_free_and_bound_free(monkeypatch: pyt
         schema_overrides={"absorption_type": pl.Int32, "emissiontype": pl.Int32},
     )
 
-    def scan_packets(*_args: t.Any, **_kwargs: t.Any) -> tuple[int, pl.LazyFrame]:
-        return 1, dfpackets.lazy()
-
     def get_linelist_label_columns(*_args: t.Any, **_kwargs: t.Any) -> pl.DataFrame:
         return pl.DataFrame({"atomic_number": [26], "ion_stage": [2]})
 
-    monkeypatch.setattr(atspectra, "scan_packets", scan_packets)
+    patch_scan_packets(dfpackets)
     monkeypatch.setattr(atspectra, "get_linelist_label_columns", get_linelist_label_columns)
     contributions, _, array_lambda = atspectra.get_flux_contributions_from_packets(
         modelpath=Path(),

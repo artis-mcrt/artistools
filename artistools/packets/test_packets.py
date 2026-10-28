@@ -1,6 +1,7 @@
 import math
 import os
 import stat
+from collections.abc import Callable
 from pathlib import Path
 from unittest import mock
 
@@ -14,11 +15,6 @@ import pytest
 import artistools as at
 
 modelpath = at.get_path("testdata") / "testmodel"
-
-
-def read_data_file(path: Path) -> pl.DataFrame:
-    """Read a table that --write_data wrote."""
-    return pl.read_csv(path, separator=" ", null_values="nan", comment_prefix="#")
 
 
 def get_reference_dirbin(dirx: float, diry: float, dirz: float, nphibins: int, ncosthetabins: int) -> int:
@@ -1487,7 +1483,9 @@ def test_plotspherical_gif_keeps_the_name_that_o_gives(tmp_path: Path) -> None:
 
 
 @mock.patch.object(mplax.Axes, "pcolormesh", side_effect=mplax.Axes.pcolormesh, autospec=True)
-def test_plotspherical_write_data_holds_the_drawn_maps(mockpcolormesh: mock.MagicMock, tmp_path: Path) -> None:
+def test_plotspherical_write_data_holds_the_drawn_maps(
+    mockpcolormesh: mock.MagicMock, tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """The table of --write_data must give each pixel of each map after the smoothing, at the drawn coordinates.
 
     The longitude of the map does not follow the ascending phi bins, and --phireverse changes its sign. Thus the

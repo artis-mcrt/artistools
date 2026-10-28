@@ -8,6 +8,7 @@ import shutil
 import tarfile
 import time
 import typing as t
+from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 from pathlib import Path
@@ -93,34 +94,9 @@ def get_derived_modeldata(modelpath: Path, **kwargs: t.Any) -> tuple[pl.LazyFram
     return at.inputmodel.add_derived_cols_to_modeldata(lzdfmodel, modelmeta=modelmeta), modelmeta
 
 
-def write_trajectory_archive(
-    traj_root: Path, particleid: int, members: dict[str, str], suffix: str = ".tar.xz"
-) -> Path:
-    """Write a small trajectory archive {particleid}.tar.xz whose members are the files of its Run_rprocess folder."""
-    import io
-
-    from artistools.misc.fileio import get_decompress_open
-
-    traj_root.mkdir(parents=True, exist_ok=True)
-    archivepath = traj_root / f"{particleid}{suffix}"
-    tarbytes = io.BytesIO()
-    with tarfile.open(fileobj=tarbytes, mode="w") as tarfilehandle:
-        for filename, text in members.items():
-            data = text.encode("utf-8")
-            tarinfo = tarfile.TarInfo(name=f"./Run_rprocess/{filename}")
-            tarinfo.size = len(data)
-            tarfilehandle.addfile(tarinfo, io.BytesIO(data))
-
-    if suffix == ".tar":
-        archivepath.write_bytes(tarbytes.getvalue())
-    else:
-        with get_decompress_open(archivepath.suffix)(archivepath, "wb") as archivefile:
-            archivefile.write(tarbytes.getvalue())
-
-    return archivepath
-
-
-def test_trajectory_archive_formats_give_the_same_table(tmp_path: Path) -> None:
+def test_trajectory_archive_formats_give_the_same_table(
+    tmp_path: Path, write_trajectory_archive: Callable[[Path, int, dict[str, str], str], Path]
+) -> None:
     """A .tar.zst, a .tar.xz, and a .tar give the same table, and a .tar.zst comes before a .tar.xz."""
     members = {
         "energy_thermo.dat": "#count time/s Qdot\n     1  1.000000E+00  1.500000E+21\n",
@@ -142,7 +118,9 @@ def test_trajectory_archive_formats_give_the_same_table(tmp_path: Path) -> None:
     assert archivepath.name == "3.tar.zst"
 
 
-def test_trajectory_qdotintegral_is_zero_before_one_second(tmp_path: Path) -> None:
+def test_trajectory_qdotintegral_is_zero_before_one_second(
+    tmp_path: Path, write_trajectory_archive: Callable[[Path, int, dict[str, str], str], Path]
+) -> None:
     """A last timestep before one second gives a zero integral, because the integration starts at one second.
 
     The filter on the last timestep came before the check for a time of one second or more, thus the check
@@ -159,6 +137,7 @@ def test_trajectory_qdotintegral_is_zero_before_one_second(tmp_path: Path) -> No
                 "     3  4.000000E+00  1.000000E+10\n"
             )
         },
+        ".tar.xz",
     )
     qdotintegral = at.inputmodel.rprocess_from_trajectory.get_trajectory_qdotintegral
     assert qdotintegral(6, tmp_path, nts_max=1, t_model_s=4.0) == 0.0
@@ -178,6 +157,7 @@ def test_trajectory_qdotintegral_is_zero_before_one_second(tmp_path: Path) -> No
                 "     3  4.000000E+00  1.000000E+10\n"
             )
         },
+        ".tar.xz",
     )
     with pytest.raises(FileNotFoundError, match="no column Qdot"):
         qdotintegral(6, tmp_path / "corrupt", nts_max=3, t_model_s=4.0)
@@ -192,6 +172,7 @@ def test_trajectory_qdotintegral_is_zero_before_one_second(tmp_path: Path) -> No
                 "#count time/s Qdot\n     1  2.000000E+00  2.000000E+10\n     3  4.000000E+00  1.000000E+10\n"
             )
         },
+        ".tar.xz",
     )
     with pytest.raises(ValueError, match="no Qdot value at each timestep up to 3"):
         qdotintegral(6, tmp_path / "gap", nts_max=3, t_model_s=4.0)
@@ -212,6 +193,7 @@ def test_trajectory_qdotintegral_is_zero_before_one_second(tmp_path: Path) -> No
                 "  3  4.000000E+00   1.0E-06   2.0E-12   0.0E+00   6.3E-06\n  2   2 -1.27404E+00  0.0  0.0\n"
             ),
         },
+        ".tar.xz",
     )
     # the trajectory has no network data at that timestep, thus the particle is one with no network data
     with pytest.raises(FileNotFoundError, match="ends at timestep 2 before timestep 3"):
@@ -781,7 +763,9 @@ def test_get_elemabund_from_nucabund() -> None:
     assert result_abunds == all_expected_abunds
 
 
-def test_trajectory_archive_joins_the_timestep_tables_and_the_named_abundance_file(tmp_path: Path) -> None:
+def test_trajectory_archive_joins_the_timestep_tables_and_the_named_abundance_file(
+    tmp_path: Path, write_trajectory_archive: Callable[[Path, int, dict[str, str], str], Path]
+) -> None:
     """A row holds energy_thermo.dat and heating.dat for its timestep, and a named abundance file is a row of its own.
 
     The named file tday_nz-plane has the timestep number of nz-plane00002 in its header, but its time differs. A
@@ -812,6 +796,7 @@ def test_trajectory_archive_joins_the_timestep_tables_and_the_named_abundance_fi
             "tday_nz-plane": "  2  8.640000E+04   1.0E-06   2.0E-12   0.0E+00   6.3E-06\n" + nuclidelines,
             "._nz-plane00002": "resource fork\n",
         },
+        ".tar.xz",
     )
 
     dftrajectory, leftoutfiles = at.inputmodel.rprocess_from_trajectory.read_trajectory_network_data(archivepath)
@@ -852,7 +837,9 @@ def test_trajectory_archive_joins_the_timestep_tables_and_the_named_abundance_fi
 
 
 def test_trajectory_archive_leaves_out_a_corrupt_timestep_table(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    write_trajectory_archive: Callable[[Path, int, dict[str, str], str], Path],
 ) -> None:
     """A corrupt time in heating.dat must not stop a read of the abundance files, which do not need that table."""
     nuclidelines = "  0   1 -1.11798E+01  0.00000E+00  0.00000E+00\n"
@@ -868,6 +855,7 @@ def test_trajectory_archive_leaves_out_a_corrupt_timestep_table(
             "heating.dat": "#count time/s hbeta\n     1  corrupt  2.000000E+09\n",
             "nz-plane00001": "  1  1.000000E+00   1.0E-06   2.0E-12   0.0E+00   6.3E-06\n" + nuclidelines,
         },
+        ".tar.xz",
     )
     _, timesecs = at.inputmodel.rprocess_from_trajectory.get_trajectory_timestepfiles_nuc_abund(
         tmp_path, 5, ["nz-plane00001"]
@@ -888,15 +876,19 @@ def test_trajectory_archive_leaves_out_a_corrupt_timestep_table(
         at.inputmodel.rprocess_from_trajectory.get_network_timesteps_table(tmp_path, 5, ("hbeta",))
 
 
-def test_trajectory_archive_without_network_files_raises(tmp_path: Path) -> None:
+def test_trajectory_archive_without_network_files_raises(
+    tmp_path: Path, write_trajectory_archive: Callable[[Path, int, dict[str, str], str], Path]
+) -> None:
     """An archive with no file that artistools reads gives an error that names the archive."""
-    archivepath = write_trajectory_archive(tmp_path, 8, {"evol.dat": "1 2\n"})
+    archivepath = write_trajectory_archive(tmp_path, 8, {"evol.dat": "1 2\n"}, ".tar.xz")
     with pytest.raises(FileNotFoundError, match=r"8\.tar\.xz"):
         at.inputmodel.rprocess_from_trajectory.read_trajectory_network_data(archivepath)
 
 
 def test_trajectory_timestep_files_reject_a_blank_header_line(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    write_trajectory_archive: Callable[[Path, int, dict[str, str], str], Path],
 ) -> None:
     """A timestep file whose first line is blank gives no time, thus the cache leaves it out and names that file.
 
@@ -908,7 +900,7 @@ def test_trajectory_timestep_files_reject_a_blank_header_line(
     goodfile = "  1  8.873645E+03   6.601614E-06   2.981756E-12   0.000000E+00   6.377000E-06\n" + abundlines
     reader = at.inputmodel.rprocess_from_trajectory.get_trajectory_timestepfiles_nuc_abund
 
-    write_trajectory_archive(tmp_path / "good", 1, {"nz-plane00001": goodfile})
+    write_trajectory_archive(tmp_path / "good", 1, {"nz-plane00001": goodfile}, ".tar.xz")
     _, timesecs = reader(tmp_path / "good", 1, ["nz-plane00001"])
     assert timesecs == [8873.645]
 
@@ -923,6 +915,7 @@ def test_trajectory_timestep_files_reject_a_blank_header_line(
             "nz-plane00004": "  4  8.87x645E+03   6.6E-06   2.9E-12   0.0E+00   6.3E-06\n" + abundlines,
             "nz-plane00005": "  5  8.873645E+03   6.601614E-06   2.981756E-12   0.000000E+00   6.377000E-06\n",
         },
+        ".tar.xz",
     )
     _, timesecs = reader(tmp_path / "bad", 1, ["nz-plane00001"])
     assert timesecs == [8873.645]
@@ -4559,7 +4552,11 @@ def test_make1dslicefrom3dmodel(tmp_path: Path) -> None:
     assert (tmp_path / "slice.pdf").is_file()
 
 
-def test_makeartismodelfromsingletrajectory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_makeartismodelfromsingletrajectory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    write_trajectory_archive: Callable[[Path, int, dict[str, str], str], Path],
+) -> None:
     """The command takes the trajectory folder and the particle id as arguments, and it writes a one-cell model."""
     particleid = 42
     # N, Z, and the log10 of the number abundance: He4 and Ni56 have a mass fraction of 0.5 each
@@ -4573,6 +4570,7 @@ def test_makeartismodelfromsingletrajectory(tmp_path: Path, monkeypatch: pytest.
             + "\n".join(nuclidelines)
             + "\n"
         },
+        ".tar.xz",
     )
     # the command reads a density profile from the working folder if one exists
     monkeypatch.chdir(tmp_path)

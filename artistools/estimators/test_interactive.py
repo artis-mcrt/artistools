@@ -7,6 +7,7 @@ import shlex
 import subprocess  # ruff:ignore[suspicious-subprocess-import]
 import sys
 import typing as t
+from collections.abc import Callable
 from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
@@ -34,61 +35,6 @@ from artistools.viewertools.window import draw_values
 
 modelpath = at.get_path("testdata") / "testmodel"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
-
-
-def get_command_figure(tokens: Sequence[str], outputfile: Path) -> mplfig.Figure:
-    """Run plotestimators for the tokens, and return the figure that it saves."""
-    savedfigures: list[mplfig.Figure] = []
-
-    def keep_figure(fig: mplfig.Figure, *_: t.Any, **__: t.Any) -> None:
-        savedfigures.append(fig)
-
-    with mock.patch.object(plotestimators, "save_figure", side_effect=keep_figure):
-        at.estimators.plot(argsraw=[*tokens, "-o", str(outputfile)])
-    [savedfigure] = savedfigures
-    return savedfigure
-
-
-def make_toy_codecomparison_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
-    """Write a code comparison model of one epoch and three shells, and return its virtual path."""
-    physdir = tmp_path / "ccdata" / "toymodel"
-    physdir.mkdir(parents=True)
-    (physdir / "phys_toymodel_toycode.txt").write_text(
-        "#NTIMES: 1\n"
-        "#TIMES[d]: 10.0\n"
-        "#TIME: 10.0\n"
-        "#NVEL: 3\n"
-        "#vel_mid Te rho nne nntot\n"
-        "1000.0 5000.0 1e-13 1e6 1e6\n"
-        "2000.0 5100.0 2e-13 2e6 2e6\n"
-        "3000.0 5200.0 3e-13 3e6 3e6\n"
-    )
-
-    artismodeldir = tmp_path / "ccmodel" / "toymodel"
-    artismodeldir.mkdir(parents=True)
-    (artismodeldir / "model.txt").write_text(
-        "3\n10.0\n1 1000.0 -13.0 0.5 0.3 0.1 0.0 0.0\n2 2000.0 -13.0 0.5 0.3 0.1 0.0 0.0\n"
-        "3 3000.0 -13.0 0.5 0.3 0.1 0.0 0.0\n"
-    )
-    abundrow = " ".join(["0.0"] * 25 + ["0.1", "0.0", "0.9", "0.0", "0.0"])
-    (artismodeldir / "abundances.txt").write_text("".join(f"{cellid} {abundrow}\n" for cellid in (1, 2, 3)))
-
-    realgetpath = at.get_path
-
-    def fake_get_path(key: str) -> Path:
-        if key == "codecomparisondata1path":
-            return tmp_path / "ccdata"
-        if key == "codecomparisonmodelartismodelpath":
-            return tmp_path / "ccmodel"
-        return realgetpath(key)
-
-    import artistools.inputmodel.core
-
-    # codecomparison.py and inputmodel/core.py each hold their own import of the name
-    monkeypatch.setattr(at.codecomparison, "get_path", fake_get_path)
-    monkeypatch.setattr(artistools.inputmodel.core, "get_path", fake_get_path)
-
-    return "codecomparison/toymodel/toycode"
 
 
 def make_headless_viewer(tokens: list[str]) -> interactive.EstimatorViewer:
@@ -122,7 +68,9 @@ def assert_same_lines(fig: mplfig.Figure, otherfig: mplfig.Figure) -> None:
             assert np.allclose(yvalues, othery, rtol=1e-12, atol=0.0, equal_nan=True)
 
 
-def test_interactive_command_reproduces_plot(tmp_path: Path) -> None:
+def test_interactive_command_reproduces_plot(
+    tmp_path: Path, get_plotestimators_figure: Callable[[Sequence[str], Path], mplfig.Figure]
+) -> None:
     """The command that the viewer shows must draw the same data as the viewer.
 
     The first subplot goes before the folder and each other subplot follows --plot, thus a quoted ion and a directive
@@ -135,7 +83,7 @@ def test_interactive_command_reproduces_plot(tmp_path: Path) -> None:
     command = viewer.get_command()
     assert command.endswith("--timestep 10-12 --xbins 8 --plot populations 'Fe II' 'Fe III' 'Ni II' --plot nne")
 
-    assert_same_lines(viewer.fig, get_command_figure(shlex.split(command)[2:], tmp_path / "estimators.pdf"))
+    assert_same_lines(viewer.fig, get_plotestimators_figure(shlex.split(command)[2:], tmp_path / "estimators.pdf"))
 
 
 def test_interactive_swatches_give_the_colours_of_the_lines() -> None:
@@ -589,7 +537,9 @@ def test_interactive_python_code_reproduces_plot(tmp_path: Path) -> None:
     assert_same_lines(viewer.fig, savedfigure)
 
 
-def test_interactive_subplot_with_no_series_stays_as_an_empty_frame(tmp_path: Path) -> None:
+def test_interactive_subplot_with_no_series_stays_as_an_empty_frame(
+    tmp_path: Path, get_plotestimators_figure: Callable[[Sequence[str], Path], mplfig.Figure]
+) -> None:
     """A subplot whose last series the user removed stays, and its frame is empty until the user adds a series.
 
     The viewer deleted such a subplot, thus the user lost its place and its type. A first subplot with no item follows
@@ -603,7 +553,7 @@ def test_interactive_subplot_with_no_series_stays_as_an_empty_frame(tmp_path: Pa
     tokens = viewer.get_plot_tokens()
     assert tokens[-6:] == ["--plot", "--plot", "TR", "yscale=linear", "--plot", "yscale=log"]
 
-    assert_same_lines(viewer.fig, get_command_figure(tokens, tmp_path / "estimators.pdf"))
+    assert_same_lines(viewer.fig, get_plotestimators_figure(tokens, tmp_path / "estimators.pdf"))
 
 
 def test_interactive_session_keeps_an_empty_last_subplot() -> None:
@@ -619,7 +569,9 @@ def test_interactive_session_keeps_an_empty_last_subplot() -> None:
     assert make_headless_viewer([*tokens, "--interactive"]).values.subplots == subplots
 
 
-def test_interactive_command_gives_the_default_subplots(tmp_path: Path) -> None:
+def test_interactive_command_gives_the_default_subplots(
+    tmp_path: Path, get_plotestimators_figure: Callable[[Sequence[str], Path], mplfig.Figure]
+) -> None:
     """The command gives each subplot also for the default subplots, and it draws the figure of no --plot.
 
     The command left out the default subplots, thus it depended on the default of the version of plotestimators. The
@@ -637,7 +589,9 @@ def test_interactive_command_gives_the_default_subplots(tmp_path: Path) -> None:
     assert viewer.get_plot_tokens()[: len(first)] == list(first)
     assert viewer.get_plot_tokens().count("--plot") == len(others)
 
-    assert_same_lines(viewer.fig, get_command_figure([str(modelpath), "--timestep", "50"], tmp_path / "estimators.pdf"))
+    assert_same_lines(
+        viewer.fig, get_plotestimators_figure([str(modelpath), "--timestep", "50"], tmp_path / "estimators.pdf")
+    )
 
 
 def test_interactive_default_x_follows_a_slice_line_of_the_table() -> None:
@@ -753,15 +707,9 @@ def test_interactive_unexpected_error_keeps_the_old_plot() -> None:
     assert viewer.fig.axes[0].get_lines()
 
 
-def test_interactive_codecomparison_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_interactive_codecomparison_model(toy_codecomparison_model: str) -> None:
     """The viewer opens a codecomparison model, which has no run folders, as the command does."""
-    viewer = make_headless_viewer([
-        "Te",
-        make_toy_codecomparison_model(tmp_path, monkeypatch),
-        "-timestep",
-        "0",
-        "--interactive",
-    ])
+    viewer = make_headless_viewer(["Te", toy_codecomparison_model, "-timestep", "0", "--interactive"])
     assert viewer.modeldata.validtimesteps == [0]
     assert viewer.fig.axes[0].get_lines()
 

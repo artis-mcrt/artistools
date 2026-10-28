@@ -1,5 +1,6 @@
 import math
 import typing as t
+from collections.abc import Callable
 from pathlib import Path
 from unittest import mock
 
@@ -77,13 +78,13 @@ def test_decayproducts_parquet_output(tmp_path: Path, trajectory_copy: Path, mon
     assert not (cwd / "parquet").exists(), "parquet files must not be written relative to the working directory"
 
 
-def test_decayproducts_process_trajectory_reads_the_row_of_the_timestep(tmp_path: Path) -> None:
+def test_decayproducts_process_trajectory_reads_the_row_of_the_timestep(
+    tmp_path: Path, write_trajectory_archive: Callable[[Path, int, dict[str, str], str], Path]
+) -> None:
     """A gap in the timesteps must not move the heating values, because the row index is not the timestep minus one.
 
     The old code read row nstep - 1, which an archive with a gap or a left-out timestep does not have.
     """
-    from artistools.inputmodel.test_inputmodel import write_trajectory_archive
-
     # the reader asserts more than 100 nuclides in a file
     nuclidelines = "".join(f"{nneutrons:4d}{1:4d}{-20.0:13.5E}  0.00000E+00  0.00000E+00\n" for nneutrons in range(120))
     steps = {1: 1.0e4, 2: 2.0e4, 4: 4.0e4}
@@ -98,7 +99,7 @@ def test_decayproducts_process_trajectory_reads_the_row_of_the_timestep(tmp_path
         f"nz-plane{nstep:05d}": f"  {nstep}  {time_s:.6E}   1.0E-06   2.0E-12   0.0E+00   6.3E-06\n" + nuclidelines
         for nstep, time_s in steps.items()
     }
-    write_trajectory_archive(tmp_path, 9, members)
+    write_trajectory_archive(tmp_path, 9, members, ".tar.xz")
 
     decay_powers = at.gsinetwork.decayproducts.process_trajectory(
         nuc_data=at.gsinetwork.decayproducts.get_nuc_data("Hotokezaka"),
@@ -117,7 +118,7 @@ def test_decayproducts_process_trajectory_reads_the_row_of_the_timestep(tmp_path
     assert decay_powers["Qdot"].tolist() == pytest.approx([4.0])
 
     # a heating.dat with a header alone gives no heating row, and the sums leave out the trajectory
-    write_trajectory_archive(tmp_path, 10, members | {"heating.dat": "#count time/s hbeta htot\n"})
+    write_trajectory_archive(tmp_path, 10, members | {"heating.dat": "#count time/s hbeta htot\n"}, ".tar.xz")
     assert (
         at.gsinetwork.decayproducts.process_trajectory(
             nuc_data=at.gsinetwork.decayproducts.get_nuc_data("Hotokezaka"),

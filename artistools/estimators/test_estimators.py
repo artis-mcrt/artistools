@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 import typing as t
+from collections.abc import Callable
 from collections.abc import Sequence
 from pathlib import Path
 from unittest import mock
@@ -787,20 +788,6 @@ def test_estimparse_missing_file() -> None:
         at.rustext.estimparse(modelpath, 999, 999)
 
 
-def write_zstd_frames(filepath: Path, texts: Sequence[str]) -> None:
-    """Write each text as one zstd frame, one frame after the other, as ARTIS writes the estimator file of all ranks."""
-    from artistools.misc.fileio import get_decompress_open
-
-    frames: list[bytes] = []
-    for index, text in enumerate(texts):
-        framepath = filepath.with_name(f"{filepath.name}.frame{index}")
-        with get_decompress_open(".zst")(framepath, "wt", encoding="utf-8") as framefile:
-            framefile.write(text)
-        frames.append(framepath.read_bytes())
-        framepath.unlink()
-    filepath.write_bytes(b"".join(frames))
-
-
 def copy_model_inputs(folder: Path, *extranames: str, source: Path = modelpath) -> None:
     """Copy the input files of a model to a folder, and each extra file of the model, e.g. estimators_0000.out."""
     for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt", *extranames):
@@ -812,18 +799,9 @@ def relabel_cell(celltext: str, modelgridindex: int) -> str:
     return celltext.replace("modelgridindex 0 ", f"modelgridindex {modelgridindex} ", 1)
 
 
-def get_cell_texts(estimatortext: str) -> list[str]:
-    """Return the text of each cell of an estimator file. The line of a timestep starts the text of a cell."""
-    celltexts: list[str] = []
-    for line in estimatortext.splitlines(keepends=True):
-        if line.startswith("timestep ") or not celltexts:
-            celltexts.append(line)
-        else:
-            celltexts[-1] += line
-    return celltexts
-
-
-def test_estimparse_allranks_keeps_the_order_over_frames_and_parts(tmp_path: Path) -> None:
+def test_estimparse_allranks_keeps_the_order_over_frames_and_parts(
+    tmp_path: Path, get_cell_texts: Callable[[str], list[str]], write_zstd_frames: Callable[[Path, Sequence[str]], None]
+) -> None:
     """The reader of the file of all ranks gives the rows in the order of the file.
 
     The text is larger than one part of the parallel parse (16 MB), thus the threads parse more than one part. The
@@ -858,7 +836,9 @@ def test_estimparse_allranks_keeps_the_order_over_frames_and_parts(tmp_path: Pat
         at.rustext.estimparse_allranks(allranksfile)
 
 
-def test_newer_rank_files_win_over_a_stale_file_of_all_ranks(tmp_path: Path) -> None:
+def test_newer_rank_files_win_over_a_stale_file_of_all_ranks(
+    tmp_path: Path, get_cell_texts: Callable[[str], list[str]], write_zstd_frames: Callable[[Path, Sequence[str]], None]
+) -> None:
     """A file of all ranks that is older than a file of a rank is stale.
 
     A run of the ARTIS script on the folder of a job that still runs gives such a file, because sn3d then adds
@@ -888,7 +868,9 @@ def test_newer_rank_files_win_over_a_stale_file_of_all_ranks(tmp_path: Path) -> 
     assert pl.read_parquet_metadata(tmp_path / "estimators_allranks.out.parquet")["textsource"] == "allranks file"
 
 
-def test_conversion_reads_again_a_text_that_changed_during_the_read(tmp_path: Path) -> None:
+def test_conversion_reads_again_a_text_that_changed_during_the_read(
+    tmp_path: Path, get_cell_texts: Callable[[str], list[str]], write_zstd_frames: Callable[[Path, Sequence[str]], None]
+) -> None:
     """sn3d can add a timestep to the file of all ranks during the conversion.
 
     The time of the file then moves by less than the tolerance of the cache stamp. The conversion must read the text
@@ -923,7 +905,9 @@ def test_conversion_reads_again_a_text_that_changed_during_the_read(tmp_path: Pa
     assert pl.read_parquet_metadata(tmp_path / "estimators_allranks.out.parquet")["textsource_mtime"] == "1005.0"
 
 
-def test_readers_give_zero_for_a_quantity_that_a_rank_or_a_part_lacks(tmp_path: Path) -> None:
+def test_readers_give_zero_for_a_quantity_that_a_rank_or_a_part_lacks(
+    tmp_path: Path, get_cell_texts: Callable[[str], list[str]], write_zstd_frames: Callable[[Path, Sequence[str]], None]
+) -> None:
     """A cell that writes no line of a quantity gets zero, also when a whole file of a rank or a part lacks the line.
 
     Within one file, the reader gives zero to such a cell. The boundaries of the files of the ranks and of the parts
@@ -967,7 +951,9 @@ def test_readers_give_zero_for_a_quantity_that_a_rank_or_a_part_lacks(tmp_path: 
     assert dfallranks.filter(pl.col("modelgridindex") >= 20)["gamma_R_Fe_II"].unique().to_list() == [0.0]
 
 
-def test_conversion_in_batches_gives_the_table_of_one_read(tmp_path: Path) -> None:
+def test_conversion_in_batches_gives_the_table_of_one_read(
+    tmp_path: Path, get_cell_texts: Callable[[str], list[str]], write_zstd_frames: Callable[[Path, Sequence[str]], None]
+) -> None:
     """A conversion writes each text batch to parts, thus the memory never holds the full table of a large model.
 
     The scan of the parts must give the table of one read of the whole text in the order of the timesteps and the
@@ -1030,7 +1016,9 @@ def test_conversion_in_batches_gives_the_table_of_one_read(tmp_path: Path) -> No
     )
 
 
-def test_an_older_text_does_not_replace_a_newer_cache(tmp_path: Path) -> None:
+def test_an_older_text_does_not_replace_a_newer_cache(
+    tmp_path: Path, get_cell_texts: Callable[[str], list[str]], write_zstd_frames: Callable[[Path, Sequence[str]], None]
+) -> None:
     """The script of ARTIS combined the files of the ranks while the job still ran, and the user later removed them.
 
     The file of all ranks is then older than the text of the cache, and it holds fewer timesteps. The cache stays.
@@ -1185,7 +1173,9 @@ def test_current_batch_caches_stay_and_a_stale_one_makes_the_cache_of_all_ranks(
     pltest.assert_frame_equal(dfconverted, dfexpected, check_column_order=False)
 
 
-def test_conversion_drops_an_incomplete_last_timestep(tmp_path: Path) -> None:
+def test_conversion_drops_an_incomplete_last_timestep(
+    tmp_path: Path, get_cell_texts: Callable[[str], list[str]], write_zstd_frames: Callable[[Path, Sequence[str]], None]
+) -> None:
     """A job that stopped during the write of a timestep leaves that timestep with some cells only.
 
     Each timestep of a job holds the same cells, thus the conversion drops a last timestep with fewer cells.
@@ -1215,7 +1205,9 @@ def test_conversion_drops_an_incomplete_last_timestep(tmp_path: Path) -> None:
     assert lasttimestep not in get_runfolder_timesteps(tmp_path)
 
 
-def test_a_column_of_a_dropped_timestep_stays_in_the_cache(tmp_path: Path) -> None:
+def test_a_column_of_a_dropped_timestep_stays_in_the_cache(
+    tmp_path: Path, get_cell_texts: Callable[[str], list[str]]
+) -> None:
     """A column that only the incomplete last timestep writes stays in the cache with zeros.
 
     The reader gives each column of a text batch to each row of that text batch. One timestep of a large model is a
@@ -1256,7 +1248,9 @@ def test_a_column_of_a_dropped_timestep_stays_in_the_cache(tmp_path: Path) -> No
     assert dfestim["cooling_onlylasttimestep"].to_list() == [0.0] * dfestim.height
 
 
-def test_a_dropped_timestep_that_the_job_completes_makes_the_cache_stale(tmp_path: Path) -> None:
+def test_a_dropped_timestep_that_the_job_completes_makes_the_cache_stale(
+    tmp_path: Path, get_cell_texts: Callable[[str], list[str]], write_zstd_frames: Callable[[Path, Sequence[str]], None]
+) -> None:
     """sn3d can write the rest of a timestep that a conversion dropped, within the tolerance of the cache stamp.
 
     The cache then keeps the size of its text, and a new size makes the cache stale. The text of a job that stopped
@@ -1296,7 +1290,9 @@ def test_a_dropped_timestep_that_the_job_completes_makes_the_cache_stale(tmp_pat
     assert lasttimestep in get_runfolder_timesteps(tmp_path)
 
 
-def test_a_write_after_the_read_makes_the_cache_stale(tmp_path: Path) -> None:
+def test_a_write_after_the_read_makes_the_cache_stale(
+    tmp_path: Path, get_cell_texts: Callable[[str], list[str]], write_zstd_frames: Callable[[Path, Sequence[str]], None]
+) -> None:
     """sn3d can add a timestep after the read of the conversion, e.g. during the write of the cache.
 
     The time of the text then moves by less than the tolerance of the cache stamp. The size of the text shows the
@@ -1314,7 +1310,9 @@ def test_a_write_after_the_read_makes_the_cache_stale(tmp_path: Path) -> None:
     assert at.estimators.scan_estimators(tmp_path).collect()["timestep"].n_unique() == len(celltexts)
 
 
-def test_estimparse_allranks_drops_a_cell_that_a_cut_frame_ends_inside(tmp_path: Path) -> None:
+def test_estimparse_allranks_drops_a_cell_that_a_cut_frame_ends_inside(
+    tmp_path: Path, get_cell_texts: Callable[[str], list[str]], write_zstd_frames: Callable[[Path, Sequence[str]], None]
+) -> None:
     """A job that stops during the write of the file of all ranks can leave a text that ends inside a cell.
 
     The zstd decoder gives the complete blocks of a cut frame and no error. The reader must drop the cut cell, thus each
@@ -1350,7 +1348,9 @@ def test_estimparse_allranks_drops_a_cell_that_a_cut_frame_ends_inside(tmp_path:
     pltest.assert_frame_equal(dfplain, dfcomplete.head(599).select(dfplain.columns))
 
 
-def test_scan_takes_a_text_with_no_complete_cell(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_scan_takes_a_text_with_no_complete_cell(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], get_cell_texts: Callable[[str], list[str]]
+) -> None:
     """A job that stops during the write of the first cell leaves a text that holds no complete cell.
 
     The reader gives a frame with no column for such a text, and the sort of the conversion then stopped with
@@ -1436,7 +1436,9 @@ def write_model_of_two_cells(folder: Path, nprocs: int) -> None:
     (folder / "modelgridrankassignments.out").write_text("#rank nstart ndo ndo_nonempty\n0 0 1 1\n1 1 1 1\n")
 
 
-def test_incomplete_newer_rank_files_leave_the_file_of_all_ranks_in_use(tmp_path: Path) -> None:
+def test_incomplete_newer_rank_files_leave_the_file_of_all_ranks_in_use(
+    tmp_path: Path, get_cell_texts: Callable[[str], list[str]], write_zstd_frames: Callable[[Path, Sequence[str]], None]
+) -> None:
     """A user can keep only the file of rank 0, and a copy can make it newer than the file of all ranks.
 
     The files of the ranks are then incomplete, thus they cannot give a cache. With no cache, the file of all ranks
@@ -1474,7 +1476,9 @@ def test_incomplete_newer_rank_files_leave_the_file_of_all_ranks_in_use(tmp_path
     assert pl.read_parquet_metadata(cachefile)["textsource"] == "rank files"
 
 
-def test_conversion_keeps_a_complete_last_timestep_of_the_ranks_that_it_reads(tmp_path: Path) -> None:
+def test_conversion_keeps_a_complete_last_timestep_of_the_ranks_that_it_reads(
+    tmp_path: Path, get_cell_texts: Callable[[str], list[str]]
+) -> None:
     """The conversion reads the files of the ranks that input.txt gives, and each timestep holds only their cells.
 
     A last timestep with all the cells of these ranks is complete, also when modelgridrankassignments.out names more
@@ -1491,7 +1495,9 @@ def test_conversion_keeps_a_complete_last_timestep_of_the_ranks_that_it_reads(tm
     assert dfestim["timestep"].n_unique() == len(celltexts)
 
 
-def test_conversion_reads_once_a_text_that_changed_before_the_read(tmp_path: Path) -> None:
+def test_conversion_reads_once_a_text_that_changed_before_the_read(
+    tmp_path: Path, get_cell_texts: Callable[[str], list[str]], write_zstd_frames: Callable[[Path, Sequence[str]], None]
+) -> None:
     """The text can change after the check of the caches and before the read, e.g. during an earlier conversion.
 
     Such a text needs one read, and the cache gets the time that the text had at that read.
@@ -1520,7 +1526,9 @@ def test_conversion_reads_once_a_text_that_changed_before_the_read(tmp_path: Pat
     assert pl.read_parquet(cachefile)["timestep"].n_unique() == len(celltexts)
 
 
-def test_runfolder_timesteps_of_a_compressed_rank_file_that_a_job_cut(tmp_path: Path) -> None:
+def test_runfolder_timesteps_of_a_compressed_rank_file_that_a_job_cut(
+    tmp_path: Path, get_cell_texts: Callable[[str], list[str]], write_zstd_frames: Callable[[Path, Sequence[str]], None]
+) -> None:
     """A job that stops during a write can leave a file of a rank that ends inside a zstd frame.
 
     The timesteps of the run folder then come from the complete frames, as the parser reads them. The cut file must
@@ -1536,7 +1544,9 @@ def test_runfolder_timesteps_of_a_compressed_rank_file_that_a_job_cut(tmp_path: 
     assert get_runfolder_timesteps(tmp_path) == tuple(range(len(celltexts) - 1))
 
 
-def test_conversion_drops_an_incomplete_timestep_of_a_job_of_one_timestep(tmp_path: Path) -> None:
+def test_conversion_drops_an_incomplete_timestep_of_a_job_of_one_timestep(
+    tmp_path: Path, get_cell_texts: Callable[[str], list[str]], write_zstd_frames: Callable[[Path, Sequence[str]], None]
+) -> None:
     """modelgridrankassignments.out gives the count of cells in a complete timestep.
 
     A job of one timestep has no other timestep to give this count. The restart writes the timestep again, but the
@@ -1585,7 +1595,9 @@ def test_scan_gives_zero_only_for_a_null_that_means_zero(tmp_path: Path) -> None
     assert dfestim["Te"].null_count() == 1
 
 
-def test_scan_estimators_reads_the_file_of_all_ranks(tmp_path: Path) -> None:
+def test_scan_estimators_reads_the_file_of_all_ranks(
+    tmp_path: Path, get_cell_texts: Callable[[str], list[str]], write_zstd_frames: Callable[[Path, Sequence[str]], None]
+) -> None:
     """A run folder with the estimator file of all ranks gives the same rows as the files of the ranks.
 
     Each folder gets one parquet cache and no batch caches, from either form of text. An archived run folder keeps the
@@ -2065,51 +2077,9 @@ def test_scan_estimators_filters_codecomparison(tmp_path: Path, monkeypatch: pyt
     assert np.isclose(dfone["Te"].item(), 6200.0)
 
 
-def make_toy_codecomparison_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
-    """Write a code comparison model of one epoch and three shells, and return its virtual path."""
-    physdir = tmp_path / "ccdata" / "toymodel"
-    physdir.mkdir(parents=True)
-    (physdir / "phys_toymodel_toycode.txt").write_text(
-        "#NTIMES: 1\n"
-        "#TIMES[d]: 10.0\n"
-        "#TIME: 10.0\n"
-        "#NVEL: 3\n"
-        "#vel_mid Te rho nne nntot\n"
-        "1000.0 5000.0 1e-13 1e6 1e6\n"
-        "2000.0 5100.0 2e-13 2e6 2e6\n"
-        "3000.0 5200.0 3e-13 3e6 3e6\n"
-    )
-
-    artismodeldir = tmp_path / "ccmodel" / "toymodel"
-    artismodeldir.mkdir(parents=True)
-    (artismodeldir / "model.txt").write_text(
-        "3\n10.0\n1 1000.0 -13.0 0.5 0.3 0.1 0.0 0.0\n2 2000.0 -13.0 0.5 0.3 0.1 0.0 0.0\n"
-        "3 3000.0 -13.0 0.5 0.3 0.1 0.0 0.0\n"
-    )
-    abundrow = " ".join(["0.0"] * 25 + ["0.1", "0.0", "0.9", "0.0", "0.0"])
-    (artismodeldir / "abundances.txt").write_text("".join(f"{cellid} {abundrow}\n" for cellid in (1, 2, 3)))
-
-    realgetpath = at.get_path
-
-    def fake_get_path(key: str) -> Path:
-        if key == "codecomparisondata1path":
-            return tmp_path / "ccdata"
-        if key == "codecomparisonmodelartismodelpath":
-            return tmp_path / "ccmodel"
-        return realgetpath(key)
-
-    import artistools.inputmodel.core
-
-    # codecomparison.py and inputmodel/core.py each hold their own import of the name
-    monkeypatch.setattr(at.codecomparison, "get_path", fake_get_path)
-    monkeypatch.setattr(artistools.inputmodel.core, "get_path", fake_get_path)
-
-    return "codecomparison/toymodel/toycode"
-
-
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_plot_codecomparison_single_epoch(
-    mockplot: mock.MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    mockplot: mock.MagicMock, tmp_path: Path, toy_codecomparison_model: str
 ) -> None:
     """A code comparison file of one epoch still plots its cells.
 
@@ -2118,7 +2088,7 @@ def test_plot_codecomparison_single_epoch(
     """
     at.estimators.plot(
         argsraw=[],
-        modelpath=make_toy_codecomparison_model(tmp_path, monkeypatch),
+        modelpath=toy_codecomparison_model,
         plotlist=[["Te"]],
         x="velocity",
         timestep="0",
@@ -2133,18 +2103,14 @@ def test_plot_codecomparison_single_epoch(
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_plot_codecomparison_single_epoch_weights_the_cells_by_volume(
-    mockplot: mock.MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    mockplot: mock.MagicMock, tmp_path: Path, toy_codecomparison_model: str
 ) -> None:
     """The average over the shells of one epoch weights each shell by its volume.
 
     One epoch had a timestep width of zero, thus every weight was zero and the average became the plain mean.
     """
     at.estimators.plot(
-        argsraw=[],
-        modelpath=make_toy_codecomparison_model(tmp_path, monkeypatch),
-        plotlist=[["Te"]],
-        x="time",
-        outputfile=tmp_path / "est.pdf",
+        argsraw=[], modelpath=toy_codecomparison_model, plotlist=[["Te"]], x="time", outputfile=tmp_path / "est.pdf"
     )
 
     arr_yvalue = mockplot.call_args_list[0].args[2]
@@ -4323,19 +4289,6 @@ def test_restart_duplicates_keep_the_row_of_the_first_folder(tmp_path: Path) -> 
     assert dfout["Te"].to_list() == [10.0, 11.0, 20.0, 21.0, 30.0, 31.0, 22.0]
 
 
-def get_command_figure(tokens: Sequence[str], outputfile: Path) -> mplfig.Figure:
-    """Run plotestimators for the tokens, and return the figure that it saves."""
-    savedfigures: list[mplfig.Figure] = []
-
-    def keep_figure(fig: mplfig.Figure, *_: t.Any, **__: t.Any) -> None:
-        savedfigures.append(fig)
-
-    with mock.patch.object(plotestimators, "save_figure", side_effect=keep_figure):
-        at.estimators.plot(argsraw=[*tokens, "-o", str(outputfile)])
-    [savedfigure] = savedfigures
-    return savedfigure
-
-
 def test_series_style_reads_commas_in_its_values() -> None:
     """A part of a series style with no known key continues the value before it, e.g. a dash pattern or a label."""
     assert plotitems.read_series_style("Te@dashes=5,2,linewidth=2,label=T, electrons") == (
@@ -4360,7 +4313,9 @@ def test_series_style_reads_commas_in_its_values() -> None:
             at.misc.parse_cli_args(plotestimators.addargs, None, None, ["Te", f"-linewidthscale={scale}"])
 
 
-def test_series_style_applies_to_its_series(tmp_path: Path) -> None:
+def test_series_style_applies_to_its_series(
+    tmp_path: Path, get_plotestimators_figure: Callable[[Sequence[str], Path], mplfig.Figure]
+) -> None:
     """The style of a plot item changes its own series alone, and -linewidthscale multiplies each width.
 
     A label from the user needs a legend, also in a subplot of one variable, which shows its name on the y axis.
@@ -4377,7 +4332,7 @@ def test_series_style_applies_to_its_series(tmp_path: Path) -> None:
         "Fe II",
         "Fe III@color=#d55e00,linestyle=dotted",
     ]
-    fig = get_command_figure(tokens, tmp_path / "estimators.pdf")
+    fig = get_plotestimators_figure(tokens, tmp_path / "estimators.pdf")
     linesbyname = [
         {plotestimators.get_gid_series_name(str(line.get_gid())): line for line in axis.get_lines()}
         for axis in fig.axes
@@ -4397,7 +4352,9 @@ def test_series_style_applies_to_its_series(tmp_path: Path) -> None:
     assert defaultion.get_linewidth() == pytest.approx(3.0)
 
 
-def test_colorbyion_keeps_the_element_colours_of_several_elements(tmp_path: Path) -> None:
+def test_colorbyion_keeps_the_element_colours_of_several_elements(
+    tmp_path: Path, get_plotestimators_figure: Callable[[Sequence[str], Path], mplfig.Figure]
+) -> None:
     """A subplot of more than one element keeps the colours of the elements with --colorbyion.
 
     --colorbyion takes the colour of an ion from its stage, thus Fe II and Co II had the same colour.
@@ -4407,7 +4364,7 @@ def test_colorbyion_keeps_the_element_colours_of_several_elements(tmp_path: Path
     severalelements, oneelement = (
         {
             plotestimators.get_gid_series_name(str(line.get_gid())): line.get_color()
-            for line in get_command_figure([*tokens, *plotlist], tmp_path / f"{index}.pdf").axes[0].get_lines()
+            for line in get_plotestimators_figure([*tokens, *plotlist], tmp_path / f"{index}.pdf").axes[0].get_lines()
         }
         for index, plotlist in enumerate(plotlists)
     )
@@ -4415,7 +4372,9 @@ def test_colorbyion_keeps_the_element_colours_of_several_elements(tmp_path: Path
     assert oneelement["Fe II"] != oneelement["Fe III"]
 
 
-def test_svg_ids_of_the_lines_are_different(tmp_path: Path) -> None:
+def test_svg_ids_of_the_lines_are_different(
+    tmp_path: Path, get_plotestimators_figure: Callable[[Sequence[str], Path], mplfig.Figure]
+) -> None:
     """Each line of an SVG file has a different id with no space, and the gid of a line still gives its series.
 
     The gid of a line was the name of its series. Te in two subplots, the points of a series, and Fe II gave ids
@@ -4423,7 +4382,7 @@ def test_svg_ids_of_the_lines_are_different(tmp_path: Path) -> None:
     """
     tokens = [str(modelpath_classic_3d), "-timestep", "10", "--markers"]
     plotlists = ["-plot", "Te", "-plot", "Te", "-plot", "populations", "Fe II", "Fe III"]
-    fig = get_command_figure([*tokens, *plotlists], tmp_path / "estimators.pdf")
+    fig = get_plotestimators_figure([*tokens, *plotlists], tmp_path / "estimators.pdf")
     svgfile = tmp_path / "estimators.svg"
     fig.savefig(svgfile)
     ids = re.findall(r'\bid="([^"]*)"', svgfile.read_text(encoding="utf-8"))
@@ -4489,7 +4448,9 @@ def test_time_axis_takes_no_automatic_bins() -> None:
     assert snapshotargs.xbins == 25
 
 
-def test_multiplot_leaves_out_a_timestep_with_no_estimators(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_multiplot_leaves_out_a_timestep_with_no_estimators(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], get_cell_texts: Callable[[str], list[str]]
+) -> None:
     """A run that stopped early has no estimators for its last timesteps, and the other frames still give a product.
 
     The first frame with no row stopped the command, thus --multiplot and --makegif wrote no frame.

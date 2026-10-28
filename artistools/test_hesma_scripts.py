@@ -1,4 +1,5 @@
 import typing as t
+from collections.abc import Callable
 from pathlib import Path
 from unittest import mock
 
@@ -10,12 +11,10 @@ import pytest
 import artistools as at
 
 
-def get_plot_xy(callargs: t.Any) -> tuple[np.ndarray, np.ndarray]:
-    return np.array(callargs[0][1], dtype=float), np.array(callargs[0][2], dtype=float)
-
-
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_hesma_plots_take_the_times_and_the_tables_of_each_file(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+def test_hesma_plots_take_the_times_and_the_tables_of_each_file(
+    mockplot: mock.MagicMock, tmp_path: Path, get_plot_xy: Callable[[t.Any], tuple[np.ndarray, np.ndarray]]
+) -> None:
     """The action plotresspec takes the closest time and each table, and plotspectrum takes each file.
 
     The action plotresspec read the column 11.7935 and the tables 0 to 4 of every file. The action plotspectrum
@@ -81,7 +80,9 @@ def test_hesma_width_luminosity_roundtrip(tmp_path: Path) -> None:
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_hesma_spectrum_takes_the_column_names_of_the_file(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+def test_hesma_spectrum_takes_the_column_names_of_the_file(
+    mockplot: mock.MagicMock, tmp_path: Path, get_plot_xy: Callable[[t.Any], tuple[np.ndarray, np.ndarray]]
+) -> None:
     """The header of a HESMA spectrum gives the times with four decimals, and the lookup must find them.
 
     The lookup made the name of the column again with two decimals, thus it did not find "11.7935" or "0.0000".

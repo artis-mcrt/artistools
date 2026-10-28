@@ -1,8 +1,8 @@
 import argparse
-import inspect
 import io
 import os
 import shutil
+from collections.abc import Callable
 from pathlib import Path
 from unittest import mock
 
@@ -16,31 +16,11 @@ import artistools as at
 
 modelpath = at.get_path("testdata") / "testmodel"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
-outputpath = at.get_path("testoutput")
-
-
-def funcname() -> str:
-    """Get the name of the calling function."""
-    thisframe = inspect.currentframe()
-    try:
-        if thisframe is None or thisframe.f_back is None:
-            msg = "Could not get the name of the calling function."
-            raise RuntimeError(msg)
-
-        return thisframe.f_back.f_code.co_name
-    finally:
-        # a frame held in one of its own locals is a reference cycle, so drop it as the inspect docs advise
-        del thisframe
-
-
-def read_data_file(path: Path) -> pl.DataFrame:
-    """Read a table that --write_data wrote."""
-    return pl.read_csv(path, separator=" ", null_values="nan", comment_prefix="#")
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_logfiles(mockplot: mock.MagicMock) -> None:
+def test_logfiles(mockplot: mock.MagicMock, tmp_path: Path) -> None:
     """Log file timings are parsed for every stage and rank, and plotted one page per timestep."""
     logfilepaths = at.logs.get_logfiles(Path(modelpath_classic_3d), None)
     # compressed log files must be read too, not skipped
@@ -61,9 +41,7 @@ def test_logfiles(mockplot: mock.MagicMock) -> None:
     assert timetaken["update_packets"][0] == {0: 1, 1: 1}
     assert timetaken["communicate_estimators"][2] == {0: 1, 1: 1}
 
-    funcoutpath = outputpath / funcname()
-    funcoutpath.mkdir(exist_ok=True, parents=True)
-    at.logs.plotlogfiles.main(argsraw=[], modelpath=[modelpath_classic_3d], outputfile=funcoutpath / "logfiles.pdf")
+    at.logs.plotlogfiles.main(argsraw=[], modelpath=[modelpath_classic_3d], outputfile=tmp_path / "logfiles.pdf")
 
     # one line per stage on each of the 30 per-timestep pages
     assert len(mockplot.call_args_list) == 3 * 30
@@ -392,7 +370,9 @@ def test_logsummary_counts_each_kind_of_warning(capsys: pytest.CaptureFixture[st
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_logfiles_write_data_holds_the_plotted_times(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+def test_logfiles_write_data_holds_the_plotted_times(
+    mockplot: mock.MagicMock, tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """The table of --write_data must give each line of each page: the mpi ranks and the seconds of each stage."""
     at.logs.plotlogfiles.main(
         argsraw=[], modelpath=[modelpath_classic_3d], outputfile=tmp_path / "logfiles.pdf", write_data=True

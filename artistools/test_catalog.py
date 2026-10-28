@@ -1,4 +1,5 @@
 import io
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -11,13 +12,8 @@ modelpath = at.get_path("testdata") / "testmodel"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
 
 
-def read_data_file(path: Path) -> pl.DataFrame:
-    """Read a table that --write_data wrote."""
-    return pl.read_csv(path, separator=" ", null_values="nan", comment_prefix="#")
-
-
 def test_catalog_gives_one_row_for_each_model_and_warns_about_a_broken_model(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], read_data_file: Callable[[Path], pl.DataFrame]
 ) -> None:
     """A folder of models gives one row for each model, and a broken model gives null values and one warning."""
     from artistools.catalog import main

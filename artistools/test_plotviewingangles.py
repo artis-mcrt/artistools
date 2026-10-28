@@ -1,4 +1,5 @@
 import re
+from collections.abc import Callable
 from pathlib import Path
 from unittest import mock
 
@@ -11,11 +12,6 @@ import artistools as at
 modelpath_3d = at.get_path("testdata") / "testmodel_3d_10^3"
 
 
-def read_data_file(path: Path) -> pl.DataFrame:
-    """Read a table that --write_data wrote."""
-    return pl.read_csv(path, separator=" ", null_values="nan", comment_prefix="#")
-
-
 def test_plotviewingangles_writes_an_animation_of_each_direction_bin(tmp_path: Path) -> None:
     """The html file holds one frame of the animation for each of the 100 direction bins."""
     pytest.importorskip("plotly")
@@ -26,7 +22,9 @@ def test_plotviewingangles_writes_an_animation_of_each_direction_bin(tmp_path: P
     assert framenames == {f"{dirbin:02d}" for dirbin in range(100)}
 
 
-def test_plotviewingangles_write_data_holds_the_volume_and_the_lines(tmp_path: Path) -> None:
+def test_plotviewingangles_write_data_holds_the_volume_and_the_lines(
+    tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """The tables of --write_data must give the density of each cell of the volume and the points of each line."""
     pytest.importorskip("plotly")
     import plotly.express as px

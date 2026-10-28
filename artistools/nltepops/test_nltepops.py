@@ -1,5 +1,6 @@
 import math
 import typing as t
+from collections.abc import Callable
 from pathlib import Path
 from unittest import mock
 
@@ -15,13 +16,11 @@ outputpath = at.get_path("testoutput")
 outputpath.mkdir(exist_ok=True, parents=True)
 
 
-def get_plot_xy(callargs: t.Any) -> tuple[np.ndarray, np.ndarray]:
-    return np.array(callargs[0][1], dtype=float), np.array(callargs[0][2], dtype=float)
-
-
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_nltepops_singletimestep(mockplot: mock.MagicMock) -> None:
+def test_nltepops_singletimestep(
+    mockplot: mock.MagicMock, get_plot_xy: Callable[[t.Any], tuple[np.ndarray, np.ndarray]]
+) -> None:
     at.nltepops.plot(argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=40)
 
     assert len(mockplot.call_args_list) == 15
@@ -98,7 +97,11 @@ def test_nltepops_config_labels_skip_a_last_cell_without_data(mockticklabels: mo
 @mock.patch.object(mplax.Axes, "set_title", side_effect=mplax.Axes.set_title, autospec=True)
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_nltepops_no_estimator_data(
-    mockplot: mock.MagicMock, mocktitle: mock.MagicMock, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    mockplot: mock.MagicMock,
+    mocktitle: mock.MagicMock,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    get_plot_xy: Callable[[t.Any], tuple[np.ndarray, np.ndarray]],
 ) -> None:
     """A cell with NLTE populations but no estimator data must still plot, using the LTE fallback temperature."""
     make_model_without_plotted_cell_estimators(tmp_path)
@@ -129,7 +132,9 @@ def test_nltepops_no_estimator_data(
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_nltepops_versus_velocity(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+def test_nltepops_versus_velocity(
+    mockplot: mock.MagicMock, tmp_path: Path, get_plot_xy: Callable[[t.Any], tuple[np.ndarray, np.ndarray]]
+) -> None:
     """Each ion stage of -ion_stages gives one series for each level, and the label names the ion.
 
     The command plotted the first ion stage alone, and it dropped Fe II with no message.
@@ -167,7 +172,12 @@ def test_nltepops_versus_velocity_needs_a_time(tmp_path: Path, capsys: pytest.Ca
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_nltepops_versus_time(mockplot: mock.MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_nltepops_versus_time(
+    mockplot: mock.MagicMock,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    get_plot_xy: Callable[[t.Any], tuple[np.ndarray, np.ndarray]],
+) -> None:
     # no outputfile, so this covers the default filename that -x time selects
     monkeypatch.chdir(tmp_path)
     at.nltepops.plot(
@@ -616,7 +626,10 @@ def make_model_with_floers_data(modeldir: Path) -> None:
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_floers_populations_take_the_population_of_the_whole_ion(
-    mockplot: mock.MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    mockplot: mock.MagicMock,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    get_plot_xy: Callable[[t.Any], tuple[np.ndarray, np.ndarray]],
 ) -> None:
     """The reference fractions of the ion population take the population of all the levels of the ion.
 
@@ -642,7 +655,10 @@ def test_floers_populations_take_the_population_of_the_whole_ion(
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_floers_multizone_populations_take_the_resolved_levels(
-    mockplot: mock.MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    mockplot: mock.MagicMock,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    get_plot_xy: Callable[[t.Any], tuple[np.ndarray, np.ndarray]],
 ) -> None:
     """The multizone file has no superlevel, thus it takes the resolved levels that the plot shows.
 
@@ -671,7 +687,10 @@ def test_floers_multizone_populations_take_the_resolved_levels(
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_nltepops_singletimestep_write_data_gives_the_plotted_series(
-    mockplot: mock.MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    mockplot: mock.MagicMock,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    get_plot_xy: Callable[[t.Any], tuple[np.ndarray, np.ndarray]],
 ) -> None:
     """The table has one row for each level of each subplot, and one column for each series of the subplots.
 
@@ -716,7 +735,12 @@ def test_nltepops_singletimestep_write_data_gives_the_plotted_series(
     [("time", "time_days", {"timedays": "270-275", "cell": 0}), ("velocity", "vel_r_mid_kmps", {"timestep": 40})],
 )
 def test_nltepops_time_or_velocity_write_data_gives_the_plotted_series(
-    mockplot: mock.MagicMock, xmode: str, xcolumn: str, timeargs: dict[str, t.Any], tmp_path: Path
+    mockplot: mock.MagicMock,
+    xmode: str,
+    xcolumn: str,
+    timeargs: dict[str, t.Any],
+    tmp_path: Path,
+    get_plot_xy: Callable[[t.Any], tuple[np.ndarray, np.ndarray]],
 ) -> None:
     """The table has one row for each point of each series, and the columns ion and level name the series.
 

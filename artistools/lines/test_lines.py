@@ -2,6 +2,7 @@ import itertools
 import math
 import re
 import typing as t
+from collections.abc import Callable
 from pathlib import Path
 from unittest import mock
 
@@ -14,16 +15,8 @@ import pytest
 
 import artistools as at
 
-if t.TYPE_CHECKING:
-    from collections.abc import Callable
-
 modelpath = at.get_path("testdata") / "testmodel"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
-
-
-def read_data_file(path: Path) -> pl.DataFrame:
-    """Read a table that --write_data wrote."""
-    return pl.read_csv(path, separator=" ", null_values="nan", comment_prefix="#")
 
 
 def test_ejectaopacity(capsys: pytest.CaptureFixture[str]) -> None:
@@ -1228,7 +1221,10 @@ def test_cell_estimators_of_an_empty_cell_give_an_error() -> None:
 @mock.patch.object(mplax.Axes, "axhline", side_effect=mplax.Axes.axhline, autospec=True)
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_plotopacity_writes_the_drawn_values(
-    mockplot: mock.MagicMock, mockaxhline: mock.MagicMock, tmp_path: Path
+    mockplot: mock.MagicMock,
+    mockaxhline: mock.MagicMock,
+    tmp_path: Path,
+    read_data_file: Callable[[Path], pl.DataFrame],
 ) -> None:
     """--write_data gives the drawn bins, the moving averages, the ratios, the line counts, and the Planck mean.
 

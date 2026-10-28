@@ -1,4 +1,5 @@
 import typing as t
+from collections.abc import Callable
 from pathlib import Path
 from unittest import mock
 
@@ -11,15 +12,6 @@ import artistools as at
 
 modelpath = at.get_path("testdata") / "testmodel"
 outputpath = at.get_path("testoutput")
-
-
-def get_plot_xy(callargs: t.Any) -> tuple[np.ndarray, np.ndarray]:
-    return np.array(callargs[0][1], dtype=float), np.array(callargs[0][2], dtype=float)
-
-
-def read_data_file(path: Path) -> pl.DataFrame:
-    """Read a table that --write_data wrote."""
-    return pl.read_csv(path, separator=" ", null_values="nan", comment_prefix="#")
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
@@ -39,7 +31,7 @@ def test_transitions_with_a_model_also_draws_the_lte_temperatures(mockplot: mock
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_transitions(mockplot: mock.MagicMock) -> None:
+def test_transitions(mockplot: mock.MagicMock, get_plot_xy: Callable[[t.Any], tuple[np.ndarray, np.ndarray]]) -> None:
     at.plottransitions.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timedays=300)
 
     assert len(mockplot.call_args_list) == 7
@@ -117,7 +109,9 @@ def test_kurucz_transitions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_plottransitions_writes_the_drawn_values(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+def test_plottransitions_writes_the_drawn_values(
+    mockplot: mock.MagicMock, tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """--write_data gives one row for each ion, each series, and each wavelength, and the ion names the panel."""
     at.plottransitions.main(
         argsraw=[], modelpath=modelpath, timedays=300, T=[5000.0], outputfile=tmp_path / "trans.pdf", write_data=True

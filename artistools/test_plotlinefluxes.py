@@ -1,8 +1,8 @@
 import argparse
-import inspect
 import json
 import math
 import typing as t
+from collections.abc import Callable
 from collections.abc import Sequence
 from pathlib import Path
 from unittest import mock
@@ -16,26 +16,6 @@ import artistools as at
 
 modelpath = at.get_path("testdata") / "testmodel"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
-outputpath = at.get_path("testoutput")
-
-
-def funcname() -> str:
-    """Get the name of the calling function."""
-    thisframe = inspect.currentframe()
-    try:
-        if thisframe is None or thisframe.f_back is None:
-            msg = "Could not get the name of the calling function."
-            raise RuntimeError(msg)
-
-        return thisframe.f_back.f_code.co_name
-    finally:
-        # a frame held in one of its own locals is a reference cycle, so drop it as the inspect docs advise
-        del thisframe
-
-
-def read_data_file(path: Path) -> pl.DataFrame:
-    """Read a table that --write_data wrote."""
-    return pl.read_csv(path, separator=" ", null_values="nan", comment_prefix="#")
 
 
 def test_linefluxes_emfeaturesearch_parsing() -> None:
@@ -255,32 +235,32 @@ def test_linefluxes_gives_a_colour_to_each_model_after_the_default_palette() -> 
     assert all(color is not None for color in colors)
 
 
-def test_linefluxes_lineflux_ratio_plot() -> None:
+def test_linefluxes_lineflux_ratio_plot(tmp_path: Path) -> None:
     """The line flux ratio plot must run with no arguments beyond the model path.
 
     The plot of Fe II 7155 Å and 12570 Å also draws the fit of Flörs et al. (2020), and --write_data gave no table of
     it.
     """
-    funcoutpath = outputpath / funcname()
-    funcoutpath.mkdir(exist_ok=True, parents=True)
     # the fit is near 0.02 at the 3 to 7 days of the test model, which the fixed bottom of 0.05 hides
     at.plotlinefluxes.main(
         argsraw=[],
         modelpath=[modelpath_classic_3d],
         emfeaturesearch=[(26, 2, 7155, 7100, 7200), (26, 2, 12570, 12400, 12700)],
         ymin=0.001,
-        outputfile=funcoutpath / "linefluxes.pdf",
+        outputfile=tmp_path / "linefluxes.pdf",
         write_data=True,
     )
-    assert (funcoutpath / "linefluxes.pdf").is_file()
+    assert (tmp_path / "linefluxes.pdf").is_file()
     dfcomparisons = pl.read_csv(
-        funcoutpath / "linefluxes_comparisons.txt", separator=" ", null_values="nan", comment_prefix="#"
+        tmp_path / "linefluxes_comparisons.txt", separator=" ", null_values="nan", comment_prefix="#"
     )
     assert dfcomparisons["series"].unique().to_list() == ["Flörs+2020 fit"]
     assert dfcomparisons.height == 3
 
 
-def test_linefluxes_table_of_three_models_with_one_name(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_linefluxes_table_of_three_models_with_one_name(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """Three models of one name gave the same column, and the join stopped the plot with a repeated column.
 
     The axis shows the times from -xmin to -xmax, and the table also gave the points outside that range. The test model

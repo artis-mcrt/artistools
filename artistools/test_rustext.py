@@ -2,6 +2,8 @@
 
 import math
 import re
+from collections.abc import Callable
+from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
@@ -10,12 +12,13 @@ import polars.testing as pltest
 import pytest
 
 import artistools as at
-from artistools.estimators.test_estimators import get_cell_texts
 
 modelpath = at.get_path("testdata") / "testmodel"
 
 
-def test_estimparse_drops_a_cell_that_a_cut_file_ends_inside(tmp_path: Path) -> None:
+def test_estimparse_drops_a_cell_that_a_cut_file_ends_inside(
+    tmp_path: Path, get_cell_texts: Callable[[str], list[str]]
+) -> None:
     """The file of a rank can end inside a cell when a job stops during the write.
 
     The reader of the file of a rank kept such a cell, with a zero for each value after the cut. The cache thus held
@@ -42,14 +45,14 @@ def test_estimparse_drops_a_cell_that_a_cut_file_ends_inside(tmp_path: Path) -> 
         pltest.assert_frame_equal(dfrank, dfcomplete.head(99).select(dfrank.columns))
 
 
-def test_parallel_zstd_reader_gives_the_text_in_the_order_of_the_file(tmp_path: Path) -> None:
+def test_parallel_zstd_reader_gives_the_text_in_the_order_of_the_file(
+    tmp_path: Path, write_zstd_frames: Callable[[Path, Sequence[str]], None]
+) -> None:
     """The reader of a zstd file decompresses groups of frames in parallel, and it must keep the order of the file.
 
     A group holds at least 4 MiB of compressed frames, thus this file has several groups. Each frame holds different
     cells. The same text in a plain file goes through the reader of a file that is not zstd.
     """
-    from artistools.estimators.test_estimators import write_zstd_frames
-
     ranktext = (modelpath / "estimators_0000.out").read_text(encoding="utf-8")
     frametexts = [
         re.sub(
@@ -206,7 +209,9 @@ def test_expansion_opacities_give_zero_for_a_cell_with_no_temperature() -> None:
         assert values[2] > 0.0
 
 
-def test_estimtimesteps_ignores_a_header_line_that_a_cut_file_ends_inside(tmp_path: Path) -> None:
+def test_estimtimesteps_ignores_a_header_line_that_a_cut_file_ends_inside(
+    tmp_path: Path, get_cell_texts: Callable[[str], list[str]]
+) -> None:
     """The scan of the timesteps takes a cell header only when a newline ends its line.
 
     A text cut right after "timestep " raised an error, and a cut of "timestep 11" to "timestep 1" named timestep 1,
