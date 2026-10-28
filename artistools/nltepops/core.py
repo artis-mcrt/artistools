@@ -13,6 +13,7 @@ import polars as pl
 from artistools.atomic import get_boltzmann_factor_expr
 from artistools.atomic import get_ionstring
 from artistools.atomic import get_kept_levels
+from artistools.misc import clear_at_reload
 from artistools.misc import folder_holds_match
 from artistools.misc import is_remote_path
 from artistools.misc import on_model_host
@@ -219,6 +220,7 @@ def read_nltepops(
 
 # a window reads the levels of one cell for its menu, and a cache of one read would then drop the frame of the plot.
 # A frame of a large model can hold several GB, thus the cache keeps only these two reads
+@clear_at_reload("estimators")
 @lru_cache(maxsize=2)
 @on_model_host
 def read_nltepops_cached(modelpath: Path, timestep: int | None, cells: int | tuple[int, ...] | None) -> pl.DataFrame:

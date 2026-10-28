@@ -4538,7 +4538,7 @@ def test_interactive_reload_reads_the_data_source_again(tmp_path: Path) -> None:
 
     The window kept the result of the old files, thus the data source box stayed at "Auto (packets)".
     """
-    from artistools.viewertools.window import clear_output_caches
+    from artistools.viewertools.window import clear_output_caches_of_model
 
     modelfolder = tmp_path / "model"
     modelfolder.mkdir()
@@ -4549,7 +4549,7 @@ def test_interactive_reload_reads_the_data_source_again(tmp_path: Path) -> None:
     assert interactive.get_auto_reason(viewer, viewer.values) == "--gamma with no gamma_spec.out"
     (modelfolder / "gamma_spec.out").write_bytes((modelpath / "spec.out").read_bytes())
     # Reload Data clears the caches of the files, then it reads the models again
-    clear_output_caches()
+    clear_output_caches_of_model(modelfolder, estimatorsonly=False)
     viewer.load_models(viewer.values.spectra, viewer.values.timegrid)
     assert interactive.get_auto_reason(viewer, viewer.values) is None
 

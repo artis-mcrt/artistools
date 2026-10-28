@@ -52,6 +52,7 @@ from artistools.misc import addarg_yscale
 from artistools.misc import apply_time_range_args
 from artistools.misc import arggroup
 from artistools.misc import check_time_range_is_valid
+from artistools.misc import clear_at_reload
 from artistools.misc import convert_xunit_aliases_to_canonical
 from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import exit_with_error
@@ -2769,6 +2770,7 @@ def resolve_shell_args(args: argparse.Namespace) -> None:
         args.shelledges, args.shellunit = parse_velocity_values(args.velocityshells)
 
 
+@clear_at_reload("output")
 @lru_cache(maxsize=64)
 def has_gamma_spec_file(modelfolder: Path) -> bool:
     """Return True if the model folder has gamma_spec.out.
@@ -2780,6 +2782,7 @@ def has_gamma_spec_file(modelfolder: Path) -> bool:
     return firstexisting_or_none("gamma_spec.out", folder=modelfolder) is not None
 
 
+@clear_at_reload("output")
 @modelpath_cache(maxsize=64)
 def get_no_sampled_emission_reason(modelfolder: Path) -> str | None:
     """Return why the packets of the model hold no sampled emission, or None if they hold it.

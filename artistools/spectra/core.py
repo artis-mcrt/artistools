@@ -38,6 +38,7 @@ from artistools.constants import megaparsec_to_cm
 from artistools.constants import MEV_to_erg
 from artistools.misc import average_direction_bins
 from artistools.misc import check_averaging_angles
+from artistools.misc import clear_at_reload
 from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import drop_trailing_null_column
 from artistools.misc import find_reference_data_file
@@ -648,6 +649,7 @@ def get_spectrum_filenames(gamma: bool, directionresolved: bool) -> list[str]:
 
 # maxsize is small because this reads eagerly and every cached entry retains a whole spec file. A cached
 # scan would hold only the query plan, thus each collect by a caller would parse the file again.
+@clear_at_reload("output")
 @modelpath_cache(maxsize=2)
 def scan_spec(modelpath: Path, gamma: bool = False) -> pl.LazyFrame:
     """Return the angle-averaged spectra from spec.out or specpol.out, or from gamma_spec.out when gamma is set.
@@ -689,6 +691,7 @@ def scan_spec(modelpath: Path, gamma: bool = False) -> pl.LazyFrame:
 
 
 # every cached entry holds a whole spec_res file, because each frame of a direction bin is a slice of one frame
+@clear_at_reload("output")
 @modelpath_cache(maxsize=2)
 def scan_spec_res(modelpath: Path, gamma: bool = False) -> dict[int, pl.LazyFrame]:
     """Return a dict of LazyFrames of time-series spectra keyed to the viewing direction bin.
@@ -946,6 +949,7 @@ def name_repeated_columns(colnames: Sequence[str]) -> list[str]:
 
 # maxsize is small because each entry holds a whole specpol_res.out file. A caller reads one direction
 # bin at a time, thus a cache miss on each call would parse the file again for every bin.
+@clear_at_reload("output")
 @modelpath_cache(maxsize=2)
 def scan_specpol_res(modelpath: Path) -> dict[int, pl.LazyFrame]:
     """Return the table of each direction bin of specpol_res.out, with the times as the column names.
@@ -1004,6 +1008,7 @@ def scan_specpol_data(dirbin: int = -1, modelpath: Path | None = None) -> dict[s
 
 # maxsize is small because this reads eagerly and every cached entry retains a whole vspecpol_total file.
 # Callers collect the frames once per timestep, so a cache miss on each call would parse the file again.
+@clear_at_reload("output")
 @lru_cache(maxsize=2)
 @on_model_host
 def get_vspecpol_data_cached(vspecindex: int, modelpath: Path) -> dict[str, pl.LazyFrame]:
@@ -1204,6 +1209,7 @@ def get_emabs_average(
     return total / (tdeltas.sum() * len(dfemabs_of_dbin))
 
 
+@clear_at_reload("output")
 @lru_cache(maxsize=4)
 @on_model_host
 def get_flux_contributions_cached(

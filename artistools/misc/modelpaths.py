@@ -2,8 +2,10 @@
 
 import functools
 import inspect
+import sys
 import typing as t
 from collections.abc import Callable
+from collections.abc import Collection
 from collections.abc import Sequence
 from functools import cache
 from functools import lru_cache
@@ -240,3 +242,43 @@ def modelpath_cache[**P, R](maxsize: int) -> Callable[[Callable[t.Concatenate[Pa
         return ModelpathCache(function, maxsize)
 
     return decorator
+
+
+# the attribute of a cache that holds its group of clear_at_reload
+RELOAD_GROUP_ATTRIBUTE: t.Final = "reloadgroup"
+
+# a group of the caches that Reload Data clears. The estimator viewer clears only the group "estimators", thus the
+# caches of the other viewers stay
+type ReloadGroup = t.Literal["output", "estimators"]
+
+
+def clear_at_reload[CacheT](group: ReloadGroup) -> Callable[[CacheT], CacheT]:
+    """Return a decorator that marks the cache of a reader of a file that ARTIS writes while it runs, e.g. spec.out.
+
+    Reload Data clears each cache with the mark of its groups, see clear_reload_caches. Put the decorator above the
+    cache, e.g. above lru_cache. The files of the input of a model stay the same, e.g. model.txt, thus their caches
+    get no mark.
+    """
+
+    def mark(cachedreader: CacheT) -> CacheT:
+        setattr(cachedreader, RELOAD_GROUP_ATTRIBUTE, group)
+        return cachedreader
+
+    return mark
+
+
+def clear_reload_caches(groups: Collection[ReloadGroup]) -> None:
+    """Clear each cache with the mark of a group in groups, in each module of artistools that this process imported.
+
+    A list of the caches missed each new reader, thus the function searches the modules for the mark. A module that
+    the process did not import holds no cache. getattr_static runs no code of an object, e.g. of a lazy import.
+    """
+    cachedreaders = {
+        id(value): value
+        for modulename, module in sys.modules.copy().items()
+        if modulename.split(".", maxsplit=1)[0] == "artistools"
+        for value in vars(module).copy().values()
+        if inspect.getattr_static(value, RELOAD_GROUP_ATTRIBUTE, None) in groups
+    }
+    for cachedreader in cachedreaders.values():
+        cachedreader.cache_clear()

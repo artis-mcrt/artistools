@@ -28,6 +28,7 @@ from artistools.misc.fileio import polars_source_open
 from artistools.misc.fileio import read_wsv
 from artistools.misc.fileio import readnoncommentline
 from artistools.misc.fileio import zopen
+from artistools.misc.modelpaths import clear_at_reload
 from artistools.misc.modelpaths import modelpath_cache
 from artistools.misc.modelpaths import path_is_codecomparison
 from artistools.misc.modelpaths import resolve_modelpath
@@ -121,6 +122,7 @@ def get_wid_init_at_tmodel(
     return 2.0 * xmax / ncoordgridx
 
 
+@clear_at_reload("output")
 @modelpath_cache(maxsize=16)
 @on_model_host
 def get_nu_grid(modelpath: Path) -> npt.NDArray[np.floating]:
@@ -431,6 +433,7 @@ def get_inputparams(modelpath: Path) -> dict[str, t.Any]:
 
 
 # a window checks every run folder for each plot, and a model with many restarts has more than 16 of them
+@clear_at_reload("estimators")
 @modelpath_cache(maxsize=1024)
 def get_runfolder_timesteps(folderpath: Path) -> tuple[int, ...]:
     """Return the sorted timesteps of the estimator files in an ARTIS run folder.

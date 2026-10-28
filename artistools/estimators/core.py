@@ -41,6 +41,7 @@ from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import scan_modeldata
 from artistools.inputmodel.slice1dfromconein3dmodel import get_profile_along_axis
 from artistools.inputmodel.slice1dfromconein3dmodel import make_cone
+from artistools.misc import clear_at_reload
 from artistools.misc import COMPRESSED_EXTENSIONS
 from artistools.misc import contiguous_runs
 from artistools.misc import exit_with_error
@@ -1292,7 +1293,9 @@ def add_derived_estimator_columns(pldflazy: pl.LazyFrame) -> pl.LazyFrame:
     return pldflazy
 
 
-# the cache uses filestate only as a part of its key
+# the cache uses filestate only as a part of its key. The key thus needs no clear for a new file, but Reload Data
+# clears the cache, because a kept scan also holds the metadata of its file, e.g. 8 MB for 5335 columns
+@clear_at_reload("estimators")
 @lru_cache(maxsize=1024)
 def scan_parquet_file(
     parquetfile: Path,

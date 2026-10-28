@@ -7,6 +7,7 @@ from pathlib import Path
 from artistools.atomic import get_elsymbol
 from artistools.atomic import get_ionstages_from_outputfile
 from artistools.atomic import get_ionstring
+from artistools.misc import clear_at_reload
 from artistools.misc import COMPRESSED_EXTENSIONS
 from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
@@ -83,6 +84,7 @@ def read_classic_estimators(modelpath: Path) -> dict[tuple[int, int], t.Any] | N
     return None if estimators is None else {key: dict(estimcell) for key, estimcell in estimators.items()}
 
 
+@clear_at_reload("estimators")
 @lru_cache(maxsize=2)
 def read_classic_estimators_cached(modelpath: Path) -> dict[tuple[int, int], t.Any] | None:
     """Return the classic estimators of a model, and keep them for the next caller.

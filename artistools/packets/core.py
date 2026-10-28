@@ -25,6 +25,7 @@ from artistools.constants import km_to_cm
 from artistools.inputmodel import scan_modeldata
 from artistools.misc import arggroup
 from artistools.misc import check_local_path
+from artistools.misc import clear_at_reload
 from artistools.misc import COMPRESSED_EXTENSIONS
 from artistools.misc import drop_trailing_null_column
 from artistools.misc import firstexisting
@@ -894,6 +895,7 @@ def get_packets_mpirank_groups(modelpath: Path, maxpacketfiles: int | None) -> l
     return mpirank_groups
 
 
+@clear_at_reload("output")
 @lru_cache(maxsize=8)
 def find_first_rank_textfiles(
     modelpath: Path, firstranks: tuple[int, ...], virtual: bool
@@ -974,6 +976,7 @@ def get_packets_batch_parquet_paths(
     return nprocs_read, list(parquetpacketsfiles)
 
 
+@clear_at_reload("output")
 @lru_cache(maxsize=8)
 def check_packets_batch_parquet_paths(
     modelpath: Path,

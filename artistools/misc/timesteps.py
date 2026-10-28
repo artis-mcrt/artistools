@@ -22,6 +22,7 @@ from artistools.misc.general import parse_float_range
 from artistools.misc.general import parse_range_list
 from artistools.misc.modelinfo import get_inputparams
 from artistools.misc.modelinfo import get_model_logname
+from artistools.misc.modelpaths import clear_at_reload
 from artistools.misc.modelpaths import get_artis_model_folders
 from artistools.misc.modelpaths import modelpath_cache
 from artistools.misc.modelpaths import path_is_codecomparison
@@ -37,6 +38,7 @@ def match_closest_time(reftime: float, searchtimes: Iterable[t.Any]) -> float:
     return min((float(x) for x in searchtimes), key=offset_from_reftime)
 
 
+@clear_at_reload("output")
 @modelpath_cache(maxsize=16)
 @on_model_host
 def scan_deposition(modelpath: Path) -> pl.LazyFrame:
@@ -143,6 +145,7 @@ def scan_timesteps(modelpath: Path) -> pl.LazyFrame:
 # a list holds a few thousand floats at most, and a viewer reads 4 kinds of time for each model in turn. With 16
 # entries, 6 models evicted each entry before its next use, and a window read the timesteps more than 1000 times at
 # each change
+@clear_at_reload("output")
 @modelpath_cache(maxsize=256)
 def get_timestep_times(modelpath: Path, loc: t.Literal["mid", "start", "end", "delta"] = "mid") -> list[float]:
     """Return a list of the times in days of each timestep.
@@ -513,6 +516,7 @@ def get_timestep_time(modelpath: Path | str, timestep: int) -> float:
     return timearray[timestep]
 
 
+@clear_at_reload("output")
 @modelpath_cache(maxsize=16)
 @on_model_host
 def get_escaped_arrivalrange(modelpath: Path) -> tuple[int, float | int | None, float | int | None]:

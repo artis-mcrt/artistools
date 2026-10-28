@@ -14,6 +14,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from artistools.misc import addarg_quiet
+from artistools.misc import clear_at_reload
 from artistools.misc import exit_with_error
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_dirbin_definitions
@@ -239,6 +240,7 @@ def get_direction_kinds(modelfolder: Path) -> list[str]:
     return ["", "bin", "phi", "theta", *(["vpkt"] if path_is_file(modelfolder / "vpkt.txt") else [])]
 
 
+@clear_at_reload("output")
 @lru_cache(maxsize=64)
 def model_has_direction_data(
     modelfolder: Path, kind: str, resfilenames: tuple[str, ...], vpktpattern: str, *, frompackets: bool

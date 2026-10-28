@@ -7241,7 +7241,7 @@ def test_viewer_reload_clears_the_frequency_grid(tmp_path: Path) -> None:
     write_spec([1e14, 2e14])
     assert len(at.misc.get_nu_grid(tmp_path)) == 2
     write_spec([1e14, 2e14, 3e14, 4e14])
-    viewerwindow.clear_output_caches()
+    viewerwindow.clear_output_caches_of_model(tmp_path, estimatorsonly=False)
     assert len(at.misc.get_nu_grid(tmp_path)) == 4
 
 

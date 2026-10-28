@@ -11,6 +11,7 @@ from types import MappingProxyType
 
 import numpy as np
 
+from artistools.misc import clear_reload_caches
 from artistools.misc import on_model_host
 from artistools.misc import print_error
 from artistools.plottools import apply_dark_colours
@@ -34,7 +35,6 @@ from artistools.viewertools.core import FIT_TOLERANCE
 from artistools.viewertools.core import fix_title_position
 from artistools.viewertools.core import get_first_line
 from artistools.viewertools.core import get_fitted_figwidthscale
-from artistools.viewertools.core import model_has_direction_data
 from artistools.viewertools.core import run_command_step
 from artistools.viewertools.core import run_command_step_with_warning
 from artistools.viewertools.core import SIDEBAR_WIDTH
@@ -83,78 +83,16 @@ if t.TYPE_CHECKING:
     from artistools.viewertools.core import PlotValues
 
 
-def clear_estimator_caches() -> None:
-    """Clear the caches of the estimators and the NLTE populations in this process.
-
-    The estimator viewer clears only these caches, thus the caches of the other viewers stay.
-    """
-    from artistools.estimators.core import scan_parquet_file
-    from artistools.estimators.estimators_classic import read_classic_estimators_cached
-    from artistools.misc import get_runfolder_timesteps
-    from artistools.nltepops.core import read_nltepops_cached
-
-    for cachedfunction in (
-        # a kept scan of a parquet cache also holds the metadata of its file, e.g. 8 MB for 5335 columns
-        scan_parquet_file,
-        get_runfolder_timesteps,
-        read_classic_estimators_cached,
-        read_nltepops_cached,
-    ):
-        cachedfunction.cache_clear()
-
-
-def clear_output_caches() -> None:
-    """Clear each cache of the files that ARTIS writes while it runs, e.g. spec.out, in this process.
-
-    The files of the input of a model stay the same, e.g. input.txt and model.txt, thus their caches stay.
-    """
-    from artistools.misc import get_escaped_arrivalrange
-    from artistools.misc import get_nu_grid
-    from artistools.misc import get_timestep_times
-    from artistools.misc import scan_deposition
-    from artistools.packets.core import check_packets_batch_parquet_paths
-    from artistools.packets.core import find_first_rank_textfiles
-    from artistools.spectra.core import get_flux_contributions_cached
-    from artistools.spectra.core import get_vspecpol_data_cached
-    from artistools.spectra.core import scan_spec
-    from artistools.spectra.core import scan_spec_res
-    from artistools.spectra.core import scan_specpol_res
-    from artistools.spectra.plotspectra import get_no_sampled_emission_reason
-    from artistools.spectra.plotspectra import has_gamma_spec_file
-
-    for cachedfunction in (
-        # the file tests of the client also go, e.g. after exspec writes gamma_spec.out
-        has_gamma_spec_file,
-        get_no_sampled_emission_reason,
-        model_has_direction_data,
-        get_nu_grid,
-        scan_deposition,
-        get_escaped_arrivalrange,
-        get_timestep_times,
-        check_packets_batch_parquet_paths,
-        find_first_rank_textfiles,
-        get_flux_contributions_cached,
-        get_vspecpol_data_cached,
-        scan_spec,
-        scan_spec_res,
-        scan_specpol_res,
-    ):
-        cachedfunction.cache_clear()
-    clear_estimator_caches()
-
-
 @on_model_host
 def clear_output_caches_of_model(modelfolder: Path, estimatorsonly: bool) -> None:
-    """Clear the caches of the output files on the host of a model.
+    """Clear the caches of the output files on the host of a model, e.g. of spec.out.
 
     For a local model, the function clears the caches of this process. With estimatorsonly, the function clears only
-    the caches of the estimators and the NLTE populations.
+    the caches of the estimators and the NLTE populations, thus the caches of the other viewers stay. The files of the
+    input of a model stay the same, e.g. input.txt and model.txt, thus their caches stay.
     """
     del modelfolder
-    if estimatorsonly:
-        clear_estimator_caches()
-    else:
-        clear_output_caches()
+    clear_reload_caches(("estimators",) if estimatorsonly else ("estimators", "output"))
 
 
 def reload_models(
@@ -175,10 +113,7 @@ def reload_models(
     """
 
     def read() -> None:
-        if estimatorsonly:
-            clear_estimator_caches()
-        else:
-            clear_output_caches()
+        clear_reload_caches(("estimators",) if estimatorsonly else ("estimators", "output"))
         for modelfolder in modelfolders:
             clear_output_caches_of_model(Path(modelfolder), estimatorsonly)
         if read_models is not None:

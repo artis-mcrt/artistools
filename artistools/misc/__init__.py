@@ -176,6 +176,8 @@ from artistools.misc.modelinfo import print_modelpath as print_modelpath
 from artistools.misc.modelinfo import read_rank_outputfiles as read_rank_outputfiles
 from artistools.misc.modelinfo import scan_rankassignments as scan_rankassignments
 from artistools.misc.modelinfo import VpktConfig as VpktConfig
+from artistools.misc.modelpaths import clear_at_reload as clear_at_reload
+from artistools.misc.modelpaths import clear_reload_caches as clear_reload_caches
 from artistools.misc.modelpaths import find_reference_data_file as find_reference_data_file
 from artistools.misc.modelpaths import folder_holds_match as folder_holds_match
 from artistools.misc.modelpaths import folder_is_artis_model as folder_is_artis_model
