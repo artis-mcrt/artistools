@@ -398,8 +398,11 @@ strict = true
 force-single-line = true
 order-by-type = false
 
+[tool.ty.analysis]
+# the same list as ignore-missing-imports of pyrefly: a plain `uv sync` installs none of these packages
+allowed-unresolved-imports = ["george.**", "PySide6.**", "shiboken6.**", "zstandard.**"]
+
 [tool.ty.rules]
-unresolved-import = "ignore"
 # these rules are off by default
 blanket-ignore-comment = "error"
 disjoint-cast = "error"
