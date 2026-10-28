@@ -18,5 +18,6 @@ from artistools.estimators.core import scan_estimators as scan_estimators
 from artistools.estimators import deposition as deposition
 from artistools.estimators import exportmassfractions as exportmassfractions
 from artistools.estimators import plotestimators as plotestimators
+from artistools.estimators import values as values
 from artistools.estimators.plotestimators import addargs as addargs
 from artistools.estimators.plotestimators import main as plot

@@ -13,8 +13,8 @@ from pathlib import Path
 import polars as pl
 
 from artistools.constants import km_to_cm
-from artistools.estimators import get_units
-from artistools.estimators import scan_estimators
+from artistools.estimators.core import get_units
+from artistools.estimators.core import scan_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_costheta_selection
 from artistools.inputmodel import get_modeldata

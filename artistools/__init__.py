@@ -62,7 +62,6 @@ from artistools import nonthermal as nonthermal
 from artistools import packets as packets
 from artistools import plotlinefluxes as plotlinefluxes
 from artistools import plotradfield as plotradfield
-from artistools import plotspherical as plotspherical
 from artistools import plottools as plottools
 from artistools import plottransitions as plottransitions
 from artistools import plotviewingangles as plotviewingangles

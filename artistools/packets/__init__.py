@@ -27,4 +27,5 @@ from artistools.packets.core import sum_virtual_packets_by_observer as sum_virtu
 from artistools.packets import filterpackets as filterpackets
 from artistools.packets import plotlastinteractionvelocity as plotlastinteractionvelocity
 from artistools.packets import plotlastpacketinteraction as plotlastpacketinteraction
+from artistools.packets import plotspherical as plotspherical
 from artistools.packets.plotlastpacketinteraction import main as plot

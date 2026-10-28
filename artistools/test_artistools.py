@@ -1136,7 +1136,7 @@ def test_plot_commands_write_the_format_of_the_suffix(tmp_path: Path) -> None:
     at.plottransitions.main(argsraw=[], modelpath=modelpath, timedays=300, outputfile=tmp_path / "trans.png")
     assert (tmp_path / "trans.png").read_bytes().startswith(pngmagic)
 
-    at.plotspherical.main(argsraw=[], modelpath=modelpath, timestep=40, outputfile=tmp_path / "map.png")
+    at.packets.plotspherical.main(argsraw=[], modelpath=modelpath, timestep=40, outputfile=tmp_path / "map.png")
     assert (tmp_path / "map.png").read_bytes().startswith(pngmagic)
 
 
@@ -1209,17 +1209,19 @@ def test_save_figure_darkmode_gives_a_black_png_and_a_transparent_pdf(tmp_path: 
 
 @pytest.mark.benchmark
 def test_plotspherical(tmp_path: Path) -> None:
-    at.plotspherical.main(argsraw=[], modelpath=modelpath, outputfile=tmp_path)
+    at.packets.plotspherical.main(argsraw=[], modelpath=modelpath, outputfile=tmp_path)
 
     assert [path.name for path in tmp_path.glob("plotspherical_*.pdf")] == ["plotspherical_256.67-333.82d.pdf"]
 
 
 def test_plotspherical_gaussian_filter(tmp_path: Path) -> None:
     """-gaussian_sigma must reach smooth_direction_map, which takes the width in phi bins and not in degrees."""
-    from artistools.plotspherical import smooth_direction_map
+    from artistools.packets.plotspherical import smooth_direction_map
 
-    with mock.patch.object(at.plotspherical, "smooth_direction_map", side_effect=smooth_direction_map) as mocksmooth:
-        at.plotspherical.main(argsraw=[], modelpath=modelpath, gaussian_sigma=20, outputfile=tmp_path)
+    with mock.patch.object(
+        at.packets.plotspherical, "smooth_direction_map", side_effect=smooth_direction_map
+    ) as mocksmooth:
+        at.packets.plotspherical.main(argsraw=[], modelpath=modelpath, gaussian_sigma=20, outputfile=tmp_path)
 
     # one map for each of the three default plot variables, on the default grid of 64 phi bins
     assert mocksmooth.call_count == 3
@@ -1231,7 +1233,7 @@ def test_plotspherical_gaussian_filter(tmp_path: Path) -> None:
 
 def test_plotspherical_one_pass_matches_one_pass_per_time_range() -> None:
     """The direction maps of several time ranges in one pass must equal the map of each range on its own."""
-    from artistools.plotspherical import bin_packets_by_direction
+    from artistools.packets.plotspherical import bin_packets_by_direction
 
     nprocs_read, dfpackets = at.packets.get_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
     dfpackets = at.packets.add_derived_columns_lazy(dfpackets, modelpath=modelpath)
@@ -1262,7 +1264,7 @@ def test_plotspherical_smoothing_wraps_phi_and_crosses_each_pole() -> None:
     The filter wrapped the cos theta axis as it wraps phi. Thus the row at the south pole took the light of
     the row at the north pole.
     """
-    from artistools.plotspherical import smooth_direction_map
+    from artistools.packets.plotspherical import smooth_direction_map
 
     ncosthetabins, nphibins = 8, 16
     data = np.zeros((ncosthetabins, nphibins))
@@ -1283,7 +1285,7 @@ def test_plotspherical_puts_phi_zero_at_the_centre(mockpcolormesh: mock.MagicMoc
 
     The longitude of the map started at -pi with phi bin 0, thus +X was at the edge and -X at the centre.
     """
-    from artistools.plotspherical import plot_spherical
+    from artistools.packets.plotspherical import plot_spherical
 
     ncosthetabins, nphibins = 4, 8
     isphibinzero = [phibin == 0 for _ in range(ncosthetabins) for phibin in range(nphibins)]
@@ -1304,7 +1306,7 @@ def test_plotspherical_map_columns_cover_each_longitude_with_the_correct_phi_bin
 
     For an odd -nphibins, the map ran from -0.8 pi to 1.2 pi for five bins, thus a strip at -pi stayed blank.
     """
-    from artistools.plotspherical import get_map_columns
+    from artistools.packets.plotspherical import get_map_columns
 
     longitude_edges, column_phibins = get_map_columns(nphibins)
 
@@ -1319,7 +1321,7 @@ def test_plotspherical_map_columns_cover_each_longitude_with_the_correct_phi_bin
 
 def test_plotspherical_smoothing_with_odd_phi_bins_crosses_the_pole_at_phi_plus_pi() -> None:
     """For an odd -nphibins, the row beyond a pole must take the two bins on each side of phi + pi."""
-    from artistools.plotspherical import get_rows_across_pole
+    from artistools.packets.plotspherical import get_rows_across_pole
 
     rows = np.arange(5, dtype=np.float64).reshape((1, 5))
 
@@ -1336,7 +1338,9 @@ def test_plotspherical_gif(tmp_path: Path) -> None:
     from PIL import Image
 
     # the timesteps 0, 1, and 2 end before 253 d. Three frames cover the code of the gif
-    at.plotspherical.main(argsraw=[], modelpath=modelpath, makegif=True, timemin=250, timemax=253, outputfile=tmp_path)
+    at.packets.plotspherical.main(
+        argsraw=[], modelpath=modelpath, makegif=True, timemin=250, timemax=253, outputfile=tmp_path
+    )
 
     framenames = sorted(path.name for path in tmp_path.glob("plotspherical_*.png"))
     assert framenames == [
@@ -1427,11 +1431,11 @@ def test_plotspherical_element_arguments_give_messages(capsys: pytest.CaptureFix
     The first stopped with a bare AssertionError, and the second plotted the packets of "Z=-1".
     """
     with pytest.raises(SystemExit):
-        at.plotspherical.main(argsraw=[], modelpath=modelpath, elem="Fe", atomic_number=26)
+        at.packets.plotspherical.main(argsraw=[], modelpath=modelpath, elem="Fe", atomic_number=26)
     assert "Give one of --elem and --atomic-number" in capsys.readouterr().err
 
     with pytest.raises(SystemExit):
-        at.plotspherical.main(argsraw=[], modelpath=modelpath, elem="Xx")
+        at.packets.plotspherical.main(argsraw=[], modelpath=modelpath, elem="Xx")
     assert "-elem Xx is not an element symbol" in capsys.readouterr().err
 
 
@@ -5235,7 +5239,7 @@ def test_plotspherical_makes_the_output_folder(tmp_path: Path) -> None:
     --makegif stopped, because it built the path of each frame below a folder that did not exist.
     """
     outfolder = tmp_path / "frames"
-    at.plotspherical.main(argsraw=[], modelpath=modelpath, outputfile=str(outfolder), timemin=250, timemax=300)
+    at.packets.plotspherical.main(argsraw=[], modelpath=modelpath, outputfile=str(outfolder), timemin=250, timemax=300)
 
     assert outfolder.is_dir(), "the command must make the folder that -o names"
     assert list(outfolder.glob("plotspherical_*.pdf")), f"no plot in {list(outfolder.iterdir())}"
@@ -5262,7 +5266,7 @@ def test_plotspherical_gif_keeps_the_name_that_o_gives(tmp_path: Path) -> None:
     A path such as movie.gif became a folder, thus the file that the user asked for was never written.
     """
     gifpath = tmp_path / "movie.gif"
-    at.plotspherical.main(
+    at.packets.plotspherical.main(
         argsraw=[], modelpath=modelpath, makegif=True, timemin=250, timemax=253, outputfile=str(gifpath)
     )
 
@@ -5271,7 +5275,7 @@ def test_plotspherical_gif_keeps_the_name_that_o_gives(tmp_path: Path) -> None:
 
     # a path with no file extension still names a folder that holds the gif and the frames
     outfolder = tmp_path / "movie"
-    at.plotspherical.main(
+    at.packets.plotspherical.main(
         argsraw=[], modelpath=modelpath, makegif=True, timemin=250, timemax=253, outputfile=str(outfolder)
     )
     assert (outfolder / "sphericalplot.gif").is_file(), f"no gif in {list(outfolder.iterdir())}"
@@ -7944,7 +7948,7 @@ def test_plotspherical_write_data_holds_the_drawn_maps(mockpcolormesh: mock.Magi
     """
     ncosthetabins, nphibins = 4, 5
     plotvars = ["luminosity", "emvelocityoverc"]
-    at.plotspherical.main(
+    at.packets.plotspherical.main(
         argsraw=[],
         modelpath=modelpath,
         outputfile=tmp_path / "map.pdf",
@@ -8691,7 +8695,7 @@ def test_check_packet_noise_names_a_timestep_with_no_escaped_packet() -> None:
 
 def test_values_of_one_cell_agree_with_the_estimators() -> None:
     """The values command must give the raw estimators of the cell, and not a mean over cells or bins."""
-    from artistools.values import get_values_table
+    from artistools.estimators.values import get_values_table
 
     dfvalues = get_values_table(modelpath_classic_3d, ["Te", "TR", "nne", "rho"], timesteps=[29], modelgridindex=[23])
     assert dfvalues.columns == [
@@ -8729,7 +8733,7 @@ def test_values_of_a_range_of_cells_give_one_row_for_each_cell_and_timestep(
 
     The cells 12, 13, and 16 of the 3D model hold no matter, thus ARTIS wrote no estimators for them.
     """
-    from artistools.values import main
+    from artistools.estimators.values import main
 
     outputfile = tmp_path / "values.txt"
     main(argsraw=["Te", "nne", "-ts", "28-29", "-cell", "12-16", "-o", str(outputfile), str(modelpath_classic_3d)])
@@ -8757,7 +8761,7 @@ def test_values_of_a_range_of_cells_give_one_row_for_each_cell_and_timestep(
 
 def test_values_give_the_time_of_volume_prevtimestep(tmp_path: Path) -> None:
     """The method lines gave the mid time of the row for volume_prevtimestep, which takes the timestep before."""
-    from artistools.values import main
+    from artistools.estimators.values import main
 
     outputfile = tmp_path / "values.txt"
     main(
@@ -8790,7 +8794,7 @@ def test_values_ask_about_the_overwrite_before_they_read_the_model(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """The command found the model folder before the question, e.g. through ssh for a remote model."""
-    from artistools import values
+    from artistools.estimators import values
 
     outputfile = tmp_path / "values.txt"
     outputfile.write_text("old\n", encoding="utf-8")
@@ -8805,7 +8809,7 @@ def test_values_ask_about_the_overwrite_before_they_read_the_model(
 
 def test_values_take_a_file_of_the_model_as_the_model_path(tmp_path: Path) -> None:
     """A model path can name a file of the model, and the command stopped because the file holds no input.txt."""
-    from artistools.values import main
+    from artistools.estimators.values import main
 
     outputfile = tmp_path / "values.txt"
     main(argsraw=["Te", "-ts", "28", "-cell", "14", "-o", str(outputfile), str(modelpath_classic_3d / "input.txt")])
@@ -8818,7 +8822,7 @@ def test_values_warn_about_a_cell_with_no_estimators_at_one_timestep(capsys: pyt
 
     The check tested the cells and the timesteps apart, thus each cell and each timestep had a row and no warning came.
     """
-    from artistools.values import warn_missing_rows
+    from artistools.estimators.values import warn_missing_rows
 
     dfvalues = pl.DataFrame({"timestep": [0, 1, 0], "modelgridindex": [0, 0, 1], "Te[K]": [1e4, 1e4, 1e4]})
     warn_missing_rows(dfvalues, [0, 1], modelgridindex=None)
@@ -8832,7 +8836,7 @@ def test_values_warn_about_a_requested_cell_in_the_direction_range(capsys: pytes
     The warning took only the cells of the table, thus such a cell gave no warning. Cell 932 is near the pole and holds
     no matter. Cell 402 is near the equator, thus it is outside the range, and it gives no warning.
     """
-    from artistools.values import main
+    from artistools.estimators.values import main
 
     main(argsraw=["Te", "-ts", "25", "-dirbin", "90", "-cell", "402,644,932", str(modelpath_classic_3d)])
 
@@ -8854,7 +8858,7 @@ def test_values_with_quiet_print_only_the_table(capsys: pytest.CaptureFixture[st
 
 def test_values_of_an_unknown_variable_name_the_listing(capsys: pytest.CaptureFixture[str]) -> None:
     """A variable that the model does not hold stops the command, and the help names a near name and the listing."""
-    from artistools.values import main
+    from artistools.estimators.values import main
 
     with pytest.raises(SystemExit) as excinfo:
         main(argsraw=["Tee", "-t", "7.8", str(modelpath_classic_3d)])

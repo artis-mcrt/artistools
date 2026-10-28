@@ -42,10 +42,10 @@ from artistools.misc import parse_range_list
 from artistools.misc import print_theta_phi_definitions
 from artistools.misc import print_warning
 from artistools.misc import resolve_frameset_paths
-from artistools.packets import add_derived_columns_lazy
-from artistools.packets import addarg_maxpacketfiles
-from artistools.packets import bin_packet_directions_polars
-from artistools.packets import get_packets
+from artistools.packets.core import add_derived_columns_lazy
+from artistools.packets.core import addarg_maxpacketfiles
+from artistools.packets.core import bin_packet_directions_polars
+from artistools.packets.core import get_packets
 from artistools.plottools import ExponentLabelFormatter
 from artistools.plottools import FIGWIDTH_INCHES
 from artistools.plottools import save_figure

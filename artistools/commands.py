@@ -625,7 +625,7 @@ subcommandtree: CommandTree = {
         aliases=("spec",),
     ),
     "plotspherical": CommandSpec(
-        "plotspherical",
+        "packets.plotspherical",
         helptext="Plot direction maps based on escaped packets.",
         examples=(("--modelpath . --ts 40", "the direction maps of the escaped packets at timestep 40"),),
     ),
@@ -684,7 +684,7 @@ subcommandtree: CommandTree = {
         ),
     ),
     "values": CommandSpec(
-        "values",
+        "estimators.values",
         helptext="Print the raw estimator values of cells and timesteps, with no plot and no average.",
         note=(
             "The variables come first and the model path last. Each row is one cell at one timestep, and the name of"
