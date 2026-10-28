@@ -241,7 +241,7 @@ The commands plotspectra, plotlightcurves, and plotestimators each have a viewer
   - "Other options".
 - Give a label or a check box the text of its flag, e.g. `--logscalex`. `FLAG_LABELS` gives the readable text that the window shows. When you add a label that shows a new flag, add the flag to `FLAG_LABELS`.
 - Give each control the help text of its option as its tooltip. `get_helptexts(parser)` gives these texts.
-- Test a viewer without Qt: make its viewer class with a `FigureCanvasAgg`, and call `draw_values` and `apply_values` from `artistools/viewertools/window.py`. Add each new viewer to `VIEWER_CASES` in `artistools/test_artistools.py`. The tests there check the rules of all the viewers.
+- Test a viewer without Qt: make its viewer class with a `FigureCanvasAgg`, and call `draw_values` and `apply_values` from `artistools/viewertools/window.py`. Add each new viewer to `VIEWER_CASES` in `artistools/viewertools/test_viewertools.py`. The tests there check the rules of all the viewers.
 - To check a change of a window without a display, do these steps:
   1. Call `QSettings.setDefaultFormat` and `QSettings.setPath`. Then the check writes no settings of the user.
   2. Set `QT_QPA_PLATFORM=offscreen` and `ARTISTOOLS_VIEWER_IN_BUNDLE=1`.
