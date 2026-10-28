@@ -1506,7 +1506,8 @@ def get_python_code(
 
     commandname names the command in the comment of a rejection. functionname is the function that the code calls,
     e.g. "at.lightcurve.plot". get_keyword_arguments gives the arguments of the call from the parsed arguments, e.g.
-    with the plot list in the form of main. The default gives each argument that differs from its default.
+    with the plot list in the form of main. With no get_keyword_arguments, the call takes each argument that differs
+    from its default.
     """
     args = parse_command_tokens(parser, tokens)
     if args is None:
@@ -1836,9 +1837,10 @@ def set_spin_value(box: "QtWidgets.QSpinBox | QtWidgets.QDoubleSpinBox", value: 
 
 @contextlib.contextmanager
 def blocked_signals(widgets: "Sequence[QtCore.QObject]") -> "Generator[None]":
-    """Block the signals of the widgets inside the block, thus a widget that shows a value does not apply it again.
+    """Block the signals of the widgets in the with statement.
 
-    An error inside the block, e.g. a bad colour in the option table, must not leave the signals blocked.
+    Then a widget that shows a value does not apply it again. An error in the with statement, e.g. a bad colour in the
+    option table, must not leave the signals blocked.
     """
     from PySide6 import QtCore
 

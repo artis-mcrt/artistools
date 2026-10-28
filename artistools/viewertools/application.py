@@ -698,8 +698,13 @@ def run_viewer(
 ) -> None:
     """Open the window of a viewer for the arguments of its command, e.g. for --interactive.
 
-    viewermodule is the module of the viewer, e.g. artistools.spectra.interactive. It holds APPLICATION_NAME,
-    DOCUMENT_TYPES, get_icon_curve, and open_window. The Dock icon takes the items of DOCUMENT_TYPES, e.g. a folder.
+    viewermodule is the module of the viewer, e.g. artistools.spectra.interactive. It holds these names:
+
+    - APPLICATION_NAME;
+    - DOCUMENT_TYPES, which gives the items that the Dock icon takes, e.g. a folder;
+    - get_icon_curve;
+    - open_window.
+
     The command imports the module only for a window, because the module of the viewer imports the module of the
     command.
     """

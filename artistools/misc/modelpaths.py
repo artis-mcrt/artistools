@@ -247,7 +247,7 @@ def modelpath_cache[**P, R](maxsize: int) -> Callable[[Callable[t.Concatenate[Pa
 # the attribute of a cache that holds its group of clear_at_reload
 RELOAD_GROUP_ATTRIBUTE: t.Final = "reloadgroup"
 
-# a group of the caches that Reload Data clears. The estimator viewer clears only the group "estimators", thus the
+# a group of the caches that Reload Data clears. The estimators viewer clears only the group "estimators", thus the
 # caches of the other viewers stay
 type ReloadGroup = t.Literal["output", "estimators"]
 
@@ -270,8 +270,9 @@ def clear_at_reload[CacheT](group: ReloadGroup) -> Callable[[CacheT], CacheT]:
 def clear_reload_caches(groups: Collection[ReloadGroup]) -> None:
     """Clear each cache with the mark of a group in groups, in each module of artistools that this process imported.
 
-    A list of the caches missed each new reader, thus the function searches the modules for the mark. A module that
-    the process did not import holds no cache. getattr_static runs no code of an object, e.g. of a lazy import.
+    A fixed list of the caches needs a change for each new reader. Thus the function searches the modules for the
+    mark. A module that the process did not import holds no cache. getattr_static runs no code of an object, e.g. of a
+    lazy import.
     """
     cachedreaders = {
         id(value): value

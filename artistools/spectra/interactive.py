@@ -583,7 +583,7 @@ def convert_xunit(values: ControlValues, xunit: str, *, gamma: bool) -> ControlV
     return dc.replace(values, xunit=xunit, xmin=xmin, xmax=xmax, deltax="")
 
 
-# the observed spectra of the list of spectra, and the rules of plotspectra for them
+# the reference spectra of the list of spectra, and the rules of plotspectra for them
 REFERENCE_DATA: t.Final = ReferenceData(
     kind="reference spectrum",
     folder=get_path("artistools_dir") / REFERENCE_SPECTRA_FOLDER,
@@ -1585,7 +1585,6 @@ def open_window(
     def on_option_rows(rows: OptionRows, undoable: bool = True) -> None:
         apply(dc.replace(viewer.values, otheroptions=rows), undoable=undoable)
 
-    # the box edits the row of -figscale in the other options, as the box of each viewer does
     figscalebox, show_figscale = make_figscale_box(
         viewer.parser, helptexts, lambda: viewer.values.otheroptions, on_option_rows
     )

@@ -151,8 +151,7 @@ def start_viewer_window(
     """Make the window of a viewer with its first plot, the plot area, and the sidebar.
 
     document gives the folder of the model and the title of the window. A first plot that the command rejects gives
-    its reason and no window. The terminal shows the whole error, and the first window of a start then stops the
-    process.
+    its reason and no window. The terminal shows the whole error. If no other window is open, the process stops.
     """
     from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 

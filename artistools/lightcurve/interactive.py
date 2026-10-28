@@ -811,7 +811,6 @@ def open_window(
     def on_option_rows(rows: OptionRows, undoable: bool = True) -> None:
         apply(dc.replace(viewer.values, otheroptions=rows), undoable=undoable)
 
-    # the box edits the row of -figscale in the other options, as the box of each viewer does
     figscalebox, show_figscale = make_figscale_box(
         viewer.parser, helptexts, lambda: viewer.values.otheroptions, on_option_rows
     )

@@ -861,7 +861,7 @@ class SeriesRow(t.NamedTuple):
 
 
 class ReferenceData(t.NamedTuple):
-    """The reference data of the series of a viewer, e.g. the observed spectra, and the rules of its command."""
+    """The reference data of the series of a viewer, e.g. the reference spectra, and the rules of its command."""
 
     # the kind of one series, e.g. "reference spectrum"
     kind: str
@@ -990,7 +990,7 @@ class SeriesListActions(t.NamedTuple):
     get_rows: "Callable[[], OptionRows]"
     # apply a new list of paths, e.g. a new order, an added path, or a removed path
     apply_paths: "Callable[[Sequence[str]], None]"
-    # apply new rows of the option table, e.g. a new --label of a series. The flag is False for a change that is not a
+    # apply new rows of the option table, e.g. a new --label of a series. The flag is True for a change that makes a
     # new step of Undo
     apply_rows: "Callable[[OptionRows, bool], None]"
     show_error: "Callable[[str], None]"
@@ -1016,7 +1016,7 @@ def add_series_list(
     series.
 
     Return the function that shows the rows. It makes the rows again only for new paths, new styles, or a new key of
-    actions.get_extrakey, because each row reads the name of its series.
+    actions.get_extrakey. Each row reads the name of its series, thus a new row takes time.
     """
     import matplotlib as mpl
     import matplotlib.colors as mplcolors
@@ -1105,11 +1105,11 @@ def add_series_list(
         QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(folder)))
 
     def edit_properties(path: str) -> None:
-        """Ask for the label, the colour, the line style, the width, and the opacity of the line of a series."""
+        """Ask for the style of the line of a series, e.g. the label, the colour, and the width."""
         paths, rows = actions.get_paths(), actions.get_rows()
         if path not in paths:
             return
-        # the colour of the popup for "Default" is the colour that the series has with no -color of its own
+        # the colour of the popup for "Default" is the colour that the series has with no --color of its own
         defaultrows = set_series_rows(rows, paths, path, {"--color": None})
         defaultcolour = get_series_colours(reference, paths, defaultrows)[path]
         style = get_series_style(rows, paths, path)
