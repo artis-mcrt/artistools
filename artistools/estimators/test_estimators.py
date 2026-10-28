@@ -3782,7 +3782,7 @@ def test_average_ionisation_ylim_covers_every_element() -> None:
 
     settings: plotestimators.SubplotSettings = {}
     # Ni comes last and reaches charge 0, but the Fe curve reaches charge 5
-    plotestimators.plot_average_ionisation(settings, ["Fe", "Ni"], estimators)
+    plotestimators.get_average_ionisation_plans(settings, ["Fe", "Ni"], estimators)
     assert "ylim" in settings
     assert settings["ylim"][1] > 5.0
 
@@ -3906,7 +3906,7 @@ def test_plot_argument_takes_a_grouped_series_type() -> None:
 
     estimatorcolumns = ["Te", "TR", "nne", "nnion_Fe_II", "nnelement_Fe", "gammaestimator_Fe_II"]
 
-    # a type with its own plot function
+    # a type with its own function of series plans
     assert normalise_plotitems(["populations", "Fe I", "Fe II"], estimatorcolumns) == [
         ["populations", ["Fe I", "Fe II"]]
     ]
@@ -5896,7 +5896,7 @@ def test_snapshot_of_a_model_of_one_cell_has_the_name_of_a_snapshot(tmp_path: Pa
 def get_bin_value(seriestype: str, poptype: str, columns: dict[str, list[float]]) -> float:
     """Return the value of the one x bin of an ion series of Fe II over two cells with equal volumes."""
     from artistools.estimators.plotestimators import get_line_points
-    from artistools.estimators.plotestimators import plot_multi_ion_series
+    from artistools.estimators.plotestimators import get_multi_ion_series_plans
 
     estimators = pl.LazyFrame({
         "timestep": [0, 0],
@@ -5908,7 +5908,7 @@ def get_bin_value(seriestype: str, poptype: str, columns: dict[str, list[float]]
         **columns,
     })
     args = argparse.Namespace(classicartis=True, colorbyion=False)
-    (plan,) = plot_multi_ion_series({}, seriestype, ["Fe II"], estimators, modelpath, poptype, args)
+    (plan,) = get_multi_ion_series_plans({}, seriestype, ["Fe II"], estimators, modelpath, poptype, args)
     return float(get_line_points(plan.dfseries, args).collect()["yvalue_binned"].item())
 
 

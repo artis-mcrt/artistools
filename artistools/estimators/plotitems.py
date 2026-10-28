@@ -33,8 +33,8 @@ VARIABLE_ALIASES = {"T_e": "Te", "n_e": "nne", "T_R": "TR", "T_J": "TJ"}
 
 
 # a series type groups the names that follow it, e.g. -plot averageionisation Fe Ni. Each one has its
-# own plot function in get_subplot_plans. An ion series needs no entry here, because the estimator columns
-# name it, e.g. gamma_NT_Fe_II gives the series type gamma_NT
+# own function in get_subplot_plans, e.g. get_average_ionisation_plans. An ion series needs no entry here,
+# because the estimator columns name it, e.g. gamma_NT_Fe_II gives the series type gamma_NT
 SERIESTYPES = (
     "averageexcitation",
     "averageionisation",
@@ -46,7 +46,7 @@ SERIESTYPES = (
 
 
 def is_seriestype(name: t.Any, estimatorcolumns: Collection[str]) -> bool:
-    """Return True when a name has its own plot function, e.g. "populations" in "populations Fe II"."""
+    """Return True when a name has its own function of series plans, e.g. "populations" in "populations Fe II"."""
     if not isinstance(name, str) or name in estimatorcolumns:
         return False
 

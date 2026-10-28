@@ -617,7 +617,7 @@ def draw_subplot(
     finish_subplot(ax, args, settings)
 
 
-def plot_init_abundances(
+def get_init_abundance_plans(
     settings: SubplotSettings, specieslist: list[str], estimators: pl.LazyFrame, seriestype: str, **plotkwargs: t.Any
 ) -> list[SeriesPlan]:
     """Return the series of the initial abundance or mass of each species in specieslist."""
@@ -706,7 +706,7 @@ def get_average_charge_expr(element: str, colnames: Collection[str]) -> tuple[pl
     return expr_charge_per_nuc, max(ioncharges)
 
 
-def plot_average_ionisation(
+def get_average_ionisation_plans(
     settings: SubplotSettings, params: Sequence[str], estimators: pl.LazyFrame, **plotkwargs: t.Any
 ) -> list[SeriesPlan]:
     """Return the series of the mean ion charge of each element in params."""
@@ -756,7 +756,7 @@ def read_nltepops_of_estimators(modelpath: str | Path, timesteps: Sequence[int],
     return dfnltepops.filter(pl.col("timestep").is_in(timesteps))
 
 
-def plot_average_excitation(
+def get_average_excitation_plans(
     settings: SubplotSettings,
     params: Sequence[str],
     timestepslist: Sequence[int],
@@ -790,7 +790,7 @@ def plot_average_excitation(
             modelpath, atomic_number, ion_stage, dftexc, dfnltepops=dfnltepops_allions.lazy()
         )
 
-        # weight the average by the ion population where it is available, as plot_average_ionisation
+        # weight the average by the ion population where it is available, as get_average_ionisation_plans
         # weights by the element population
         nnioncol = f"nnion_{get_ionstring(atomic_number, ion_stage, sep='_', style='spectral')}"
         weightcol = pl.col(nnioncol) if nnioncol in estimatorcolumns else pl.lit(1.0)
@@ -820,7 +820,7 @@ def plot_average_excitation(
     return plans
 
 
-def plot_levelpop(
+def get_levelpop_plans(
     settings: SubplotSettings,
     seriestype: str,
     params: Sequence[str],
@@ -912,7 +912,7 @@ def plot_levelpop(
             f" {texifyconfiguration(levelname)}"
         )
 
-        print(f"plot_levelpop {label}")
+        print(f"get_levelpop_plans {label}")
 
         # a cell that holds no matter has no NLTE row at a timestep, thus the mean of a cell takes the durations of the
         # timesteps that hold a row of the cell. A cell with no row at all gives no point
@@ -1123,7 +1123,7 @@ def get_ion_series_weight(
     return pl.lit(1.0), "cell volume times time step duration"
 
 
-def plot_multi_ion_series(
+def get_multi_ion_series_plans(
     settings: SubplotSettings,
     seriestype: str,
     ionlist: Sequence[str],
@@ -1283,7 +1283,7 @@ def plot_multi_ion_series(
     return plans
 
 
-def plot_series(
+def get_series_plans(
     settings: SubplotSettings,
     variable: str | pl.Expr,
     showlegend: bool,
@@ -1650,7 +1650,7 @@ def get_subplot_plans(
             assert isinstance(variablename, str)
             showlegend = seriescount > 1 or len(variablename) > 35 or not sameylabel
             settings["showlegend"] = showlegend
-            plans += plot_series(
+            plans += get_series_plans(
                 settings=settings,
                 variable=plotitem,
                 showlegend=showlegend,
@@ -1666,18 +1666,18 @@ def get_subplot_plans(
 
             if seriestype in {"initabundances", "initmasses"}:
                 assert isinstance(params, list)
-                plans += plot_init_abundances(
+                plans += get_init_abundance_plans(
                     settings=settings, specieslist=params, estimators=estimators, seriestype=seriestype, **plotkwargs
                 )
 
             elif seriestype == "levelpopulation" or seriestype.startswith("levelpopulation_"):
-                plans += plot_levelpop(settings, seriestype, params, timestepslist, mgilist, modelpath, estimators)
+                plans += get_levelpop_plans(settings, seriestype, params, timestepslist, mgilist, modelpath, estimators)
 
             elif seriestype == "averageionisation":
-                plans += plot_average_ionisation(settings, params, estimators, **plotkwargs)
+                plans += get_average_ionisation_plans(settings, params, estimators, **plotkwargs)
 
             elif seriestype == "averageexcitation":
-                plans += plot_average_excitation(
+                plans += get_average_excitation_plans(
                     settings, params, timestepslist, mgilist, estimators, modelpath, **plotkwargs
                 )
 
@@ -1689,7 +1689,7 @@ def get_subplot_plans(
                 if seriestype == "populations" and len(ionlist) > 2 and yscale == "log":
                     settings["legendncols"] = 2
 
-                plans += plot_multi_ion_series(
+                plans += get_multi_ion_series_plans(
                     settings=settings,
                     seriestype=seriestype,
                     ionlist=ionlist,
