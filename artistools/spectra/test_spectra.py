@@ -3422,6 +3422,18 @@ def test_interactive_valid_timesteps() -> None:
         assert viewer.change(dc.replace(viewer.values, centre=bound, widthmode="days", width=1.0)) is None
 
 
+def test_interactive_up_key_at_the_last_timestep_widens_the_range_backwards() -> None:
+    """The Up key at the last valid timestep adds the timestep before the range, as the estimators viewer does.
+
+    The viewer kept the first timestep of the range and clamped the last one, thus the Up key did nothing there.
+    """
+    viewer = make_headless_viewer([str(modelpath), "--interactive"])
+    validtimesteps = viewer.grid.validtimesteps
+    viewer.values = viewer.move_to_end(last=True)
+    wider = viewer.step_width(1)
+    assert interactive.get_grid_selection(viewer.grid, wider) == (validtimesteps[-2], validtimesteps[-1])
+
+
 def make_headless_viewer(tokens: list[str]) -> interactive.SpectrumViewer:
     """Return a viewer that draws on a canvas with no window, after its first plot."""
     fig = mplfig.Figure()

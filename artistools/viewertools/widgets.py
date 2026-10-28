@@ -1537,6 +1537,19 @@ def start_play_timer(playtimer: "QtCore.QTimer", plotseconds: float, fps: float)
     playtimer.start(max(0, round(1000.0 / fps - plotseconds * 1000.0)))
 
 
+def make_timer(window: "QtWidgets.QWidget", milliseconds: int) -> "QtCore.QTimer":
+    """Return a single-shot timer.
+
+    The window is the parent of the timer, thus the timer stops when the window closes.
+    """
+    from PySide6 import QtCore
+
+    timer = QtCore.QTimer(window)
+    timer.setSingleShot(True)
+    timer.setInterval(milliseconds)
+    return timer
+
+
 def get_icon(symbol: str, themeicon: "QtGui.QIcon.ThemeIcon") -> "QtGui.QIcon":
     """Return the SF Symbol of the name on macOS, else the icon of the theme.
 

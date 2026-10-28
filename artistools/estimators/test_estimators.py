@@ -4387,7 +4387,7 @@ def test_interactive_command_reproduces_plot(tmp_path: Path) -> None:
     """
     viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "5", "--interactive"])
     subplots = (("Te", "TR", "yscale=linear"), ("populations", "Fe II", "Fe III", "Ni II"), ("nne",))
-    newvalues = dc.replace(viewer.select_timesteps(viewer.values, 10, 3), subplots=subplots, xbins="8")
+    newvalues = dc.replace(viewer.select_positions(viewer.values, (10, 12)), subplots=subplots, xbins="8")
     assert viewer.change(newvalues) is None
     command = viewer.get_command()
     assert command.endswith("--timestep 10-12 --xbins 8 --plot populations 'Fe II' 'Fe III' 'Ni II' --plot nne")
@@ -4896,7 +4896,7 @@ def test_interactive_style_change_reuses_the_data() -> None:
         widevalues = interactive.replace_option_rows(viewer, viewer.values, (("-linewidthscale", ("2",)),))
         assert viewer.change(widevalues) is None
         assert getdata.call_count == 0
-        assert viewer.change(viewer.select_timesteps(viewer.values, 11, 1)) is None
+        assert viewer.change(viewer.select_positions(viewer.values, (11, 11))) is None
         assert getdata.call_count == 1
 
     assert viewer.swatches[0, "Fe III"].colour == "#d55e00"
@@ -4919,7 +4919,7 @@ def test_interactive_python_code_reproduces_plot(tmp_path: Path) -> None:
     """
     viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "5", "--interactive"])
     subplots = (("Te", "TR", "yscale=linear", "ymin=1000"), ("Fe II", "Fe III"), ("populations", "Ni II"))
-    newvalues = dc.replace(viewer.select_timesteps(viewer.values, 10, 3), subplots=subplots, xbins="8")
+    newvalues = dc.replace(viewer.select_positions(viewer.values, (10, 12)), subplots=subplots, xbins="8")
     assert viewer.change(newvalues) is None
     code = interactive.get_python_code(viewer.parser, viewer.get_plot_tokens(), viewer.modeldata.estimatorcolumns)
     assert '["Te", "TR", ["_yscale", "linear"], ["_ymin", 1000]],' in code
@@ -5045,7 +5045,7 @@ def test_interactive_snapshot_and_time_evolution() -> None:
     assert viewer.step_cell(1) is None
 
     # a part of the time range of the model needs -x time, because plotestimators plots a snapshot for a given time
-    shortrange = viewer.select_timesteps(viewer.values, 5, 4)
+    shortrange = viewer.select_positions(viewer.values, (5, 8))
     assert viewer.get_plot_tokens(shortrange)[2:6] == ["--timestep", "5-8", "-x", "time"]
 
     snapshot = viewer.set_xvariable(viewer.values, "velocity")
@@ -5124,7 +5124,7 @@ def test_interactive_time_field_keeps_the_range() -> None:
     nvalid = len(viewer.modeldata.validtimesteps)
     for count in range(1, 5):
         for firstpos in range(nvalid - count + 1):
-            viewer.values = viewer.select_timesteps(viewer.values, firstpos, count)
+            viewer.values = viewer.select_positions(viewer.values, (firstpos, firstpos + count - 1))
             text = interactive.get_time_text(viewer.tmids, viewer.values)
             assert viewer.select_centre(float(text)) == viewer.values, (count, firstpos, text)
 
@@ -5260,7 +5260,8 @@ def test_interactive_reload_keeps_the_time_range_inside_the_valid_timesteps() ->
     viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
     validtimesteps = viewer.modeldata.validtimesteps
     assert len(validtimesteps) > 8
-    assert viewer.change(viewer.select_timesteps(viewer.values, len(validtimesteps) - 1, 1)) is None
+    lastpos = len(validtimesteps) - 1
+    assert viewer.change(viewer.select_positions(viewer.values, (lastpos, lastpos))) is None
     with mock.patch.object(interactive, "get_estimator_timesteps", return_value=validtimesteps[:-5]):
         interactive.reload_model_data(viewer, reread_model_data(viewer))
     assert viewer.modeldata.validtimesteps == validtimesteps[:-5]

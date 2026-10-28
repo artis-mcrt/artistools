@@ -52,6 +52,7 @@ from artistools.viewertools.widgets import make_option_table
 from artistools.viewertools.widgets import make_plot_area
 from artistools.viewertools.widgets import make_sidebar
 from artistools.viewertools.widgets import make_status_bar
+from artistools.viewertools.widgets import make_timer
 from artistools.viewertools.widgets import set_plot_busy
 from artistools.viewertools.widgets import show_plot_area_state
 from artistools.viewertools.widgets import show_plot_banner
@@ -1101,16 +1102,3 @@ def show_window(window: "QtWidgets.QMainWindow", on_screen: "Callable[[], None]"
             QtCore.QTimer.singleShot(0, window, on_screen)
 
         windowhandle.screenChanged.connect(on_screen_changed)
-
-
-def make_timer(window: "QtWidgets.QWidget", milliseconds: int) -> "QtCore.QTimer":
-    """Return a single-shot timer.
-
-    The window is the parent of the timer, thus the timer stops when the window closes.
-    """
-    from PySide6 import QtCore
-
-    timer = QtCore.QTimer(window)
-    timer.setSingleShot(True)
-    timer.setInterval(milliseconds)
-    return timer

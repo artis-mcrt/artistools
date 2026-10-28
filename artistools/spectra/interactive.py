@@ -53,15 +53,20 @@ from artistools.spectra.plotspectra import resolve_plot_args
 from artistools.viewertools.application import run_viewer_application
 from artistools.viewertools.core import exit_for_other_actions
 from artistools.viewertools.core import get_actions_by_flag
+from artistools.viewertools.core import get_centred_range
+from artistools.viewertools.core import get_clamped_range
 from artistools.viewertools.core import get_direction_kind
 from artistools.viewertools.core import get_direction_kinds
+from artistools.viewertools.core import get_end_range
 from artistools.viewertools.core import get_fitted_figwidthscale
 from artistools.viewertools.core import get_nearest_range_start
 from artistools.viewertools.core import get_option_row_tokens
 from artistools.viewertools.core import get_option_tokens
 from artistools.viewertools.core import get_path_colours
+from artistools.viewertools.core import get_resized_range
 from artistools.viewertools.core import get_row_values
 from artistools.viewertools.core import get_series_style
+from artistools.viewertools.core import get_stepped_range
 from artistools.viewertools.core import keep_figwidthscale
 from artistools.viewertools.core import make_command_tokens
 from artistools.viewertools.core import make_parser
@@ -82,14 +87,17 @@ from artistools.viewertools.sections import add_direction_section
 from artistools.viewertools.sections import add_time_controls
 from artistools.viewertools.sections import add_y_axis_actions
 from artistools.viewertools.sections import add_y_limits_row
+from artistools.viewertools.sections import connect_play
 from artistools.viewertools.sections import connect_time_keys
 from artistools.viewertools.sections import DirectionChoice
+from artistools.viewertools.sections import get_next_play_time
 from artistools.viewertools.sections import make_figscale_box
 from artistools.viewertools.sections import make_select_y_handler
 from artistools.viewertools.sections import make_xscale_box
 from artistools.viewertools.sections import make_yscale_box
 from artistools.viewertools.sections import read_selected_range
 from artistools.viewertools.sections import show_auto_yscale
+from artistools.viewertools.sections import TIME_KEY_HELP_ROWS
 from artistools.viewertools.sections import WAIT_FOR_PLOT_MESSAGE
 from artistools.viewertools.series import add_series_list
 from artistools.viewertools.series import edit_series_properties
@@ -109,14 +117,12 @@ from artistools.viewertools.widgets import set_command_text
 from artistools.viewertools.widgets import set_edit_text
 from artistools.viewertools.widgets import set_spin_value
 from artistools.viewertools.widgets import show_status_note
-from artistools.viewertools.widgets import start_play_timer
 from artistools.viewertools.window import add_command_sections
 from artistools.viewertools.window import connect_plot_mouse
 from artistools.viewertools.window import DrawQueue
 from artistools.viewertools.window import finish_viewer_window
 from artistools.viewertools.window import get_line_readouts
 from artistools.viewertools.window import make_readout_tag
-from artistools.viewertools.window import make_timer
 from artistools.viewertools.window import reload_models
 from artistools.viewertools.window import render_command
 from artistools.viewertools.window import start_viewer_window
@@ -838,6 +844,11 @@ class SpectrumViewer:
             values, centre=(tmids[first] + tmids[last]) / 2.0, width=tmids[last] - tmids[first], notimeclamp=False
         )
 
+    def select_positions(self, values: ControlValues, positions: tuple[int, int]) -> ControlValues:
+        """Return the values snapped to the time range between two positions in the valid timesteps."""
+        validtimesteps = self.grid.validtimesteps
+        return self.snap(values, validtimesteps[positions[0]], validtimesteps[positions[1]])
+
     def get_plot_tokens(self, values: ControlValues | None = None) -> list[str]:
         """Return the plotspectra arguments of the values, or of the current values if the caller gives none."""
         if values is None:
@@ -946,43 +957,41 @@ class SpectrumViewer:
         return grid.validtimesteps.index(first), grid.validtimesteps.index(last)
 
     def step_time(self, step: int) -> ControlValues | None:
-        """Return the values with the time one timestep later or earlier, or None at the end of the valid range."""
+        """Return the values with the time range step timesteps later, or None past the valid timesteps.
+
+        A continuous range takes the width of its width mode at the new time, as clamp_time gives it.
+        """
         grid = self.grid
-        validtimesteps, tmids = grid.validtimesteps, grid.tmids
+        validtimesteps = grid.validtimesteps
         if self.values.notimeclamp:
             # a continuous range keeps its width and moves its middle to the middle of the adjacent timestep
             position = self.get_nearest_position() + step
             if not 0 <= position < len(validtimesteps):
                 return None
-            return dc.replace(self.values, centre=float(f"{tmids[validtimesteps[position]]:.4g}"))
-        firstpos, lastpos = self.get_selection_positions()
-        if firstpos + step < 0 or lastpos + step >= len(validtimesteps):
-            return None
-        return self.snap(self.values, validtimesteps[firstpos + step], validtimesteps[lastpos + step])
+            return self.clamp_time(dc.replace(self.values, centre=float(f"{grid.tmids[validtimesteps[position]]:.4g}")))
+        positions = get_stepped_range(self.get_selection_positions(), step, len(validtimesteps))
+        return None if positions is None else self.select_positions(self.values, positions)
 
     def step_width(self, step: int) -> ControlValues:
-        """Return the values with the time range one timestep wider or narrower."""
+        """Return the values with step more timesteps in the time range."""
         grid = self.grid
         if self.values.notimeclamp:
             # a step gives a width in days, thus the width mode becomes "days". A width of 0 or less stays out
             width = self.values.width + step * grid.twidths[grid.validtimesteps[self.get_nearest_position()]]
             if not float(f"{width:.3g}") > 0.0:
                 return self.values
-            return dc.replace(self.values, widthmode="days", width=float(f"{width:.3g}"))
-        firstpos, lastpos = self.get_selection_positions()
-        lastpos = min(max(lastpos + step, firstpos), len(grid.validtimesteps) - 1)
-        return self.snap(self.values, grid.validtimesteps[firstpos], grid.validtimesteps[lastpos])
+            return self.clamp_time(dc.replace(self.values, widthmode="days", width=float(f"{width:.3g}")))
+        positions = get_resized_range(self.get_selection_positions(), step, len(grid.validtimesteps))
+        return self.select_positions(self.values, positions)
 
     def move_to_end(self, *, last: bool) -> ControlValues:
-        """Return the values with the time at the first or at the last valid timestep, and the same width."""
+        """Return the values with the time range at the first or the last valid timestep, and the same width."""
         grid = self.grid
         if self.values.notimeclamp:
             timestep = grid.validtimesteps[-1 if last else 0]
-            return dc.replace(self.values, centre=float(f"{grid.tmids[timestep]:.4g}"))
-        firstpos, lastpos = self.get_selection_positions()
-        count = lastpos - firstpos
-        start = len(grid.validtimesteps) - 1 - count if last else 0
-        return self.snap(self.values, grid.validtimesteps[start], grid.validtimesteps[start + count])
+            return self.clamp_time(dc.replace(self.values, centre=float(f"{grid.tmids[timestep]:.4g}")))
+        positions = get_end_range(self.get_selection_positions(), len(grid.validtimesteps), last=last)
+        return self.select_positions(self.values, positions)
 
     def get_rejection(self, values: ControlValues) -> str | None:
         """Return why plotspectra rejects the arguments of the values, or None if it accepts them.
@@ -1312,7 +1321,7 @@ def set_models(viewer: SpectrumViewer, spectra: "Sequence[str]", timegrid: str) 
         return viewer.clamp_time(values)
     count = min(last - first + 1, len(grid.validtimesteps))
     start = get_nearest_range_start([grid.tmids[timestep] for timestep in grid.validtimesteps], values.centre, count)
-    return viewer.snap(values, grid.validtimesteps[start], grid.validtimesteps[start + count - 1])
+    return viewer.select_positions(values, (start, start + count - 1))
 
 
 def get_time_slider_ranges(grid: TimestepGrid, values: ControlValues) -> tuple[tuple[float, float], float, float, int]:
@@ -1337,9 +1346,7 @@ def get_icon_curve() -> "npt.NDArray[np.float64]":
 
 # the keys and the mouse actions of the window. get_keyboard_help adds the shortcuts of the menus
 KEYBOARD_HELP_ROWS: t.Final = (
-    ("<b>Left</b>, <b>Right</b>", "Move the time to the adjacent timestep"),
-    ("<b>Up</b>, <b>Down</b>", "Make the time range one timestep wider or narrower"),
-    ("<b>Home</b>, <b>End</b>", "Move the time to the first or the last valid timestep"),
+    *TIME_KEY_HELP_ROWS,
     ("<b>Alt-Up</b>, <b>Alt-Down</b> in the list of spectra", "Move the spectrum up or down (Option on a Mac)"),
     ("<b>Double-click</b> a spectrum", "Set the label and the line style of the spectrum"),
     ("<b>Right-click</b> a spectrum", "Move it, use its timesteps, copy its path, or open its folder"),
@@ -1382,7 +1389,6 @@ def open_window(
     if isinstance(viewerwindow, str):
         return viewerwindow
     window, canvas, plotarea, panellayout, fittimer = viewerwindow
-    playtimer = make_timer(window, 0)
 
     # each continuous slider maps its position from 0 to SLIDER_STEPS onto the range of its value
     def to_position(value: float, low: float, high: float) -> int:
@@ -1932,7 +1938,7 @@ def open_window(
                     widthslider.setValue(to_position(values.width, 0.0, widthmax))
                     set_edit_text(widthedit, f"{values.width:.2f}")
             else:
-                first, last = (grid.validtimesteps.index(timestep) for timestep in get_grid_selection(grid, values))
+                first, last = viewer.get_selection_positions()
                 timeslider.setValue((first + last) // 2)
                 widthslider.setValue(last - first + 1)
                 set_edit_text(widthedit, str(last - first + 1))
@@ -2001,17 +2007,14 @@ def open_window(
             show_auto_yscale(yscalebox, viewer.axes[0].get_yscale())
         # --showabsorption changes the height of the frames, thus the plot can need a new -figwidthscale
         fittimer.start()
-        # a rejection occurs again at each step, thus a rejection stops the Play button
-        if message is not None:
-            playbutton.setChecked(False)
-        elif playbutton.isChecked():
-            # a draw that the Play button did not start also restarts the timer, thus one chain of steps stays
-            start_play_timer(playtimer, queue.plotseconds, fpsbox.value())
+        continue_play(message)
 
     queue = DrawQueue(
         window, viewer, statusbar, show_values, after_draw, render=viewer.render, keep_on_undo=keep_figwidthscale
     )
     show_error = queue.show_error
+    # connect_play gives each step to the queue, and step_time and move_to_end give values that clamp_time keeps
+    continue_play = connect_play(window, timecontrols, queue, partial(get_next_play_time, viewer))
 
     def apply(values: ControlValues, *, undoable: bool = True) -> None:
         """Give the queue the new values, with a time that the models have."""
@@ -2034,11 +2037,8 @@ def open_window(
             centre = 10.0 ** from_position(position, *logtrange)
             apply(dc.replace(values, centre=float(f"{centre:.4g}")))
             return
-        grid = viewer.grid
-        first, last = (grid.validtimesteps.index(timestep) for timestep in get_grid_selection(grid, values))
-        count = last - first + 1
-        start = min(max(position - (count - 1) // 2, 0), nvalid - count)
-        apply(viewer.snap(values, grid.validtimesteps[start], grid.validtimesteps[start + count - 1]))
+        positions = get_centred_range(viewer.get_selection_positions(), position, len(viewer.grid.validtimesteps))
+        apply(viewer.select_positions(values, positions))
 
     def get_timegrid_path(values: ControlValues) -> str:
         """Return the path of the model that gives the timesteps, which is the first model for the value ""."""
@@ -2065,10 +2065,8 @@ def open_window(
                 width = from_position(position, 0.0, widthmax)
                 apply(dc.replace(values, width=float(f"{width:.3g}")))
             return
-        grid = viewer.grid
-        first = grid.validtimesteps.index(get_grid_selection(grid, values)[0])
-        last = min(first + position - 1, nvalid - 1)
-        apply(viewer.snap(values, grid.validtimesteps[first], grid.validtimesteps[last]))
+        firstpos, _ = viewer.get_selection_positions()
+        apply(viewer.select_positions(values, get_clamped_range(firstpos, position, len(viewer.grid.validtimesteps))))
 
     def on_timeedit() -> None:
         # a field shows a time with two decimal places, thus only a field that the user edited gives a new value, and
@@ -2107,33 +2105,11 @@ def open_window(
                 newvalues = dc.replace(values, centre=centre, width=width)
         else:
             validtimesteps = grid.validtimesteps
-            firstpos, lastpos = (validtimesteps.index(timestep) for timestep in get_grid_selection(grid, values))
-            count = lastpos - firstpos + 1 if width is None else min(max(1, round(width)), nvalid)
+            firstpos, lastpos = viewer.get_selection_positions()
+            count = lastpos - firstpos + 1 if width is None else min(max(1, round(width)), len(validtimesteps))
             start = get_nearest_range_start([grid.tmids[timestep] for timestep in validtimesteps], centre, count)
-            newvalues = viewer.snap(values, validtimesteps[start], validtimesteps[start + count - 1])
+            newvalues = viewer.select_positions(values, (start, start + count - 1))
         apply(newvalues)
-
-    def on_arrow(step: int) -> None:
-        if (values := viewer.step_time(step)) is not None:
-            apply(values)
-
-    def on_widthstep(step: int) -> None:
-        apply(viewer.step_width(step))
-
-    def play_step() -> None:
-        if not playbutton.isChecked():
-            return
-        # after the last timestep, Play starts again at the first timestep
-        values = viewer.step_time(1) or viewer.move_to_end(last=False)
-        # a time range that covers every valid timestep has no other step
-        if values == viewer.values:
-            playbutton.setChecked(False)
-            return
-        apply(values, undoable=False)
-
-    def on_play(checked: bool) -> None:
-        if checked:
-            play_step()
 
     def plot_shows_values() -> bool:
         """Return True if the plot on the screen has the values of the controls.
@@ -2419,9 +2395,7 @@ def open_window(
     widthmodebox.currentIndexChanged.connect(on_widthmode)
     timeedit.editingFinished.connect(on_timeedit)
     widthedit.editingFinished.connect(on_timeedit)
-    playbutton.toggled.connect(on_play)
     figscalebox.valueChanged.connect(on_figscale)
-    playtimer.timeout.connect(play_step)
     connect_xrange(on_xrange)
     xminedit.editingFinished.connect(on_xedit)
     xmaxedit.editingFinished.connect(on_xedit)
@@ -2455,13 +2429,7 @@ def open_window(
         on_menu=on_plot_menu,
         show_tag=make_readout_tag(canvas),
     )
-    connect_time_keys(
-        window,
-        stepbuttons,
-        on_arrow,
-        on_widthstep,
-        (lambda: apply(viewer.move_to_end(last=False)), lambda: apply(viewer.move_to_end(last=True))),
-    )
+    connect_time_keys(window, stepbuttons, viewer, apply)
 
     finish_viewer_window(viewerwindow, windows, viewer, queue, get_session_tokens)
     show_values()

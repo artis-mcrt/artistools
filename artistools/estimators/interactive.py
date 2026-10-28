@@ -84,12 +84,17 @@ from artistools.viewertools.application import run_viewer_application
 from artistools.viewertools.application import set_drop_handler
 from artistools.viewertools.core import exit_for_other_actions
 from artistools.viewertools.core import get_actions_by_flag
+from artistools.viewertools.core import get_centred_range
+from artistools.viewertools.core import get_clamped_range
+from artistools.viewertools.core import get_end_range
 from artistools.viewertools.core import get_fitted_figwidthscale
 from artistools.viewertools.core import get_nearest_range_start
 from artistools.viewertools.core import get_option_row_tokens
 from artistools.viewertools.core import get_option_tokens
+from artistools.viewertools.core import get_resized_range
 from artistools.viewertools.core import get_row_values
 from artistools.viewertools.core import get_short_limits
+from artistools.viewertools.core import get_stepped_range
 from artistools.viewertools.core import keep_figwidthscale
 from artistools.viewertools.core import make_parser
 from artistools.viewertools.core import OptionRows
@@ -102,10 +107,13 @@ from artistools.viewertools.menus import export_animation
 from artistools.viewertools.menus import ViewerCommand
 from artistools.viewertools.sections import add_time_controls
 from artistools.viewertools.sections import add_y_axis_actions
+from artistools.viewertools.sections import connect_play
 from artistools.viewertools.sections import connect_time_keys
+from artistools.viewertools.sections import get_next_play_time
 from artistools.viewertools.sections import make_figscale_box
 from artistools.viewertools.sections import read_limit_fields
 from artistools.viewertools.sections import read_selected_range
+from artistools.viewertools.sections import TIME_KEY_HELP_ROWS
 from artistools.viewertools.sections import WAIT_FOR_PLOT_MESSAGE
 from artistools.viewertools.series import get_dash_pattern
 from artistools.viewertools.widgets import add_row
@@ -123,7 +131,6 @@ from artistools.viewertools.widgets import set_edit_text
 from artistools.viewertools.widgets import set_note_text
 from artistools.viewertools.widgets import set_search_completion
 from artistools.viewertools.widgets import set_spin_value
-from artistools.viewertools.widgets import start_play_timer
 from artistools.viewertools.window import add_command_sections
 from artistools.viewertools.window import connect_plot_mouse
 from artistools.viewertools.window import DrawQueue
@@ -131,7 +138,6 @@ from artistools.viewertools.window import finish_viewer_window
 from artistools.viewertools.window import FLAG_LABELS
 from artistools.viewertools.window import get_line_readouts
 from artistools.viewertools.window import make_readout_tag
-from artistools.viewertools.window import make_timer
 from artistools.viewertools.window import reload_models
 from artistools.viewertools.window import render_command
 from artistools.viewertools.window import start_viewer_window
@@ -448,10 +454,9 @@ def reload_model_data(viewer: "EstimatorViewer", modeldata: ModelData) -> None:
     values = viewer.values
     alltimesteps = (values.first, values.last) == (oldvalidtimesteps[0], oldvalidtimesteps[-1])
     if is_evolution(values) and alltimesteps:
-        viewer.values = viewer.select_timesteps(values, 0, len(viewer.modeldata.validtimesteps))
+        viewer.values = viewer.select_positions(values, (0, len(viewer.modeldata.validtimesteps) - 1))
     else:
-        firstpos, lastpos = viewer.get_selection_positions()
-        viewer.values = viewer.select_timesteps(values, firstpos, lastpos - firstpos + 1)
+        viewer.values = viewer.select_positions(values, viewer.get_selection_positions())
 
 
 def get_geometry_choices(dimensions: int) -> list[str]:
@@ -845,7 +850,8 @@ class EstimatorViewer:
         firstpos, lastpos = self.get_selection_positions()
         count = lastpos - firstpos + 1
         validtmids = [self.tmids[timestep] for timestep in self.modeldata.validtimesteps]
-        return self.select_timesteps(self.values, get_nearest_range_start(validtmids, days, count), count)
+        start = get_nearest_range_start(validtmids, days, count)
+        return self.select_positions(self.values, (start, start + count - 1))
 
     def get_cell_text(self) -> str:
         """Return the cells of the plot, with the radial velocity of a single cell."""
@@ -856,15 +862,10 @@ class EstimatorViewer:
             return f"Cell {self.values.cells} at v_r = {velocity / C_cm_per_s:.3g}c ({velocity / km_to_cm:.4g} km/s)"
         return f"Cells {self.values.cells}"
 
-    def select_timesteps(self, values: ControlValues, firstpos: int, count: int) -> ControlValues:
-        """Return the values with count valid timesteps from the position firstpos in the valid timesteps."""
-        count = min(max(count, 1), len(self.modeldata.validtimesteps))
-        firstpos = min(max(firstpos, 0), len(self.modeldata.validtimesteps) - count)
-        return dc.replace(
-            values,
-            first=self.modeldata.validtimesteps[firstpos],
-            last=self.modeldata.validtimesteps[firstpos + count - 1],
-        )
+    def select_positions(self, values: ControlValues, positions: tuple[int, int]) -> ControlValues:
+        """Return the values with the time range from the first to the last of two positions in the valid timesteps."""
+        validtimesteps = self.modeldata.validtimesteps
+        return dc.replace(values, first=validtimesteps[positions[0]], last=validtimesteps[positions[1]])
 
     def get_selection_positions(self, values: ControlValues | None = None) -> tuple[int, int]:
         """Return the positions in the valid timesteps of the first and the last timestep of the time range."""
@@ -876,22 +877,19 @@ class EstimatorViewer:
         )
 
     def step_time(self, step: int) -> ControlValues | None:
-        """Return the values with the time range one timestep later or earlier, or None past the valid timesteps."""
-        firstpos, lastpos = self.get_selection_positions()
-        if firstpos + step < 0 or lastpos + step >= len(self.modeldata.validtimesteps):
-            return None
-        return self.select_timesteps(self.values, firstpos + step, lastpos - firstpos + 1)
+        """Return the values with the time range step timesteps later, or None past the valid timesteps."""
+        positions = get_stepped_range(self.get_selection_positions(), step, len(self.modeldata.validtimesteps))
+        return None if positions is None else self.select_positions(self.values, positions)
 
     def step_width(self, step: int) -> ControlValues:
-        """Return the values with the time range one timestep wider or narrower."""
-        firstpos, lastpos = self.get_selection_positions()
-        return self.select_timesteps(self.values, firstpos, lastpos - firstpos + 1 + step)
+        """Return the values with step more timesteps in the time range."""
+        positions = get_resized_range(self.get_selection_positions(), step, len(self.modeldata.validtimesteps))
+        return self.select_positions(self.values, positions)
 
     def move_to_end(self, *, last: bool) -> ControlValues:
-        """Return the values with the time range at the first or the last timestep, and the same width."""
-        firstpos, lastpos = self.get_selection_positions()
-        count = lastpos - firstpos + 1
-        return self.select_timesteps(self.values, len(self.modeldata.validtimesteps) - count if last else 0, count)
+        """Return the values with the time range at the first or the last valid timestep, and the same width."""
+        positions = get_end_range(self.get_selection_positions(), len(self.modeldata.validtimesteps), last=last)
+        return self.select_positions(self.values, positions)
 
     def step_cell(self, step: int) -> ControlValues | None:
         """Return the values with the next or the previous cell of the model, or None after the last cell.
@@ -921,10 +919,11 @@ class EstimatorViewer:
             return values
         values = dc.replace(values, x=xvariable, xmin="", xmax="")
         if is_evolution(values) and not is_evolution(self.values):
-            return self.select_timesteps(values, 0, len(self.modeldata.validtimesteps))
+            return self.select_positions(values, (0, len(self.modeldata.validtimesteps) - 1))
         if not is_evolution(values) and is_evolution(self.values):
             firstpos, lastpos = self.get_selection_positions(values)
-            return self.select_timesteps(dc.replace(values, cells=""), (firstpos + lastpos) // 2, 1)
+            middle = (firstpos + lastpos) // 2
+            return self.select_positions(dc.replace(values, cells=""), (middle, middle))
         return values
 
     def draw(self, *, quiet: bool = True) -> str | None:
@@ -1065,7 +1064,7 @@ def get_snapshot_values(viewer: EstimatorViewer, xdata: float) -> ControlValues 
     else:
         return None
     snapshotx = viewer.get_default_xvariable(viewer.values.otheroptions, timegiven=True)
-    return viewer.select_timesteps(viewer.set_xvariable(viewer.values, snapshotx), position, 1)
+    return viewer.select_positions(viewer.set_xvariable(viewer.values, snapshotx), (position, position))
 
 
 def get_xunit_text(xlimitscale: float, xvariable: str) -> str:
@@ -1142,9 +1141,7 @@ def get_icon_curve() -> "npt.NDArray[np.float64]":
 
 # the keys and the mouse actions of the window. get_keyboard_help adds the shortcuts of the menus
 KEYBOARD_HELP_ROWS: t.Final = (
-    ("<b>Left</b>, <b>Right</b>", "Move the time range to the adjacent timestep"),
-    ("<b>Up</b>, <b>Down</b>", "Make the time range one timestep wider or narrower"),
-    ("<b>Home</b>, <b>End</b>", "Move the time range to the first or the last timestep"),
+    *TIME_KEY_HELP_ROWS,
     ("<b>Page Up</b>, <b>Page Down</b>", "Select the previous or the next cell"),
     (
         "<b>Space</b>",
@@ -1188,26 +1185,26 @@ def open_window(
     if isinstance(viewerwindow, str):
         return viewerwindow
     window, canvas, plotarea, panellayout, fittimer = viewerwindow
-    playtimer = make_timer(window, 0)
     helptexts = viewer.helptexts
 
     _, timegrid = add_section(panellayout, "Time")
-    timeslider, timeedit, widthlabel, widthslider, widthedit, timestepslabel, stepbuttons, fpsbox, playbutton = (
-        add_time_controls(
-            timegrid,
-            0,
+    timecontrols = add_time_controls(
+        timegrid,
+        0,
+        (
             (
-                (
-                    "The middle of the time range in days. The Left key and the Right key move it to the adjacent"
-                    " timestep, and a typed time moves it to the timestep that holds the time."
-                ),
-                "The number of timesteps of the time range. The Up key and the Down key change it.",
-                (
-                    "Move a snapshot through the timesteps of the model, or move a plot against time through the cells."
-                    " After the last step, Play starts again at the first step (Space)"
-                ),
+                "The middle of the time range in days. The Left key and the Right key move it to the adjacent"
+                " timestep, and a typed time moves it to the timestep that holds the time."
             ),
-        )
+            "The number of timesteps of the time range. The Up key and the Down key change it.",
+            (
+                "Move a snapshot through the timesteps of the model, or move a plot against time through the cells."
+                " After the last step, Play starts again at the first step (Space)"
+            ),
+        ),
+    )
+    timeslider, timeedit, widthlabel, widthslider, widthedit, timestepslabel, stepbuttons, fpsbox, playbutton = (
+        timecontrols
     )
     # a plot against time takes a range of timesteps, as the x range of plotspectra. A snapshot takes a time and a width
     trangebox = QtWidgets.QWidget()
@@ -1605,12 +1602,7 @@ def open_window(
         connect_mouse_to_figure()
         # a new number of subplots changes the height of the figure, thus the plot can need a new -figwidthscale
         fittimer.start()
-        # a rejection occurs again at each step, thus a rejection stops the Play button
-        if message is not None:
-            playbutton.setChecked(False)
-        elif playbutton.isChecked():
-            # a draw that the Play button did not start also restarts the timer, thus one chain of steps stays
-            start_play_timer(playtimer, queue.plotseconds, fpsbox.value())
+        continue_play(message)
 
     queue = DrawQueue(
         window, viewer, statusbar, show_values, after_draw, render=viewer.render, keep_on_undo=keep_figwidthscale
@@ -1618,13 +1610,14 @@ def open_window(
     apply, show_error = queue.apply, queue.show_error
 
     def on_time(position: int) -> None:
-        firstpos, lastpos = viewer.get_selection_positions()
-        count = lastpos - firstpos + 1
-        apply(viewer.select_timesteps(viewer.values, position - (count - 1) // 2, count))
+        nvalid = len(viewer.modeldata.validtimesteps)
+        positions = get_centred_range(viewer.get_selection_positions(), position, nvalid)
+        apply(viewer.select_positions(viewer.values, positions))
 
     def on_width(count: int) -> None:
         firstpos, _ = viewer.get_selection_positions()
-        apply(viewer.select_timesteps(viewer.values, firstpos, count))
+        positions = get_clamped_range(firstpos, count, len(viewer.modeldata.validtimesteps))
+        apply(viewer.select_positions(viewer.values, positions))
 
     def on_widthedit() -> None:
         # a later plot can show new text in the field only when the field has no edit of the user
@@ -1654,7 +1647,7 @@ def open_window(
             firstpos = position
         else:
             lastpos = position
-        apply(viewer.select_timesteps(viewer.values, firstpos, lastpos - firstpos + 1))
+        apply(viewer.select_positions(viewer.values, (firstpos, lastpos)))
 
     def on_trangeedit() -> None:
         tminedit.setModified(False)
@@ -1669,11 +1662,7 @@ def open_window(
         if firstpos > lastpos:
             show_error("Give a first time that is before the last time")
             return
-        apply(viewer.select_timesteps(viewer.values, firstpos, lastpos - firstpos + 1))
-
-    def on_step_time(step: int) -> None:
-        if (values := viewer.step_time(step)) is not None:
-            apply(values)
+        apply(viewer.select_positions(viewer.values, (firstpos, lastpos)))
 
     def on_step_cell(step: int) -> None:
         if (values := viewer.step_cell(step)) is not None:
@@ -1685,25 +1674,13 @@ def open_window(
         After the last cell or the last timestep, Play starts again at the first one.
         """
         if not is_evolution(viewer.values):
-            return viewer.step_time(1) or viewer.move_to_end(last=False)
+            return get_next_play_time(viewer)
         # -cell does not select the cells of some plots, e.g. of a plane
         if not viewer.modeldata.cells or not cells_apply(viewer.values):
             return None
         return viewer.step_cell(1) or dc.replace(viewer.values, cells=str(viewer.modeldata.cells[0]))
 
-    def play_step() -> None:
-        if not playbutton.isChecked():
-            return
-        values = get_play_values()
-        # a time range that covers every valid timestep, or a model of one cell, has no other step
-        if values is None or values == viewer.values:
-            playbutton.setChecked(False)
-            return
-        apply(values, undoable=False)
-
-    def on_play(checked: bool) -> None:
-        if checked:
-            play_step()
+    continue_play = connect_play(window, timecontrols, queue, get_play_values)
 
     def on_cell(position: int) -> None:
         if viewer.modeldata.cells:
@@ -1944,10 +1921,10 @@ def open_window(
                 return 1, lambda _index: viewer.get_plot_tokens(values)
             return len(cells), lambda index: viewer.get_plot_tokens(dc.replace(values, cells=str(cells[index])))
         firstpos, lastpos = viewer.get_selection_positions(values)
-        count = lastpos - firstpos + 1
+        width = lastpos - firstpos
         return (
-            len(viewer.modeldata.validtimesteps) - count + 1,
-            lambda index: viewer.get_plot_tokens(viewer.select_timesteps(values, index, count)),
+            len(viewer.modeldata.validtimesteps) - width,
+            lambda index: viewer.get_plot_tokens(viewer.select_positions(values, (index, index + width))),
         )
 
     command = ViewerCommand(
@@ -2008,8 +1985,6 @@ def open_window(
     connect_trange(on_trange)
     tminedit.editingFinished.connect(on_trangeedit)
     tmaxedit.editingFinished.connect(on_trangeedit)
-    playbutton.toggled.connect(on_play)
-    playtimer.timeout.connect(play_step)
     cellslider.valueChanged.connect(on_cell)
     celledit.editingFinished.connect(on_celledit)
     geometrybox.activated.connect(on_geometry)
@@ -2055,9 +2030,8 @@ def open_window(
     connect_time_keys(
         window,
         stepbuttons,
-        on_step_time,
-        lambda step: apply(viewer.step_width(step)),
-        (lambda: apply(viewer.move_to_end(last=False)), lambda: apply(viewer.move_to_end(last=True))),
+        viewer,
+        apply,
         extrakeys=(
             (QtCore.Qt.Key.Key_PageUp, partial(on_step_cell, -1)),
             (QtCore.Qt.Key.Key_PageDown, partial(on_step_cell, 1)),

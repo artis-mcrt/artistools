@@ -784,6 +784,43 @@ def get_nearest_range_start(tmids: "Sequence[float]", centre: float, count: int)
     return min(range(len(tmids) - count + 1), key=get_centre_offset)
 
 
+def get_clamped_range(firstpos: int, width: int, count: int) -> tuple[int, int]:
+    """Return the first and the last position of a range of width positions from firstpos, inside count positions.
+
+    A range that goes past the last position moves back and keeps its width. Thus a wider range at the last timestep
+    takes the timesteps before it.
+    """
+    width = min(max(width, 1), count)
+    firstpos = min(max(firstpos, 0), count - width)
+    return firstpos, firstpos + width - 1
+
+
+def get_stepped_range(positions: tuple[int, int], step: int, count: int) -> tuple[int, int] | None:
+    """Return the range of positions that is step positions later, or None if it goes outside count positions."""
+    firstpos, lastpos = positions
+    if firstpos + step < 0 or lastpos + step >= count:
+        return None
+    return firstpos + step, lastpos + step
+
+
+def get_resized_range(positions: tuple[int, int], step: int, count: int) -> tuple[int, int]:
+    """Return the range of positions with step more positions, e.g. for the Up key and the Down key."""
+    firstpos, lastpos = positions
+    return get_clamped_range(firstpos, lastpos - firstpos + 1 + step, count)
+
+
+def get_end_range(positions: tuple[int, int], count: int, *, last: bool) -> tuple[int, int]:
+    """Return the range of positions with the same width at the first or at the last of count positions."""
+    width = positions[1] - positions[0] + 1
+    return get_clamped_range(count - width if last else 0, width, count)
+
+
+def get_centred_range(positions: tuple[int, int], centre: int, count: int) -> tuple[int, int]:
+    """Return the range of positions with the same width and its middle at a position, e.g. of the time slider."""
+    width = positions[1] - positions[0] + 1
+    return get_clamped_range(centre - (width - 1) // 2, width, count)
+
+
 class PlotValues(t.Protocol):
     """The values of the controls of a viewer: a dataclass with the width and the resolution of the figure."""
 
