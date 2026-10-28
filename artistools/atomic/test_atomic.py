@@ -917,3 +917,98 @@ def test_vacuum_to_air_angstroms_agrees_with_nist() -> None:
     assert np.allclose(
         dfwavelengths["lambda_air_angstroms"], dfwavelengths["nist_lambda_air_angstroms"], rtol=0.0, atol=2e-3
     )
+
+
+def test_get_z_a_nucname() -> None:
+    assert at.get_z_a_nucname("Pb208") == (82, 208)
+    assert at.get_z_a_nucname("X_Pb208") == (82, 208)
+    assert at.get_z_a_nucname("nniso_Pb208") == (82, 208)
+    assert at.get_z_a_nucname("Fe56") == (26, 56)
+    assert at.get_z_a_nucname("Ni56") == (28, 56)
+    assert at.get_z_a_nucname("Co56") == (27, 56)
+    assert at.get_z_a_nucname("H1") == (1, 1)
+
+
+def test_get_atomic_number_and_elsymbol() -> None:
+    assert at.get_atomic_number("Fe") == 26
+    assert at.get_atomic_number("Ni") == 28
+    assert at.get_atomic_number("Co") == 27
+    assert at.get_atomic_number("H") == 1
+    assert at.get_atomic_number("He") == 2
+    assert at.get_atomic_number("X_Fe") == 26
+    assert at.get_atomic_number("UnknownXYZ") == -1
+
+    # the free neutron is "n1", and a title-case lookup gave nitrogen for it
+    assert at.get_atomic_number("X_n1") == 0
+    assert at.get_z_a_nucname("X_n1") == (0, 1)
+    assert at.get_z_a_nucname("n1") == (0, 1)
+    # a symbol is not case sensitive, thus every other "n" is nitrogen
+    assert at.get_atomic_number("n") == 7
+    assert at.get_atomic_number("N") == 7
+    assert at.get_atomic_number("X_N14") == 7
+    assert at.get_z_a_nucname("X_N14") == (7, 14)
+    assert at.get_z_a_nucname("n14") == (7, 14)
+    assert at.get_ion_tuple("nII") == (7, 2)
+
+    # a symbol that the caller gave in the wrong case still resolves
+    assert at.get_atomic_number("fe") == 26
+
+    assert at.get_elsymbol(26) == "Fe"
+    assert at.get_elsymbol(28) == "Ni"
+    assert at.get_elsymbol(1) == "H"
+    assert at.get_elsymbol(2) == "He"
+
+
+def test_decode_roman_numeral() -> None:
+    assert at.decode_roman_numeral("I") == 1
+    assert at.decode_roman_numeral("II") == 2
+    assert at.decode_roman_numeral("III") == 3
+    assert at.decode_roman_numeral("IV") == 4
+    assert at.decode_roman_numeral("V") == 5
+    assert at.decode_roman_numeral("X") == 10
+    assert at.decode_roman_numeral("XX") == 20
+    assert at.decode_roman_numeral("i") == 1  # case-insensitive
+    assert at.decode_roman_numeral("INVALID") == -1
+
+
+def test_get_ionstring() -> None:
+    assert at.get_ionstring(26, 2) == "Fe II"
+    assert at.get_ionstring(26, 1) == "Fe I"
+    assert at.get_ionstring(28, 3) == "Ni III"
+    assert at.get_ionstring(26, 2, sep="") == "FeII"
+    assert at.get_ionstring(26, None) == "Fe"
+    assert at.get_ionstring(26, "ALL") == "Fe"
+    assert at.get_ionstring(26, 2, style="charge") == "Fe+"
+    assert at.get_ionstring(26, 3, style="charge") == "Fe2+"
+    assert at.get_ionstring(26, 1, style="charge") == "Fe0"
+
+
+def test_get_ion_tuple() -> None:
+    assert at.get_ion_tuple("nnelement_I") == 53
+    assert at.get_ion_tuple("nnion_I_II") == (53, 2)
+    assert at.get_ion_tuple("Fe_II") == (26, 2)
+    assert at.get_ion_tuple("Fe II") == (26, 2)
+    assert at.get_ion_tuple("Fe I") == (26, 1)
+    assert at.get_ion_tuple("Ni III") == (28, 3)
+    assert at.get_ion_tuple("Co II") == (27, 2)
+    assert at.get_ion_tuple("Ni") == 28
+    assert at.get_ion_tuple("26") == 26
+
+
+def test_get_ion_tuple_no_separator() -> None:
+    """Two-letter symbols must not be split on their first letter, e.g. 'FeII' is Fe II and not F + 'eII'."""
+    assert at.get_ion_tuple("FeII") == (26, 2)
+    assert at.get_ion_tuple("CoII") == (27, 2)
+    assert at.get_ion_tuple("NiIII") == (28, 3)
+    assert at.get_ion_tuple("HeII") == (2, 2)
+    # single-letter symbols still work, and are not shadowed by a longer symbol that starts the same way
+    assert at.get_ion_tuple("FII") == (9, 2)
+    assert at.get_ion_tuple("CIV") == (6, 4)
+    assert at.get_ion_tuple("OI") == (8, 1)
+
+
+def test_get_ion_tuple_rejects_missing_element() -> None:
+    """A string with a separator but no element symbol must raise rather than return atomic number -1."""
+    for badionstr in (" II", "_II", "notanion", "Fe "):
+        with pytest.raises(ValueError, match="Could not parse ionstr"):
+            at.get_ion_tuple(badionstr)

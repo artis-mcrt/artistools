@@ -4735,3 +4735,19 @@ def test_packet_reason_gives_the_standard_spelling(capsys: pytest.CaptureFixture
     resolve_frompackets(args)
     assert args.frompacketsreason == "--use-sampledemissiontype"
     assert "since --use-sampledemissiontype was specified" in capsys.readouterr().out
+
+
+def test_plotspectra_x_still_gives_the_unit() -> None:
+    """-x named the unit on plotspectra before -xunit, thus a script that holds it still runs.
+
+    -x names the axis variable on plotestimators, but each parser reads its own arguments.
+    """
+    import artistools.spectra.plotspectra
+
+    parser = argparse.ArgumentParser(prog="plotspectra")
+    artistools.spectra.plotspectra.addargs(parser)
+
+    # each spelling gives the canonical name of the unit, thus the plot code reads one name
+    assert parser.parse_args([".", "-x", "nm"]).xunit == "nm"
+    assert parser.parse_args([".", "-xunits", "micron"]).xunit == "micron"
+    assert parser.parse_args([".", "-xunit", "Hz"]).xunit == "hz"

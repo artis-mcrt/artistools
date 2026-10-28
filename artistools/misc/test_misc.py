@@ -7,6 +7,7 @@ tests/data, e.g. testmodel and test-classicmode_3d.
 import argparse
 import contextlib
 import gzip
+import hashlib
 import importlib.metadata
 import io
 import lzma
@@ -37,6 +38,9 @@ from artistools.misc.columns import get_column_description_lines
 from artistools.misc.general import get_bin_index_expr
 from artistools.misc.general import get_weighted_quantile_expr
 from artistools.viewertools.core import run_command_step_with_warning
+
+modelpath = at.get_path("testdata") / "testmodel"
+modelpath_3d = at.get_path("testdata") / "testmodel_3d_10^3"
 
 
 def write_timesteps_out(modeldir: Path) -> None:
@@ -4235,3 +4239,130 @@ def test_progress_on_the_standard_error_is_not_hidden_output() -> None:
         assert not output_is_hidden()
     with contextlib.redirect_stdout(io.StringIO()):
         assert output_is_hidden()
+
+
+def test_timestep_times() -> None:
+    timestartarray = at.get_timestep_times(modelpath, loc="start")
+    timedeltarray = at.get_timestep_times(modelpath, loc="delta")
+    timemidarray = at.get_timestep_times(modelpath, loc="mid")
+    assert len(timestartarray) == 100
+    assert math.isclose(timemidarray[0], 250.421, abs_tol=1e-3)
+    assert math.isclose(timemidarray[-1], 349.412, abs_tol=1e-3)
+
+    assert all(
+        tstart < tmid < (tstart + tdelta)
+        for tstart, tdelta, tmid in zip(timestartarray, timedeltarray, timemidarray, strict=False)
+    )
+
+
+def test_get_inputparams() -> None:
+    inputparams = at.get_inputparams(modelpath)
+    dicthash = hashlib.sha256(str(sorted(inputparams.items())).encode("utf-8")).hexdigest()
+    # nusyn_min and nusyn_max moved by 7.4e-10 in relative terms when the hardcoded MeV_in_Hz became
+    # 1e6 / h_ev_s, which is the same conversion expressed with the Planck constant of constants.py
+    assert dicthash == "477eb9a026a0d526499ab11b53f32ed256d48898479dde9d2109213b988c4456", dicthash
+
+
+def test_opacity_condition_labels_match_artis() -> None:
+    """The codes must match trace_vpkt_direction() in vpkt.cc: -2 bound-free, -3 free-free, -4 electron scattering."""
+    assert not at.misc.get_opacity_condition_label(0)
+    assert at.misc.get_opacity_condition_label(-1) == "no-bb"
+    assert at.misc.get_opacity_condition_label(-2) == "no-bf"
+    assert at.misc.get_opacity_condition_label(-3) == "no-ff"
+    assert at.misc.get_opacity_condition_label(-4) == "no-es"
+    assert at.misc.get_opacity_condition_label(26) == "no-Fe"
+
+
+def test_trim_or_pad() -> None:
+    result = at.misc.trim_or_pad(3, [1, 2, 3, 4], [10, 20])
+    assert list(result[0]) == [1, 2, 3]
+    assert list(result[1]) == [10, 20, None]
+
+    result2 = at.misc.trim_or_pad(2, "single_string")
+    assert list(result2[0]) == ["single_string", None]
+
+
+def test_get_npts_model(tmp_path: Path) -> None:
+    # The 3D test model has 10^3 = 1000 cells
+    assert at.misc.get_npts_model(modelpath_3d) == 1000
+
+    # Single-number format used by 1D models
+    (tmp_path / "model.txt").write_text("20\n")
+    assert at.misc.get_npts_model(tmp_path) == 20
+
+    # Two-number format (Nx Ny): total cells = Nx * Ny
+    two_num_dir = tmp_path / "twonum"
+    two_num_dir.mkdir()
+    (two_num_dir / "model.txt").write_text("10 10\n")
+    assert at.misc.get_npts_model(two_num_dir) == 100
+
+
+def test_get_nprocs(tmp_path: Path) -> None:
+    """The 22nd line that holds a value gives nprocs. ARTIS skips comment and blank lines, and keeps them."""
+    lines = ["# a comment of the user\n", "\n", *(["placeholder\n"] * 21), "4 #nprocs\n"]
+    (tmp_path / "input.txt").write_text("".join(lines))
+    assert at.get_nprocs(tmp_path) == 4
+
+
+def test_get_cellsofmpirank(tmp_path: Path) -> None:
+    def make_model(path: Path, npts: int, nprocs: int) -> None:
+        lines = ["placeholder\n"] * 21 + [f"{nprocs} #nprocs\n"]
+        (path / "input.txt").write_text("".join(lines))
+        (path / "model.txt").write_text(f"{npts}\n")
+
+    for npts, nprocs in ((20, 4), (21, 4), (7, 3)):
+        subdir = tmp_path / f"npts{npts}_nprocs{nprocs}"
+        subdir.mkdir()
+        make_model(subdir, npts=npts, nprocs=nprocs)
+
+        all_cells: list[int] = []
+        cells_per_rank = []
+        for rank in range(nprocs):
+            cells = list(at.misc.get_cellsofmpirank(rank, subdir))
+            cells_per_rank.append(cells)
+            all_cells.extend(cells)
+
+        # Every cell index appears exactly once and all cells are covered
+        assert sorted(all_cells) == list(range(npts))
+
+        # Load balancing: ranks differ by at most 1 cell
+        sizes = [len(c) for c in cells_per_rank]
+        assert max(sizes) - min(sizes) <= 1
+
+        # Cells within each rank are contiguous
+        for cells in cells_per_rank:
+            assert cells == list(range(cells[0], cells[0] + len(cells)))
+
+    # Verify specific assignments for evenly divisible case (npts=20, nprocs=4)
+    even_dir = tmp_path / "even"
+    even_dir.mkdir()
+    make_model(even_dir, npts=20, nprocs=4)
+    assert list(at.misc.get_cellsofmpirank(0, even_dir)) == list(range(5))
+    assert list(at.misc.get_cellsofmpirank(3, even_dir)) == list(range(15, 20))
+
+    # Verify specific assignments for uneven case (npts=21, nprocs=4):
+    # rank 0 gets one extra cell (leftover), ranks 1-3 get the base count
+    uneven_dir = tmp_path / "uneven"
+    uneven_dir.mkdir()
+    make_model(uneven_dir, npts=21, nprocs=4)
+    assert list(at.misc.get_cellsofmpirank(0, uneven_dir)) == list(range(6))
+    assert list(at.misc.get_cellsofmpirank(1, uneven_dir)) == list(range(6, 11))
+
+
+def test_path_is_artis_model_accepts_a_compressed_output_file() -> None:
+    """A compressed ARTIS output file is a model, and not a reference data file."""
+    assert all(at.misc.path_is_artis_model(f"light_curve.out{ext}") for ext in ("", ".zst", ".gz", ".xz"))
+    assert not at.misc.path_is_artis_model("AT2017gfo_smarttetal2017.txt")
+
+
+def test_firstexisting_gives_the_purpose_of_a_missing_file(tmp_path: Path) -> None:
+    """A list of file names alone does not tell a user what the file holds or which command reads it."""
+    with pytest.raises(FileNotFoundError, match=r"linestat\.out gives the wavelength"):
+        at.misc.firstexisting("linestat.out", folder=tmp_path, purpose="linestat.out gives the wavelength")
+
+    # a caller that gives no purpose keeps the plain message
+    with pytest.raises(FileNotFoundError) as noreason:
+        at.misc.firstexisting("linestat.out", folder=tmp_path)
+
+    assert "None of these files exist" in str(noreason.value)
+    assert "gives the wavelength" not in str(noreason.value)

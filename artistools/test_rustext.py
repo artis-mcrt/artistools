@@ -1,5 +1,6 @@
 """Tests of the Rust extension artistools.rustext."""
 
+import math
 import re
 from pathlib import Path
 
@@ -347,3 +348,90 @@ def test_opacity_lines_name_an_ion_with_no_transition_table() -> None:
     adata = adata.with_columns(pl.Series("transitions", [pl.LazyFrame() for _ in range(adata.height)], dtype=pl.Object))
     with pytest.raises(ValueError, match=r"transitiondata\.txt holds no table for Fe_II"):
         at.lines.core.get_opacity_lines(adata, ["nnion_Fe_II"], [3000.0, 4000.0], 10.0)
+
+
+def test_expansion_opacity_keeps_a_weak_line() -> None:
+    """A line of a very small optical depth adds to the expansion opacity of its bin.
+
+    1 - exp(-tau) is exactly zero below tau = 5.6e-17, thus a bin of weak lines had no expansion opacity.
+    """
+    from artistools.rustext import sum_binned_line_opacities
+
+    taus = [1e-18, 1e-6, 0.5]
+    dflevels = pl.DataFrame({"ionindex": [0], "g": [1.0], "energy_ev": [0.0]}, schema_overrides={"ionindex": pl.UInt32})
+    dflines = pl.DataFrame(
+        {
+            "lambda_angstroms_binindex": [0, 1, 2],
+            "lower": [0, 0, 0],
+            "upper": [0, 0, 0],
+            "sobolev_lower": taus,
+            "sobolev_upper": [0.0, 0.0, 0.0],
+            "lambda_angstroms": [1.0, 1.0, 1.0],
+        },
+        schema_overrides={"lambda_angstroms_binindex": pl.UInt32, "lower": pl.UInt32, "upper": pl.UInt32},
+    )
+    dfcells = pl.DataFrame({"T_exc": [5000.0], "nnion_0": [1.0]})
+    exopac = sum_binned_line_opacities(dflevels, dflines, dfcells, ["nnion_0"], [], 3, at.constants.K_B_ev_per_K)[
+        "exopac"
+    ]
+    assert np.allclose(exopac.to_numpy(), -np.expm1(-np.array(taus)), rtol=1e-12, atol=0.0)
+
+
+@pytest.mark.parametrize("edges", [[0.0, 1.0, 2.0, 3.0], [0.0, 0.5, 2.0, 3.0]])
+def test_rust_bin_sums_match_numpy_histogram(edges: list[float]) -> None:
+    """The Rust kernel gives the bins of np.histogram, for uniform and for other edges.
+
+    A bin is [lower, upper), the last bin also holds its upper edge, and a value outside the edges or NaN is in no
+    bin. The uniform edges take a guess that the exact edges correct, thus a value on an inner edge tests it.
+    """
+    from artistools.rustext import sum_weights_in_bins
+
+    values = [-0.1, 0.0, 0.5, 0.9999999, 1.0, 2.0, 2.5, 3.0, 3.0000001, math.nan]
+    df = pl.DataFrame({"x": values, "e": [float(2**index) for index in range(len(values))]})
+    # 3.0000001 is 3.0 in 32 bits, thus each type of value has its own reference
+    for dtype in (pl.Float64, pl.Float32):
+        dftyped = df.with_columns(pl.col("x").cast(dtype))
+        typedvalues = dftyped["x"].to_numpy()
+        isnumber = ~np.isnan(typedvalues)
+        refcounts, _ = np.histogram(typedvalues[isnumber], bins=edges)
+        refsums, _ = np.histogram(typedvalues[isnumber], bins=edges, weights=df["e"].to_numpy()[isnumber])
+        refsquaresums, _ = np.histogram(typedvalues[isnumber], bins=edges, weights=df["e"].to_numpy()[isnumber] ** 2)
+        sums = sum_weights_in_bins(dftyped, "x", "e", edges, sumsquares=True)
+        assert np.allclose(sums["sum"].to_numpy(), refsums, rtol=1e-12, atol=0.0), dtype
+        assert np.allclose(sums["sumsquares"].to_numpy(), refsquaresums, rtol=1e-12, atol=0.0), dtype
+        assert sums["count"].to_list() == refcounts.tolist(), dtype
+
+    # each group has its own bins, in the order [group][bin]
+    rng = np.random.default_rng(seed=1)
+    dfgroups = pl.DataFrame({
+        "x": rng.uniform(-0.5, 3.5, 100_000),
+        "e": rng.uniform(0.0, 1.0, 100_000),
+        "group": rng.integers(0, 3, 100_000, dtype=np.int32),
+    })
+    grouped = sum_weights_in_bins(dfgroups, "x", "e", edges, "group", 3)
+    for group in range(3):
+        dfgroup = dfgroups.filter(pl.col("group") == group)
+        expectedcounts, _ = np.histogram(dfgroup["x"].to_numpy(), bins=edges)
+        expectedsums, _ = np.histogram(dfgroup["x"].to_numpy(), bins=edges, weights=dfgroup["e"].to_numpy())
+        rows = slice(group * (len(edges) - 1), (group + 1) * (len(edges) - 1))
+        assert np.allclose(grouped["sum"].to_numpy()[rows], expectedsums, rtol=1e-12, atol=0.0)
+        assert grouped["count"].to_numpy()[rows].tolist() == expectedcounts.tolist()
+    # pyo3-polars raises its own ComputeError, which is not the class of the polars package
+    with pytest.raises(Exception, match="a group is outside"):
+        sum_weights_in_bins(dfgroups, "x", "e", edges, "group", 2)
+
+
+def test_rust_bin_indices_match_the_bins_of_the_sums() -> None:
+    """get_bin_indices gives the bin of each value with the rules of sum_weights_in_bins, and -1 outside the edges."""
+    from artistools.rustext import get_bin_indices
+    from artistools.rustext import sum_weights_in_bins
+
+    rng = np.random.default_rng(seed=2)
+    edges = [0.0, 0.5, 2.0, 3.0]
+    values = np.concatenate([rng.uniform(-0.5, 3.5, 10_000), edges, [math.nan]])
+    df = pl.DataFrame({"x": values, "e": np.ones(len(values))})
+    bins = get_bin_indices(df, "x", edges)["binindex"].to_numpy()
+    counts = sum_weights_in_bins(df, "x", "e", edges)["count"].to_numpy()
+    assert np.array_equal(np.bincount(bins[bins >= 0], minlength=len(edges) - 1), counts)
+    # each edge starts its bin, the last edge is in the last bin, and NaN is in no bin
+    assert bins[-5:].tolist() == [0, 1, 2, 2, -1]

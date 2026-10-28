@@ -6272,3 +6272,23 @@ def test_dirbin_selects_the_cells_and_a_mass_fraction_takes_the_mass_weight(tmp_
     assert not np.isclose(massmean, volumemean, rtol=1e-2)
     assert np.isclose(rowfe["value_mean"], massmean, rtol=1e-6)
     assert np.isclose(rowte["value_mean"], temean, rtol=1e-6)
+
+
+def test_default_plotitem_keeps_estimator_columns_named_like_elements() -> None:
+    """Te and W are estimator names as well as element symbols, so a real column must win over the element reading."""
+    from artistools.estimators.plotestimators import get_default_plotitem_skip_reason
+
+    estimatorcolumns = ["timestep", "modelgridindex", "Te", "TR", "W", "nne", "rho", "nnelement_Fe"]
+
+    for plotitem in (["Te"], ["W"], ["TR"], ["rho"], ["nne"], [["averageionisation", ["Fe"]]]):
+        assert get_default_plotitem_skip_reason(plotitem, estimatorcolumns) is None, plotitem
+
+    # an element that the model does not contain is still dropped
+    assert get_default_plotitem_skip_reason([["averageionisation", ["Sr"]]], estimatorcolumns) == (
+        "the estimators have no Sr"
+    )
+    assert get_default_plotitem_skip_reason([["populations", ["Sr I", "Sr II"]]], estimatorcolumns) is not None
+
+    # initabundances/initmasses come from the input model file, so they must not be gated on estimator columns
+    assert get_default_plotitem_skip_reason([["initabundances", ["Sr", "Ni_stable"]]], estimatorcolumns) is None
+    assert get_default_plotitem_skip_reason([["initmasses", ["Sr", "Ni_56"]]], estimatorcolumns) is None
