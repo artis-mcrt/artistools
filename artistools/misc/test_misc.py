@@ -3884,6 +3884,21 @@ def test_a_direction_bin_outside_the_bins_gives_a_message() -> None:
         dirbins.get_dirbin_labels([500])
 
 
+def test_dirbin_definitions_refuse_both_averages_for_the_virtual_packet_observers() -> None:
+    """Averages over both angles are an error, also for the virtual packet observers.
+
+    plotlightcurves stopped with this error, but plotspectra read the spectra of the observers and ignored the averages.
+    """
+    with pytest.raises(ValueError, match="both the phi and theta"):
+        dirbins.get_dirbin_definitions(
+            at.get_path("testdata") / "vspecpolmodel",
+            [0],
+            vpkt_observers=True,
+            average_over_phi=True,
+            average_over_theta=True,
+        )
+
+
 def test_dirbins_give_a_message_in_place_of_a_bare_assert() -> None:
     """A direct call with a cut table or a bin that no average holds stopped with an AssertionError and no message."""
     with pytest.raises(ValueError, match="tables have different lengths"):

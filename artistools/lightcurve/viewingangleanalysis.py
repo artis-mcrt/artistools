@@ -19,7 +19,6 @@ from artistools.lightcurve.core import get_band_lightcurve
 from artistools.lightcurve.core import get_filename_part
 from artistools.lightcurve.core import get_phillips_relation_data
 from artistools.lightcurve.core import scan_lightcurve
-from artistools.misc import check_averaging_angles
 from artistools.misc import exit_with_error
 from artistools.misc import folder_holds_match
 from artistools.misc import get_costhetabin_phibin_labels
@@ -62,8 +61,6 @@ def get_band_lightcurve_options(args: argparse.Namespace) -> dict[str, t.Any]:
 def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> tuple[Sequence[int], dict[int, str]]:
     """Return the direction bins selected by args, and a label for each of them."""
     modelpath = Path(modelpath)
-    check_averaging_angles(args.average_over_phi_angle, args.average_over_theta_angle)
-
     viewing_angle_data_exists = args.frompackets or folder_holds_match(modelpath, "*_res.out*")
     dirbins: list[int] = []
     if args.plotvspecpol and path_is_file(modelpath / "vpkt.txt"):
@@ -90,16 +87,6 @@ def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> 
         average_over_theta=args.average_over_theta_angle,
         usedegrees=args.usedegrees,
     )
-
-    if not args.plotvspecpol:
-        if args.average_over_phi_angle:
-            for dirbin in dirbin_definition:
-                assert dirbin % get_viewingdirection_phibincount() == 0 or dirbin == -1
-
-        if args.average_over_theta_angle:
-            # averaging over theta leaves one bin per phi index
-            for dirbin in dirbin_definition:
-                assert dirbin < get_viewingdirection_phibincount() or dirbin == -1
 
     return dirbins, dirbin_definition
 

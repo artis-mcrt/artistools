@@ -2881,6 +2881,15 @@ def read_dirbin_spectra(
     no data drops out. If no requested bin has data, the angle average of bin -1 replaces them. The function returns
     None if the model also has no angle average.
     """
+    dirbin_definitions = get_dirbin_definitions(
+        modelpath,
+        directionbins,
+        vpkt_observers=vpkt_observers,
+        average_over_phi=average_over_phi,
+        average_over_theta=average_over_theta,
+        usedegrees=usedegrees,
+    )
+
     if frompackets:
         viewinganglespectra = scan_spectra_from_packets(
             modelpath,
@@ -2945,22 +2954,6 @@ def read_dirbin_spectra(
                 average_over_phi=average_over_phi,
                 average_over_theta=average_over_theta,
             )
-
-    if not vpkt_observers and (average_over_phi or average_over_theta):
-        # an averaged bin is the first bin of its group, thus a different bin has no label and no packets
-        validbins = get_dirbins(average_over_phi=average_over_phi, average_over_theta=average_over_theta)
-        if invalidbins := [dirbin for dirbin in directionbins if dirbin >= 0 and dirbin not in validbins]:
-            msg = f"Direction bin {invalidbins} is not the first bin of an average group. Valid bins: {validbins}"
-            raise ValueError(msg)
-
-    dirbin_definitions = get_dirbin_definitions(
-        modelpath,
-        directionbins,
-        vpkt_observers=vpkt_observers,
-        average_over_phi=average_over_phi,
-        average_over_theta=average_over_theta,
-        usedegrees=usedegrees,
-    )
 
     missingdirectionbins = [dirbin for dirbin in directionbins if dirbin not in viewinganglespectra]
     founddirectionbins = [dirbin for dirbin in directionbins if dirbin in viewinganglespectra]

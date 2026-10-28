@@ -146,7 +146,12 @@ def get_dirbin_definitions(
     average_over_theta: bool = False,
     usedegrees: bool = False,
 ) -> dict[int, str]:
-    """Return a label for each direction bin, or for each virtual packet observer when vpkt_observers is set."""
+    """Return a label for each direction bin, or for each virtual packet observer when vpkt_observers is set.
+
+    The function raises ValueError for averages over both angles, and for a bin that an average leaves out.
+    """
+    # the check comes before the virtual packet observers, because both averages are also an error for an observer
+    check_averaging_angles(average_over_phi, average_over_theta)
     if vpkt_observers:
         return get_vspec_dir_labels(modelpath=modelpath, usedegrees=usedegrees)
 
