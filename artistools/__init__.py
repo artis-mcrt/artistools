@@ -54,6 +54,7 @@ from artistools import hesma_scripts as hesma_scripts
 from artistools import inputmodel as inputmodel
 from artistools import lightcurve as lightcurve
 from artistools import lines as lines
+from artistools import listtimesteps as listtimesteps
 from artistools import logs as logs
 from artistools import make_vpkt_input as make_vpkt_input
 from artistools import misc as misc
@@ -67,7 +68,6 @@ from artistools import plotviewingangles as plotviewingangles
 from artistools import radfield as radfield
 from artistools import rustext as rustext
 from artistools import spectra as spectra
-from artistools import timesteps as timesteps
 from artistools import writecomparisondata as writecomparisondata
 from artistools.atomic import decode_roman_numeral as decode_roman_numeral
 from artistools.atomic import get_atomic_number as get_atomic_number

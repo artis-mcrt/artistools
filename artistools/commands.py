@@ -675,7 +675,7 @@ subcommandtree: CommandTree = {
         examples=(("--modelpath . -t 300 --modelgridindex 0", "the non-thermal solution for cell 0 at 300 days"),),
     ),
     "timesteps": CommandSpec(
-        "timesteps",
+        "listtimesteps",
         helptext="List the timesteps and their days.",
         note="The table gives the days that each timestep covers.",
         examples=(

@@ -4690,7 +4690,7 @@ def test_timesteps_command_lists_the_days_of_each_timestep(capsys: pytest.Captur
     Before this command, the mapping from a timestep to its days appeared only inside the error message
     for a wrong value.
     """
-    at.timesteps.main(argsraw=["-modelpath", str(modelpath)])
+    at.listtimesteps.main(argsraw=["-modelpath", str(modelpath)])
     table = capsys.readouterr().out
 
     lines = table.splitlines()
@@ -4821,10 +4821,10 @@ def test_open_flag_runs_the_platform_opener(tmp_path: Path) -> None:
 
 def test_timesteps_command_answers_a_reverse_lookup(capsys: pytest.CaptureFixture[str]) -> None:
     """-timedays names the timestep that covers a time, and -timestep gives the days of one timestep."""
-    at.timesteps.main(argsraw=["-modelpath", str(modelpath), "-t", "300"])
+    at.listtimesteps.main(argsraw=["-modelpath", str(modelpath), "-t", "300"])
     assert capsys.readouterr().out.strip() == "300 days falls in timestep 54, which covers 299.812 to 300.823 days"
 
-    at.timesteps.main(argsraw=["-modelpath", str(modelpath), "-ts", "last"])
+    at.listtimesteps.main(argsraw=["-modelpath", str(modelpath), "-ts", "last"])
     assert capsys.readouterr().out.strip() == "Timestep 99 covers 348.824 to 350.000 days"
 
 
@@ -5269,11 +5269,11 @@ def test_timesteps_command_refuses_a_timestep_outside_the_model() -> None:
     """
     for timestep in ("999", "-1"):
         with pytest.raises(ValueError, match=r"is not in this model\. It has 100 timesteps, 0 to 99"):
-            at.timesteps.main(argsraw=["-modelpath", str(modelpath), "-timestep", timestep])
+            at.listtimesteps.main(argsraw=["-modelpath", str(modelpath), "-timestep", timestep])
 
     # the timesteps at each end of the model are in it
     for timestep in ("0", "99", "last"):
-        at.timesteps.main(argsraw=["-modelpath", str(modelpath), "-timestep", timestep])
+        at.listtimesteps.main(argsraw=["-modelpath", str(modelpath), "-timestep", timestep])
 
 
 def test_plotspherical_gif_keeps_the_name_that_o_gives(tmp_path: Path) -> None:
@@ -5565,7 +5565,7 @@ def test_a_missing_optional_package_gives_no_traceback(capsys: pytest.CaptureFix
     def raise_missing(args: argparse.Namespace) -> None:  # ruff:ignore[unused-function-argument]
         at.misc.import_optional("nosuchpackage")
 
-    with mock.patch.object(at.timesteps, "main", raise_missing), pytest.raises(SystemExit) as exitinfo:
+    with mock.patch.object(at.listtimesteps, "main", raise_missing), pytest.raises(SystemExit) as exitinfo:
         artistools.__main__.main(argsraw=["timesteps", "-modelpath", str(modelpath)])
 
     assert exitinfo.value.code == 1
