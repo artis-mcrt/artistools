@@ -48,6 +48,17 @@ from artistools.plottools import set_legend
 from artistools.plottools import set_plot_title
 
 
+def get_band_lightcurve_options(args: argparse.Namespace) -> dict[str, t.Any]:
+    """Return the keyword arguments of generate_band_lightcurve_data that the options of the command give."""
+    return {
+        "vpkt_observers": bool(args.plotvspecpol),
+        "timemin": args.timemin,
+        "timemax": args.timemax,
+        "average_over_phi": args.average_over_phi_angle,
+        "average_over_theta": args.average_over_theta_angle,
+    }
+
+
 def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> tuple[Sequence[int], dict[int, str]]:
     """Return the direction bins selected by args, and a label for each of them."""
     modelpath = Path(modelpath)
@@ -707,8 +718,12 @@ def second_band_brightness_at_peak_first_band(
     """Return the second band's magnitude at the time the first band peaks, for each direction bin."""
     second_band_brightness: list[float] = []
     for anglenumber, _ in enumerate(data[f"time_{bands[0]}max"]):
-        lightcurve_data = generate_band_lightcurve_data(modelpath, args, anglenumber)
-        time, brightness_in_mag = get_band_lightcurve(lightcurve_data, bands[1], args)
+        lightcurve_data = generate_band_lightcurve_data(
+            modelpath, args.filter, dirbin=anglenumber, **get_band_lightcurve_options(args)
+        )
+        time, brightness_in_mag = get_band_lightcurve(
+            lightcurve_data, bands[1], timemin=args.timemin, timemax=args.timemax
+        )
 
         fxfit, xfit = lightcurve_polyfit(time, brightness_in_mag)
 
@@ -806,7 +821,12 @@ def peakmag_risetime_declinerate_init(
             print(f"Reading spectra: {get_model_logname(modelpath)}")
         # the spectra of a direction bin hold every band, thus read each direction bin one time before the band loop
         lightcurve_data_filters_of_dirbin = (
-            {dirbin: generate_band_lightcurve_data(Path(modelpath), args, dirbin) for dirbin in dirbins}
+            {
+                dirbin: generate_band_lightcurve_data(
+                    Path(modelpath), args.filter, dirbin=dirbin, **get_band_lightcurve_options(args)
+                )
+                for dirbin in dirbins
+            }
             if args.filter
             else {}
         )
@@ -815,7 +835,9 @@ def peakmag_risetime_declinerate_init(
         for band_name in plottinglist:
             for dirbin in dirbins:
                 if args.filter:
-                    time, brightness = get_band_lightcurve(lightcurve_data_filters_of_dirbin[dirbin], band_name, args)
+                    time, brightness = get_band_lightcurve(
+                        lightcurve_data_filters_of_dirbin[dirbin], band_name, timemin=args.timemin, timemax=args.timemax
+                    )
                 else:
                     lightcurve_data = dfbolo_of_dirbin[dirbin]
                     brightness = lightcurve_data["mag"].to_numpy()

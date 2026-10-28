@@ -43,6 +43,7 @@ from artistools.lightcurve.core import read_hesma_lightcurve
 from artistools.lightcurve.core import read_reflightcurve_band_data
 from artistools.lightcurve.core import scan_lightcurve
 from artistools.lightcurve.core import scan_lightcurve_from_packets
+from artistools.lightcurve.viewingangleanalysis import get_band_lightcurve_options
 from artistools.lightcurve.viewingangleanalysis import make_peak_colour_viewing_angle_plot
 from artistools.lightcurve.viewingangleanalysis import parse_directionbin_args
 from artistools.lightcurve.viewingangleanalysis import peakmag_risetime_declinerate_init
@@ -1489,11 +1490,15 @@ def make_band_lightcurves_plot(modelpaths: Sequence[str | Path], args: argparse.
             linelabel_is_custom = get_series_label(args.label, modelnumber, modelname) != modelname
             if args.verbose:
                 print(f"Reading spectra: {get_model_logname(modelpath)} (angle {dirbin})")
-            band_lightcurve_data = generate_band_lightcurve_data(modelpath, args, dirbin, filternames=bandnames)
+            band_lightcurve_data = generate_band_lightcurve_data(
+                modelpath, bandnames, dirbin=dirbin, **get_band_lightcurve_options(args)
+            )
 
             for plotnumber, band_name in enumerate(band_lightcurve_data):
                 axis = axes[plotnumber]
-                time, brightness_in_mag = get_band_lightcurve(band_lightcurve_data, band_name, args)
+                time, brightness_in_mag = get_band_lightcurve(
+                    band_lightcurve_data, band_name, timemin=args.timemin, timemax=args.timemax
+                )
                 if filterfunc is not None:
                     brightness_in_mag = filterfunc(brightness_in_mag)
 
@@ -1634,7 +1639,7 @@ def plot_hesma_lightcurve(
     The first column of the file holds the time, and a column with the name of a band holds its magnitudes. The grid
     of panels can hold more panels than bands, e.g. six panels for four bands.
     """
-    hesma_model = read_hesma_lightcurve(args)
+    hesma_model = read_hesma_lightcurve(args.plot_hesma_model)
     timecolumn = hesma_model.columns[0]
     hesma_model = df_filter_minmax_bracketed(
         hesma_model, colname=timecolumn, minval=args.timemin, maxval=args.timemax
@@ -1716,7 +1721,7 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], args: argparse.Names
                 dirbincolor = args.color[modelnumber]
 
             band_lightcurve_data = generate_band_lightcurve_data(
-                Path(modelpath), args, dirbin=dirbin, filternames=bandnames
+                Path(modelpath), bandnames, dirbin=dirbin, **get_band_lightcurve_options(args)
             )
 
             for plotnumber, filters in enumerate(args.colour_evolution):

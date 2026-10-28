@@ -1,6 +1,5 @@
 """Read ARTIS light curves and reference observational light curves, and derive band magnitudes from spectra."""
 
-import argparse
 import io
 import math
 import typing as t
@@ -341,20 +340,6 @@ def scan_lightcurve_from_packets(
     return lcdata
 
 
-def args_from_kwargs(
-    args: argparse.Namespace | None, kwargs: dict[str, t.Any], **defaults: t.Any
-) -> argparse.Namespace:
-    """Return args if it was given, otherwise build a Namespace from kwargs on top of the given defaults."""
-    if args is None:
-        return argparse.Namespace(**(defaults | kwargs))
-
-    if kwargs:
-        msg = "Specify either args or keyword options, not both"
-        raise TypeError(msg)
-
-    return args
-
-
 @on_model_host
 def get_top_nuclides(
     modelpath: Path,
@@ -392,29 +377,23 @@ def get_top_nuclides(
 @on_model_host
 def generate_band_lightcurve_data(
     modelpath: Path,
-    args: argparse.Namespace | None = None,
+    filternames: Sequence[str],
+    *,
     dirbin: int = -1,
-    filternames: Sequence[str] | None = None,
-    **kwargs: t.Any,
-) -> dict[str, t.Any]:
+    vpkt_observers: bool = False,
+    timemin: float | None = None,
+    timemax: float | None = None,
+    average_over_phi: bool = False,
+    average_over_theta: bool = False,
+) -> dict[str, list[tuple[float, float]]]:
     """Integrate the spectra to get the band magnitudes against time.
 
-    The method comes from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py.
+    The method comes from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py. With vpkt_observers, a direction
+    bin names a virtual packet observer of vpkt.txt. The name "bol" gives the bolometric magnitude.
     """
-    args = args_from_kwargs(
-        args,
-        kwargs,
-        plotvspecpol=False,
-        plotviewingangle=False,
-        filter=None,
-        timemin=None,
-        timemax=None,
-        average_over_phi_angle=False,
-        average_over_theta_angle=False,
-    )
     # scan_spectrum_at_time reads the angle average of bin -1 from spec.out, thus its times come from there too.
     # A model with virtual packets can have no specpol.out
-    isvpktobserver = bool(args.plotvspecpol) and dirbin >= 0 and Path(modelpath, "vpkt.txt").is_file()
+    isvpktobserver = vpkt_observers and dirbin >= 0 and Path(modelpath, "vpkt.txt").is_file()
     if isvpktobserver:
         print("Found vpkt.txt, using virtual packets")
         vspecdata = scan_vspecpol_data(vspecindex=dirbin, modelpath=modelpath)["I"]
@@ -422,11 +401,11 @@ def generate_band_lightcurve_data(
     else:
         specfilename = (
             firstexisting_or_none(["specpol_res.out", "spec_res.out"], folder=modelpath, tryzipped=True)
-            if args.plotviewingangle
+            if dirbin >= 0
             else None
         )
         if specfilename is None:
-            if args.plotviewingangle:
+            if dirbin >= 0:
                 print_warning("No direction-resolved spectra available. Using angle-averaged spectra.")
             specfilename = firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True)
 
@@ -434,20 +413,10 @@ def generate_band_lightcurve_data(
             # pol and res files repeat the time columns for the Stokes Q and U blocks, so keep the first of each
             timearray = list(dict.fromkeys(fspec.readline().split()[1:]))
 
-    if filternames is None:
-        # the colour evolution plot integrates the bands of every filter pair at once, so it names them here
-        # rather than by assigning args.filter, which also selects the subplot layout and the plot type
-        if not args.filter:
-            args.filter = ["B"]
-        filternames = args.filter
-
-    # the caller gives the names, or args.filter holds them. Either way they are names from here on
-    bandnames: list[str] = list(filternames or [])
-
     selectedtimes = [
         (timestep, time)
         for timestep, time in enumerate(float(time) for time in timearray)
-        if (args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time)
+        if (timemin is None or timemin <= time) and (timemax is None or timemax >= time)
     ]
 
     # one collect_all call evaluates the spectra of all the times together, and every band reads them
@@ -456,10 +425,10 @@ def generate_band_lightcurve_data(
             Path(modelpath),
             timestep=timestep,
             time=time,
-            args=args,
             dirbin=dirbin,
-            average_over_phi=args.average_over_phi_angle,
-            average_over_theta=args.average_over_theta_angle,
+            vpkt_observers=vpkt_observers,
+            average_over_phi=average_over_phi,
+            average_over_theta=average_over_theta,
         )
         for timestep, time in selectedtimes
     ])
@@ -476,7 +445,7 @@ def generate_band_lightcurve_data(
         if spectrumwavelengths is not None and spectrumwavelengths.size
         else None
     )
-    for filter_name in bandnames:
+    for filter_name in filternames:
         if filter_name == "bol":
             if isvpktobserver and spectrumrange is not None:
                 print_warning(
@@ -627,27 +596,23 @@ def bracket_spectrum_to_band(
 
 
 def get_band_lightcurve(
-    band_lightcurve_data: dict[str, Sequence[tuple[float, float]]],
+    band_lightcurve_data: Mapping[str, Sequence[tuple[float, float]]],
     band_name: str,
-    args: argparse.Namespace | None = None,
-    **kwargs: t.Any,
+    *,
+    timemin: float | None = None,
+    timemax: float | None = None,
 ) -> tuple[Sequence[float], npt.NDArray[np.floating]]:
-    """Return the times and magnitudes of one band's light curve, restricted to the args.timemin/timemax range.
+    """Return the times and magnitudes of one band's light curve, restricted to the range timemin to timemax.
 
     A time with no flux in the band has no magnitude, thus it gives no point. get_band_gap_times gives these times.
     """
-    args = args_from_kwargs(args, kwargs)
-
     selected = [
         (time, brightness)
         for time, brightness in band_lightcurve_data[band_name]
-        if math.isfinite(brightness)
-        and ((args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time))
+        if math.isfinite(brightness) and (timemin is None or timemin <= time) and (timemax is None or timemax >= time)
     ]
     if not selected:
-        msg = (
-            f"The {band_name} band has no light curve points between timemin {args.timemin} and timemax {args.timemax}"
-        )
+        msg = f"The {band_name} band has no light curve points between timemin {timemin} and timemax {timemax}"
         raise ValueError(msg)
 
     times, brightness_in_mag = zip(*selected, strict=True)
@@ -655,7 +620,9 @@ def get_band_lightcurve(
     return times, np.array(brightness_in_mag)
 
 
-def get_band_gap_times(band_lightcurve_data: dict[str, Sequence[tuple[float, float]]], band_name: str) -> list[float]:
+def get_band_gap_times(
+    band_lightcurve_data: Mapping[str, Sequence[tuple[float, float]]], band_name: str
+) -> list[float]:
     """Return the times at which a band has no flux and no magnitude, e.g. for a test of an interpolation."""
     return [time for time, brightness in band_lightcurve_data[band_name] if not math.isfinite(brightness)]
 
@@ -681,11 +648,9 @@ def read_hesma_lightcurve_file(hesma_modelpath: Path | str) -> pl.DataFrame:
     return read_wsv(hesma_modelpath, comment_prefix="#", header_from_comment=True)
 
 
-def read_hesma_lightcurve(args: argparse.Namespace) -> pl.DataFrame:
-    """Return the HESMA model light curve of --plot-hesma-model, from its path or from the data/hesma folder."""
-    return read_hesma_lightcurve_file(
-        require_reference_data_file(args.plot_hesma_model, "data/hesma", "HESMA model light curve")
-    )
+def read_hesma_lightcurve(hesmamodel: str) -> pl.DataFrame:
+    """Return the HESMA model light curve of a path or of a file name in the data/hesma folder."""
+    return read_hesma_lightcurve_file(require_reference_data_file(hesmamodel, "data/hesma", "HESMA model light curve"))
 
 
 def luminosity_distance(H0: float, Om0: float, z: float) -> float:

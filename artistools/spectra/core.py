@@ -1,6 +1,5 @@
 """Artistools - spectra related functions."""
 
-import argparse
 import io
 import itertools
 import math
@@ -406,15 +405,19 @@ def scan_spectrum_at_time(
     modelpath: Path,
     timestep: int,
     time: float,
-    args: argparse.Namespace | None,
+    *,
     dirbin: int = -1,
+    vpkt_observers: bool = False,
     average_over_phi: bool | None = None,
     average_over_theta: bool | None = None,
 ) -> pl.LazyFrame:
-    """Return the spectrum of one direction bin at a single timestep."""
+    """Return the spectrum of one direction bin at a single timestep.
+
+    With vpkt_observers, a direction bin names a virtual packet observer of vpkt.txt.
+    """
     if dirbin >= 0:
-        if args is not None and args.plotvspecpol and (modelpath / "vpkt.txt").is_file():
-            return scan_vspecpol_spectrum(modelpath, time, dirbin, args)
+        if vpkt_observers and (modelpath / "vpkt.txt").is_file():
+            return scan_vspecpol_spectrum(modelpath, time, dirbin)
         assert average_over_phi is not None
         assert average_over_theta is not None
     else:
@@ -1114,7 +1117,8 @@ def scan_vspecpol_spectrum(
     modelpath: Path | str,
     timeavg: float,
     angle: int,
-    args: argparse.Namespace,
+    *,
+    stokesparam: str = "I",
     fluxfilterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     timemin: float | None = None,
     timemax: float | None = None,
@@ -1125,10 +1129,7 @@ def scan_vspecpol_spectrum(
     caller that needs the spectrum at one time must leave them out. One point of a light curve is
     such a case.
     """
-    stokes_params = scan_vspecpol_data(vspecindex=angle, modelpath=Path(modelpath))
-    if "stokesparam" not in args:
-        args.stokesparam = "I"
-    vspecdata = stokes_params[args.stokesparam]
+    vspecdata = scan_vspecpol_data(vspecindex=angle, modelpath=Path(modelpath))[stokesparam]
 
     arr_tmid = [float(i) for i in vspecdata.collect_schema().names()[1:]]
     arr_tdelta = [l1 - l2 for l1, l2 in zip(arr_tmid[1:], arr_tmid[:-1], strict=False)] + [arr_tmid[-1] - arr_tmid[-2]]

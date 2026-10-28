@@ -947,7 +947,13 @@ def plot_artis_spectrum(
             # read virtual packet files (after running plotartisspectrum --makevspecpol)
             viewinganglespectra = {
                 dirbin: scan_vspecpol_spectrum(
-                    modelpath, timeavg, dirbin, args, fluxfilterfunc=filterfunc, timemin=timemin, timemax=timemax
+                    modelpath,
+                    timeavg,
+                    dirbin,
+                    stokesparam=args.stokesparam,
+                    fluxfilterfunc=filterfunc,
+                    timemin=timemin,
+                    timemax=timemax,
                 )
                 for dirbin in directionbins
                 if dirbin >= 0

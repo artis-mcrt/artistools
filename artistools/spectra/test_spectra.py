@@ -2955,14 +2955,13 @@ def test_get_spectra_reads_specpol_out_of_a_model_without_spec_out() -> None:
 def test_vspecpol_spectrum_refuses_a_time_outside_the_time_bins() -> None:
     """The nearest time bin gave the spectrum of the first or the last bin, and the label gave the requested time."""
     vspecpolmodel = at.get_path("testdata") / "vspecpolmodel"
-    args = argparse.Namespace(stokesparam="I")
     # the first time bin of vspecpol_total-0.out has its middle at 1.06 days
     with pytest.raises(ValueError, match=r"thus no bin holds 0\.30 days"):
-        atspectra.scan_vspecpol_spectrum(vspecpolmodel, 0.3, 0, args)
+        atspectra.scan_vspecpol_spectrum(vspecpolmodel, 0.3, 0)
     with pytest.raises(ValueError, match="no bin holds"):
-        atspectra.scan_vspecpol_spectrum(vspecpolmodel, 50.0, 0, args, timemin=40.0, timemax=60.0)
+        atspectra.scan_vspecpol_spectrum(vspecpolmodel, 50.0, 0, timemin=40.0, timemax=60.0)
 
-    dfspectrum = atspectra.scan_vspecpol_spectrum(vspecpolmodel, 11.5, 0, args).collect()
+    dfspectrum = atspectra.scan_vspecpol_spectrum(vspecpolmodel, 11.5, 0).collect()
     assert dfspectrum["f_nu"].sum() > 0.0
 
 

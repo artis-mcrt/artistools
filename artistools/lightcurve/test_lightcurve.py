@@ -257,14 +257,7 @@ def test_spectrum_filter_range_includes_bracketing_points() -> None:
 
 def test_band_magnitude_calculations() -> None:
     band_magnitude_data = at.lightcurve.generate_band_lightcurve_data(
-        modelpath,
-        plotvspecpol=False,
-        plotviewingangle=False,
-        filter=["bol", "U", "B", "V", "I"],
-        timemin=290.0,
-        timemax=300.0,
-        average_over_phi_angle=False,
-        average_over_theta_angle=False,
+        modelpath, ["bol", "U", "B", "V", "I"], timemin=290.0, timemax=300.0
     )
 
     expected_summary = {
@@ -294,14 +287,7 @@ def test_band_magnitude_calculations() -> None:
 
 def test_band_magnitude_selection_and_colour() -> None:
     band_magnitude_data = at.lightcurve.generate_band_lightcurve_data(
-        modelpath,
-        plotvspecpol=False,
-        plotviewingangle=False,
-        filter=["B", "V"],
-        timemin=290.0,
-        timemax=300.0,
-        average_over_phi_angle=False,
-        average_over_theta_angle=False,
+        modelpath, ["B", "V"], timemin=290.0, timemax=300.0
     )
 
     times, b_magnitudes = at.lightcurve.get_band_lightcurve(band_magnitude_data, "B", timemin=293.0, timemax=296.0)
@@ -621,7 +607,7 @@ def test_colour_evolution_subplots(mockplot: mock.MagicMock, tmp_path: Path) -> 
     assert (tmp_path / "plotcolorevolutionU-B_B-V.pdf").is_file()
     assert len(mockplot.call_args_list) == 2
     assert mockplot.call_args_list[0].args[0] is not mockplot.call_args_list[1].args[0]
-    bandmags = at.lightcurve.generate_band_lightcurve_data(modelpath, filter=["U", "B", "V"])
+    bandmags = at.lightcurve.generate_band_lightcurve_data(modelpath, ["U", "B", "V"])
     for callargs, bands in zip(mockplot.call_args_list, (["U", "B"], ["B", "V"]), strict=True):
         _, expectedcolours = at.lightcurve.get_colour_delta_mag(bandmags, bands)
         assert np.allclose(callargs.args[2], expectedcolours)
@@ -2700,9 +2686,7 @@ def test_band_lightcurve_of_the_angle_average_with_virtual_packets() -> None:
     """
     from artistools.lightcurve.core import generate_band_lightcurve_data
 
-    bandmags = generate_band_lightcurve_data(
-        at.get_path("testdata") / "vpktcontrib", dirbin=-1, plotvspecpol=[0], filter=["B"]
-    )
+    bandmags = generate_band_lightcurve_data(at.get_path("testdata") / "vpktcontrib", ["B"], vpkt_observers=True)
     assert bandmags["B"]
 
 
@@ -3459,7 +3443,7 @@ def test_band_outside_a_virtual_packet_spectrum_gives_a_warning(capsys: pytest.C
     from artistools.lightcurve.core import generate_band_lightcurve_data
 
     vspecpolmodel = at.get_path("testdata") / "vspecpolmodel"
-    bandmags = generate_band_lightcurve_data(vspecpolmodel, dirbin=0, plotvspecpol=[0], filter=["bol", "uvw1"])
+    bandmags = generate_band_lightcurve_data(vspecpolmodel, ["bol", "uvw1"], dirbin=0, vpkt_observers=True)
     assert bandmags["bol"]
     stderr = capsys.readouterr().err
     assert "The bol band of a virtual packet observer integrates only the range of its spectrum" in stderr
@@ -3473,7 +3457,7 @@ def test_band_light_curve_of_a_model_with_only_specpol_out() -> None:
     """
     from artistools.lightcurve.core import generate_band_lightcurve_data
 
-    bandmags = generate_band_lightcurve_data(at.get_path("testdata") / "vspecpolmodel", filter=["B"])
+    bandmags = generate_band_lightcurve_data(at.get_path("testdata") / "vspecpolmodel", ["B"])
     assert bandmags["B"]
 
 
