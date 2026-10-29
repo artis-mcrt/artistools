@@ -809,3 +809,21 @@ def test_nltepops_timestep_range_with_a_timestep_of_no_rows(tmp_path: Path, caps
     at.nltepops.plot(argsraw=[], modelpath=modelpath, outputfile=tmp_path, timestep="40-41")
     assert "No NLTE population data for Z=26 at timestep 41" in capsys.readouterr().out
     assert [path.name.split("_")[3] for path in tmp_path.glob("*.pdf")] == ["ts040"]
+
+
+def test_nltepops_output_template_names_a_field_that_the_command_does_not_give(tmp_path: Path) -> None:
+    """A field of -o that plotnltepops does not give gets a clear error, as in the other commands.
+
+    The plot against the velocity or the time filled the template with str.format, thus the command stopped with the
+    traceback of a KeyError.
+    """
+    with pytest.raises(ValueError, match=r"holds the field 'foo'"):
+        at.nltepops.plot(
+            argsraw=[],
+            modelpath=modelpath,
+            outputfile=tmp_path / "nlte_{foo}.pdf",
+            x="velocity",
+            ion_stages=[2],
+            levels=[0],
+            timestep=40,
+        )

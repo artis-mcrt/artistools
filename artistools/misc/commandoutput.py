@@ -312,15 +312,15 @@ def get_template_fields(template: Path | str) -> list[str]:
 OLDTEMPLATEFIELDS: t.Final[Mapping[str, str]] = MappingProxyType({"modelgridindex": "cell", "time_days": "timedays"})
 
 
-def format_frame_path(frametemplate: Path | str, **fields: t.Any) -> str:
+def format_frame_path(frametemplate: Path | str, *positionalfields: t.Any, **fields: t.Any) -> str:
     """Return the path of one frame, and name the fields of the command for a template that holds another.
 
     A user writes the template, thus a field that the command does not give is a mistake of the
-    arguments and not a fault of artistools.
+    arguments and not a fault of artistools. positionalfields fill a field with no name, e.g. "{}" or "{0}".
     """
     fieldsandoldnames = fields | {old: fields[new] for old, new in OLDTEMPLATEFIELDS.items() if new in fields}
     try:
-        return str(frametemplate).format(**fieldsandoldnames)
+        return str(frametemplate).format(*positionalfields, **fieldsandoldnames)
     except KeyError as exc:
         given = ", ".join(f"{{{name}}}" for name in fields)
         msg = f"The name of the output holds the field {exc}, and this command gives {given}"

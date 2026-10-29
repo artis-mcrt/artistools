@@ -708,7 +708,7 @@ def make_plot_populations_with_time_or_velocity(
 
     set_axis_properties(ax, args)
 
-    outputfilename = str(args.outputfile).format(elsymbol=get_elsymbol(atomic_number))
+    outputfilename = format_frame_path(args.outputfile, elsymbol=get_elsymbol(atomic_number))
     xcolumn = "time_days" if args.x == "time" else "vel_r_mid_kmps"
     if seriestables := [dfseries for _, axistables in tablesofaxis for dfseries in axistables]:
         output_data(

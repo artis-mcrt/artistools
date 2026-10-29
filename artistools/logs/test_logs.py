@@ -400,3 +400,15 @@ def test_logfiles_with_no_timing_data_replace_the_table_of_an_earlier_run(tmp_pa
     args = argparse.Namespace(print_data=False, write_data=True)
     at.logs.plotlogfiles.make_plot({}, tmp_path / "logfiles.pdf", args=args)
     assert "the table has no rows" in tablefile.read_text(encoding="utf-8")
+
+
+def test_plotlogfiles_output_template_names_a_field_that_the_command_does_not_give(tmp_path: Path) -> None:
+    """A field of -o that plotlogfiles does not give gets a clear error, and the field {} still takes the model name.
+
+    The command filled the template with str.format, thus it stopped with the traceback of a KeyError.
+    """
+    with pytest.raises(ValueError, match=r"holds the field 'foo'"):
+        at.logs.plotlogfiles.main(argsraw=[], modelpath=[modelpath_classic_3d], outputfile=tmp_path / "logs_{foo}.pdf")
+    assert at.misc.format_frame_path(tmp_path / "logs_{}.pdf", "mymodel", modelname="mymodel").endswith(
+        "logs_mymodel.pdf"
+    )

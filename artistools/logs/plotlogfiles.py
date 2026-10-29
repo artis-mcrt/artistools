@@ -17,6 +17,7 @@ from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_show
 from artistools.misc import exit_with_error
+from artistools.misc import format_frame_path
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import normalize_path_list
@@ -142,7 +143,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         make_plot(
             logfiledict,
             # {0} is the field of the earlier default name
-            outputfile=str(outputfile).format(modelname, modelname=modelname),
+            outputfile=format_frame_path(outputfile, modelname, modelname=modelname),
             modelname=modelname,
             modellogname=get_model_logname(modelpath),
             args=args,
