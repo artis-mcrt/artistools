@@ -1721,6 +1721,31 @@ def test_empty_label_keeps_the_name_of_a_reference_spectrum_in_the_tables(
     assert read_data_file(tmp_path / "emptylabel_residuals.txt")["reference"].item() == "fake observation"
 
 
+def test_emission_plot_leaves_a_reference_spectrum_with_an_empty_label_out_of_the_legend(
+    tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
+    """An empty -label gives a reference spectrum no entry in the legend of the emission plot either.
+
+    The emission plot gave the legend its labels as they were, thus the empty label gave an entry with no text. Its
+    table of the reference spectra also had no file and the series name _child15.
+    """
+    refspec = "2003du_20031213_3219_8822_00.txt"
+    with mock.patch.object(plotspectra, "set_legend", side_effect=plotspectra.set_legend) as mocklegend:
+        at.spectra.plot(
+            argsraw=["-label", "default", "", "--use-thermalemissiontype"],
+            specpath=[modelpath, refspec],
+            timedays=300,
+            showemission=True,
+            write_data=True,
+            outputfile=tmp_path / "emission.pdf",
+        )
+
+    assert "" not in mocklegend.call_args.kwargs["labels"]
+    dfreferences = read_data_file(tmp_path / "emission_references.txt")
+    assert dfreferences["specpath"].unique().to_list() == [refspec]
+    assert not dfreferences["series"].str.starts_with("_").any()
+
+
 @mock.patch.object(mplax.Axes, "set_yscale", side_effect=mplax.Axes.set_yscale, autospec=True)
 def test_plotspectra_takes_the_yscale_argument(mockyscale: mock.MagicMock) -> None:
     """The command took --logscaley alone, thus -yscale worked on the light curves and not here."""

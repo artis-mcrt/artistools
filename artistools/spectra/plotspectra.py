@@ -1469,12 +1469,12 @@ def plot_reference_spectra(
 ) -> tuple[list[Artist], list[str], float, pl.DataFrame]:
     """Draw each reference spectrum of --specpath, and return the artists, the labels, the maximum, and the points.
 
-    The points have the form of get_drawn_lines_table. summaryrows takes the fields of the summary line of each
-    reference spectrum.
+    The artists and the labels are the entries of the legend, thus a spectrum with an empty -label has none. The points
+    have the form of get_drawn_lines_table. summaryrows takes the fields of the summary line of each reference spectrum.
     """
     plotobjects: list[Artist] = []
-    reflines: list[Line2D] = []
     plotobjectlabels: list[str] = []
+    dfreferences: list[pl.DataFrame] = []
     ymaxrefall = 0.0
 
     for index, filepath in enumerate(args.specpath):
@@ -1496,11 +1496,18 @@ def plot_reference_spectra(
         )
         ymaxrefall = max(ymaxrefall, ymaxref)
 
-        plotobjects.append(plotobj)
-        reflines.append(plotobj)
-        plotobjectlabels.append(serieslabel)
+        # the legend takes the labels as they are, and matplotlib then shows an empty label as an entry with no text
+        if serieslabel:
+            plotobjects.append(plotobj)
+            plotobjectlabels.append(serieslabel)
+        dfreferences.append(get_drawn_lines_table([plotobj], args, specpath=str(filepath)))
 
-    return plotobjects, plotobjectlabels, ymaxrefall, get_drawn_lines_table(reflines, args)
+    return (
+        plotobjects,
+        plotobjectlabels,
+        ymaxrefall,
+        pl.concat(dfreferences, how="diagonal") if dfreferences else pl.DataFrame(),
+    )
 
 
 def get_drawn_lines_table(
