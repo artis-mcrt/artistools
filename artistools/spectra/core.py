@@ -1019,14 +1019,13 @@ def scan_specpol_data(dirbin: int = -1, modelpath: Path | None = None) -> dict[s
 # maxsize is small because this reads eagerly and every cached entry retains a whole vspecpol_total file.
 # Callers collect the frames once per timestep, so a cache miss on each call would parse the file again.
 @clear_at_reload("output")
-@lru_cache(maxsize=2)
+@modelpath_cache(maxsize=2)
 @on_model_host
-def get_vspecpol_data_cached(vspecindex: int, modelpath: Path) -> dict[str, pl.LazyFrame]:
+def scan_vspecpol_data(modelpath: Path, vspecindex: int) -> dict[str, pl.LazyFrame]:
     """Return the I, Q, and U virtual packet spectra of one observer, summing the per-rank files if needed.
 
-    Callers must not mutate the returned dict, which is shared between calls.
+    Every caller shares the returned dict, thus do not change it.
     """
-    assert modelpath is not None
     # alternatively use f'vspecpol_averaged-{angle}.out' ?
 
     try:
@@ -1040,15 +1039,6 @@ def get_vspecpol_data_cached(vspecindex: int, modelpath: Path) -> dict[str, pl.L
     specdata = pl.read_csv(polars_source(specfilename), separator=" ", has_header=True)
 
     return split_dataframe_stokesparams(specdata)
-
-
-def scan_vspecpol_data(vspecindex: int, modelpath: Path | str) -> dict[str, pl.LazyFrame]:
-    """Return the I, Q, and U virtual packet spectra of one observer, summing the per-rank files if needed.
-
-    The cache takes the absolute path, thus a change of the working folder gives the new model. Every caller
-    shares the returned dict, thus do not change it.
-    """
-    return get_vspecpol_data_cached(vspecindex, resolve_modelpath(modelpath))
 
 
 def split_dataframe_stokesparams(specdata: pl.DataFrame | pl.LazyFrame) -> dict[str, pl.LazyFrame]:
