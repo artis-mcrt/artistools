@@ -925,7 +925,8 @@ def make_series_rows(reference: ReferenceData, paths: "Sequence[str]", rows: Opt
     """Return a row of the list for each series, with the style of the series in the option rows."""
     import matplotlib.colors as mplcolors
 
-    models = [path for path in paths if is_model_path(path)]
+    # a command can give one model two times, and the copies of it are still one model
+    models = list(dict.fromkeys(path for path in paths if is_model_path(path)))
     colours = get_series_colours(reference, paths, rows)
     seriesrows: list[SeriesRow] = []
     for path in paths:
