@@ -3699,6 +3699,21 @@ def test_a_cached_reader_takes_the_model_path_by_keyword(tmp_path: Path, monkeyp
     assert getcompositiondata(filename=tmp_path)["Z"].to_list() == [26]
 
 
+def test_a_cached_reader_shares_one_entry_for_each_form_of_a_call() -> None:
+    """A call by position, a call by keyword, and a call with the default of an argument share one cache entry.
+
+    The cache took the arguments in the form of the call, thus a keyword or a default gave a new entry. Then
+    writebollightcurvedata --fromspectra read spec_res.out two times.
+    """
+    modelpath = at.get_path("testdata") / "testmodel"
+    at.get_timestep_times.cache_clear()
+    times = at.get_timestep_times(modelpath)
+    assert at.get_timestep_times(modelpath, "mid") is times
+    assert at.get_timestep_times(modelpath, loc="mid") is times
+    assert at.get_timestep_times(modelpath=modelpath, loc="mid") is times
+    assert at.get_timestep_times.cache_info().misses == 1
+
+
 def test_a_cached_reader_goes_through_pickle_and_to_the_server(tmp_path: Path) -> None:
     """The pickle of a reader of modelpath_cache holds its name, and the server calls the reader below the cache."""
     import pickle  # ruff:ignore[suspicious-pickle-import]

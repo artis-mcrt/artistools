@@ -202,7 +202,8 @@ class ModelpathCache[**P, R]:
         self.cache_clear = cached.cache_clear
         self.cache_info = cached.cache_info
         self.name = str(getattr(function, "__qualname__", function))
-        self.pathkeywords = {"modelpath", next(iter(inspect.signature(function).parameters))}
+        self.signature = inspect.signature(function)
+        self.pathkeywords = {"modelpath", next(iter(self.signature.parameters))}
         # the server of a remote model follows __wrapped__ to the reader below the cache
         functools.update_wrapper(self, cached)
 
@@ -218,16 +219,16 @@ class ModelpathCache[**P, R]:
         def __call__(self, *args: t.Any, **kwargs: t.Any) -> t.Any:
             """Return the result of the reader for the absolute path of the model.
 
-            A path that a keyword gives goes to the first position, thus a call by keyword and a call by position
-            share one cache entry.
+            A path that a keyword gives goes to the first position. Each other argument takes its position in the
+            signature, and a missing argument takes its default. Thus each form of a call shares one cache entry.
             """
             if not args and (pathkeyword := next((key for key in self.pathkeywords if key in kwargs), None)):
                 args = (kwargs.pop(pathkeyword),)
-            if not args:
-                # the reader raises the TypeError of the missing argument
-                return self.callcached(**kwargs)
-
-            return self.callcached(resolve_modelpath(args[0]), *args[1:], **kwargs)
+            # bind raises the TypeError of a missing argument
+            boundargs = self.signature.bind(*args, **kwargs)
+            boundargs.apply_defaults()
+            modelpath, *otherargs = boundargs.args
+            return self.callcached(resolve_modelpath(modelpath), *otherargs, **boundargs.kwargs)
 
     @t.override
     def __reduce__(self) -> str:
