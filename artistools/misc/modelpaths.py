@@ -253,9 +253,10 @@ RELOAD_GROUP_ATTRIBUTE: t.Final = "reloadgroup"
 def clear_at_reload[CacheT](group: t.Literal["output", "estimators"]) -> Callable[[CacheT], CacheT]:
     """Return a decorator that marks the cache of a reader of a file that ARTIS writes while it runs, e.g. spec.out.
 
-    Reload Data clears each cache with the mark of its groups, see clear_reload_caches. The estimators viewer clears
-    only the group "estimators", thus the caches of the other viewers stay. Put the decorator above the cache, e.g.
-    above lru_cache. The files of the input of a model stay the same, e.g. model.txt, thus their caches get no mark.
+    Reload Data clears each cache with the mark of one of its groups. For the method, see clear_reload_caches. The
+    estimators viewer clears only the group "estimators", thus the other viewers keep their caches. Put the decorator
+    above the cache, e.g. above lru_cache. The files of the input of a model stay the same, e.g. model.txt, thus their
+    caches get no mark.
     """
 
     def mark(cachedreader: CacheT) -> CacheT:

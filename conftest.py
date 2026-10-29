@@ -97,7 +97,10 @@ def read_data_file() -> "Callable[[Path | io.StringIO], pl.DataFrame]":
 
 @pytest.fixture
 def copy_model_inputs() -> "Callable[[Path, Path, Sequence[str]], None]":
-    """Return a function that copies the input files of a model to a folder, and each extra file, e.g. spec.out."""
+    """Return a function that copies the input files and the extra files of a model folder to a folder.
+
+    The caller gives the model folder, the folder of the copies, and the names of the extra files, e.g. spec.out.
+    """
     import shutil
 
     def copy_model_inputs(source: Path, folder: Path, extranames: "Sequence[str]") -> None:
@@ -204,9 +207,9 @@ def get_plotestimators_figure() -> "Callable[[Sequence[str], Path], mplfig.Figur
 
 @pytest.fixture
 def make_viewer() -> "Callable[[str, list[str]], t.Any]":
-    """Return a function that gives the viewer of a command, e.g. of "spectra", with a canvas and no window.
+    """Return a function that gives the viewer of a package, e.g. "spectra", with a canvas and no window.
 
-    The viewer has drawn its first plot.
+    The function draws the first plot of the viewer before it returns the viewer.
     """
     import importlib
 

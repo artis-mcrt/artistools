@@ -1266,7 +1266,7 @@ def make_spectrum_plot(
                 dfothers.append(get_drawn_lines_table(filterlines, args, ycolumn="transmission"))
                 tableneedsfilters = False
 
-        # a flux of stokes I is not negative, and the y margin puts the bottom below zero. draw_plot applies -ymin
+        # a flux of Stokes I is not negative, and the y margin puts the bottom below zero. draw_plot applies -ymin
         # and -ymax after this function returns, and -ymax alone keeps this bottom
         if args.stokesparam == "I" and not args.logscaley and args.ymin is None:
             axis.set_ylim(bottom=0.0)

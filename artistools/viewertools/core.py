@@ -787,10 +787,10 @@ def get_nearest_range_start(tmids: "Sequence[float]", centre: float, count: int)
 
 
 def get_nearest_range(tmids: "Sequence[float]", centre: float, count: int) -> tuple[int, int]:
-    """Return the first and the last position of the range of count timesteps with its centre nearest to the time.
+    """Return the first and the last position of the range of count timesteps with its centre nearest to centre.
 
-    tmids holds the middle time of each valid timestep. A count outside 1 to the number of timesteps takes the nearest
-    count in that range.
+    tmids holds the middle time of each valid timestep. The function changes a count below 1 to 1, and a count above
+    the number of valid timesteps to that number.
     """
     count = min(max(count, 1), len(tmids))
     start = get_nearest_range_start(tmids, centre, count)

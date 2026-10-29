@@ -416,9 +416,10 @@ def get_subplot_names(subplot: Sequence[str]) -> list[str]:
 def get_seriestype_of_names(names: Sequence[t.Any], estimatorcolumns: Collection[str]) -> str | None:
     """Return the type of series of the names of a subplot, e.g. "populations", or None for a subplot of variables.
 
-    The caller gives the names with no directive, no style, and no alias. A type of series comes first in the names,
-    e.g. "populations Fe II". A list of ions with no type is a plot of populations. The function tests for this case
-    last, thus an estimator column first in the list gives a subplot of variables, e.g. "Te" and not tellurium.
+    The caller removes each directive and each style from the names, and it changes each alias to its variable. A type
+    of series comes first in the names, e.g. "populations Fe II". A list of ions with no type is a plot of populations.
+    The function tests for this case last, thus an estimator column first in the list gives a subplot of variables,
+    e.g. "Te" and not tellurium.
     """
     if not names:
         return None

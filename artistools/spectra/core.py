@@ -1024,7 +1024,7 @@ def scan_specpol_data(dirbin: int = -1, modelpath: Path | None = None) -> dict[s
 def scan_vspecpol_data(modelpath: Path, vspecindex: int) -> dict[str, pl.LazyFrame]:
     """Return the I, Q, and U virtual packet spectra of one observer, summing the per-rank files if needed.
 
-    Every caller shares the returned dict, thus do not change it.
+    Do not change the returned dict. Every caller shares it.
     """
     # alternatively use f'vspecpol_averaged-{angle}.out' ?
 

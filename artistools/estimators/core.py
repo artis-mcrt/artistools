@@ -1986,9 +1986,9 @@ def get_cell_selection_description(args: argparse.Namespace, modelmeta: Mapping[
     """Return the cells that the plot reads in the terms of the model grid, or an empty text for listed cells.
 
     args holds the arguments after resolve_snapshot_arguments of plotestimators. x, y, and z are the velocity
-    coordinates of the grid, and (x_c, y_c, z_c) is the centre of a cell. The edges of the cells come from the grid of
-    the model, thus the text gives the range of each coordinate that the selected cells cover. plotestimators logs
-    this text, and its window shows it.
+    coordinates of the grid, and (x_c, y_c, z_c) is the centre of a cell. The edges of the cells come from the model
+    grid. Thus the text gives the range of each coordinate of the selected cells. plotestimators logs this text, and
+    its window shows it.
     """
     conditions = parse_slice_argument(args.slice) if args.slice is not None else []
     dimensions = int(modelmeta["dimensions"])
