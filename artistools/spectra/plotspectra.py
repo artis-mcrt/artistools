@@ -832,6 +832,8 @@ def plot_artis_spectrum(
         else None
     )
 
+    # the first panel sets linelabel, thus each later panel must not read it as a custom label
+    linelabel_is_custom = linelabel is not None
     for axindex, axis in enumerate(axes):
         assert isinstance(axis, mplax.Axes)
         # label_dirbin_series clears the colour of each direction bin after the first one, thus each panel takes a
@@ -865,7 +867,6 @@ def plot_artis_spectrum(
         assert timemax is not None
         timeavg = (timemin + timemax) / 2.0
         timedelta = (timemax - timemin) / 2
-        linelabel_is_custom = linelabel is not None
         if linelabel is None:
             modelname = get_model_name(modelpath)
             linelabel = modelname if len(modelname) < 70 else f"...{modelname[-67:]}"
