@@ -874,9 +874,10 @@ def plot_artis_spectrum(
             if not args.hidemodeltimerange and not args.multispecplot and timedelta >= 0.1:
                 linelabel += rf" ($\pm$ {timedelta:.1f}d)"
 
-        # the label carries LaTeX for the figure, thus the log line shows the plain form
+        # the label carries LaTeX for the figure, thus the log line shows the plain form. An empty -label gives the
+        # series no legend entry, and the log still names its model
         print_heading(
-            f"'{plain_label(linelabel)}': "
+            f"'{plain_label(linelabel or get_model_name(modelpath))}': "
             + get_time_range_text(timestepmin, timestepmax, timemin, timemax, clamped=clamp_to_timesteps)
         )
         print_detail(f"modelpath: {modelpath}")

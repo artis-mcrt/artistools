@@ -1151,22 +1151,25 @@ def test_bol_reflightcurve_unbounded_bar_keeps_the_bright_half_and_gets_an_arrow
 
 
 def test_bol_reflightcurve_empty_label_stays_out_of_the_legend() -> None:
-    """An explicit -label "" keeps a positional reference curve out of the legend.
+    """An explicit -label "" keeps a positional reference curve out of the legend, and the series keeps its name.
 
-    Only a missing label takes the file metadata: matplotlib gives no legend entry to a series
-    labelled "", which is how one is suppressed.
+    Only a missing label takes the file metadata for the legend: matplotlib gives no legend entry to a series
+    labelled "", which is how one is suppressed. The log and the tables gave such a series an empty name.
     """
     _fig, axis = plt.subplots()
-    plotlabel = at.lightcurve.plotlightcurve.plot_bol_reflightcurve(
-        axis, "AT2017gfo_smarttetal2017.txt", "erg/s", color="0.0", label=""
+    plottedpoints: list[pl.DataFrame] = []
+    seriesname = at.lightcurve.plotlightcurve.plot_bol_reflightcurve(
+        axis, "AT2017gfo_smarttetal2017.txt", "erg/s", color="0.0", label="", plottedpoints=plottedpoints
     )
-    assert not plotlabel
+    assert axis.get_legend_handles_labels()[1] == []
+    assert seriesname
+    assert seriesname != "None"
+    assert plottedpoints[0]["model"].unique().to_list() == [seriesname]
 
-    plotlabel = at.lightcurve.plotlightcurve.plot_bol_reflightcurve(
+    at.lightcurve.plotlightcurve.plot_bol_reflightcurve(
         axis, "AT2017gfo_smarttetal2017.txt", "erg/s", color="0.0", label=None
     )
-    assert plotlabel
-    assert plotlabel != "None"
+    assert axis.get_legend_handles_labels()[1] == [seriesname]
 
 
 @mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)

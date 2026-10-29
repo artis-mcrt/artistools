@@ -435,23 +435,25 @@ def plot_bol_reflightcurve(
 ) -> str:
     """Plot an observed bolometric light curve in the y axis units, with error bars if the data file has them.
 
-    Return the label used in the plot legend, which comes from the file metadata unless label is given. plottedpoints
-    takes the rows of the file, with the label as the model, "reference" as the escape type, and the plotted values.
-    summaryrows takes the fields of the summary line. Only the points from timemin to timemax go into the figure, the
-    summary, and plottedpoints.
+    The label of the legend comes from the file metadata unless label is given, and an empty label gives no legend
+    entry. Return the name of the series, which is the label or the label of the file metadata. The log, the tables,
+    and the residuals take this name. plottedpoints takes the rows of the file, with the name as the model,
+    "reference" as the escape type, and the plotted values. summaryrows takes the fields of the summary line. Only the
+    points from timemin to timemax go into the figure, the summary, and plottedpoints.
     """
     dflightcurve, metadata = read_bol_reflightcurve_data(lightcurvefilename)
     # the points have no line between them, thus a point outside the time range has no part in the figure
     dflightcurve = dflightcurve.filter(is_in_range("time_days", timemin, timemax))
     # an empty label is a series deliberately left out of the legend, so only a missing one takes the metadata
     plotlabel = get_metadata_label(metadata, lightcurvefilename) if label is None else label
+    seriesname = label or get_metadata_label(metadata, lightcurvefilename)
     lum_erg_per_s = dflightcurve["luminosity_erg/s"].to_numpy()
     time_days = dflightcurve["time_days"].to_numpy()
     yvalues = convert_lum_ergs_to_plotunits(lum_erg_per_s, lumunit)
     plotcolumn = get_plot_lum_column(lumunit)
     dfplotted = dflightcurve.select(
-        pl.lit(plotlabel).alias("model"),
-        pl.lit(plotlabel).alias("label"),
+        pl.lit(seriesname).alias("model"),
+        pl.lit(seriesname).alias("label"),
         pl.lit("reference").alias("escape_type"),
         pl.all(),
     ).with_columns(pl.Series(plotcolumn, yvalues, dtype=pl.Float64))
@@ -518,13 +520,7 @@ def plot_bol_reflightcurve(
     summaryfields, summaryparts, summarywarnings = get_peak_summary(
         time_days, yvalues, lumunit, ismagnitude=lumunit == "mag"
     )
-    print_series_summary(
-        plotlabel or str(lightcurvefilename),
-        summaryparts,
-        summarywarnings,
-        fields=summaryfields,
-        summaryrows=summaryrows,
-    )
+    print_series_summary(seriesname, summaryparts, summarywarnings, fields=summaryfields, summaryrows=summaryrows)
 
     # a marker and a line have different default zorders. With an equal zorder, matplotlib draws
     # the series in the order of the command line
@@ -534,7 +530,7 @@ def plot_bol_reflightcurve(
     if residualseries is not None:
         residualseries.append(
             ResidualSeries(
-                plotlabel,
+                seriesname,
                 np.asarray(time_days, dtype=np.float64),
                 np.asarray(yvalues, dtype=np.float64),
                 color,
@@ -545,7 +541,7 @@ def plot_bol_reflightcurve(
             )
         )
 
-    return plotlabel
+    return seriesname
 
 
 @on_model_host
@@ -824,7 +820,8 @@ def plot_artis_lightcurve(
         # the model name and the gamma marker stay, because a second model or --gamma gives the same nuclide again
         linelabel = f"{linelabel} {pellet_nucname}" if linelabel else pellet_nucname
 
-    print_heading(linelabel)
+    # an empty -label gives the series no legend entry, and the log still names its model
+    print_heading(linelabel or get_model_name(modelpath))
     print_detail(f"modelpath: {modelpath.resolve().parts[-1]}")
 
     if hasattr(args, "title") and args.title:
@@ -966,7 +963,7 @@ def draw_artis_lightcurve(
         cmfcolumn = ycolumn.replace("luminosity_", "luminosity_cmf_")
         showseachrow = args.plotinvalidpart or (args.plotcmf and cmfcolumn in lcdata.columns)
         # a direction bin of a colour bar has no legend entry, thus its name holds the number of the bin
-        summaryname = label_with_tags or " ".join(part for part in (linelabel, f"direction bin {dirbin}") if part)
+        summaryname = label_with_tags or f"{linelabel or get_model_name(modelpath)} direction bin {dirbin}"
         dfplotted = lcdata.with_columns(
             label=pl.lit(summaryname),
             in_valid_range=pl.lit(value=False)
