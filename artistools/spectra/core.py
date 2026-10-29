@@ -44,6 +44,7 @@ from artistools.misc import drop_trailing_null_column
 from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_auto_velocity_unit
+from artistools.misc import get_average_group_dirbins
 from artistools.misc import get_bin_index_expr
 from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_dirbins
@@ -54,8 +55,6 @@ from artistools.misc import get_model_name
 from artistools.misc import get_nprocs
 from artistools.misc import get_nu_grid
 from artistools.misc import get_timestep_times
-from artistools.misc import get_viewingdirection_phibincount
-from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import get_vpkt_config
 from artistools.misc import get_xunit
 from artistools.misc import match_closest_time
@@ -1273,16 +1272,10 @@ def get_flux_contributions_cached(
     if directionbin is None or directionbin == -1:
         dbinlist = [-1]
     else:
-        # the arguments can name a bin that the average leaves out, thus the shared check gives a clear error
-        get_dirbin_definitions(
-            modelpath, [directionbin], average_over_phi=average_over_phi, average_over_theta=average_over_theta
+        # a library call can name a bin that the average leaves out, thus the shared rule gives a clear error
+        dbinlist = get_average_group_dirbins(
+            directionbin, average_over_phi=average_over_phi, average_over_theta=average_over_theta
         )
-        if average_over_phi:
-            dbinlist = list(range(directionbin, directionbin + get_viewingdirection_phibincount()))
-        elif average_over_theta:
-            dbinlist = list(range(directionbin, get_viewingdirectionbincount(), get_viewingdirection_phibincount()))
-        else:
-            dbinlist = [directionbin]
 
     emissiondata: dict[int, pl.DataFrame] = {}
     absorptiondata: dict[int, pl.DataFrame] = {}

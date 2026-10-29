@@ -33,6 +33,7 @@ from artistools.misc import addarg_timestep
 from artistools.misc import addarg_wavelengthrange
 from artistools.misc import CommaJoinAction
 from artistools.misc import exit_with_error
+from artistools.misc import get_average_group_dirbins
 from artistools.misc import get_column_description_lines
 from artistools.misc import get_dirbin_centre_direction
 from artistools.misc import get_model_logname
@@ -960,11 +961,12 @@ def get_sobolev_trough(
     estimate does not take. Thus the blend is too blue by a fraction of about v_t^2 / (2 c^2).
     """
     nphibins = get_viewingdirection_phibincount()
-    firstdirbin = dirbin - dirbin % nphibins
-    directions = [
-        get_dirbin_centre_direction(observerdirbin)
-        for observerdirbin in (range(firstdirbin, firstdirbin + nphibins) if averageoverphi else [dirbin])
-    ]
+    observerdirbins = (
+        get_average_group_dirbins(dirbin - dirbin % nphibins, average_over_phi=True, average_over_theta=False)
+        if averageoverphi
+        else [dirbin]
+    )
+    directions = [get_dirbin_centre_direction(observerdirbin) for observerdirbin in observerdirbins]
     vph_kmps = photospherevelocity_kmps
     c_kmps = C_cm_per_s / km_to_cm
     widths_kmps = np.array(cellwidths_kmps)

@@ -49,7 +49,6 @@ def average_direction_bins(
     single dark bin sends the mean to infinity. Derive such a column after averaging, not before.
     """
     dirbincount = get_viewingdirectionbincount()
-    nphibins = get_viewingdirection_phibincount()
 
     if overangle not in {"phi", "theta"}:
         msg = "overangle must be 'phi' or 'theta'"
@@ -77,10 +76,8 @@ def average_direction_bins(
     dirbindataframesout: dict[int, pl.LazyFrame] = {}
 
     for start_bin in start_bin_range:
-        # dirbin == costheta_index * nphibins + phi_index, so the bins sharing a costheta index are contiguous, while
-        # the bins sharing a phi index are nphibins apart
-        contribbins = list(
-            range(start_bin, start_bin + nphibins) if overangle == "phi" else range(start_bin, dirbincount, nphibins)
+        contribbins = get_average_group_dirbins(
+            start_bin, average_over_phi=overangle == "phi", average_over_theta=overangle == "theta"
         )
 
         colnames = dirbindataframes[start_bin].collect_schema().names()
@@ -135,6 +132,23 @@ def get_dirbins(average_over_phi: bool = False, average_over_theta: bool = False
     if average_over_theta:
         return list(range(get_viewingdirection_phibincount()))
     return list(range(get_viewingdirectionbincount()))
+
+
+def get_average_group_dirbins(dirbin: int, *, average_over_phi: bool, average_over_theta: bool) -> list[int]:
+    """Return the direction bins that the average of a bin holds, or the bin alone with no average.
+
+    The bin of an average is the first bin of its group, and a different bin raises ValueError. The check reads no
+    file of the model.
+    """
+    get_dirbin_labels([dirbin], average_over_phi=average_over_phi, average_over_theta=average_over_theta)
+    # dirbin == costheta_index * nphibins + phi_index, thus the bins of one costheta index are contiguous, and the bins
+    # of one phi index are nphibins apart
+    nphibins = get_viewingdirection_phibincount()
+    if average_over_phi:
+        return list(range(dirbin, dirbin + nphibins))
+    if average_over_theta:
+        return list(range(dirbin, get_viewingdirectionbincount(), nphibins))
+    return [dirbin]
 
 
 def get_dirbin_definitions(

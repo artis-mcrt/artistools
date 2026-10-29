@@ -3931,6 +3931,13 @@ def test_dirbins_give_a_message_in_place_of_a_bare_assert() -> None:
         dirbins.get_dirbin_labels([10], average_over_theta=True)
     with pytest.raises(ValueError, match="both the phi and theta"):
         dirbins.get_dirbin_labels([0], average_over_phi=True, average_over_theta=True)
+    with pytest.raises(ValueError, match=r"Direction bin 5 is not the first bin of an average group"):
+        dirbins.get_average_group_dirbins(5, average_over_phi=True, average_over_theta=False)
+    assert dirbins.get_average_group_dirbins(10, average_over_phi=True, average_over_theta=False) == list(range(10, 20))
+    assert dirbins.get_average_group_dirbins(3, average_over_phi=False, average_over_theta=True) == list(
+        range(3, 100, 10)
+    )
+    assert dirbins.get_average_group_dirbins(57, average_over_phi=False, average_over_theta=False) == [57]
 
     assert dirbins.get_dirbin_labels([10], average_over_phi=True) == {
         10: dirbins.get_costheta_bins(usedegrees=False)[2][1]

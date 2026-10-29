@@ -90,6 +90,7 @@ from artistools.misc.dirbins import average_direction_bins as average_direction_
 from artistools.misc.dirbins import check_averaging_angles as check_averaging_angles
 from artistools.misc.dirbins import check_dirbin as check_dirbin
 from artistools.misc.dirbins import format_costheta_range as format_costheta_range
+from artistools.misc.dirbins import get_average_group_dirbins as get_average_group_dirbins
 from artistools.misc.dirbins import get_costheta_bins as get_costheta_bins
 from artistools.misc.dirbins import get_costheta_range as get_costheta_range
 from artistools.misc.dirbins import get_costhetabin_phibin_labels as get_costhetabin_phibin_labels
