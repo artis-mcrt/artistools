@@ -54,6 +54,7 @@ from artistools.viewertools.core import get_direction_kinds
 from artistools.viewertools.core import get_end_range
 from artistools.viewertools.core import get_figure_option_tokens
 from artistools.viewertools.core import get_given_dpi
+from artistools.viewertools.core import get_nearest_range
 from artistools.viewertools.core import get_nearest_range_start
 from artistools.viewertools.core import get_option_row_tokens
 from artistools.viewertools.core import get_option_tokens
@@ -1179,7 +1180,7 @@ def get_animation_frames(viewer: "SpectrumViewer") -> "tuple[int, Callable[[int]
         firstpos, lastpos = viewer.get_selection_positions()
         count = lastpos - firstpos
         frames = [
-            viewer.get_plot_tokens(viewer.snap(values, validtimesteps[index], validtimesteps[index + count]))
+            viewer.get_plot_tokens(viewer.select_positions(values, (index, index + count)))
             for index in range(len(validtimesteps) - count)
         ]
 
@@ -1254,9 +1255,8 @@ def set_models(viewer: SpectrumViewer, spectra: "Sequence[str]", timegrid: str) 
         values = dc.replace(values, directionkind="", directionbins=())
     if values.notimeclamp:
         return viewer.clamp_time(values)
-    count = min(last - first + 1, len(grid.validtimesteps))
-    start = get_nearest_range_start([grid.tmids[timestep] for timestep in grid.validtimesteps], values.centre, count)
-    return viewer.select_positions(values, (start, start + count - 1))
+    validtmids = [grid.tmids[timestep] for timestep in grid.validtimesteps]
+    return viewer.select_positions(values, get_nearest_range(validtmids, values.centre, last - first + 1))
 
 
 def get_time_slider_ranges(grid: TimestepGrid, values: ControlValues) -> tuple[tuple[float, float], float, float, int]:
@@ -1984,11 +1984,10 @@ def open_window(
             else:
                 newvalues = dc.replace(values, centre=centre, width=width)
         else:
-            validtimesteps = grid.validtimesteps
             firstpos, lastpos = viewer.get_selection_positions()
-            count = lastpos - firstpos + 1 if width is None else min(max(1, round(width)), len(validtimesteps))
-            start = get_nearest_range_start([grid.tmids[timestep] for timestep in validtimesteps], centre, count)
-            newvalues = viewer.select_positions(values, (start, start + count - 1))
+            count = lastpos - firstpos + 1 if width is None else round(width)
+            validtmids = [grid.tmids[timestep] for timestep in grid.validtimesteps]
+            newvalues = viewer.select_positions(values, get_nearest_range(validtmids, centre, count))
         apply(newvalues)
 
     def plot_shows_values() -> bool:

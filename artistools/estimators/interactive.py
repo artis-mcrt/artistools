@@ -90,6 +90,7 @@ from artistools.viewertools.core import get_end_range
 from artistools.viewertools.core import get_figure_option_tokens
 from artistools.viewertools.core import get_fitted_figwidthscale
 from artistools.viewertools.core import get_given_dpi
+from artistools.viewertools.core import get_nearest_range
 from artistools.viewertools.core import get_nearest_range_start
 from artistools.viewertools.core import get_option_row_tokens
 from artistools.viewertools.core import get_option_tokens
@@ -850,10 +851,8 @@ class EstimatorViewer:
         get_time_text gives the same centre.
         """
         firstpos, lastpos = self.get_selection_positions()
-        count = lastpos - firstpos + 1
         validtmids = [self.tmids[timestep] for timestep in self.modeldata.validtimesteps]
-        start = get_nearest_range_start(validtmids, days, count)
-        return self.select_positions(self.values, (start, start + count - 1))
+        return self.select_positions(self.values, get_nearest_range(validtmids, days, lastpos - firstpos + 1))
 
     def get_cell_text(self) -> str:
         """Return the cells of the plot, with the radial velocity of a single cell."""

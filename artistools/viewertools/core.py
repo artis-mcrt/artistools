@@ -786,6 +786,17 @@ def get_nearest_range_start(tmids: "Sequence[float]", centre: float, count: int)
     return min(range(len(tmids) - count + 1), key=get_centre_offset)
 
 
+def get_nearest_range(tmids: "Sequence[float]", centre: float, count: int) -> tuple[int, int]:
+    """Return the first and the last position of the range of count timesteps with its centre nearest to the time.
+
+    tmids holds the middle time of each valid timestep. A count outside 1 to the number of timesteps takes the nearest
+    count in that range.
+    """
+    count = min(max(count, 1), len(tmids))
+    start = get_nearest_range_start(tmids, centre, count)
+    return start, start + count - 1
+
+
 def get_clamped_range(firstpos: int, width: int, count: int) -> tuple[int, int]:
     """Return the first and the last position of a range of width positions from firstpos, inside count positions.
 
