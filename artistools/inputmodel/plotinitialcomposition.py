@@ -4,6 +4,7 @@ import argparse
 import math
 import string
 import typing as t
+import warnings
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -478,3 +479,18 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         return
 
     plot_2d_initial_abundances(args.modelpath, args)
+
+
+# the names before the rule invalid-function-name. Each alias gives a DeprecationWarning that names the new
+# function
+@warnings.deprecated("get_2D_slice_through_3d_model is deprecated. Use get_2d_slice_through_3d_model.")
+def get_2D_slice_through_3d_model(  # ruff:ignore[invalid-function-name]
+    dfmodel: pl.DataFrame,
+    sliceaxis: AxisType,
+    modelmeta: dict[str, t.Any] | None = None,
+    plotaxis1: AxisType | None = None,
+    plotaxis2: AxisType | None = None,
+    positive_axis: bool = True,
+) -> pl.DataFrame:
+    """Return the result of get_2d_slice_through_3d_model, the new name of this function."""
+    return get_2d_slice_through_3d_model(dfmodel, sliceaxis, modelmeta, plotaxis1, plotaxis2, positive_axis)

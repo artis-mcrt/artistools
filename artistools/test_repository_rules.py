@@ -110,8 +110,13 @@ def test_top_level_api_is_the_documented_list() -> None:
     import types
 
     # getattr and not vars: on Python 3.15 an entry of vars is a lazy proxy until its first use
+    # a deprecated alias keeps an old name for the scripts of the users, and the README does not list it
     public = {
-        name for name in vars(at) if not name.startswith("_") and not isinstance(getattr(at, name), types.ModuleType)
+        name
+        for name in vars(at)
+        if not name.startswith("_")
+        and not isinstance(getattr(at, name), types.ModuleType)
+        and not hasattr(getattr(at, name), "__deprecated__")
     }
     assert public == TOPLEVEL_API
 
@@ -141,12 +146,55 @@ def test_reader_prefix_tells_lazy_from_eager(package_modules: list[Path]) -> Non
     wrongnames = []
     for module in package_modules:
         for node in ast.parse(module.read_text(encoding="utf-8")).body:
-            if isinstance(node, ast.FunctionDef) and node.returns is not None:
-                islazy = "LazyFrame" in ast.unparse(node.returns)
-                if (node.name.startswith("read_") and islazy) or (node.name.startswith("scan_") and not islazy):
-                    wrongnames.append(f"{module.relative_to(packagefolder)}:{node.name}")
+            if not isinstance(node, ast.FunctionDef) or node.returns is None:
+                continue
+            # a deprecated alias keeps the old name, e.g. read_spec, which returned a LazyFrame
+            if any("deprecated" in ast.unparse(decorator) for decorator in node.decorator_list):
+                continue
+            islazy = "LazyFrame" in ast.unparse(node.returns)
+            if (node.name.startswith("read_") and islazy) or (node.name.startswith("scan_") and not islazy):
+                wrongnames.append(f"{module.relative_to(packagefolder)}:{node.name}")
 
     assert not wrongnames
+
+
+def test_each_deprecated_alias_names_a_function_of_its_module(package_modules: list[Path]) -> None:
+    """The message of each deprecated alias names the new function, and that function is in the same module."""
+    import ast
+
+    packagefolder = Path(at.__file__).parent
+    aliascount = 0
+    wrongaliases = []
+    for module in package_modules:
+        modulename = ".".join(module.relative_to(packagefolder.parent).with_suffix("").parts)
+        for node in ast.parse(module.read_text(encoding="utf-8")).body:
+            if isinstance(node, ast.FunctionDef) and any(
+                "deprecated" in ast.unparse(decorator) for decorator in node.decorator_list
+            ):
+                aliascount += 1
+                alias = getattr(importlib.import_module(modulename), node.name)
+                newname = re.search(r"Use (\w+)\.", alias.__deprecated__)
+                if newname is None or not callable(getattr(importlib.import_module(modulename), newname[1], None)):
+                    wrongaliases.append(f"{modulename}.{node.name}")
+
+    assert aliascount > 0
+    assert not wrongaliases
+
+
+def test_deprecated_alias_gives_the_result_of_the_new_name() -> None:
+    """A script that calls an old name gets a DeprecationWarning and the result of the new name."""
+    modelpath = at.get_path("testartismodel")
+    with pytest.warns(DeprecationWarning, match="Use scan_modeldata"):
+        dfmodel, modelmeta = at.get_modeldata(modelpath)  # pyrefly: ignore[deprecated]  # ty:ignore[deprecated]
+    dfnew, modelmetanew = at.scan_modeldata(modelpath)
+    assert dfmodel.collect().equals(dfnew.collect())
+    assert modelmeta == modelmetanew
+
+    # the alias keeps the old order of the parameters, in which dirbin came before the model path
+    vspecpolmodel = at.get_path("testdata") / "vspecpolmodel"
+    with pytest.warns(DeprecationWarning, match="Use scan_specpol_data"):
+        oldorder = at.spectra.get_specpol_data(-1, vspecpolmodel)  # pyrefly: ignore[deprecated]  # ty:ignore[deprecated]
+    assert oldorder.keys() == at.spectra.scan_specpol_data(vspecpolmodel).keys()
 
 
 def test_each_package_command_is_named_plot() -> None:

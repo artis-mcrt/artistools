@@ -8,6 +8,7 @@ import math
 import os
 import time
 import typing as t
+import warnings
 from collections.abc import Callable
 from collections.abc import Sequence
 from pathlib import Path
@@ -1829,3 +1830,35 @@ def get_costheta_selection(costhetarange: tuple[float, float], columns: Sequence
     return get_cell_selection(
         thetamin=math.degrees(math.acos(costhetarange[1])), thetamax=math.degrees(math.acos(costhetarange[0]))
     )
+
+
+# the names before the readers took the prefix scan_ or read_. Each alias keeps the old signature, thus a script
+# of a user still runs, and it gives a DeprecationWarning that names the new function
+@warnings.deprecated("get_modeldata is deprecated. Use scan_modeldata.")
+def get_modeldata(
+    modelpath: Path | str = ".", get_elemabundances: bool = False, printwarningsonly: bool = False
+) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
+    """Return the result of scan_modeldata, the new name of this function."""
+    return scan_modeldata(modelpath, get_elemabundances=get_elemabundances, printwarningsonly=printwarningsonly)
+
+
+@warnings.deprecated("read_modeldata is deprecated. Use scan_local_modeldata.")
+def read_modeldata(
+    modelpath: Path, get_elemabundances: bool = False, printwarningsonly: bool = False
+) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
+    """Return the result of scan_local_modeldata, the new name of this function."""
+    return scan_local_modeldata(modelpath, get_elemabundances=get_elemabundances, printwarningsonly=printwarningsonly)
+
+
+@warnings.deprecated("read_modelfile_text is deprecated. Use scan_modelfile_text.")
+def read_modelfile_text(
+    filename: Path | str, printwarningsonly: bool = False
+) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
+    """Return the result of scan_modelfile_text, the new name of this function."""
+    return scan_modelfile_text(filename, printwarningsonly=printwarningsonly)
+
+
+@warnings.deprecated("get_initelemabundances is deprecated. Use scan_initelemabundances.")
+def get_initelemabundances(modelpath: Path | str = ".", printwarningsonly: bool = False) -> pl.LazyFrame:
+    """Return the result of scan_initelemabundances, the new name of this function."""
+    return scan_initelemabundances(modelpath, printwarningsonly=printwarningsonly)

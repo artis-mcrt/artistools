@@ -244,6 +244,14 @@ unresolvable-dunder-all = "error"
 useless-overload-body = "error"
 variance-mismatch = "error"
 
+# an __init__.py re-exports the deprecated alias of an old name, thus a script that reads the old name still runs.
+# The re-export is not a use of the alias
+[[tool.pyrefly.sub-config]]
+matches = "artistools/**/__init__.py"
+
+[tool.pyrefly.sub-config.errors]
+deprecated = "ignore"
+
 [tool.pyright]
 venvPath = "."
 venv = ".venv"
@@ -415,10 +423,19 @@ possibly-missing-attribute = "error"
 possibly-missing-import = "error"
 unsupported-dynamic-base = "error"
 
+# the reason is at the sub-config of pyrefly
+[[tool.ty.overrides]]
+include = ["artistools/**/__init__.py"]
+
+[tool.ty.overrides.rules]
+deprecated = "ignore"
+
 [tool.vulture]
 exclude = [".*", "build/", ".eggs/", ".venv", "venv"]
 paths = ["artistools"]
 sort_by_size = true
+# a deprecated alias keeps an old name for the scripts of the users, thus no code of artistools calls it
+ignore_decorators = ["@warnings.deprecated"]
 ignore_names = [
     # reached by name from subcommandtree in commands.py, so there is no textual call site
     "get_artistools_path",

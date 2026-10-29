@@ -6,6 +6,7 @@ import re
 import string
 import time
 import typing as t
+import warnings
 from collections.abc import Collection
 from collections.abc import Generator
 from collections.abc import Mapping
@@ -1388,3 +1389,23 @@ def get_lineindices(
     if linefilter is not None:
         dflinelist = dflinelist.filter(linefilter)
     return dflinelist.select("lineindex").collect().get_column("lineindex")
+
+
+# the names before the readers took the prefix scan_ or read_. Each alias keeps the old signature, thus a script
+# of a user still runs, and it gives a DeprecationWarning that names the new function
+@warnings.deprecated("get_nuclides is deprecated. Use scan_nuclides.")
+def get_nuclides(modelpath: Path) -> pl.LazyFrame:
+    """Return the result of scan_nuclides, the new name of this function."""
+    return scan_nuclides(modelpath)
+
+
+@warnings.deprecated("get_bflist is deprecated. Use scan_bflist.")
+def get_bflist(modelpath: Path | str) -> pl.LazyFrame:
+    """Return the result of scan_bflist, the new name of this function."""
+    return scan_bflist(modelpath)
+
+
+@warnings.deprecated("get_linelist_pldf is deprecated. Use scan_linelist.")
+def get_linelist_pldf(modelpath: Path | str) -> pl.LazyFrame:
+    """Return the result of scan_linelist, the new name of this function."""
+    return scan_linelist(modelpath)

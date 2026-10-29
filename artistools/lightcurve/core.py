@@ -3,6 +3,7 @@
 import io
 import math
 import typing as t
+import warnings
 from collections.abc import Collection
 from collections.abc import Iterable
 from collections.abc import Mapping
@@ -1042,4 +1043,36 @@ def split_at_valid_range(
         lcdata.filter(pl.col("time_days") <= lcdata_valid["time_days"].min()),
         lcdata_valid,
         lcdata.filter(pl.col("time_days") >= lcdata_valid["time_days"].max()),
+    )
+
+
+# the names before the readers took the prefix scan_ or read_. Each alias keeps the old signature, thus a script
+# of a user still runs, and it gives a DeprecationWarning that names the new function
+@warnings.deprecated("get_from_packets is deprecated. Use scan_lightcurve_from_packets.")
+def get_from_packets(
+    modelpath: str | Path,
+    escape_type: str = "TYPE_RPKT",
+    maxpacketfiles: int | None = None,
+    directionbins: Collection[int] | None = None,
+    average_over_phi: bool = False,
+    average_over_theta: bool = False,
+    directionbins_are_vpkt_observers: bool = False,
+    pellet_nucname: str | None = None,
+    use_pellet_decay_time: bool = False,
+    timedaysmin: float | None = None,
+    timedaysmax: float | None = None,
+) -> dict[int, pl.LazyFrame]:
+    """Return the result of scan_lightcurve_from_packets, the new name of this function."""
+    return scan_lightcurve_from_packets(
+        modelpath,
+        escape_type=escape_type,
+        maxpacketfiles=maxpacketfiles,
+        directionbins=directionbins,
+        average_over_phi=average_over_phi,
+        average_over_theta=average_over_theta,
+        directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
+        pellet_nucname=pellet_nucname,
+        use_pellet_decay_time=use_pellet_decay_time,
+        timedaysmin=timedaysmin,
+        timedaysmax=timedaysmax,
     )

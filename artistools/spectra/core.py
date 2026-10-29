@@ -4,6 +4,7 @@ import io
 import itertools
 import math
 import typing as t
+import warnings
 from collections.abc import Callable
 from collections.abc import Mapping
 from collections.abc import Sequence
@@ -89,6 +90,8 @@ from artistools.packets import sum_packets_by_dirbin
 from artistools.packets import sum_virtual_packets_by_observer
 
 if t.TYPE_CHECKING:
+    import argparse
+
     import matplotlib.typing as mplt
 
 
@@ -2954,3 +2957,140 @@ def read_dirbin_spectra(
         for dirbin in directionbins
     ])
     return dict(zip(directionbins, spectra, strict=True)), dirbin_definitions
+
+
+# the names before the readers took the prefix scan_ or read_. Each alias keeps the old signature, thus a script
+# of a user still runs, and it gives a DeprecationWarning that names the new function
+@warnings.deprecated("get_spectra is deprecated. Use scan_spectra.")
+def get_spectra(
+    modelpath: Path,
+    timestepmin: int,
+    timestepmax: int | None = None,
+    fluxfilterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
+    average_over_theta: bool = False,
+    average_over_phi: bool = False,
+    gamma: bool = False,
+    directionbins: Sequence[int] | None = None,
+) -> dict[int, pl.LazyFrame]:
+    """Return the result of scan_spectra, the new name of this function."""
+    return scan_spectra(
+        modelpath,
+        timestepmin,
+        timestepmax,
+        fluxfilterfunc=fluxfilterfunc,
+        average_over_theta=average_over_theta,
+        average_over_phi=average_over_phi,
+        gamma=gamma,
+        directionbins=directionbins,
+    )
+
+
+@warnings.deprecated("get_from_packets is deprecated. Use scan_spectra_from_packets.")
+def get_from_packets(
+    modelpath: Path | str,
+    timelowdays: float,
+    timehighdays: float,
+    lambda_bin_edges: npt.NDArray[np.floating] | None = None,
+    use_time: t.Literal["arrival", "emission", "escape"] = "arrival",
+    maxpacketfiles: int | None = None,
+    average_over_phi: bool = False,
+    average_over_theta: bool = False,
+    fluxfilterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
+    nprocs_read_dfpackets: tuple[int, pl.DataFrame | pl.LazyFrame] | None = None,
+    directionbins_are_vpkt_observers: bool = False,
+    directionbins: Sequence[int] | None = None,
+    gamma: bool = False,
+    relnoise: bool = False,
+) -> dict[int, pl.LazyFrame]:
+    """Return the result of scan_spectra_from_packets, the new name of this function."""
+    return scan_spectra_from_packets(
+        modelpath,
+        timelowdays,
+        timehighdays,
+        lambda_bin_edges=lambda_bin_edges,
+        use_time=use_time,
+        maxpacketfiles=maxpacketfiles,
+        average_over_phi=average_over_phi,
+        average_over_theta=average_over_theta,
+        fluxfilterfunc=fluxfilterfunc,
+        nprocs_read_dfpackets=nprocs_read_dfpackets,
+        directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
+        directionbins=directionbins,
+        gamma=gamma,
+        relnoise=relnoise,
+    )
+
+
+@warnings.deprecated("read_spec is deprecated. Use scan_spec.")
+def read_spec(modelpath: Path | str, gamma: bool = False) -> pl.LazyFrame:
+    """Return the result of scan_spec, the new name of this function."""
+    return scan_spec(Path(modelpath), gamma=gamma)
+
+
+@warnings.deprecated("read_spec_res is deprecated. Use scan_spec_res.")
+def read_spec_res(modelpath: Path | str, gamma: bool = False) -> dict[int, pl.LazyFrame]:
+    """Return the result of scan_spec_res, the new name of this function."""
+    return scan_spec_res(Path(modelpath), gamma=gamma)
+
+
+@warnings.deprecated("read_specpol_res is deprecated. Use scan_specpol_res.")
+def read_specpol_res(modelpath: Path | str) -> dict[int, pl.LazyFrame]:
+    """Return the result of scan_specpol_res, the new name of this function."""
+    return scan_specpol_res(Path(modelpath))
+
+
+@warnings.deprecated("get_specpol_data is deprecated. Use scan_specpol_data.")
+def get_specpol_data(dirbin: int = -1, modelpath: Path | None = None) -> dict[str, pl.LazyFrame]:
+    """Return the result of scan_specpol_data, the new name of this function."""
+    return scan_specpol_data(Path() if modelpath is None else modelpath, dirbin=dirbin)
+
+
+@warnings.deprecated("get_vspecpol_data is deprecated. Use scan_vspecpol_data.")
+def get_vspecpol_data(vspecindex: int, modelpath: Path | str) -> dict[str, pl.LazyFrame]:
+    """Return the result of scan_vspecpol_data, the new name of this function."""
+    return scan_vspecpol_data(Path(modelpath), vspecindex)
+
+
+@warnings.deprecated("get_vspecpol_spectrum is deprecated. Use scan_vspecpol_spectrum.")
+def get_vspecpol_spectrum(
+    modelpath: Path | str,
+    timeavg: float,
+    angle: int,
+    args: "argparse.Namespace",
+    fluxfilterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
+    timemin: float | None = None,
+    timemax: float | None = None,
+) -> pl.LazyFrame:
+    """Return the result of scan_vspecpol_spectrum, the new name of this function."""
+    return scan_vspecpol_spectrum(
+        modelpath,
+        timeavg,
+        angle,
+        stokesparam=getattr(args, "stokesparam", "I"),
+        fluxfilterfunc=fluxfilterfunc,
+        timemin=timemin,
+        timemax=timemax,
+    )
+
+
+@warnings.deprecated("get_spectrum_at_time is deprecated. Use scan_spectrum_at_time.")
+def get_spectrum_at_time(
+    modelpath: Path,
+    timestep: int,
+    time: float,
+    args: "argparse.Namespace | None",
+    dirbin: int = -1,
+    average_over_phi: bool | None = None,
+    average_over_theta: bool | None = None,
+) -> pl.LazyFrame:
+    """Return the result of scan_spectrum_at_time, the new name of this function."""
+    if dirbin >= 0 and args is not None and args.plotvspecpol and (modelpath / "vpkt.txt").is_file():
+        return scan_vspecpol_spectrum(modelpath, time, dirbin, stokesparam=getattr(args, "stokesparam", "I"))
+    return scan_spectrum_at_time(
+        modelpath,
+        timestep,
+        time,
+        dirbin=dirbin,
+        average_over_phi=average_over_phi,
+        average_over_theta=average_over_theta,
+    )

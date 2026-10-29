@@ -4,6 +4,7 @@ import argparse
 import contextlib
 import math
 import typing as t
+import warnings
 from collections.abc import Iterable
 from collections.abc import Sequence
 from pathlib import Path
@@ -566,3 +567,17 @@ def get_escaped_arrivalrange(modelpath: Path) -> tuple[int, float | int | None, 
         return nts_last, None, None
 
     return nts_last, validrange_start_days, validrange_end_days
+
+
+# the names before the readers took the prefix scan_ or read_. Each alias keeps the old signature, thus a script
+# of a user still runs, and it gives a DeprecationWarning that names the new function
+@warnings.deprecated("get_deposition is deprecated. Use scan_deposition.")
+def get_deposition(modelpath: Path | str = ".") -> pl.LazyFrame:
+    """Return the result of scan_deposition, the new name of this function."""
+    return scan_deposition(Path(modelpath))
+
+
+@warnings.deprecated("get_timesteps is deprecated. Use scan_timesteps.")
+def get_timesteps(modelpath: Path) -> pl.LazyFrame:
+    """Return the result of scan_timesteps, the new name of this function."""
+    return scan_timesteps(modelpath)

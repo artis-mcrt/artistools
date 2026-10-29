@@ -113,6 +113,8 @@ dfspectrum = at.spectra.scan_spectra(modelpath, timestepmin=40, timestepmax=45)[
 
 A function with the prefix `scan_` returns a polars LazyFrame, or one LazyFrame for each direction bin. Call `.collect()` to get the data. A function with the prefix `read_` returns the data at once, e.g. a DataFrame or a dictionary. Each function with the prefix `get_` in the tables below returns its value at once, e.g. a number, a dictionary, or a DataFrame. The direction bin -1 is the average over all directions.
 
+Some of these functions had an older name, e.g. `get_modeldata` in place of `scan_modeldata`, and `read_spec` in place of `scan_spec`. A script can still call the old name, but each call gives a `DeprecationWarning` that names the new function. A later release will delete the old names.
+
 ### Names at the top level
 
 | Name | Purpose |

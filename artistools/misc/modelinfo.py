@@ -5,6 +5,7 @@ import dataclasses as dc
 import math
 import re
 import typing as t
+import warnings
 from collections.abc import Callable
 from collections.abc import Iterable
 from collections.abc import Sequence
@@ -989,3 +990,11 @@ def parse_vpkt_input(contents: str) -> VpktConfig:
         config.vgrid_lambda_ranges = reader.next_lambda_ranges(ngridranges, "velocity grid wavelength range")
 
     return config
+
+
+# the names before the readers took the prefix scan_ or read_. Each alias keeps the old signature, thus a script
+# of a user still runs, and it gives a DeprecationWarning that names the new function
+@warnings.deprecated("get_dfrankassignments is deprecated. Use scan_rankassignments.")
+def get_dfrankassignments(modelpath: Path) -> pl.LazyFrame | None:
+    """Return the result of scan_rankassignments, the new name of this function."""
+    return scan_rankassignments(modelpath)

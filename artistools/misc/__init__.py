@@ -226,6 +226,7 @@ from artistools.misc.seriesstyles import SERIES_STYLE_KEYS as SERIES_STYLE_KEYS
 from artistools.misc.timesteps import apply_time_range_args as apply_time_range_args
 from artistools.misc.timesteps import check_time_range_is_valid as check_time_range_is_valid
 from artistools.misc.timesteps import get_bad_timestep_message as get_bad_timestep_message
+from artistools.misc.timesteps import get_deposition as get_deposition
 from artistools.misc.timesteps import get_escaped_arrivalrange as get_escaped_arrivalrange
 from artistools.misc.timesteps import get_selected_timestep as get_selected_timestep
 from artistools.misc.timesteps import get_single_timestep as get_single_timestep
@@ -234,6 +235,7 @@ from artistools.misc.timesteps import get_time_range_text as get_time_range_text
 from artistools.misc.timesteps import get_timestep_of_timedays as get_timestep_of_timedays
 from artistools.misc.timesteps import get_timestep_time as get_timestep_time
 from artistools.misc.timesteps import get_timestep_times as get_timestep_times
+from artistools.misc.timesteps import get_timesteps as get_timesteps
 from artistools.misc.timesteps import match_closest_time as match_closest_time
 from artistools.misc.timesteps import parse_timedays_range as parse_timedays_range
 from artistools.misc.timesteps import scan_deposition as scan_deposition

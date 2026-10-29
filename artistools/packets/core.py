@@ -8,6 +8,7 @@ import os
 import re
 import time
 import typing as t
+import warnings
 from collections.abc import Callable
 from collections.abc import Mapping
 from collections.abc import Sequence
@@ -1423,3 +1424,22 @@ def addarg_maxpacketfiles(parser: argparse.ArgumentParser) -> None:
             f" of {RANKS_PER_BATCH}"
         ),
     )
+
+
+# the names before the readers took the prefix scan_ or read_. Each alias keeps the old signature, thus a script
+# of a user still runs, and it gives a DeprecationWarning that names the new function
+@warnings.deprecated("get_packets is deprecated. Use scan_packets.")
+def get_packets(
+    modelpath: str | Path,
+    maxpacketfiles: int | None = None,
+    packet_type: str | None = None,
+    escape_type: str | None = None,
+) -> tuple[int, pl.LazyFrame]:
+    """Return the result of scan_packets, the new name of this function."""
+    return scan_packets(modelpath, maxpacketfiles=maxpacketfiles, packet_type=packet_type, escape_type=escape_type)
+
+
+@warnings.deprecated("get_virtual_packets is deprecated. Use scan_virtual_packets.")
+def get_virtual_packets(modelpath: str | Path, maxpacketfiles: int | None = None) -> tuple[int, pl.LazyFrame]:
+    """Return the result of scan_virtual_packets, the new name of this function."""
+    return scan_virtual_packets(modelpath, maxpacketfiles=maxpacketfiles)

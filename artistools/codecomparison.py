@@ -7,6 +7,7 @@ e.g., codecomparison/DDC10/artisnebular
 
 import math
 import typing as t
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -225,3 +226,11 @@ def read_reference_spectra(modelpath: str | Path) -> tuple[pl.DataFrame, npt.NDA
     )
 
     return dfspectra, arr_timedays
+
+
+# the names before the readers took the prefix scan_ or read_. Each alias keeps the old signature, thus a script
+# of a user still runs, and it gives a DeprecationWarning that names the new function
+@warnings.deprecated("get_spectra is deprecated. Use read_reference_spectra.")
+def get_spectra(modelpath: str | Path) -> tuple[pl.DataFrame, npt.NDArray[np.floating]]:
+    """Return the result of read_reference_spectra, the new name of this function."""
+    return read_reference_spectra(modelpath)

@@ -2,6 +2,7 @@
 
 import argparse
 import typing as t
+import warnings
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -117,3 +118,17 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         opacities = get_opacity_from_file(modelpath)
         print(f"opacity.txt: {len(opacities)} cells")
         print(f"  kappa min {opacities.min():.4g}, max {opacities.max():.4g}, mean {opacities.mean():.4g} cm2/g")
+
+
+# the names before the rule invalid-function-name. Each alias gives a DeprecationWarning that names the new
+# function
+@warnings.deprecated("opacity_by_Ye is deprecated. Use opacity_by_ye.")
+def opacity_by_Ye(outputfilepath: Path | str, griddata: pl.DataFrame) -> None:  # ruff:ignore[invalid-function-name]
+    """Return the result of opacity_by_ye, the new name of this function."""
+    opacity_by_ye(outputfilepath, griddata)
+
+
+@warnings.deprecated("write_Ye_file is deprecated. Use write_ye_file.")
+def write_Ye_file(outputfilepath: Path | str, griddata: pl.DataFrame) -> None:  # ruff:ignore[invalid-function-name]
+    """Return the result of write_ye_file, the new name of this function."""
+    write_ye_file(outputfilepath, griddata)

@@ -9,7 +9,14 @@ from artistools.spectra.core import convert_unit_to_angstroms as convert_unit_to
 from artistools.spectra.core import get_escape_surface_gamma as get_escape_surface_gamma
 from artistools.spectra.core import get_flux_contributions as get_flux_contributions
 from artistools.spectra.core import get_flux_contributions_from_packets as get_flux_contributions_from_packets
+from artistools.spectra.core import get_from_packets as get_from_packets
+from artistools.spectra.core import get_specpol_data as get_specpol_data
+from artistools.spectra.core import get_spectra as get_spectra
+from artistools.spectra.core import get_spectrum_at_time as get_spectrum_at_time
+from artistools.spectra.core import get_vspecpol_data as get_vspecpol_data
 from artistools.spectra.core import make_virtual_spectra_summed_file as make_virtual_spectra_summed_file
+from artistools.spectra.core import read_spec as read_spec
+from artistools.spectra.core import read_spec_res as read_spec_res
 from artistools.spectra.core import scan_spec as scan_spec
 from artistools.spectra.core import scan_spec_res as scan_spec_res
 from artistools.spectra.core import scan_specpol_data as scan_specpol_data
