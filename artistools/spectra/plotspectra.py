@@ -478,9 +478,10 @@ def plot_reference_spectrum(
     filepath = find_reference_spectrum_file(filename)
 
     metadata = get_file_metadata(filepath)
-    label = plotkwargs["label"] if "label" in plotkwargs else get_reference_label(filename)
-    assert isinstance(label, str)
-    plotkwargs.pop("label", None)
+    # an empty --label gives the line no legend entry, thus the log and the summary take the label of the file
+    legendlabel = plotkwargs.pop("label", None)
+    assert legendlabel is None or isinstance(legendlabel, str)
+    label = legendlabel or get_reference_label(filename)
 
     print_heading(f"Reference spectrum '{label}'")
     specdata = get_reference_spectrum(filepath, metadata)
@@ -503,7 +504,10 @@ def plot_reference_spectrum(
         timefactor = timeshift_fluxscale_co56law(scaletoreftime, float(metadata["t"]))
         print_detail(f"Scaled from time {metadata['t']} to {scaletoreftime}, factor {timefactor} by the Co56 decay law")
         specdata = specdata.with_columns(f_lambda=pl.col("f_lambda") * timefactor)
-        label += f" * {timefactor:.2f}"
+        scaletext = f" * {timefactor:.2f}"
+        label += scaletext
+        if legendlabel:
+            legendlabel += scaletext
 
     if "scale_factor" in metadata:
         specdata = specdata.with_columns(f_lambda=pl.col("f_lambda") * metadata["scale_factor"])
@@ -540,12 +544,14 @@ def plot_reference_spectrum(
         assert offset == 0
     ymax = specdata["y"].max()
     assert isinstance(ymax, float)
-    (lineplot,) = axis.plot(specdata["x"], specdata["y"], label=label, **plotkwargs)
+    if legendlabel is None:
+        legendlabel = label
+    (lineplot,) = axis.plot(specdata["x"], specdata["y"], label=legendlabel, **plotkwargs)
     print_spectrum_summary(label, specdata, (xmin, xmax), xunit, yvariable, summaryrows=summaryrows)
 
-    add_residual_series(residualseries, label, lineplot, specdata["x"].to_numpy(), specdata["y"].to_numpy())
+    add_residual_series(residualseries, legendlabel, lineplot, specdata["x"].to_numpy(), specdata["y"].to_numpy())
 
-    return lineplot, label, ymax
+    return lineplot, legendlabel, ymax
 
 
 def plot_reference_spectrum_for_args(
