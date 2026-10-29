@@ -194,7 +194,7 @@ def test_logsummary_all_ranks_reads_the_ranks_of_each_run(
 
 
 def test_logsummary_cell_reads_the_rank_of_the_cell_in_each_run(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], read_data_file: Callable[[Path | io.StringIO], pl.DataFrame]
 ) -> None:
     """A restart can use more ranks, and the rank of a cell in the current input.txt is a different cell in a run.
 
@@ -216,7 +216,7 @@ def test_logsummary_cell_reads_the_rank_of_the_cell_in_each_run(
             (modelfolder / runfolder / f"output_{rank}-0.txt").write_text(mpiline + header + message, encoding="utf-8")
 
     artistools.__main__.main(argsraw=["logsummary", str(modelfolder), "-modelgridindex", "999", "--quiet"])
-    dfsummary = pl.read_csv(io.StringIO(capsys.readouterr().out), separator=" ", null_values="nan")
+    dfsummary = read_data_file(io.StringIO(capsys.readouterr().out))
     assert dfsummary["level"].to_list() == ["error"]
     assert dfsummary["count"].item() == 2
 
@@ -225,7 +225,7 @@ def test_logsummary_cell_reads_the_rank_of_the_cell_in_each_run(
         (modelfolder / "200.slurm" / f"output_{rank}-0.txt").unlink()
     artistools.__main__.main(argsraw=["logsummary", str(modelfolder), "-modelgridindex", "999", "--quiet"])
     captured = capsys.readouterr()
-    assert pl.read_csv(io.StringIO(captured.out), separator=" ", null_values="nan")["count"].item() == 1
+    assert read_data_file(io.StringIO(captured.out))["count"].item() == 1
     # the summary left out the run of 200.slurm with no message
     assert "200.slurm has no log of the ranks 3" in captured.err
 
@@ -235,7 +235,7 @@ def test_logsummary_cell_reads_the_rank_of_the_cell_in_each_run(
     artistools.__main__.main(argsraw=["logsummary", str(modelfolder), "-modelgridindex", "999", "--quiet"])
     captured = capsys.readouterr()
     assert "300.slurm has no modelgridrankassignments.out" in captured.err
-    assert pl.read_csv(io.StringIO(captured.out), separator=" ", null_values="nan")["count"].item() == 1
+    assert read_data_file(io.StringIO(captured.out))["count"].item() == 1
 
 
 def test_logsummary_log_that_cannot_be_read_is_not_a_copy(tmp_path: Path) -> None:
@@ -256,7 +256,9 @@ def test_logsummary_log_that_cannot_be_read_is_not_a_copy(tmp_path: Path) -> Non
         runlog.chmod(0o644)
 
 
-def test_logsummary_reads_a_compressed_copy_of_a_log_once(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_logsummary_reads_a_compressed_copy_of_a_log_once(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], read_data_file: Callable[[Path | io.StringIO], pl.DataFrame]
+) -> None:
     """A gzip copy of the log of a run in the model folder had a different name, and its messages counted twice."""
     import gzip
 
@@ -271,7 +273,7 @@ def test_logsummary_reads_a_compressed_copy_of_a_log_once(tmp_path: Path, capsys
         fcopy.write(logtext)
 
     artistools.__main__.main(argsraw=["logsummary", str(modelfolder), "--quiet"])
-    dfsummary = pl.read_csv(io.StringIO(capsys.readouterr().out), separator=" ", null_values="nan")
+    dfsummary = read_data_file(io.StringIO(capsys.readouterr().out))
     assert dfsummary["count"].to_list() == [1]
 
 
@@ -291,7 +293,9 @@ def test_logsummary_combines_the_summary_of_each_log() -> None:
     pltest.assert_frame_equal(get_log_summary(logfiles), dfall)
 
 
-def test_logsummary_reads_two_gzip_copies_of_a_log_once(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_logsummary_reads_two_gzip_copies_of_a_log_once(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], read_data_file: Callable[[Path | io.StringIO], pl.DataFrame]
+) -> None:
     """Two gzip files of one text can have different bytes, e.g. another time in the header of gzip."""
     import gzip
 
@@ -309,7 +313,7 @@ def test_logsummary_reads_two_gzip_copies_of_a_log_once(tmp_path: Path, capsys: 
     ).read_bytes()
 
     artistools.__main__.main(argsraw=["logsummary", str(modelfolder), "--quiet"])
-    dfsummary = pl.read_csv(io.StringIO(capsys.readouterr().out), separator=" ", null_values="nan")
+    dfsummary = read_data_file(io.StringIO(capsys.readouterr().out))
     assert dfsummary["count"].to_list() == [1]
 
 
@@ -330,7 +334,9 @@ def test_log_reader_finds_a_message_on_the_line_of_a_timestep(tmp_path: Path) ->
     assert read_log_messages(logfile).select("level", "modelgridindex").rows() == [("warning", 4)]
 
 
-def test_logsummary_keeps_identical_logs_of_two_run_folders(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_logsummary_keeps_identical_logs_of_two_run_folders(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], read_data_file: Callable[[Path | io.StringIO], pl.DataFrame]
+) -> None:
     """Two retries can stop with the same error and write the same text, and the second retry counted as a copy."""
     import artistools.__main__
 
@@ -342,14 +348,14 @@ def test_logsummary_keeps_identical_logs_of_two_run_folders(tmp_path: Path, caps
     shutil.copy(modelpath / "input.txt", modelfolder / "input.txt")
 
     artistools.__main__.main(argsraw=["logsummary", str(modelfolder), "--quiet"])
-    dfsummary = pl.read_csv(io.StringIO(capsys.readouterr().out), separator=" ", null_values="nan")
+    dfsummary = read_data_file(io.StringIO(capsys.readouterr().out))
     assert dfsummary["count"].to_list() == [2]
 
     # a local run writes its estimators and its log into the model folder, and its log is a run and not a copy
     (modelfolder / "output_0-0.txt").write_text(logtext, encoding="utf-8")
     (modelfolder / "estimators_0000.out").write_text("", encoding="utf-8")
     artistools.__main__.main(argsraw=["logsummary", str(modelfolder), "--quiet"])
-    dfsummary = pl.read_csv(io.StringIO(capsys.readouterr().out), separator=" ", null_values="nan")
+    dfsummary = read_data_file(io.StringIO(capsys.readouterr().out))
     assert dfsummary["count"].to_list() == [3]
 
 

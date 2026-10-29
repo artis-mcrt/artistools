@@ -1511,7 +1511,7 @@ def test_write_data_puts_reference_spectra_in_their_own_table(
         write_data=True,
     )
 
-    dfout = pl.read_csv(tmp_path / "spec.txt", separator=" ", comment_prefix="#")
+    dfout = read_data_file(tmp_path / "spec.txt")
     assert [col for col in dfout.columns if col.startswith("f_lambda")] == ["f_lambda.TEST MODEL"]
     dfreferences = read_data_file(tmp_path / "spec_references.txt")
     assert dfreferences["series"].n_unique() == 1
@@ -3629,7 +3629,9 @@ def test_spectrum_summary_integrates_around_a_masked_band(capsys: pytest.Capture
     assert "relative noise of the luminosity" not in out
 
 
-def test_summary_table_agrees_with_the_summary_lines(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_summary_table_agrees_with_the_summary_lines(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """The table _summary of --write_data gives the numbers of each summary line, thus an agent need not parse the line.
 
     The luminosity must also agree with 4π (1 Mpc)² times the trapezoid integral of f_λ in the table of the spectrum. A
@@ -3644,8 +3646,7 @@ def test_summary_table_agrees_with_the_summary_lines(tmp_path: Path, capsys: pyt
         write_data=True,
     )
     output = capsys.readouterr().out
-    readargs: dict[str, t.Any] = {"separator": " ", "null_values": "nan", "comment_prefix": "#"}
-    dfsummary = pl.read_csv(tmp_path / "spec_summary.txt", **readargs)
+    dfsummary = read_data_file(tmp_path / "spec_summary.txt")
     assert dfsummary.height == 2
     for row in dfsummary.iter_rows(named=True):
         match = re.search(
@@ -3681,7 +3682,7 @@ def test_summary_table_agrees_with_the_summary_lines(tmp_path: Path, capsys: pyt
     assert noisematch[3] == modelrow["noise_method"]
     assert referencerow["relnoise_luminosity"] is None
 
-    dfspectrum = pl.read_csv(tmp_path / "spec.txt", **readargs).filter(
+    dfspectrum = read_data_file(tmp_path / "spec.txt").filter(
         pl.col("lambda_angstroms").is_between(modelrow["lambda_min_angstroms"], modelrow["lambda_max_angstroms"])
     )
     integral = np.trapezoid(dfspectrum["f_lambda.TEST MODEL"], dfspectrum["lambda_angstroms"])

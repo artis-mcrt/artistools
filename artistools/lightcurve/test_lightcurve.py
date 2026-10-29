@@ -3813,7 +3813,9 @@ def test_katz_integral_leaves_out_a_missing_luminosity() -> None:
     assert np.isclose(omitted_days, 2.0)
 
 
-def test_summary_table_agrees_with_the_summary_lines(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_summary_table_agrees_with_the_summary_lines(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """The table _summary of --write_data gives the numbers of each summary line, thus an agent need not parse the line.
 
     The peak must also be the largest luminosity of the valid range in the table of the plotted light curve.
@@ -3821,8 +3823,7 @@ def test_summary_table_agrees_with_the_summary_lines(tmp_path: Path, capsys: pyt
     outputfile = tmp_path / "lc.pdf"
     at.lightcurve.plot(argsraw=[], modelpath=[modelpath], frompackets=True, outputfile=outputfile, write_data=True)
     output = capsys.readouterr().out
-    readargs: dict[str, t.Any] = {"separator": " ", "null_values": "nan", "comment_prefix": "#"}
-    dfsummary = pl.read_csv(tmp_path / "lc_summary.txt", **readargs)
+    dfsummary = read_data_file(tmp_path / "lc_summary.txt")
     row = dfsummary.row(0, named=True)
     assert dfsummary.height == 1
     match = re.search(
@@ -3843,7 +3844,7 @@ def test_summary_table_agrees_with_the_summary_lines(tmp_path: Path, capsys: pyt
     assert match[8] == row["noise_method"]
     assert int(match[9]) == row["peak_packet_count"]
 
-    dfvalid = pl.read_csv(tmp_path / "lc.txt", **readargs).filter(pl.col("in_valid_range"))
+    dfvalid = read_data_file(tmp_path / "lc.txt").filter(pl.col("in_valid_range"))
     dfpeak = dfvalid.filter(pl.col("luminosity_erg/s") == pl.col("luminosity_erg/s").max())
     assert np.isclose(dfpeak["luminosity_erg/s"].item(), row["peak_luminosity_erg_per_s"], rtol=1e-12)
     assert np.isclose(dfpeak["time_days"].item(), row["peak_time_days"], rtol=1e-12)
