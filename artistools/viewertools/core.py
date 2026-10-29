@@ -10,7 +10,6 @@ import sys
 import threading
 import traceback
 import typing as t
-from functools import lru_cache
 from pathlib import Path
 
 from artistools.misc import addarg_quiet
@@ -19,6 +18,7 @@ from artistools.misc import exit_with_error
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_dirbins
+from artistools.misc import modelpath_cache
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_file
 from artistools.misc import print_error
@@ -241,7 +241,7 @@ def get_direction_kinds(modelfolder: Path) -> list[str]:
 
 
 @clear_at_reload("output")
-@lru_cache(maxsize=64)
+@modelpath_cache(maxsize=64)
 def model_has_direction_data(
     modelfolder: Path, kind: str, resfilenames: tuple[str, ...], vpktpattern: str, *, frompackets: bool
 ) -> bool:

@@ -2775,7 +2775,7 @@ def collect_emission_and_absorption(
 
 
 @clear_at_reload("output")
-@lru_cache(maxsize=64)
+@modelpath_cache(maxsize=64)
 def has_gamma_spec_file(modelfolder: Path) -> bool:
     """Return True if the model folder has gamma_spec.out.
 

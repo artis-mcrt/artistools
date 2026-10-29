@@ -3759,6 +3759,21 @@ def test_emission_plot_names_a_direction_bin_that_the_average_leaves_out(tmp_pat
         )
 
 
+def test_gamma_spectrum_check_follows_the_working_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The check for gamma_spec.out keys its cache on the absolute path of the model folder, as each reader does.
+
+    The check had a plain lru_cache, thus the relative path "." kept the answer of the first working folder.
+    """
+    for foldername in ("withgamma", "nogamma"):
+        (tmp_path / foldername).mkdir()
+    (tmp_path / "withgamma" / "gamma_spec.out").write_text("", encoding="utf-8")
+
+    monkeypatch.chdir(tmp_path / "withgamma")
+    assert atspectra.has_gamma_spec_file(Path())
+    monkeypatch.chdir(tmp_path / "nogamma")
+    assert not atspectra.has_gamma_spec_file(Path())
+
+
 def test_output_template_names_a_field_that_plotspectra_does_not_give(tmp_path: Path) -> None:
     """A field of -o that the command does not give gets a clear error, as in the other commands.
 
