@@ -734,11 +734,7 @@ def get_metadata_path(filepath: Path) -> Path:
 
 
 def get_metadata_label(metadata: dict[str, t.Any], filename: Path | str) -> str:
-    """Return the legend label of a file of reference data with no --label.
-
-    The metadata of the file gives the label. With no label in the metadata, the label is the name or the path that the
-    command gives.
-    """
+    """Return the label in the metadata of a reference file, or the name or the path that the command gives."""
     return str(metadata.get("label", filename))
 
 

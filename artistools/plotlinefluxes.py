@@ -1159,7 +1159,15 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def resolve_plot_args(args: argparse.Namespace) -> None:
-    """Give args the values that the plot reads: the paths, the styles, the emission features, and the time bins."""
+    """Give args the values that the plot reads.
+
+    The values are:
+
+    - the paths;
+    - the styles;
+    - the emission features;
+    - the time bins.
+    """
     args.modelpath = normalize_path_list(args.modelpath)
 
     args.color = resolve_series_styles(

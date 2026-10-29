@@ -3994,9 +3994,10 @@ def test_plot_argument_rejects_a_series_type_with_no_names() -> None:
 def test_viewer_reads_the_type_of_a_subplot_as_the_command_does(capsys: pytest.CaptureFixture[str]) -> None:
     """The viewer must give a subplot the type that the command reads.
 
-    The viewer had its own copy of the reading. It tested a list of ions with is_valid_ion, and the command tested
-    could_be_ion. Thus the card of ("Fe II", "te") became a subplot of variables, but the command read a plot of
-    populations and gave the message for that plot. The copy also read an alias as an ion, e.g. n_e as nitrogen.
+    The viewer read the type of a subplot with its own copy of the code. It tested a list of ions with is_valid_ion,
+    and the command tested could_be_ion. Thus the card of ("Fe II", "te") became a subplot of variables, but the
+    command read a plot of populations and gave the message for that plot. The copy also read an alias as an ion,
+    e.g. n_e as nitrogen.
     """
     estimatorcolumns = ["Te", "nne", "nnion_Fe_II"]
 

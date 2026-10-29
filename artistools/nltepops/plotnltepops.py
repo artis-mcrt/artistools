@@ -1176,7 +1176,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 def resolve_plot_args(args: argparse.Namespace) -> list[int]:
     """Give args the values that the plot reads, and return the timesteps of a plot against the level index.
 
-    The values are the elements, the ion stages, the range of the timesteps, the cells, and the output file.
+    The values are:
+
+    - the elements;
+    - the ion stages;
+    - the range of the timesteps;
+    - the cells;
+    - the output file.
     """
     # the parser gives text such as "1-3", and a keyword argument of main() can also give a number or a list
     args.ion_stages = get_cell_list(args.ion_stages) if args.ion_stages else None
