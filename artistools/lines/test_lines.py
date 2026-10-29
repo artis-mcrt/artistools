@@ -107,8 +107,8 @@ def test_line_contributions_follow_the_level_populations_of_artis() -> None:
             / tau
             * dfestimators["volume"].item()
         )
-        assert np.isclose(row["tau_sobolev"], tau, rtol=1e-6), ion
-        assert np.isclose(row["emission_erg_per_s"], emission, rtol=1e-6), ion
+        assert np.isclose(row["tau_sobolev"], tau, rtol=1e-6, atol=0.0), ion
+        assert np.isclose(row["emission_erg_per_s"], emission, rtol=1e-6, atol=0.0), ion
 
 
 def test_line_populations_take_the_boltzmann_factor_of_the_ground_level_with_no_superlevel() -> None:

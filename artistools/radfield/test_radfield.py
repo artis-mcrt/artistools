@@ -77,16 +77,16 @@ def test_radfield_bin_with_no_fit_takes_the_full_spectrum_fit() -> None:
     j_nu_fullspec = np.array(j_nu_dbb(arr_nu, 0.5, 6000.0))
     j_nu_bins = np.array(j_nu_dbb(arr_nu, 0.1, 7000.0))
     j_nu = np.array(j_lambda) * np.array(arr_lambda) / arr_nu
-    assert np.allclose(j_nu[:200], j_nu_fullspec[:200], rtol=1e-10)
-    assert np.allclose(j_nu[200:], j_nu_bins[200:], rtol=1e-10)
+    assert np.allclose(j_nu[:200], j_nu_fullspec[:200], rtol=1e-10, atol=0.0)
+    assert np.allclose(j_nu[200:], j_nu_bins[200:], rtol=1e-10, atol=0.0)
 
     # before MULTIBIN_RADFIELD_FIRST_TIMESTEP, ARTIS takes the full-spectrum fit for every bin
     _, j_lambda_fullspec = get_fitted_field(radfielddata, modelgridindex=0, timestep=5, usebinfits=False)
-    assert np.allclose(np.array(j_lambda_fullspec) * np.array(arr_lambda) / arr_nu, j_nu_fullspec, rtol=1e-10)
+    assert np.allclose(np.array(j_lambda_fullspec) * np.array(arr_lambda) / arr_nu, j_nu_fullspec, rtol=1e-10, atol=0.0)
 
     _, bandaverage = get_binaverage_field(radfielddata, modelgridindex=0, timestep=5)
     dlambda = at.constants.c_ang_per_s * (1 / 5.0e14 - 1 / 6.0e14)
-    assert np.isclose(bandaverage[1], 40.0 / dlambda, rtol=1e-10)
+    assert np.isclose(bandaverage[1], 40.0 / dlambda, rtol=1e-10, atol=0.0)
 
 
 def test_radfield_takes_the_last_timestep_with_data(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
