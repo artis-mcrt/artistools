@@ -760,13 +760,11 @@ def plot_artis_spectrum(
     from_packets: bool = False,
     filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     linelabel: str | None = None,
-    yvariable: str = "flux",
     directionbins: list[int] | None = None,
     average_over_phi: bool = False,
     average_over_theta: bool = False,
     usedegrees: bool = False,
     maxpacketfiles: int | None = None,
-    xunit: str = "angstrom",
     residualseries: list[ResidualSeries] | None = None,
     summaryrows: list[dict[str, t.Any]] | None = None,
     **plotkwargs: t.Any,
@@ -896,8 +894,8 @@ def plot_artis_spectrum(
             timemax=timemax,
             xmin=xmin,
             xmax=xmax,
-            xunit=xunit,
-            yvariable=yvariable,
+            xunit=args.xunit,
+            yvariable=args.yvariable,
             fluxdistance_mpc=args.distmpc,
             frompackets=from_packets,
             vpkt_observers=args.plotvspecpol is not None,
@@ -932,8 +930,6 @@ def plot_artis_spectrum(
                 epochsuffix=f"_{args.timedayslist[axindex]}d" if args.multispecplot else "",
                 showslegend=axindex == 0,
                 xlimits=(xmin, xmax),
-                xunit=xunit,
-                yvariable=yvariable,
                 scale_to_peak=scale_to_peak,
                 isfiltered=filterfunc is not None,
                 printedmethodlines=printedmethodlines,
@@ -965,8 +961,6 @@ def draw_dirbin_spectra(
     epochsuffix: str,
     showslegend: bool,
     xlimits: tuple[float, float],
-    xunit: str,
-    yvariable: str,
     scale_to_peak: float | None,
     isfiltered: bool,
     printedmethodlines: set[str],
@@ -1015,12 +1009,12 @@ def draw_dirbin_spectra(
         seriessuffix = (f"_dirbin{dirbin:02d}" if dirbin >= 0 else "") + epochsuffix
         summaryname = f"{linelabel_withdirbin or get_model_name(modelpath)}{seriessuffix}"
         print_spectrum_summary(
-            summaryname, dfspectrum, xlimits, xunit, yvariable, isfiltered=isfiltered, summaryrows=summaryrows
+            summaryname, dfspectrum, xlimits, args.xunit, args.yvariable, isfiltered=isfiltered, summaryrows=summaryrows
         )
         xplot, yplot = dfspectrum["x"].to_numpy(), dfspectrum["y"].to_numpy()
         binedges = None
         if args.histogram:
-            lower, upper, edgesource = get_bin_x_edges(dfspectrum, xunit)
+            lower, upper, edgesource = get_bin_x_edges(dfspectrum, args.xunit)
             binedges = (lower, upper)
             print_method_line(
                 "histogram: each bin is a horizontal line from its lower edge to its upper edge."
@@ -1034,7 +1028,7 @@ def draw_dirbin_spectra(
             xplot, yplot, label=linelabel_withdirbin if showslegend else None, gid=summaryname, **plotkwargs
         )
         if args.shownoise:
-            print_method_line(get_noise_method_text(yvariable))
+            print_method_line(get_noise_method_text(args.yvariable))
             plot_noise_band(axis, dfspectrum, modelline.get_color(), binedges)
         add_residual_series(
             residualseries,
@@ -1213,12 +1207,10 @@ def make_spectrum_plot(
                     maxpacketfiles=args.maxpacketfiles,
                     filterfunc=filterfunc,
                     linelabel=linelabel,
-                    yvariable=args.yvariable,
                     directionbins=args.plotvspecpol or args.plotviewingangle,
                     average_over_phi=args.average_over_phi_angle,
                     average_over_theta=args.average_over_theta_angle,
                     usedegrees=args.usedegrees,
-                    xunit=args.xunit,
                     residualseries=residualseries,
                     summaryrows=summaryrows,
                     **plotkwargs,
