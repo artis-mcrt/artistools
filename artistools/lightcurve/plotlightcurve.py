@@ -781,7 +781,6 @@ def get_time_range_days(dflightcurve: pl.DataFrame) -> tuple[float | None, float
 def plot_artis_lightcurve(
     modelpath: str | Path,
     axis: mplax.Axes,
-    lcindex: int = 0,
     linelabel: str | None = None,
     escape_type: str = "TYPE_RPKT",
     frompackets: bool = False,
@@ -860,7 +859,6 @@ def plot_artis_lightcurve(
         lcdataframes,
         angle_definition,
         args,
-        lcindex=lcindex,
         linelabel=linelabel,
         linelabel_is_custom=linelabel_is_custom,
         pellet_nucname=pellet_nucname,
@@ -877,7 +875,6 @@ def draw_artis_lightcurve(
     angle_definition: Mapping[int, str],
     args: argparse.Namespace,
     *,
-    lcindex: int,
     linelabel: str,
     linelabel_is_custom: bool,
     pellet_nucname: str | None,
@@ -936,7 +933,7 @@ def draw_artis_lightcurve(
         if dirbin != -1:
             if args.colorbarcostheta or args.colorbarphi:
                 # the bins of a colour bar overlap, thus they are partly transparent unless -linealpha gives a value
-                plotkwargs["alpha"] = 0.75 if args.linealpha[lcindex] is None else args.linealpha[lcindex]
+                plotkwargs.setdefault("alpha", 0.75)
                 # the colour bar names the direction bin, thus the legend needs no entry for it. The
                 # user gives -label to name the model, thus only the first bin keeps that label
                 label_with_tags = linelabel if linelabel_is_custom and dirbin == dirbins[0] else None
@@ -1169,7 +1166,6 @@ def draw_plot(
                         seriesplotkwargs["linestyle"] = ":"
                     lcdataframes = plot_artis_lightcurve(
                         modelpath=modelpath,
-                        lcindex=lcindex,
                         axis=axis,
                         escape_type=escape_type,
                         frompackets=args.frompackets,
