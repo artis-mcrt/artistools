@@ -85,6 +85,22 @@ def get_plot_xy() -> "Callable[[t.Any], tuple[np.ndarray, np.ndarray]]":
 
 
 @pytest.fixture
+def package_modules() -> list[Path]:
+    """Return the path of each module of the package artistools, with no test module, in the order of the paths.
+
+    A name with a space is an iCloud conflict copy, thus the list leaves it out.
+    """
+    import artistools as at
+
+    packagefolder = Path(at.__file__).parent
+    return [
+        path
+        for path in sorted(packagefolder.rglob("*.py"))
+        if not path.name.startswith("test_") and " " not in path.name
+    ]
+
+
+@pytest.fixture
 def read_data_file() -> "Callable[[Path | io.StringIO], pl.DataFrame]":
     """Return a function that reads a table that --write-data wrote or that --print-data printed."""
     import polars as pl

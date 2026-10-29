@@ -1615,7 +1615,7 @@ def test_release_for_changed_code_gives_a_warning(capsys: pytest.CaptureFixture[
         assert (remote.get_git_command(gitsource) in stderr) == haswarning
 
 
-def test_server_protocol_changes_with_the_readers() -> None:
+def test_server_protocol_changes_with_the_readers(package_modules: list[Path]) -> None:
     """Increase SERVER_PROTOCOL when a reader on the server or the code of a message changes.
 
     A clone with the server protocol of the release uses the release on the host. Pickle rebuilds a NamedTuple by the
@@ -1627,13 +1627,10 @@ def test_server_protocol_changes_with_the_readers() -> None:
     import hashlib
     import re
 
-    packagefolder = Path(remote.__file__).resolve().parents[1]
+    packagefolder = Path(at.__file__).parent
     signatures: list[str] = []
     typedefinitions: dict[str, list[str]] = {}
-    for path in sorted(packagefolder.rglob("*.py")):
-        # a name with a space is an iCloud conflict copy
-        if path.name.startswith("test_") or " " in path.name:
-            continue
+    for path in package_modules:
         modulepath = path.relative_to(packagefolder).as_posix()
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and any(

@@ -126,7 +126,7 @@ def test_top_level_api_is_the_documented_list() -> None:
         assert readmenames <= TOPLEVEL_API, f"the README names {sorted(readmenames - TOPLEVEL_API)} at the top level"
 
 
-def test_reader_prefix_tells_lazy_from_eager() -> None:
+def test_reader_prefix_tells_lazy_from_eager(package_modules: list[Path]) -> None:
     """A reader with the prefix scan_ returns a LazyFrame, and a reader with the prefix read_ returns eager data.
 
     The README gives this rule to the users. read_spec returned a LazyFrame, and get_spectra returned a dictionary of
@@ -136,14 +136,8 @@ def test_reader_prefix_tells_lazy_from_eager() -> None:
     import ast
 
     packagefolder = Path(at.__file__).parent
-    # a name with a space is an iCloud conflict copy
-    modules = [
-        path
-        for path in sorted(packagefolder.rglob("*.py"))
-        if not path.name.startswith("test_") and " " not in path.name
-    ]
     wrongnames = []
-    for module in modules:
+    for module in package_modules:
         for node in ast.parse(module.read_text(encoding="utf-8")).body:
             if isinstance(node, ast.FunctionDef) and node.returns is not None:
                 islazy = "LazyFrame" in ast.unparse(node.returns)
@@ -171,7 +165,7 @@ def test_each_package_command_is_named_plot() -> None:
         assert package.plot.__module__.startswith(f"{package.__name__}."), package.__name__
 
 
-def test_package_modules_import_no_package_alias() -> None:
+def test_package_modules_import_no_package_alias(package_modules: list[Path]) -> None:
     """A package module must import each name from the module that defines it.
 
     An alias of the top-level package hides an import cycle until a different module comes first. Python 3.15
@@ -179,13 +173,11 @@ def test_package_modules_import_no_package_alias() -> None:
     """
     aliasimport = re.compile(r"^\s*import artistools(\.[\w.]+)? as \w+", re.MULTILINE)
     packagedir = Path(at.__file__).parent
+    # a test can use the alias
     offenders = [
         str(path.relative_to(packagedir))
-        for path in sorted(packagedir.rglob("*.py"))
-        # a test can use the alias, and a name with a space is an iCloud conflict copy
-        if not path.name.startswith("test_")
-        and " " not in path.name
-        and aliasimport.search(path.read_text(encoding="utf-8"))
+        for path in package_modules
+        if aliasimport.search(path.read_text(encoding="utf-8"))
     ]
     assert not offenders, f"these package modules import a package alias: {offenders}"
 

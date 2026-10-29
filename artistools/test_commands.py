@@ -464,7 +464,7 @@ def test_cli_tab_completion(tmp_path: Path, comp_line: str, expected: str) -> No
     assert "--print_data" not in completions
 
 
-def test_every_command_that_saves_a_plot_has_darkmode_show_and_open() -> None:
+def test_every_command_that_saves_a_plot_has_darkmode_show_and_open(package_modules: list[Path]) -> None:
     """--darkmode, --show, and --open apply to each plot file, thus each command that saves a plot must accept them.
 
     Only the commands with --show had --darkmode, thus e.g. plotlogfiles wrote a light PDF file. A command can save
@@ -479,10 +479,8 @@ def test_every_command_that_saves_a_plot_has_darkmode_show_and_open() -> None:
     # plottools defines save_figure, and each module that draws a plot imports it
     writermodules = {
         "artistools." + ".".join(path.relative_to(packagefolder).with_suffix("").parts)
-        for path in packagefolder.rglob("*.py")
-        if path.name not in {"plottools.py", "__init__.py"}
-        and not path.name.startswith("test_")
-        and savesplot.search(path.read_text(encoding="utf-8"))
+        for path in package_modules
+        if path.name not in {"plottools.py", "__init__.py"} and savesplot.search(path.read_text(encoding="utf-8"))
     }
 
     def walktree(tree: at.commands.CommandTree) -> list[at.commands.CommandSpec]:
