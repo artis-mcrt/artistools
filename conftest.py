@@ -96,6 +96,18 @@ def read_data_file() -> "Callable[[Path | io.StringIO], pl.DataFrame]":
 
 
 @pytest.fixture
+def copy_model_inputs() -> "Callable[[Path, Path, Sequence[str]], None]":
+    """Return a function that copies the input files of a model to a folder, and each extra file, e.g. spec.out."""
+    import shutil
+
+    def copy_model_inputs(source: Path, folder: Path, extranames: "Sequence[str]") -> None:
+        for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt", *extranames):
+            shutil.copy(source / name, folder / name)
+
+    return copy_model_inputs
+
+
+@pytest.fixture
 def get_cell_texts() -> "Callable[[str], list[str]]":
     """Return a function that splits the text of an estimator file into the text of each cell.
 

@@ -786,12 +786,6 @@ def test_estimparse_missing_file() -> None:
         at.rustext.estimparse(modelpath, 999, 999)
 
 
-def copy_model_inputs(folder: Path, *extranames: str, source: Path = modelpath) -> None:
-    """Copy the input files of a model to a folder, and each extra file of the model, e.g. estimators_0000.out."""
-    for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt", *extranames):
-        shutil.copy(source / name, folder / name)
-
-
 def relabel_cell(celltext: str, modelgridindex: int) -> str:
     """Return the text of a cell of cell 0 with a different cell index."""
     return celltext.replace("modelgridindex 0 ", f"modelgridindex {modelgridindex} ", 1)
@@ -835,14 +829,17 @@ def test_estimparse_allranks_keeps_the_order_over_frames_and_parts(
 
 
 def test_newer_rank_files_win_over_a_stale_file_of_all_ranks(
-    tmp_path: Path, get_cell_texts: Callable[[str], list[str]], write_zstd_frames: Callable[[Path, Sequence[str]], None]
+    tmp_path: Path,
+    get_cell_texts: Callable[[str], list[str]],
+    write_zstd_frames: Callable[[Path, Sequence[str]], None],
+    copy_model_inputs: Callable[[Path, Path, Sequence[str]], None],
 ) -> None:
     """A file of all ranks that is older than a file of a rank is stale.
 
     A run of the ARTIS script on the folder of a job that still runs gives such a file, because sn3d then adds
     timesteps to the files of the ranks. The reader must take the files of the ranks, or it silently loses timesteps.
     """
-    copy_model_inputs(tmp_path)
+    copy_model_inputs(modelpath, tmp_path, [])
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
     allranksfile = tmp_path / "estimators_allranks.out.zst"
     write_zstd_frames(allranksfile, celltexts[:40])
@@ -867,7 +864,10 @@ def test_newer_rank_files_win_over_a_stale_file_of_all_ranks(
 
 
 def test_conversion_reads_again_a_text_that_changed_during_the_read(
-    tmp_path: Path, get_cell_texts: Callable[[str], list[str]], write_zstd_frames: Callable[[Path, Sequence[str]], None]
+    tmp_path: Path,
+    get_cell_texts: Callable[[str], list[str]],
+    write_zstd_frames: Callable[[Path, Sequence[str]], None],
+    copy_model_inputs: Callable[[Path, Path, Sequence[str]], None],
 ) -> None:
     """sn3d can add a timestep to the file of all ranks during the conversion.
 
@@ -876,7 +876,7 @@ def test_conversion_reads_again_a_text_that_changed_during_the_read(
     """
     import artistools.estimators.core
 
-    copy_model_inputs(tmp_path)
+    copy_model_inputs(modelpath, tmp_path, [])
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
     allranksfile = tmp_path / "estimators_allranks.out.zst"
     write_zstd_frames(allranksfile, celltexts[:40])
@@ -1015,7 +1015,10 @@ def test_conversion_in_batches_gives_the_table_of_one_read(
 
 
 def test_an_older_text_does_not_replace_a_newer_cache(
-    tmp_path: Path, get_cell_texts: Callable[[str], list[str]], write_zstd_frames: Callable[[Path, Sequence[str]], None]
+    tmp_path: Path,
+    get_cell_texts: Callable[[str], list[str]],
+    write_zstd_frames: Callable[[Path, Sequence[str]], None],
+    copy_model_inputs: Callable[[Path, Path, Sequence[str]], None],
 ) -> None:
     """The script of ARTIS combined the files of the ranks while the job still ran, and the user later removed them.
 
@@ -1023,7 +1026,7 @@ def test_an_older_text_does_not_replace_a_newer_cache(
     """
     from artistools.misc.modelinfo import get_runfolder_timesteps
 
-    copy_model_inputs(tmp_path, "estimators_0000.out")
+    copy_model_inputs(modelpath, tmp_path, ["estimators_0000.out"])
     rankfile = tmp_path / "estimators_0000.out"
     os.utime(rankfile, (2000.0, 2000.0))
     ntimesteps = at.estimators.scan_estimators(tmp_path).collect()["timestep"].n_unique()
@@ -1039,7 +1042,9 @@ def test_an_older_text_does_not_replace_a_newer_cache(
     assert len(get_runfolder_timesteps(tmp_path)) == ntimesteps
 
 
-def test_an_older_text_replaces_a_cache_of_a_different_version(tmp_path: Path) -> None:
+def test_an_older_text_replaces_a_cache_of_a_different_version(
+    tmp_path: Path, copy_model_inputs: Callable[[Path, Path, Sequence[str]], None]
+) -> None:
     """A cache of a different format version cannot stay, also when the text is older than the text of the cache.
 
     The check of the age kept such a cache, and the reader then read the columns of an earlier format.
@@ -1048,7 +1053,7 @@ def test_an_older_text_replaces_a_cache_of_a_different_version(tmp_path: Path) -
     from artistools.estimators.core import CACHEVERSION
     from artistools.misc import write_parquet_atomic
 
-    copy_model_inputs(tmp_path, "estimators_0000.out")
+    copy_model_inputs(modelpath, tmp_path, ["estimators_0000.out"])
     os.utime(tmp_path / "estimators_0000.out", (2000.0, 2000.0))
     at.estimators.scan_estimators(tmp_path).collect()
 
@@ -1065,7 +1070,9 @@ def test_an_older_text_replaces_a_cache_of_a_different_version(tmp_path: Path) -
     assert allranks_parquet_is_current(tmp_path)
 
 
-def test_a_compression_of_the_text_keeps_the_cache(tmp_path: Path) -> None:
+def test_a_compression_of_the_text_keeps_the_cache(
+    tmp_path: Path, copy_model_inputs: Callable[[Path, Path, Sequence[str]], None]
+) -> None:
     """A compression with zstd keeps the time of the file and changes the size of the text. The data stays the same.
 
     The size of the text made the cache stale. Thus the caches of a model folder converted again after a user compressed
@@ -1074,7 +1081,7 @@ def test_a_compression_of_the_text_keeps_the_cache(tmp_path: Path) -> None:
     from artistools.estimators.core import get_estimator_batch_states
     from artistools.misc.fileio import get_decompress_open
 
-    copy_model_inputs(tmp_path, "estimators_0000.out")
+    copy_model_inputs(modelpath, tmp_path, ["estimators_0000.out"])
     rankfile = tmp_path / "estimators_0000.out"
     os.utime(rankfile, (2000.0, 2000.0))
     dfexpected = at.estimators.scan_estimators(tmp_path).collect()
@@ -1101,7 +1108,9 @@ def test_a_compression_of_the_text_keeps_the_cache(tmp_path: Path) -> None:
     assert cachefile.stat().st_mtime_ns == cachemtime
 
 
-def test_a_partly_archived_model_rebuilds_only_its_stale_batches(tmp_path: Path) -> None:
+def test_a_partly_archived_model_rebuilds_only_its_stale_batches(
+    tmp_path: Path, copy_model_inputs: Callable[[Path, Path, Sequence[str]], None]
+) -> None:
     """An earlier artistools version made a cache for each batch of ranks, and some files of ranks are gone.
 
     The conversion into one cache of all the ranks needs every file of a rank. The reader thus rebuilds only the stale
@@ -1117,7 +1126,7 @@ def test_a_partly_archived_model_rebuilds_only_its_stale_batches(tmp_path: Path)
     def batched_by_one(ranks: Iterable[int], _batchsize: int, strict: bool = False) -> Iterable[tuple[int, ...]]:
         return itertools.batched(ranks, 1, strict=strict)
 
-    copy_model_inputs(tmp_path, "estimators_0000.out")
+    copy_model_inputs(modelpath, tmp_path, ["estimators_0000.out"])
     dfrank0 = at.rustext.estimparse(tmp_path, 0, 0).with_columns(pl.col("timestep", "modelgridindex").cast(pl.Int32))
     # the text of rank 0 is newer than its cache. The text of rank 1 is archived, but its cache is current
     os.utime(tmp_path / "estimators_0000.out", (5000.0, 5000.0))
@@ -1139,7 +1148,9 @@ def test_a_partly_archived_model_rebuilds_only_its_stale_batches(tmp_path: Path)
     assert (tmp_path / "estimbatch01_0001_0001.out.parquet.tmp").is_file()
 
 
-def test_current_batch_caches_stay_and_a_stale_one_makes_the_cache_of_all_ranks(tmp_path: Path) -> None:
+def test_current_batch_caches_stay_and_a_stale_one_makes_the_cache_of_all_ranks(
+    tmp_path: Path, copy_model_inputs: Callable[[Path, Path, Sequence[str]], None]
+) -> None:
     """An earlier artistools version made one cache for each batch of ranks.
 
     The reader takes these caches while all of them are current. A stale batch cache makes the conversion into the one
@@ -1149,7 +1160,7 @@ def test_current_batch_caches_stay_and_a_stale_one_makes_the_cache_of_all_ranks(
     from artistools.misc import write_parquet_atomic
     from artistools.misc.modelinfo import get_runfolder_timesteps
 
-    copy_model_inputs(tmp_path, "estimators_0000.out")
+    copy_model_inputs(modelpath, tmp_path, ["estimators_0000.out"])
     rankfile = tmp_path / "estimators_0000.out"
     os.utime(rankfile, (1000.0, 1000.0))
     batchcache = tmp_path / "estimbatch00_0000_0000.out.parquet.tmp"
@@ -1172,7 +1183,10 @@ def test_current_batch_caches_stay_and_a_stale_one_makes_the_cache_of_all_ranks(
 
 
 def test_conversion_drops_an_incomplete_last_timestep(
-    tmp_path: Path, get_cell_texts: Callable[[str], list[str]], write_zstd_frames: Callable[[Path, Sequence[str]], None]
+    tmp_path: Path,
+    get_cell_texts: Callable[[str], list[str]],
+    write_zstd_frames: Callable[[Path, Sequence[str]], None],
+    copy_model_inputs: Callable[[Path, Path, Sequence[str]], None],
 ) -> None:
     """A job that stopped during the write of a timestep leaves that timestep with some cells only.
 
@@ -1180,7 +1194,7 @@ def test_conversion_drops_an_incomplete_last_timestep(
     """
     from artistools.misc.modelinfo import get_runfolder_timesteps
 
-    copy_model_inputs(tmp_path)
+    copy_model_inputs(modelpath, tmp_path, [])
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
 
     # two cells in each timestep, and the last timestep holds the first cell only
@@ -1204,7 +1218,9 @@ def test_conversion_drops_an_incomplete_last_timestep(
 
 
 def test_a_column_of_a_dropped_timestep_stays_in_the_cache(
-    tmp_path: Path, get_cell_texts: Callable[[str], list[str]]
+    tmp_path: Path,
+    get_cell_texts: Callable[[str], list[str]],
+    copy_model_inputs: Callable[[Path, Path, Sequence[str]], None],
 ) -> None:
     """A column that only the incomplete last timestep writes stays in the cache with zeros.
 
@@ -1214,7 +1230,7 @@ def test_a_column_of_a_dropped_timestep_stays_in_the_cache(
     """
     import artistools.estimators.core
 
-    copy_model_inputs(tmp_path)
+    copy_model_inputs(modelpath, tmp_path, [])
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
     lasttimestep = len(celltexts) - 1
     (tmp_path / "estimators_allranks.out").write_text("".join(celltexts), encoding="utf-8")
@@ -1247,7 +1263,10 @@ def test_a_column_of_a_dropped_timestep_stays_in_the_cache(
 
 
 def test_a_dropped_timestep_that_the_job_completes_makes_the_cache_stale(
-    tmp_path: Path, get_cell_texts: Callable[[str], list[str]], write_zstd_frames: Callable[[Path, Sequence[str]], None]
+    tmp_path: Path,
+    get_cell_texts: Callable[[str], list[str]],
+    write_zstd_frames: Callable[[Path, Sequence[str]], None],
+    copy_model_inputs: Callable[[Path, Path, Sequence[str]], None],
 ) -> None:
     """sn3d can write the rest of a timestep that a conversion dropped, within the tolerance of the cache stamp.
 
@@ -1256,7 +1275,7 @@ def test_a_dropped_timestep_that_the_job_completes_makes_the_cache_stale(
     """
     from artistools.misc.modelinfo import get_runfolder_timesteps
 
-    copy_model_inputs(tmp_path)
+    copy_model_inputs(modelpath, tmp_path, [])
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
 
     # rank 0 wrote its frame of the last timestep, and the frame of rank 1 comes 10 s later
@@ -1289,14 +1308,17 @@ def test_a_dropped_timestep_that_the_job_completes_makes_the_cache_stale(
 
 
 def test_a_write_after_the_read_makes_the_cache_stale(
-    tmp_path: Path, get_cell_texts: Callable[[str], list[str]], write_zstd_frames: Callable[[Path, Sequence[str]], None]
+    tmp_path: Path,
+    get_cell_texts: Callable[[str], list[str]],
+    write_zstd_frames: Callable[[Path, Sequence[str]], None],
+    copy_model_inputs: Callable[[Path, Path, Sequence[str]], None],
 ) -> None:
     """sn3d can add a timestep after the read of the conversion, e.g. during the write of the cache.
 
     The time of the text then moves by less than the tolerance of the cache stamp. The size of the text shows the
     change, thus the next scan converts the text again.
     """
-    copy_model_inputs(tmp_path)
+    copy_model_inputs(modelpath, tmp_path, [])
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
     allranksfile = tmp_path / "estimators_allranks.out.zst"
     write_zstd_frames(allranksfile, celltexts[:40])
@@ -1347,14 +1369,17 @@ def test_estimparse_allranks_drops_a_cell_that_a_cut_frame_ends_inside(
 
 
 def test_scan_takes_a_text_with_no_complete_cell(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], get_cell_texts: Callable[[str], list[str]]
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    get_cell_texts: Callable[[str], list[str]],
+    copy_model_inputs: Callable[[Path, Path, Sequence[str]], None],
 ) -> None:
     """A job that stops during the write of the first cell leaves a text that holds no complete cell.
 
     The reader gives a frame with no column for such a text, and the sort of the conversion then stopped with
     ColumnNotFoundError. The scan must give a warning and no row.
     """
-    copy_model_inputs(tmp_path)
+    copy_model_inputs(modelpath, tmp_path, [])
     celltext = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))[0]
     cuttext = celltext[: celltext.index("populations")] + "populations    Z=26  1: 6.2"
     (tmp_path / "estimators_allranks.out").write_text(cuttext, encoding="utf-8")
@@ -1365,14 +1390,14 @@ def test_scan_takes_a_text_with_no_complete_cell(
 
 
 def test_scan_gives_no_warning_of_a_cut_text_for_a_text_of_empty_cells(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], copy_model_inputs: Callable[[Path, Path, Sequence[str]], None]
 ) -> None:
     """A text whose cells are all empty is complete, thus the scan gives no row and no warning of a cut text.
 
     The reader gave a frame with no column for such a text, as for a cut text. The scan then said that the text holds
     no complete cell.
     """
-    copy_model_inputs(tmp_path)
+    copy_model_inputs(modelpath, tmp_path, [])
     (tmp_path / "estimators_allranks.out").write_text("timestep 0 modelgridindex 0 EMPTYCELL\n\n", encoding="utf-8")
 
     dfestim = at.estimators.scan_estimators(tmp_path).collect()
@@ -1380,7 +1405,9 @@ def test_scan_gives_no_warning_of_a_cut_text_for_a_text_of_empty_cells(
     assert "holds no complete cell" not in capsys.readouterr().err
 
 
-def test_scan_of_kept_batch_caches_reads_the_new_cache_after_their_removal(tmp_path: Path) -> None:
+def test_scan_of_kept_batch_caches_reads_the_new_cache_after_their_removal(
+    tmp_path: Path, copy_model_inputs: Callable[[Path, Path, Sequence[str]], None]
+) -> None:
     """A window keeps the batch caches of an earlier artistools version, and a different process can remove them.
 
     The conversion of that process writes the cache of all ranks and removes the batch caches. The next scan of the
@@ -1392,7 +1419,7 @@ def test_scan_of_kept_batch_caches_reads_the_new_cache_after_their_removal(tmp_p
     from artistools.misc import write_parquet_atomic
     from artistools.misc.modelinfo import get_runfolder_timesteps
 
-    copy_model_inputs(tmp_path, "estimators_0000.out")
+    copy_model_inputs(modelpath, tmp_path, ["estimators_0000.out"])
     rankfile = tmp_path / "estimators_0000.out"
     os.utime(rankfile, (1000.0, 1000.0))
     batchcachefile = tmp_path / "estimbatch00_0000_0000.out.parquet.tmp"
@@ -1494,7 +1521,10 @@ def test_conversion_keeps_a_complete_last_timestep_of_the_ranks_that_it_reads(
 
 
 def test_conversion_reads_once_a_text_that_changed_before_the_read(
-    tmp_path: Path, get_cell_texts: Callable[[str], list[str]], write_zstd_frames: Callable[[Path, Sequence[str]], None]
+    tmp_path: Path,
+    get_cell_texts: Callable[[str], list[str]],
+    write_zstd_frames: Callable[[Path, Sequence[str]], None],
+    copy_model_inputs: Callable[[Path, Path, Sequence[str]], None],
 ) -> None:
     """The text can change after the check of the caches and before the read, e.g. during an earlier conversion.
 
@@ -1504,7 +1534,7 @@ def test_conversion_reads_once_a_text_that_changed_before_the_read(
     from artistools.estimators.core import convert_estimator_batch_caches
     from artistools.estimators.core import get_estimator_batch_states
 
-    copy_model_inputs(tmp_path)
+    copy_model_inputs(modelpath, tmp_path, [])
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
     allranksfile = tmp_path / "estimators_allranks.out.zst"
     write_zstd_frames(allranksfile, celltexts[:40])
@@ -1543,14 +1573,17 @@ def test_runfolder_timesteps_of_a_compressed_rank_file_that_a_job_cut(
 
 
 def test_conversion_drops_an_incomplete_timestep_of_a_job_of_one_timestep(
-    tmp_path: Path, get_cell_texts: Callable[[str], list[str]], write_zstd_frames: Callable[[Path, Sequence[str]], None]
+    tmp_path: Path,
+    get_cell_texts: Callable[[str], list[str]],
+    write_zstd_frames: Callable[[Path, Sequence[str]], None],
+    copy_model_inputs: Callable[[Path, Path, Sequence[str]], None],
 ) -> None:
     """modelgridrankassignments.out gives the count of cells in a complete timestep.
 
     A job of one timestep has no other timestep to give this count. The restart writes the timestep again, but the
     reader keeps the timestep of the earlier job, thus the conversion must drop the incomplete timestep.
     """
-    copy_model_inputs(tmp_path)
+    copy_model_inputs(modelpath, tmp_path, [])
     (tmp_path / "modelgridrankassignments.out").write_text("#rank nstart ndo ndo_nonempty\n0 0 1 1\n1 1 1 1\n")
     celltext = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))[0]
     write_zstd_frames(tmp_path / "estimators_allranks.out.zst", [celltext])
@@ -1559,7 +1592,9 @@ def test_conversion_drops_an_incomplete_timestep_of_a_job_of_one_timestep(
     assert pl.read_parquet(tmp_path / "estimators_allranks.out.parquet").is_empty()
 
 
-def test_scan_gives_zero_only_for_a_null_that_means_zero(tmp_path: Path) -> None:
+def test_scan_gives_zero_only_for_a_null_that_means_zero(
+    tmp_path: Path, copy_model_inputs: Callable[[Path, Path, Sequence[str]], None]
+) -> None:
     """A batch cache of an earlier artistools version can hold a null for a quantity that a whole rank lacks.
 
     ARTIS omits a species with no abundance, thus a null of a quantity of an ion, an element, or an isotope means
@@ -1569,7 +1604,7 @@ def test_scan_gives_zero_only_for_a_null_that_means_zero(tmp_path: Path) -> None
     from artistools.estimators.core import CACHEVERSION
     from artistools.misc import write_parquet_atomic
 
-    copy_model_inputs(tmp_path, "estimators_0000.out")
+    copy_model_inputs(modelpath, tmp_path, ["estimators_0000.out"])
     os.utime(tmp_path / "estimators_0000.out", (1000.0, 1000.0))
     nullcolumns = ("nnion_Fe_II", "gamma_R_Fe_II", "nnelement_Fe", "nniso_Ni56", "Te")
     dfbatch = (
@@ -1594,7 +1629,10 @@ def test_scan_gives_zero_only_for_a_null_that_means_zero(tmp_path: Path) -> None
 
 
 def test_scan_estimators_reads_the_file_of_all_ranks(
-    tmp_path: Path, get_cell_texts: Callable[[str], list[str]], write_zstd_frames: Callable[[Path, Sequence[str]], None]
+    tmp_path: Path,
+    get_cell_texts: Callable[[str], list[str]],
+    write_zstd_frames: Callable[[Path, Sequence[str]], None],
+    copy_model_inputs: Callable[[Path, Path, Sequence[str]], None],
 ) -> None:
     """A run folder with the estimator file of all ranks gives the same rows as the files of the ranks.
 
@@ -1607,7 +1645,7 @@ def test_scan_estimators_reads_the_file_of_all_ranks(
     allranksfolder = tmp_path / "allranks"
     for folder in (perrankfolder, allranksfolder):
         folder.mkdir()
-        copy_model_inputs(folder)
+        copy_model_inputs(modelpath, folder, [])
     shutil.copy(modelpath / "estimators_0000.out", perrankfolder / "estimators_0000.out")
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
     write_zstd_frames(allranksfolder / "estimators_allranks.out.zst", celltexts)
@@ -2623,10 +2661,15 @@ def test_estimator_x_variable_names_the_choices(capsys: pytest.CaptureFixture[st
     assert "--listvariables" in message
 
 
-def build_classic_restart_model(tmp_path: Path, *, secondfolderfirsttimestep: int | None) -> Path:
+def build_classic_restart_model(
+    tmp_path: Path,
+    copy_model_inputs: Callable[[Path, Path, Sequence[str]], None],
+    *,
+    secondfolderfirsttimestep: int | None,
+) -> Path:
     """Write a classic model of two run folders, as a restarted run leaves behind."""
     source = at.get_path("testdata") / "test-classicmode_3d"
-    copy_model_inputs(tmp_path, source=source)
+    copy_model_inputs(source, tmp_path, [])
     # a classic log of one element and no ion, thus a row of the estimators holds no ion population
     (tmp_path / "output_0-0.txt").write_text("[input.c]   element Z = 26\n", encoding="utf-8")
 
@@ -2644,7 +2687,9 @@ def build_classic_restart_model(tmp_path: Path, *, secondfolderfirsttimestep: in
     return tmp_path
 
 
-def test_classic_restart_without_an_offset_is_refused(tmp_path: Path) -> None:
+def test_classic_restart_without_an_offset_is_refused(
+    tmp_path: Path, copy_model_inputs: Callable[[Path, Path, Sequence[str]], None]
+) -> None:
     """Two run folders that both start at timestep zero write the same keys.
 
     The later folder took the place of the earlier one in the dictionary, thus a plot showed the wrong
@@ -2652,17 +2697,19 @@ def test_classic_restart_without_an_offset_is_refused(tmp_path: Path) -> None:
     """
     from artistools.estimators.estimators_classic import read_classic_estimators
 
-    modelpath = build_classic_restart_model(tmp_path, secondfolderfirsttimestep=None)
+    modelpath = build_classic_restart_model(tmp_path, copy_model_inputs, secondfolderfirsttimestep=None)
 
     with pytest.raises(ValueError, match="both give timestep 0 of cell 0"):
         read_classic_estimators(modelpath)
 
 
-def test_classic_restart_with_an_offset_reads_both_folders(tmp_path: Path) -> None:
+def test_classic_restart_with_an_offset_reads_both_folders(
+    tmp_path: Path, copy_model_inputs: Callable[[Path, Path, Sequence[str]], None]
+) -> None:
     """A folder whose log gives its first timestep keeps its own keys, thus the read succeeds."""
     from artistools.estimators.estimators_classic import read_classic_estimators
 
-    modelpath = build_classic_restart_model(tmp_path, secondfolderfirsttimestep=2)
+    modelpath = build_classic_restart_model(tmp_path, copy_model_inputs, secondfolderfirsttimestep=2)
 
     estimators = read_classic_estimators(modelpath)
     assert estimators is not None
@@ -3198,7 +3245,11 @@ def test_estimator_listing_needs_no_time_with_an_image(capsys: pytest.CaptureFix
 DEPOSITIONLINE = "deposition: gamma 2.0e-10 positron 1.0e-10 electron 5.0e-11 alpha 2.5e-11"
 
 
-def make_model_with_deposition(tmp_path: Path, cellye: Sequence[float] | None = None) -> Path:
+def make_model_with_deposition(
+    tmp_path: Path,
+    copy_model_inputs: Callable[[Path, Path, Sequence[str]], None],
+    cellye: Sequence[float] | None = None,
+) -> Path:
     """Return a copy of the test model whose estimators give the deposition rate of each channel.
 
     The copy holds the four small input files that the reader needs, thus it costs no time and no
@@ -3210,7 +3261,7 @@ def make_model_with_deposition(tmp_path: Path, cellye: Sequence[float] | None = 
     """
     modeldir = tmp_path / "modelwithdeposition"
     modeldir.mkdir()
-    copy_model_inputs(modeldir)
+    copy_model_inputs(modelpath, modeldir, [])
 
     ncells = 1 if cellye is None else len(cellye)
     if cellye is not None:
@@ -3436,13 +3487,15 @@ def test_analytic_deposition_channels_come_from_the_options_of_the_run(tmp_path:
     assert np.isclose(dfgammaalpha["dep_per_volume"].item(), rate_erg_per_s / at.constants.EV_to_erg / 2.0, rtol=1e-12)
 
 
-def test_deposition_rates_from_the_estimator_files(tmp_path: Path) -> None:
+def test_deposition_rates_from_the_estimator_files(
+    tmp_path: Path, copy_model_inputs: Callable[[Path, Path, Sequence[str]], None]
+) -> None:
     """The rates of a model must match a calculation that reads the estimators on its own.
 
     The volume of timestep 55 is 1.01 times the volume of 54, and the ion count of 55 is 0.99 times
     the count of 54. Thus this test fails if the code reads a quantity at the wrong timestep.
     """
-    modeldir = make_model_with_deposition(tmp_path)
+    modeldir = make_model_with_deposition(tmp_path, copy_model_inputs)
     dfestim = at.estimators.scan_estimators(modeldir, timestep=(54, 55), join_modeldata=True).collect()
     row54 = dfestim.filter(pl.col("timestep") == 54)
     # the four values of DEPOSITIONLINE, in erg/s/cm3
@@ -3516,12 +3569,14 @@ def test_deposition_selects_the_cells_of_a_ye_range() -> None:
         at.estimators.deposition.aggregate_deposition_rates(dfestim.drop("init_Ye"), yerange=(0.0, 0.2))
 
 
-def test_deposition_ye_range_needs_a_model_with_ye(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_deposition_ye_range_needs_a_model_with_ye(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], copy_model_inputs: Callable[[Path, Path, Sequence[str]], None]
+) -> None:
     """An init_Ye range that no cell holds must stop the command. The message must name the range of the model."""
     with pytest.raises(ValueError, match="gives no init_Ye of a cell"):
         at.estimators.deposition.check_ye_range(modelpath, (0.0, 0.2))
 
-    modeldir = make_model_with_deposition(tmp_path, cellye=[0.3])
+    modeldir = make_model_with_deposition(tmp_path, copy_model_inputs, cellye=[0.3])
     outfile = tmp_path / "deposition.txt"
     at.estimators.deposition.main(argsraw=[], modelpath=modeldir, timestep="54", ye="0.25-0.35", outputfile=outfile)
 
@@ -3542,13 +3597,15 @@ def test_deposition_ye_range_needs_a_model_with_ye(tmp_path: Path, capsys: pytes
         at.estimators.deposition.main(argsraw=[], modelpath=modeldir, timestep="54", ye="0-0.2")
 
 
-def test_deposition_ye_range_drops_a_cell_of_a_model(tmp_path: Path) -> None:
+def test_deposition_ye_range_drops_a_cell_of_a_model(
+    tmp_path: Path, copy_model_inputs: Callable[[Path, Path, Sequence[str]], None]
+) -> None:
     """An init_Ye range must divide the cells of a model that the reader of the estimators gives.
 
     The model holds two cells of a different init_Ye. Thus a range that takes one of them must give
     a rate that is different from the rate of both cells.
     """
-    modeldir = make_model_with_deposition(tmp_path, cellye=[0.15, 0.35])
+    modeldir = make_model_with_deposition(tmp_path, copy_model_inputs, cellye=[0.15, 0.35])
 
     dfbothcells = at.estimators.deposition.get_deposition_rates(modeldir, [54])
     dflowye = at.estimators.deposition.get_deposition_rates(modeldir, [54], yerange=(0.1, 0.2))
@@ -3623,9 +3680,11 @@ def test_deposition_timeselection_takes_a_list_and_a_range() -> None:
         at.estimators.deposition.get_selected_timesteps(modelpath, "303-300,260", None)
 
 
-def test_deposition_writes_a_table(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_deposition_writes_a_table(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], copy_model_inputs: Callable[[Path, Path, Sequence[str]], None]
+) -> None:
     """The command writes the table that it prints. It also reports each timestep with no rate."""
-    modeldir = make_model_with_deposition(tmp_path)
+    modeldir = make_model_with_deposition(tmp_path, copy_model_inputs)
     outfile = tmp_path / "deposition.txt"
     at.estimators.deposition.main(argsraw=[], modelpath=modeldir, timestep="54,last", outputfile=outfile)
 
@@ -3651,9 +3710,11 @@ def test_deposition_writes_a_table(tmp_path: Path, capsys: pytest.CaptureFixture
     assert "no deposition rate for" not in capsys.readouterr().err
 
 
-def test_deposition_lists_the_channels(tmp_path: Path) -> None:
+def test_deposition_lists_the_channels(
+    tmp_path: Path, copy_model_inputs: Callable[[Path, Path, Sequence[str]], None]
+) -> None:
     """--listchannels must name the channels of the model, and write them when -o asks."""
-    modeldir = make_model_with_deposition(tmp_path)
+    modeldir = make_model_with_deposition(tmp_path, copy_model_inputs)
     outfile = tmp_path / "channels.txt"
     at.estimators.deposition.main(argsraw=[], modelpath=modeldir, listchannels=True, outputfile=outfile)
 
@@ -4451,13 +4512,16 @@ def test_time_axis_takes_no_automatic_bins() -> None:
 
 
 def test_multiplot_leaves_out_a_timestep_with_no_estimators(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], get_cell_texts: Callable[[str], list[str]]
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    get_cell_texts: Callable[[str], list[str]],
+    copy_model_inputs: Callable[[Path, Path, Sequence[str]], None],
 ) -> None:
     """A run that stopped early has no estimators for its last timesteps, and the other frames still give a product.
 
     The first frame with no row stopped the command, thus --multiplot and --makegif wrote no frame.
     """
-    copy_model_inputs(tmp_path)
+    copy_model_inputs(modelpath, tmp_path, [])
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
     (tmp_path / "estimators_0000.out").write_text(
         "".join(celltext for celltext in celltexts if int(celltext.split()[1]) <= 10), encoding="utf-8"
@@ -4626,12 +4690,14 @@ def test_exportmassfractions_leaves_out_an_empty_cell(tmp_path: Path, capsys: py
     assert np.isclose(sum(float(line.split()[2]) for line in lines[1:]), 1.0)
 
 
-def test_a_model_with_no_estimators_gives_a_message(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_a_model_with_no_estimators_gives_a_message(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], copy_model_inputs: Callable[[Path, Path, Sequence[str]], None]
+) -> None:
     """A model with no estimator files has no column Te, and the plot read Te as tellurium and drew an empty subplot.
 
     exportmassfractions stopped on an assert with no message, and --classicartis on such a folder did the same.
     """
-    copy_model_inputs(tmp_path)
+    copy_model_inputs(modelpath, tmp_path, [])
 
     with pytest.raises(SystemExit):
         at.estimators.plot(
@@ -4703,14 +4769,16 @@ def test_classic_ion_names_take_the_ion_stage_of_the_log(tmp_path: Path) -> None
     assert np.isclose(outdict["nnion_Co_II"], 20.0)
 
 
-def test_classic_restart_repeats_its_first_timestep(tmp_path: Path) -> None:
+def test_classic_restart_repeats_its_first_timestep(
+    tmp_path: Path, copy_model_inputs: Callable[[Path, Path, Sequence[str]], None]
+) -> None:
     """A restarted job writes its first timestep again, and the row of the earlier job stays.
 
     The reader refused the repeat as two folders with no offset, although both logs gave their first timestep.
     """
     from artistools.estimators.estimators_classic import read_classic_estimators
 
-    modelpath = build_classic_restart_model(tmp_path, secondfolderfirsttimestep=1)
+    modelpath = build_classic_restart_model(tmp_path, copy_model_inputs, secondfolderfirsttimestep=1)
     (tmp_path / "job0" / "output_0-0.txt").write_text("[debug] update_packets: updating packet 0 for timestep 0\n")
 
     def get_rows(temperature: str) -> str:

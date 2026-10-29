@@ -1,6 +1,7 @@
 import argparse
 import re
-import shutil
+from collections.abc import Callable
+from collections.abc import Sequence
 from pathlib import Path
 from unittest import mock
 
@@ -145,22 +146,15 @@ def test_report_provenance_keeps_a_remote_model_folder() -> None:
     assert "model folder: testhost:~/mymodel" in provenance
 
 
-def test_report_of_model_with_no_estimators_names_each_error(tmp_path: Path) -> None:
+def test_report_of_model_with_no_estimators_names_each_error(
+    tmp_path: Path, copy_model_inputs: Callable[[Path, Path, Sequence[str]], None]
+) -> None:
     """A part that fails gives one error line, and the page continues to its end."""
     from artistools.report import main
 
     modelfolder = tmp_path / "noestimators"
     modelfolder.mkdir()
-    for filename in (
-        "input.txt",
-        "model.txt",
-        "abundances.txt",
-        "compositiondata.txt",
-        "light_curve.out",
-        "spec.out",
-        "deposition.out",
-    ):
-        shutil.copy(modelpath_classic_3d / filename, modelfolder / filename)
+    copy_model_inputs(modelpath_classic_3d, modelfolder, ["light_curve.out", "spec.out", "deposition.out"])
     reportfolder = tmp_path / "report"
     with mock.patch("artistools.report.get_check_results_table", side_effect=ValueError("no check")):
         main(argsraw=[], modelpath=modelfolder, outputfile=reportfolder)

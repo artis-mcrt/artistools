@@ -1,5 +1,6 @@
 import re
-import shutil
+from collections.abc import Callable
+from collections.abc import Sequence
 from pathlib import Path
 from unittest import mock
 
@@ -205,23 +206,16 @@ def test_check_reads_each_log_once_and_finds_the_restarts() -> None:
     assert detailofcheck["packet noise"] == "give --frompackets to read the packets"
 
 
-def test_check_katz_ratio_agrees_with_a_direct_integration(tmp_path: Path) -> None:
+def test_check_katz_ratio_agrees_with_a_direct_integration(
+    tmp_path: Path, copy_model_inputs: Callable[[Path, Path, Sequence[str]], None]
+) -> None:
     """The energy check reads only light_curve.out and deposition.out, thus a model with no estimators also has it.
 
     The time range of the test model starts at 3 days with hot ejecta, thus the ratio is far from 1 with no fault.
     """
     from artistools.check import get_check_results
 
-    for filename in (
-        "input.txt",
-        "model.txt",
-        "abundances.txt",
-        "compositiondata.txt",
-        "light_curve.out",
-        "spec.out",
-        "deposition.out",
-    ):
-        shutil.copy(modelpath_classic_3d / filename, tmp_path / filename)
+    copy_model_inputs(modelpath_classic_3d, tmp_path, ["light_curve.out", "spec.out", "deposition.out"])
 
     # light_curve.out holds a second table of 30 rows, which repeats the times
     lightcurve = np.loadtxt(modelpath_classic_3d / "light_curve.out")[:30]
