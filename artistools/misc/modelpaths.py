@@ -203,7 +203,6 @@ class ModelpathCache[**P, R]:
         self.cache_info = cached.cache_info
         self.name = str(getattr(function, "__qualname__", function))
         self.signature = inspect.signature(function)
-        self.pathkeywords = {"modelpath", next(iter(self.signature.parameters))}
         # the server of a remote model follows __wrapped__ to the reader below the cache
         functools.update_wrapper(self, cached)
 
@@ -223,8 +222,9 @@ class ModelpathCache[**P, R]:
             the signature, and an optional argument that the call leaves out takes its default. Thus each form of a
             call shares one cache entry.
             """
-            if not args and (pathkeyword := next((key for key in self.pathkeywords if key in kwargs), None)):
-                args = (kwargs.pop(pathkeyword),)
+            # a reader whose first parameter has another name, e.g. filename, also takes the keyword modelpath
+            if not args and "modelpath" in kwargs:
+                args = (kwargs.pop("modelpath"),)
             # bind raises the TypeError of a missing argument
             boundargs = self.signature.bind(*args, **kwargs)
             boundargs.apply_defaults()
