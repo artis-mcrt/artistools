@@ -81,14 +81,16 @@ def test_external_packages_find_their_names() -> None:
     import importlib
 
     externalnames = {
-        "artistools": ["get_composition_data", "get_elsymbol", "get_ionstring"],  # artisatomic, pynonthermal
-        "artistools.atomic": ["get_levels"],  # pynonthermal
+        "artistools": ["get_elsymbol", "get_ionstring", "get_path"],  # pynonthermal, artisatomic
+        "artistools.atomic": ["get_composition_data", "get_levels"],  # artisatomic, pynonthermal
     }
     for modulename, names in externalnames.items():
         module = importlib.import_module(modulename)
         assert not [name for name in names if not callable(getattr(module, name, None))], modulename
 
-    assert at.get_composition_data is at.atomic.get_composition_data
+    # download_gammaspec_betaminus_alpha.py of artisatomic reads these two files
+    assert (at.get_path("datadir") / "betaminusdecays.txt").is_file()
+    assert (at.get_path("datadir") / "alphadecays.txt").is_file()
 
 
 TOPLEVEL_API: t.Final[frozenset[str]] = frozenset({

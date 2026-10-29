@@ -7,7 +7,8 @@ The package has **no public API**. You can delete code that has no callers. This
 Two packages outside this repository read artistools:
 
 - `pynonthermal` reads `at.get_elsymbol`, `at.get_ionstring`, and `at.atomic.get_levels`.
-- `artisatomic` reads `at.get_composition_data` as `from artistools import get_composition_data`.
+- `artisatomic` reads `get_composition_data` as `from artistools.atomic import get_composition_data`. It also
+  reads `betaminusdecays.txt` and `alphadecays.txt` in `at.get_path("datadir")`.
 
 Keep these names and their paths, because a release that moves one of them stops the installed package. The test `test_external_packages_find_their_names` holds this list.
 
