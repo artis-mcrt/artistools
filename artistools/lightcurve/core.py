@@ -881,17 +881,6 @@ def find_lightcurve_file(modelpath: Path | str, *, directionresolved: bool = Fal
     return firstexisting(lcfilename, folder=modelpath, tryzipped=True)
 
 
-def get_reference_label(lightcurvefilename: str | Path) -> str:
-    """Return the legend label of a reference light curve that has no --label.
-
-    The metadata of the file gives the label. With no label in the metadata, the label is the name or the path that
-    the command gives.
-    """
-    filepath = find_bol_reflightcurve_file(lightcurvefilename)
-    metadata = get_file_metadata(filepath) if filepath is not None else {}
-    return str(metadata.get("label", lightcurvefilename))
-
-
 def path_is_reference_lightcurve(filepath: str | Path) -> bool:
     """Return whether the path is a bolometric reference light curve file and not an ARTIS model."""
     return path_is_reference_data(filepath, "data/lightcurves/bollightcurves")

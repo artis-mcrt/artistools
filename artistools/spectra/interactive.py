@@ -32,7 +32,6 @@ from artistools.paths import get_path
 from artistools.spectra.core import convert_angstroms_to_unit
 from artistools.spectra.core import convert_unit_to_angstroms
 from artistools.spectra.core import EmissionEvent
-from artistools.spectra.core import get_reference_label
 from artistools.spectra.core import get_x_quantity_label
 from artistools.spectra.core import REFERENCE_SPECTRA_FOLDER
 from artistools.spectra.plotspectra import addargs
@@ -589,7 +588,6 @@ REFERENCE_DATA: t.Final = ReferenceData(
     folder=get_path("artistools_dir") / REFERENCE_SPECTRA_FOLDER,
     find=find_reference_spectrum_file_or_none,
     is_reference=path_is_reference_spectrum,
-    get_label=get_reference_label,
     styleflags=SERIES_STYLE_FLAGS,
     example="AT2017gfo",
 )

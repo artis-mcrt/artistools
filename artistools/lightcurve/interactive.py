@@ -14,7 +14,6 @@ import matplotlib.figure as mplfig
 import numpy as np
 
 from artistools.lightcurve.core import find_bol_reflightcurve_file
-from artistools.lightcurve.core import get_reference_label
 from artistools.lightcurve.core import path_is_reference_lightcurve
 from artistools.lightcurve.plotlightcurve import addargs
 from artistools.lightcurve.plotlightcurve import ANALYTICEMISSIONCOLUMNS
@@ -357,7 +356,6 @@ REFERENCE_DATA: t.Final = ReferenceData(
     folder=get_path("artistools_dir") / "data" / "lightcurves" / "bollightcurves",
     find=find_bol_reflightcurve_file,
     is_reference=path_is_reference_lightcurve,
-    get_label=get_reference_label,
     styleflags=("--label", "--color", "--linewidth", "--linealpha"),
     example="AT2017gfo",
 )

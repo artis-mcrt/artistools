@@ -733,6 +733,15 @@ def get_metadata_path(filepath: Path) -> Path:
     return filepath.with_suffix(f"{filepath.suffix}.meta.yml")
 
 
+def get_metadata_label(metadata: dict[str, t.Any], filename: Path | str) -> str:
+    """Return the legend label of a file of reference data with no --label.
+
+    The metadata of the file gives the label. With no label in the metadata, the label is the name or the path that the
+    command gives.
+    """
+    return str(metadata.get("label", filename))
+
+
 @lru_cache(maxsize=24)
 def get_file_metadata_cached(metafile: Path, metatext: str | None) -> dict[str, t.Any]:
     """Return the metadata from the text of a metadata file, and keep it for the next caller."""

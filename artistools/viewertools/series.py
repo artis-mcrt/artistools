@@ -11,6 +11,8 @@ from pathlib import Path
 
 from artistools.misc import dashes_arg
 from artistools.misc import get_artis_model_folders
+from artistools.misc import get_file_metadata
+from artistools.misc import get_metadata_label
 from artistools.misc import get_model_name
 from artistools.misc import is_remote_path
 from artistools.misc import LINESTYLE_ALIASES
@@ -871,8 +873,6 @@ class ReferenceData(t.NamedTuple):
     find: "Callable[[str], Path | None]"
     # return True if a path names a file of reference data and not an ARTIS model
     is_reference: "Callable[[str], bool]"
-    # return the legend label of a series of reference data with no --label, as the command gives it
-    get_label: "Callable[[str], str]"
     # the series style options of a series of reference data, e.g. a light curve of markers has no line style
     styleflags: tuple[str, ...]
     example: str
@@ -913,7 +913,10 @@ def get_series_name(reference: ReferenceData, path: str) -> str:
 
     A series of reference data takes the label of the command, thus the list and the legend show the same label.
     """
-    return reference.get_label(path) if reference.is_reference(path) else get_model_name(path)
+    if not reference.is_reference(path):
+        return get_model_name(path)
+    filepath = reference.find(path)
+    return get_metadata_label(get_file_metadata(filepath) if filepath is not None else {}, path)
 
 
 def get_series_colours(reference: ReferenceData, paths: "Sequence[str]", rows: OptionRows) -> dict[str, str]:

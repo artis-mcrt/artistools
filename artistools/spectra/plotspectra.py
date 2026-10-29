@@ -57,6 +57,7 @@ from artistools.misc import get_artis_model_folders
 from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_file_metadata
 from artistools.misc import get_filterfunc
+from artistools.misc import get_metadata_label
 from artistools.misc import get_model_folder
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
@@ -124,7 +125,6 @@ from artistools.spectra.core import get_default_radialvelocity_shells
 from artistools.spectra.core import get_dfspectrum_x_y_with_units
 from artistools.spectra.core import get_emission_contributions
 from artistools.spectra.core import get_no_sampled_emission_reason
-from artistools.spectra.core import get_reference_label
 from artistools.spectra.core import get_reference_spectrum
 from artistools.spectra.core import get_shell_labels
 from artistools.spectra.core import get_spatial_scale_deltalogx
@@ -482,7 +482,7 @@ def plot_reference_spectrum(
     # an empty --label gives the line no legend entry, thus the log and the summary take the label of the file
     legendlabel = plotkwargs.pop("label", None)
     assert legendlabel is None or isinstance(legendlabel, str)
-    label = legendlabel or get_reference_label(filename)
+    label = legendlabel or get_metadata_label(metadata, filename)
 
     print_heading(f"Reference spectrum '{label}'")
     specdata = get_reference_spectrum(filepath, metadata)

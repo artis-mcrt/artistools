@@ -114,6 +114,7 @@ from artistools.misc.fileio import firstexisting_or_none as firstexisting_or_non
 from artistools.misc.fileio import get_decompress_errors as get_decompress_errors
 from artistools.misc.fileio import get_file_copies as get_file_copies
 from artistools.misc.fileio import get_file_metadata as get_file_metadata
+from artistools.misc.fileio import get_metadata_label as get_metadata_label
 from artistools.misc.fileio import get_metadata_path as get_metadata_path
 from artistools.misc.fileio import natural_sort_key as natural_sort_key
 from artistools.misc.fileio import parse_metadata_redshift as parse_metadata_redshift
