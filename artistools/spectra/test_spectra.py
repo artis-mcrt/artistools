@@ -3766,6 +3766,17 @@ def test_emission_plot_names_a_direction_bin_that_the_average_leaves_out(
         assert "packets" not in capsys.readouterr().out
 
 
+def test_output_template_stops_plotspectra_before_the_read(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A bad field of -o stops plotspectra before it reads the spectra.
+
+    The command checked the template after the read and the draw, which takes minutes for the packets of a large model.
+    """
+    with pytest.raises(ValueError, match=r"holds the field 'timestep'"):
+        at.spectra.plot(argsraw=[str(modelpath), "-t", "300", "-o", str(tmp_path / "spec_{timestep}.pdf")])
+    # the draw logs the model path of each series, also when a cache holds the spectra
+    assert "modelpath:" not in capsys.readouterr().out
+
+
 def test_gamma_spectrum_check_follows_the_working_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The check for gamma_spec.out keys its cache on the absolute path of the model folder, as each reader does.
 

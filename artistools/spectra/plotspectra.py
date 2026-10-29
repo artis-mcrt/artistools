@@ -2778,9 +2778,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         write_flambda_spectra_of_models(args.specpath, outdirectory, force=True)
 
     else:
+        # resolve_plot_args gives the fields of the template, thus a bad field of -o stops the command before the read
+        filenameout = get_plot_outputfile(args)
         fig, axes, residualaxis = make_plot_figure(args)
         tables = draw_plot(args, axes, residualaxis)
-        filenameout = get_plot_outputfile(args)
         output_data(args, tables, filenameout)
 
         save_figure(fig, filenameout, args=args, dpi=args.dpi)
