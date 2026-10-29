@@ -15,8 +15,8 @@ import artistools as at
 from artistools.atomic.core import read_transitiondata
 from artistools.atomic.core import vacuum_to_air_angstroms
 from artistools.constants import angstroms_per_cm
+from artistools.misc import get_decompress_open
 from artistools.misc import write_zstd_lines
-from artistools.misc.fileio import get_decompress_open
 
 modelpath = at.get_path("testdata") / "testmodel"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"

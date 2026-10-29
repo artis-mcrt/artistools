@@ -3471,7 +3471,7 @@ def test_flux_contributions_cache_serves_each_filter() -> None:
 
     get_filterfunc makes a new function for each plot, and a function in the key of the cache never gave a hit.
     """
-    from artistools.misc.general import moving_average_filter
+    from artistools.misc import moving_average_filter
 
     at.spectra.core.get_flux_contributions_cached.cache_clear()
     unfiltered = at.spectra.get_flux_contributions(

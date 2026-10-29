@@ -1036,7 +1036,7 @@ def test_every_time_and_wavelength_option_takes_a_unit() -> None:
 def test_every_command_that_reads_a_model_takes_explain() -> None:
     """--explain shows the selection before a long read, thus each command with a model path must take it."""
     import artistools.__main__
-    from artistools.misc.cliutils import MODELPATH_DESTS
+    from artistools.misc import MODELPATH_DESTS
 
     for subcommand, subparser in get_every_subcommand(artistools.__main__.build_parser()):
         flagsofdest = get_flags_of_dest(subparser)

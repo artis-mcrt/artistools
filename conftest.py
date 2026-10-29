@@ -177,7 +177,7 @@ def write_zstd_frames() -> "Callable[[Path, Sequence[str]], None]":
 
     ARTIS writes the estimator file of all ranks in this form, one frame after the other.
     """
-    from artistools.misc.fileio import get_decompress_open
+    from artistools.misc import get_decompress_open
 
     def write_zstd_frames(filepath: Path, texts: "Sequence[str]") -> None:
         frames: list[bytes] = []
@@ -201,7 +201,7 @@ def write_trajectory_archive() -> "Callable[[Path, int, dict[str, str], str], Pa
     import io
     import tarfile
 
-    from artistools.misc.fileio import get_decompress_open
+    from artistools.misc import get_decompress_open
 
     def write_trajectory_archive(traj_root: Path, particleid: int, members: dict[str, str], suffix: str) -> Path:
         traj_root.mkdir(parents=True, exist_ok=True)

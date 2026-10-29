@@ -1079,7 +1079,7 @@ def test_a_compression_of_the_text_keeps_the_cache(
     its text files.
     """
     from artistools.estimators.core import get_estimator_batch_states
-    from artistools.misc.fileio import get_decompress_open
+    from artistools.misc import get_decompress_open
 
     copy_model_inputs(modelpath, tmp_path, ["estimators_0000.out"])
     rankfile = tmp_path / "estimators_0000.out"
@@ -2629,7 +2629,7 @@ def test_classic_estimator_files_follow_zopen_precedence(tmp_path: Path) -> None
     import gzip
 
     from artistools.estimators.estimators_classic import get_classic_estimator_files
-    from artistools.misc.fileio import get_decompress_open
+    from artistools.misc import get_decompress_open
 
     with gzip.open(tmp_path / "estimators_0000.out.gz", "wt") as gzfile:
         gzfile.write("stale\n")
