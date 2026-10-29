@@ -325,7 +325,7 @@ def test_viewer_save_waits_for_the_task_in_progress(tmp_path: Path) -> None:
     Save ran the command in the window thread while the worker thread drew a plot, and both changed the rcParams.
     """
     pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
-    from artistools.misc.argparser import SuggestingArgumentParser
+    from artistools.misc import SuggestingArgumentParser
     from artistools.viewertools import menus as viewermenus
 
     parser = SuggestingArgumentParser()
@@ -908,7 +908,7 @@ def test_viewer_save_gives_the_resolution_of_the_command(tmp_path: Path) -> None
         savedtokens.append(list(argsraw))
         Path(argsraw[-1]).write_text("figure", encoding="utf-8")
 
-    from artistools.misc.argparser import SuggestingArgumentParser
+    from artistools.misc import SuggestingArgumentParser
 
     parser = SuggestingArgumentParser()
     parser.add_argument("--dpi", type=int, default=250)
@@ -938,7 +938,7 @@ def test_viewer_copy_gives_the_file_of_the_selected_format() -> None:
     Qt gave only a TIFF image to the clipboard of macOS, thus a copy could not give a PDF or an SVG file.
     """
     pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
-    from artistools.misc.argparser import SuggestingArgumentParser
+    from artistools.misc import SuggestingArgumentParser
 
     parser = SuggestingArgumentParser()
     parser.add_argument("--dpi", type=int, default=250)

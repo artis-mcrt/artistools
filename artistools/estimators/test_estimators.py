@@ -856,7 +856,7 @@ def test_newer_rank_files_win_over_a_stale_file_of_all_ranks(
     # a file of all ranks that is newer than the files of the ranks wins
     os.utime(rankfile, (1000.0, 1000.0))
     os.utime(allranksfile, (2000.0, 2000.0))
-    from artistools.misc.modelinfo import get_runfolder_timesteps
+    from artistools.misc import get_runfolder_timesteps
 
     get_runfolder_timesteps.cache_clear()
     assert at.estimators.scan_estimators(tmp_path).collect()["timestep"].n_unique() == 40
@@ -1024,7 +1024,7 @@ def test_an_older_text_does_not_replace_a_newer_cache(
 
     The file of all ranks is then older than the text of the cache, and it holds fewer timesteps. The cache stays.
     """
-    from artistools.misc.modelinfo import get_runfolder_timesteps
+    from artistools.misc import get_runfolder_timesteps
 
     copy_model_inputs(modelpath, tmp_path, ["estimators_0000.out"])
     rankfile = tmp_path / "estimators_0000.out"
@@ -1157,8 +1157,8 @@ def test_current_batch_caches_stay_and_a_stale_one_makes_the_cache_of_all_ranks(
     cache of all the ranks, and the conversion removes the batch caches.
     """
     from artistools.estimators.core import CACHEVERSION
+    from artistools.misc import get_runfolder_timesteps
     from artistools.misc import write_parquet_atomic
-    from artistools.misc.modelinfo import get_runfolder_timesteps
 
     copy_model_inputs(modelpath, tmp_path, ["estimators_0000.out"])
     rankfile = tmp_path / "estimators_0000.out"
@@ -1192,7 +1192,7 @@ def test_conversion_drops_an_incomplete_last_timestep(
 
     Each timestep of a job holds the same cells, thus the conversion drops a last timestep with fewer cells.
     """
-    from artistools.misc.modelinfo import get_runfolder_timesteps
+    from artistools.misc import get_runfolder_timesteps
 
     copy_model_inputs(modelpath, tmp_path, [])
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
@@ -1273,7 +1273,7 @@ def test_a_dropped_timestep_that_the_job_completes_makes_the_cache_stale(
     The cache then keeps the size of its text, and a new size makes the cache stale. The text of a job that stopped
     keeps its size, thus the next scan converts nothing.
     """
-    from artistools.misc.modelinfo import get_runfolder_timesteps
+    from artistools.misc import get_runfolder_timesteps
 
     copy_model_inputs(modelpath, tmp_path, [])
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
@@ -1416,8 +1416,8 @@ def test_scan_of_kept_batch_caches_reads_the_new_cache_after_their_removal(
     from artistools.estimators.core import CACHEVERSION
     from artistools.estimators.core import convert_estimator_batch_caches
     from artistools.estimators.core import get_estimator_batch_states
+    from artistools.misc import get_runfolder_timesteps
     from artistools.misc import write_parquet_atomic
-    from artistools.misc.modelinfo import get_runfolder_timesteps
 
     copy_model_inputs(modelpath, tmp_path, ["estimators_0000.out"])
     rankfile = tmp_path / "estimators_0000.out"
@@ -1562,7 +1562,7 @@ def test_runfolder_timesteps_of_a_compressed_rank_file_that_a_job_cut(
     The timesteps of the run folder then come from the complete frames, as the parser reads them. The cut file must
     not stop the commands that look for the run folders.
     """
-    from artistools.misc.modelinfo import get_runfolder_timesteps
+    from artistools.misc import get_runfolder_timesteps
 
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
     rankfile = tmp_path / "estimators_0000.out.zst"
@@ -1639,7 +1639,7 @@ def test_scan_estimators_reads_the_file_of_all_ranks(
     Each folder gets one parquet cache and no batch caches, from either form of text. An archived run folder keeps the
     cache and drops the text file, and the cache then stays in use.
     """
-    from artistools.misc.modelinfo import get_runfolder_timesteps
+    from artistools.misc import get_runfolder_timesteps
 
     perrankfolder = tmp_path / "perrank"
     allranksfolder = tmp_path / "allranks"
@@ -1951,8 +1951,8 @@ def test_the_stamp_of_a_batch_cache_decides_the_conversion(tmp_path: Path) -> No
     from artistools.estimators.core import CACHEVERSION
     from artistools.estimators.core import get_rankbatch_parquetpath
     from artistools.estimators.core import rankbatch_parquet_is_current
-    from artistools.misc.parquetcache import MTIME_TOLERANCE_S
-    from artistools.misc.parquetcache import rankbatch_parquet_staleness
+    from artistools.misc import MTIME_TOLERANCE_S
+    from artistools.misc import rankbatch_parquet_staleness
 
     parquetfilepath = get_rankbatch_parquetpath(tmp_path, [0, 1, 2], 0)
     assert parquetfilepath.name == "estimbatch00_0000_0002.out.parquet"
@@ -3813,7 +3813,7 @@ def test_an_archived_run_folder_keeps_a_cache_of_an_old_version(tmp_path: Path) 
     from artistools.estimators.core import CACHEVERSION
     from artistools.estimators.core import rankbatch_cache_cannot_be_rebuilt
     from artistools.estimators.core import rankbatch_parquet_is_current
-    from artistools.misc.parquetcache import rankbatch_parquet_staleness
+    from artistools.misc import rankbatch_parquet_staleness
 
     oldversion = tmp_path / "estimbatch00_0000_0002.out.parquet.tmp"
     at.misc.write_parquet_atomic(
@@ -3845,7 +3845,7 @@ def test_an_archived_run_folder_keeps_its_timesteps(tmp_path: Path) -> None:
     A batch of three ranks keeps the file of rank 0 alone, thus no conversion can replace the cache.
     A rejection made get_runfolder_timesteps() find no timesteps, and the folder then held no data.
     """
-    from artistools.misc.modelinfo import get_runfolder_timesteps
+    from artistools.misc import get_runfolder_timesteps
 
     runfolder = tmp_path / "job1.slurm"
     runfolder.mkdir()
@@ -3904,7 +3904,7 @@ def test_a_batch_that_keeps_only_rank_zero_keeps_its_cache(tmp_path: Path) -> No
     os.utime(tmp_path / "estimators_0000.out", (1400.0, 1400.0))
     mtime_rewritten, complete_rewritten = get_batch_textsource_state(get_textsource_mtimes(tmp_path), 0, 2)
     from artistools.estimators.core import CACHEVERSION
-    from artistools.misc.parquetcache import rankbatch_parquet_staleness
+    from artistools.misc import rankbatch_parquet_staleness
 
     assert "after the cache stamp" in str(
         rankbatch_parquet_staleness(
@@ -4018,8 +4018,8 @@ def test_a_partial_batch_keeps_a_cache_of_an_old_version(tmp_path: Path) -> None
     """
     from artistools.estimators.core import CACHEVERSION
     from artistools.estimators.core import rankbatch_parquet_is_current
-    from artistools.misc.modelinfo import get_runfolder_timesteps
-    from artistools.misc.parquetcache import rankbatch_parquet_staleness
+    from artistools.misc import get_runfolder_timesteps
+    from artistools.misc import rankbatch_parquet_staleness
 
     runfolder = tmp_path / "job1.slurm"
     runfolder.mkdir()

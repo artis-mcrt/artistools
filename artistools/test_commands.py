@@ -15,7 +15,7 @@ from unittest import mock
 import pytest
 
 import artistools as at
-from artistools.misc.remote import model_path_from_text
+from artistools.misc import model_path_from_text
 from artistools.viewertools import core as viewercore
 
 modelpath = at.get_path("testdata") / "testmodel"
@@ -312,7 +312,7 @@ def test_shared_cli_args_consistent() -> None:
 
 def test_deprecated_flag_spellings_still_work() -> None:
     """Flags renamed to the single-dash-takes-a-value convention keep their old spellings as hidden aliases."""
-    from artistools.misc.argparser import SuggestingArgumentParser
+    from artistools.misc import SuggestingArgumentParser
 
     parser = SuggestingArgumentParser()
     at.plottransitions.addargs(parser)
@@ -714,7 +714,7 @@ def test_deprecated_spellings_parse_and_stay_out_of_the_help() -> None:
         ),
         artistools.gsinetwork.decayproducts.addargs: (["-trajectoryroot", ".", "-timemin", "5"], ("timemin",), ()),
     }
-    from artistools.misc.argparser import SuggestingArgumentParser
+    from artistools.misc import SuggestingArgumentParser
 
     for addargs, (argsraw, dests, hidden) in cases.items():
         parser = SuggestingArgumentParser()
@@ -758,7 +758,7 @@ def test_each_short_flag_has_one_meaning_in_the_help() -> None:
     different command.
     """
     import artistools.__main__
-    from artistools.misc.argparser import get_shown_flags
+    from artistools.misc import get_shown_flags
 
     parser = artistools.__main__.build_parser()
     subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
@@ -1013,9 +1013,9 @@ def test_every_time_and_wavelength_option_takes_a_unit() -> None:
     plotspectra reads -lambdamin as a number in the unit of -xunit, thus it alone takes a plain float.
     """
     import artistools.__main__
-    from artistools.misc.units import time_days_arg
-    from artistools.misc.units import time_days_range_arg
-    from artistools.misc.units import wavelength_angstroms_arg
+    from artistools.misc import time_days_arg
+    from artistools.misc import time_days_range_arg
+    from artistools.misc import wavelength_angstroms_arg
 
     unittypes = {
         "-timemin": {time_days_arg},
