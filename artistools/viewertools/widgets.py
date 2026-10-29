@@ -23,6 +23,7 @@ from artistools.viewertools.core import get_actions_by_flag
 from artistools.viewertools.core import get_default_tokens
 from artistools.viewertools.core import get_helptexts
 from artistools.viewertools.core import get_option_kind
+from artistools.viewertools.core import get_slider_handle_position
 from artistools.viewertools.core import get_table_actions
 from artistools.viewertools.core import OptionRows
 
@@ -775,7 +776,8 @@ def make_range_slider(
         """A slider with two handles, which give the minimum and the maximum of a range.
 
         Qt has no slider with two handles. A drag moves the handle that is nearer to the pointer, and the minimum
-        stays below the maximum. The signal gives the index of the handle that moved and its new position.
+        stays below the maximum or equal to it. The signal gives the index of the handle that moved and its new
+        position.
         """
 
         limitmoved = QtCore.Signal(int, int)
@@ -846,11 +848,8 @@ def make_range_slider(
         def move_handle(self, pixel: float) -> None:
             if self.draghandle is None:
                 return
-            position = self.get_position(pixel)
-            if self.draghandle == 0:
-                position = min(position, self.positions[1] - 1)
-            else:
-                position = max(position, self.positions[0] + 1)
+            low, high = self.positions
+            position = get_slider_handle_position((low, high), self.draghandle, self.get_position(pixel), self.steps)
             if position != self.positions[self.draghandle]:
                 self.positions[self.draghandle] = position
                 self.update()

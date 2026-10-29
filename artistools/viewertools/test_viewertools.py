@@ -1029,15 +1029,20 @@ def test_viewer_typed_centre_gives_back_the_range() -> None:
             assert viewercore.get_nearest_range_start(tmids, centre, count) == start, (count, start)
 
 
-def test_range_slider_handle_keeps_the_range_inside_the_timesteps() -> None:
-    """A press beside a handle at an end of the range slider gives a valid range of one timestep or more.
+def test_range_slider_keeps_a_range_of_one_position_and_stays_inside_the_slider() -> None:
+    """A press on the handles of a range of one position keeps the range, and a handle stays inside the slider.
 
-    The slider then gives the position -1 or the number of timesteps, and the estimators viewer read the timestep at
-    that position.
-    Thus it raised IndexError, or it gave the reversed range --timestep 99-0.
+    The slider kept one position between its handles. Thus each press on a range of one timestep made it wider, and a
+    press beside an end gave the position -1 or the number of timesteps, which the estimators viewer then read.
     """
-    assert viewercore.get_dragged_range((0, 0), 0, -1, 100) == (0, 1)
-    assert viewercore.get_dragged_range((99, 99), 1, 100, 100) == (98, 99)
+    assert viewercore.get_slider_handle_position((50, 50), 1, 50, 99) == 50
+    assert viewercore.get_slider_handle_position((50, 50), 0, 50, 99) == 50
+    assert viewercore.get_slider_handle_position((50, 50), 1, 60, 99) == 60
+    assert viewercore.get_slider_handle_position((10, 20), 0, 25, 99) == 19
+    assert viewercore.get_slider_handle_position((10, 20), 1, 5, 99) == 11
+    assert viewercore.get_slider_handle_position((0, 0), 0, -1, 99) == 0
+    assert viewercore.get_slider_handle_position((99, 99), 1, 100, 99) == 99
+    # a slider for one valid timestep has two positions
     assert viewercore.get_dragged_range((0, 0), 1, 1, 1) == (0, 0)
     assert viewercore.get_dragged_range((10, 20), 0, 5, 100) == (5, 20)
     assert viewercore.get_dragged_range((10, 20), 1, 30, 100) == (10, 30)
