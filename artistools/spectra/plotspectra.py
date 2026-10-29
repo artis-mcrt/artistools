@@ -1274,7 +1274,7 @@ def make_spectrum_plot(
                 dfothers.append(get_drawn_lines_table(filterlines, args, ycolumn="transmission"))
                 tableneedsfilters = False
 
-        # a flux of stokes I is not negative, and the y margin puts the bottom below zero. make_plot applies -ymin
+        # a flux of stokes I is not negative, and the y margin puts the bottom below zero. draw_plot applies -ymin
         # and -ymax after this function returns, and -ymax alone keeps this bottom
         if args.stokesparam == "I" and not args.logscaley and args.ymin is None:
             axis.set_ylim(bottom=0.0)
@@ -1789,16 +1789,6 @@ def check_residual_args(args: argparse.Namespace) -> None:
         print_warning("--normalised scales each series to its own peak, thus the residual compares the shapes alone")
     if args.filtersavgol:
         print_warning("The residual and its statistics take the smoothed series of --filtersavgol")
-
-
-def make_plot(args: argparse.Namespace) -> tuple[mplfig.Figure, npt.NDArray[np.object_], dict[str, pl.DataFrame]]:
-    """Plot the spectra that args selects.
-
-    Return the figure, the axes, and the tables of the plotted data that draw_plot gives.
-    """
-    fig, axes, residualaxis = make_plot_figure(args)
-    tables = draw_plot(args, axes, residualaxis)
-    return fig, axes, tables
 
 
 def get_plot_outputfile(args: argparse.Namespace) -> str:
@@ -2782,7 +2772,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         write_flambda_spectra_of_models(args.specpath, outdirectory, force=True)
 
     else:
-        fig, _axes, tables = make_plot(args)
+        fig, axes, residualaxis = make_plot_figure(args)
+        tables = draw_plot(args, axes, residualaxis)
         filenameout = get_plot_outputfile(args)
         output_data(args, tables, filenameout)
 

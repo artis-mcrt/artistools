@@ -2638,7 +2638,8 @@ def test_plotspectra_normalised_log_axis_keeps_room_above_the_peak() -> None:
         plotspectra.addargs, None, None, [str(modelpath), "-t", "300", "--normalised", "-yscale", "log"]
     )
     plotspectra.resolve_plot_args(args)
-    fig, axes, _ = plotspectra.make_plot(args)
+    fig, axes, residualaxis = plotspectra.make_plot_figure(args)
+    plotspectra.draw_plot(args, axes, residualaxis)
     fig.canvas.draw()
     assert axes[0].get_yscale() == "log"
     assert axes[0].get_ylim()[1] > 1.02
@@ -3282,7 +3283,8 @@ def test_absorption_plot_keeps_a_linear_axis() -> None:
     plotspectra.resolve_plot_args(args)
     # the automatic rule then asks for a log axis for every set of values
     with mock.patch("artistools.plottools.wants_log_scale", return_value=True):
-        fig, axes, _ = plotspectra.make_plot(args)
+        fig, axes, residualaxis = plotspectra.make_plot_figure(args)
+        plotspectra.draw_plot(args, axes, residualaxis)
     assert axes[0].get_yscale() == "linear"
     assert axes[0].get_ylim()[0] < 0.0
     plt.close(fig)
