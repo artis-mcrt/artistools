@@ -1284,16 +1284,17 @@ def get_flux_contributions_cached(
     # the bin -1 is the average over all the directions, also with an average over one angle
     if directionbin is None or directionbin == -1:
         dbinlist = [-1]
-    elif average_over_phi:
-        assert not average_over_theta
-        assert directionbin % get_viewingdirection_phibincount() == 0
-        dbinlist = list(range(directionbin, directionbin + get_viewingdirection_phibincount()))
-    elif average_over_theta:
-        assert not average_over_phi
-        assert directionbin < get_viewingdirection_phibincount()
-        dbinlist = list(range(directionbin, get_viewingdirectionbincount(), get_viewingdirection_phibincount()))
     else:
-        dbinlist = [directionbin]
+        # a bin that an average leaves out is a mistake of the arguments, thus it gets the error of the shared check
+        get_dirbin_definitions(
+            modelpath, [directionbin], average_over_phi=average_over_phi, average_over_theta=average_over_theta
+        )
+        if average_over_phi:
+            dbinlist = list(range(directionbin, directionbin + get_viewingdirection_phibincount()))
+        elif average_over_theta:
+            dbinlist = list(range(directionbin, get_viewingdirectionbincount(), get_viewingdirection_phibincount()))
+        else:
+            dbinlist = [directionbin]
 
     emissiondata: dict[int, pl.DataFrame] = {}
     absorptiondata: dict[int, pl.DataFrame] = {}

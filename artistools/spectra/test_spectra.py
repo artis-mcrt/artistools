@@ -3655,3 +3655,24 @@ def test_plotspectra_x_still_gives_the_unit() -> None:
     assert parser.parse_args([".", "-x", "nm"]).xunit == "nm"
     assert parser.parse_args([".", "-xunits", "micron"]).xunit == "micron"
     assert parser.parse_args([".", "-xunit", "Hz"]).xunit == "hz"
+
+
+def test_emission_plot_names_a_direction_bin_that_the_average_leaves_out(tmp_path: Path) -> None:
+    """The emission plot gives the error of the shared check for a bin that an average over phi leaves out.
+
+    The emission path checked the bin with a bare assert, thus the command gave the message of a fault of artistools.
+    """
+    with pytest.raises(ValueError, match=r"Direction bin 5 is not the first bin of an average group"):
+        at.spectra.plot(
+            argsraw=[
+                str(modelpath_classic_3d),
+                "--showemission",
+                "-plotviewingangle",
+                "5",
+                "--average-over-phi-angle",
+                "-ts",
+                "10",
+                "-o",
+                str(tmp_path / "emission.pdf"),
+            ]
+        )
