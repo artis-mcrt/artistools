@@ -816,6 +816,15 @@ def get_stepped_range(positions: tuple[int, int], step: int, count: int) -> tupl
     return firstpos + step, lastpos + step
 
 
+def get_frame_ranges(positions: tuple[int, int], count: int) -> list[tuple[int, int]]:
+    """Return the range of positions of each frame of an animation that keeps the width of positions.
+
+    The frames start at each of count positions where a range of that width fits.
+    """
+    width = positions[1] - positions[0] + 1
+    return [(start, start + width - 1) for start in range(count - width + 1)]
+
+
 def get_resized_range(positions: tuple[int, int], step: int, count: int) -> tuple[int, int]:
     """Return the range of positions with step more positions, e.g. for the Up key and the Down key."""
     firstpos, lastpos = positions

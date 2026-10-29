@@ -89,6 +89,7 @@ from artistools.viewertools.core import get_dragged_range
 from artistools.viewertools.core import get_end_range
 from artistools.viewertools.core import get_figure_option_tokens
 from artistools.viewertools.core import get_fitted_figwidthscale
+from artistools.viewertools.core import get_frame_ranges
 from artistools.viewertools.core import get_given_dpi
 from artistools.viewertools.core import get_nearest_range
 from artistools.viewertools.core import get_nearest_range_start
@@ -851,8 +852,9 @@ class EstimatorViewer:
         get_time_text gives the same centre.
         """
         firstpos, lastpos = self.get_selection_positions()
-        validtmids = [self.tmids[timestep] for timestep in self.modeldata.validtimesteps]
-        return self.select_positions(self.values, get_nearest_range(validtmids, days, lastpos - firstpos + 1))
+        return self.select_positions(
+            self.values, get_nearest_range(self.get_valid_tmids(), days, lastpos - firstpos + 1)
+        )
 
     def get_cell_text(self) -> str:
         """Return the cells of the plot, with the radial velocity of a single cell."""
@@ -867,6 +869,10 @@ class EstimatorViewer:
         """Return the values with the time range from the first to the last of two positions in the valid timesteps."""
         validtimesteps = self.modeldata.validtimesteps
         return dc.replace(values, first=validtimesteps[positions[0]], last=validtimesteps[positions[1]])
+
+    def get_valid_tmids(self) -> list[float]:
+        """Return the middle time of each valid timestep [d]."""
+        return [self.tmids[timestep] for timestep in self.modeldata.validtimesteps]
 
     def get_selection_positions(self, values: ControlValues | None = None) -> tuple[int, int]:
         """Return the positions in the valid timesteps of the first and the last timestep of the time range."""
@@ -1047,8 +1053,7 @@ def get_evolution_values(viewer: EstimatorViewer, cells: str) -> ControlValues:
 def get_snapshot_values(viewer: EstimatorViewer, xdata: float) -> ControlValues | None:
     """Return the values of a snapshot at a position on a time axis, or None for another axis."""
     if viewer.values.x == "time":
-        validtmids = [viewer.tmids[timestep] for timestep in viewer.modeldata.validtimesteps]
-        position = get_nearest_range_start(validtmids, xdata, 1)
+        position = get_nearest_range_start(viewer.get_valid_tmids(), xdata, 1)
     elif viewer.values.x == "timestep":
         position = get_nearest_range_start(viewer.modeldata.validtimesteps, xdata, 1)
     else:
@@ -1629,7 +1634,7 @@ def open_window(
         except ValueError:
             show_error("Give a number of days for the first and the last time")
             return
-        validtmids = [viewer.tmids[timestep] for timestep in viewer.modeldata.validtimesteps]
+        validtmids = viewer.get_valid_tmids()
         firstpos, lastpos = (get_nearest_range_start(validtmids, days, 1) for days in (firstdays, lastdays))
         if firstpos > lastpos:
             show_error("Give a first time that is before the last time")
@@ -1887,11 +1892,9 @@ def open_window(
             if not cells or not cells_apply(values):
                 return 1, lambda _index: viewer.get_plot_tokens(values)
             return len(cells), lambda index: viewer.get_plot_tokens(dc.replace(values, cells=str(cells[index])))
-        firstpos, lastpos = viewer.get_selection_positions(values)
-        width = lastpos - firstpos
-        return (
-            len(viewer.modeldata.validtimesteps) - width,
-            lambda index: viewer.get_plot_tokens(viewer.select_positions(values, (index, index + width))),
+        frameranges = get_frame_ranges(viewer.get_selection_positions(values), len(viewer.modeldata.validtimesteps))
+        return len(frameranges), lambda index: viewer.get_plot_tokens(
+            viewer.select_positions(values, frameranges[index])
         )
 
     command = ViewerCommand(

@@ -53,6 +53,7 @@ from artistools.viewertools.core import get_direction_kind
 from artistools.viewertools.core import get_direction_kinds
 from artistools.viewertools.core import get_end_range
 from artistools.viewertools.core import get_figure_option_tokens
+from artistools.viewertools.core import get_frame_ranges
 from artistools.viewertools.core import get_given_dpi
 from artistools.viewertools.core import get_nearest_range
 from artistools.viewertools.core import get_nearest_range_start
@@ -395,6 +396,8 @@ class TimestepGrid(t.NamedTuple):
     # the times that are valid for all the models [d]
     timebounds: tuple[float, float]
     validtimesteps: tuple[int, ...]
+    # the middle time of each valid timestep [d]
+    validtmids: tuple[float, ...]
     hasgammaspectrum: bool
     directionkinds: tuple[str, ...]
     # the spectra and the time grid of the load
@@ -670,6 +673,7 @@ def read_timestep_grid(spectra: "Sequence[str | Path]", timegrid: str, *, plotin
         dlogt=float(f"{math.log(tends[-1] / tstarts[0]) / len(tmids):.4g}"),
         timebounds=(timebounds[0], timebounds[1]),
         validtimesteps=tuple(validtimesteps),
+        validtmids=tuple(tmids[timestep] for timestep in validtimesteps),
         hasgammaspectrum=has_gamma_spectrum(modelfolders),
         # the direction controls read the first model, e.g. for the observers of -plotvspecpol
         directionkinds=tuple(get_direction_kinds(modelfolders[0])),
@@ -924,10 +928,7 @@ class SpectrumViewer:
 
     def get_nearest_position(self) -> int:
         """Return the position in the valid timesteps of the timestep with the middle nearest to the time."""
-        grid = self.grid
-        return get_nearest_range_start(
-            [grid.tmids[timestep] for timestep in grid.validtimesteps], self.values.centre, 1
-        )
+        return get_nearest_range_start(self.grid.validtmids, self.values.centre, 1)
 
     def get_selection_positions(self) -> tuple[int, int]:
         """Return the positions in the valid timesteps of the first and the last timestep of the time range."""
@@ -1177,11 +1178,9 @@ def get_animation_frames(viewer: "SpectrumViewer") -> "tuple[int, Callable[[int]
             for timestep in validtimesteps
         ]
     else:
-        firstpos, lastpos = viewer.get_selection_positions()
-        count = lastpos - firstpos
         frames = [
-            viewer.get_plot_tokens(viewer.select_positions(values, (index, index + count)))
-            for index in range(len(validtimesteps) - count)
+            viewer.get_plot_tokens(viewer.select_positions(values, positions))
+            for positions in get_frame_ranges(viewer.get_selection_positions(), len(validtimesteps))
         ]
 
     return len(frames), frames.__getitem__
@@ -1255,8 +1254,7 @@ def set_models(viewer: SpectrumViewer, spectra: "Sequence[str]", timegrid: str) 
         values = dc.replace(values, directionkind="", directionbins=())
     if values.notimeclamp:
         return viewer.clamp_time(values)
-    validtmids = [grid.tmids[timestep] for timestep in grid.validtimesteps]
-    return viewer.select_positions(values, get_nearest_range(validtmids, values.centre, last - first + 1))
+    return viewer.select_positions(values, get_nearest_range(grid.validtmids, values.centre, last - first + 1))
 
 
 def get_time_slider_ranges(grid: TimestepGrid, values: ControlValues) -> tuple[tuple[float, float], float, float, int]:
@@ -1986,8 +1984,7 @@ def open_window(
         else:
             firstpos, lastpos = viewer.get_selection_positions()
             timestepwidth = lastpos - firstpos + 1 if width is None else round(width)
-            validtmids = [grid.tmids[timestep] for timestep in grid.validtimesteps]
-            newvalues = viewer.select_positions(values, get_nearest_range(validtmids, centre, timestepwidth))
+            newvalues = viewer.select_positions(values, get_nearest_range(grid.validtmids, centre, timestepwidth))
         apply(newvalues)
 
     def plot_shows_values() -> bool:
