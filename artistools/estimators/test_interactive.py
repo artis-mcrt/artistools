@@ -61,7 +61,7 @@ def assert_same_lines(fig: mplfig.Figure, otherfig: mplfig.Figure) -> None:
 def test_interactive_command_reproduces_plot(
     tmp_path: Path,
     get_plotestimators_figure: Callable[[Sequence[str], Path], mplfig.Figure],
-    make_viewer: Callable[[str, list[str]], t.Any],
+    make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer],
 ) -> None:
     """The command that the viewer shows must draw the same data as the viewer.
 
@@ -78,7 +78,9 @@ def test_interactive_command_reproduces_plot(
     assert_same_lines(viewer.fig, get_plotestimators_figure(shlex.split(command)[2:], tmp_path / "estimators.pdf"))
 
 
-def test_interactive_swatches_give_the_colours_of_the_lines(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_swatches_give_the_colours_of_the_lines(
+    make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer],
+) -> None:
     """A chip shows the colour of the line of its series, and the popup shows the colour with no style of its own.
 
     --markers draws the points after the line with a lighter colour. A series with a colour does not move the axes
@@ -359,7 +361,9 @@ def test_estimator_window_keeps_the_keyboard_and_the_popup_values(tmp_path: Path
     assert results["yaxisfocus"]
 
 
-def test_colour_note_follows_the_colours_of_the_plot(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_colour_note_follows_the_colours_of_the_plot(
+    make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer],
+) -> None:
     """The note of the element colours shows only for a subplot whose plot gives its ions the element colours.
 
     The note counted the names of the subplot, but the plot leaves out an ion that the model does not hold. Thus the
@@ -371,7 +375,9 @@ def test_colour_note_follows_the_colours_of_the_plot(make_viewer: Callable[[str,
     assert viewer.elementcolourrows == frozenset({1})
 
 
-def test_style_change_keeps_the_warning_of_the_data(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_style_change_keeps_the_warning_of_the_data(
+    make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer],
+) -> None:
     """A plot that draws the data of the last plot shows the warning of that data again.
 
     The data cache read no data, thus the plot printed no warning, and the status bar removed a warning that applied.
@@ -387,7 +393,9 @@ def test_style_change_keeps_the_warning_of_the_data(make_viewer: Callable[[str, 
     assert viewer.warning == warning
 
 
-def test_style_colour_keeps_the_colours_of_the_other_series(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_style_colour_keeps_the_colours_of_the_other_series(
+    make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer],
+) -> None:
     """A colour of a style changes only its own series, and each other series keeps its colour of the axes cycle.
 
     A series with a style colour took no place in the cycle, thus each later series took the colour before its own.
@@ -409,7 +417,7 @@ def test_style_colour_keeps_the_colours_of_the_other_series(make_viewer: Callabl
     assert viewer.swatches[0, "TJ"].defaultcolour == plain["TJ"]
 
 
-def test_swatches_show_the_drawn_colours(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_swatches_show_the_drawn_colours(make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer]) -> None:
     """The swatch of a chip shows the opacity of its colour and the colour of Dark Mode, as the plot draws the line."""
     viewer = make_viewer("estimators", [str(modelpath_classic_3d), "-timestep", "10", "--interactive"])
     subplot = ("TR@color=#ff000080", "TJ@color=none", "W@color=#000000")
@@ -423,7 +431,7 @@ def test_swatches_show_the_drawn_colours(make_viewer: Callable[[str, list[str]],
 
 
 def test_host_receives_the_plot_items_without_styles(
-    tmp_path: Path, make_viewer: Callable[[str, list[str]], t.Any]
+    tmp_path: Path, make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer]
 ) -> None:
     """The client draws the series styles and selects the cells, thus the host receives the names and the cells.
 
@@ -465,7 +473,9 @@ def test_host_receives_the_plot_items_without_styles(
         assert cells.call_count == 0
 
 
-def test_interactive_style_change_reuses_the_data(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_style_change_reuses_the_data(
+    make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer],
+) -> None:
     """A change of a series style or of -linewidthscale draws the data of the last plot again, and reads no data.
 
     A change of the time reads the data again. A click on a legend entry finds its series, also after a new style.
@@ -494,7 +504,7 @@ def test_interactive_style_change_reuses_the_data(make_viewer: Callable[[str, li
 
 
 def test_interactive_python_code_reproduces_plot(
-    tmp_path: Path, make_viewer: Callable[[str, list[str]], t.Any]
+    tmp_path: Path, make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer]
 ) -> None:
     """The Python code that the viewer shows must draw the same data as the viewer.
 
@@ -530,7 +540,7 @@ def test_interactive_python_code_reproduces_plot(
 def test_interactive_subplot_with_no_series_stays_as_an_empty_frame(
     tmp_path: Path,
     get_plotestimators_figure: Callable[[Sequence[str], Path], mplfig.Figure],
-    make_viewer: Callable[[str, list[str]], t.Any],
+    make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer],
 ) -> None:
     """A subplot whose last series the user removed stays, and its frame is empty until the user adds a series.
 
@@ -548,7 +558,9 @@ def test_interactive_subplot_with_no_series_stays_as_an_empty_frame(
     assert_same_lines(viewer.fig, get_plotestimators_figure(tokens, tmp_path / "estimators.pdf"))
 
 
-def test_interactive_session_keeps_an_empty_last_subplot(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_session_keeps_an_empty_last_subplot(
+    make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer],
+) -> None:
     """The command of the next start keeps a last subplot with no item, also when the window read the working folder.
 
     The session put the working folder after the last -plot. plotestimators then took the folder out of that -plot and
@@ -564,7 +576,7 @@ def test_interactive_session_keeps_an_empty_last_subplot(make_viewer: Callable[[
 def test_interactive_command_gives_the_default_subplots(
     tmp_path: Path,
     get_plotestimators_figure: Callable[[Sequence[str], Path], mplfig.Figure],
-    make_viewer: Callable[[str, list[str]], t.Any],
+    make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer],
 ) -> None:
     """The command gives each subplot also for the default subplots, and it draws the figure of no --plot.
 
@@ -589,7 +601,7 @@ def test_interactive_command_gives_the_default_subplots(
 
 
 def test_interactive_default_x_follows_a_slice_line_of_the_table(
-    make_viewer: Callable[[str, list[str]], t.Any],
+    make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer],
 ) -> None:
     """A -slice line in the option table changes the default x, and a command with no -x takes that default.
 
@@ -606,7 +618,9 @@ def test_interactive_default_x_follows_a_slice_line_of_the_table(
     assert interactive.replace_option_rows(viewer, chosen, (("-slice", ("z=0,y=0",)),)).x == "vel_r_mid"
 
 
-def test_interactive_snapshot_reads_all_the_cells(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_snapshot_reads_all_the_cells(
+    make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer],
+) -> None:
     """A change from a plot against time to a snapshot removes -cell.
 
     The window hides the control of the cells for a snapshot, thus a -cell of the plot against time stayed hidden.
@@ -620,7 +634,9 @@ def test_interactive_snapshot_reads_all_the_cells(make_viewer: Callable[[str, li
     assert "-cell" not in viewer.get_plot_tokens(snapshot)
 
 
-def test_interactive_snapshot_and_time_evolution(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_snapshot_and_time_evolution(
+    make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer],
+) -> None:
     """A plot against time reads all the timesteps and names no time, and a snapshot reads one timestep.
 
     The Play button of a plot against time moves through the cells, and it stops after the last cell.
@@ -671,7 +687,9 @@ def test_interactive_command_of_a_dispatcher_call() -> None:
     )
 
 
-def test_interactive_classicartis_row_reads_the_other_format(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_classicartis_row_reads_the_other_format(
+    make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer],
+) -> None:
     """A --classicartis row in the table must read the classic format, as the command does, and not the old query.
 
     The viewer read the model one time with the first --classicartis value. The window then drew the modern estimators
@@ -685,7 +703,9 @@ def test_interactive_classicartis_row_reads_the_other_format(make_viewer: Callab
     assert viewer.get_command() == command
 
 
-def test_interactive_unexpected_error_keeps_the_old_plot(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_unexpected_error_keeps_the_old_plot(
+    make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer],
+) -> None:
     """An error that is not a user error, e.g. of polars, gives a message, and the old plot draws again.
 
     Such an error left draw and change, thus the figure stayed empty and the viewer kept the failed values.
@@ -704,7 +724,7 @@ def test_interactive_unexpected_error_keeps_the_old_plot(make_viewer: Callable[[
 
 
 def test_interactive_codecomparison_model(
-    toy_codecomparison_model: str, make_viewer: Callable[[str, list[str]], t.Any]
+    toy_codecomparison_model: str, make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer]
 ) -> None:
     """The viewer opens a codecomparison model, which has no run folders, as the command does."""
     viewer = make_viewer("estimators", ["Te", toy_codecomparison_model, "-timestep", "0", "--interactive"])
@@ -712,7 +732,9 @@ def test_interactive_codecomparison_model(
     assert viewer.fig.axes[0].get_lines()
 
 
-def test_interactive_time_field_keeps_the_range(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_time_field_keeps_the_range(
+    make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer],
+) -> None:
     """A Return in the time field with no edit keeps the time range.
 
     The field showed the mean of the start and the end of the range, and the viewer read it as the middle of a
@@ -727,7 +749,9 @@ def test_interactive_time_field_keeps_the_range(make_viewer: Callable[[str, list
             assert viewer.select_centre(float(text)) == viewer.values, (count, firstpos, text)
 
 
-def test_interactive_readout_names_each_series(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_readout_names_each_series(
+    make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer],
+) -> None:
     """The readout gives the value of each series, also the one line with no label of a subplot of one variable.
 
     The readout skipped each line with a label that starts with "_", which is the only line of such a subplot. A
@@ -765,7 +789,9 @@ def test_interactive_converts_stale_batches_in_a_child_process() -> None:
     mockchild.assert_called_once()
 
 
-def test_interactive_shows_the_bins_that_the_plot_chose(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_shows_the_bins_that_the_plot_chose(
+    make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer],
+) -> None:
     """A snapshot of a 3D model has many cells at one velocity, thus the plot takes automatic bins and --colorbyion.
 
     -xbins N also draws a shaded area for each bin, and the area has no dash to separate the ions of an element. It
@@ -787,7 +813,9 @@ def test_interactive_shows_the_bins_that_the_plot_chose(make_viewer: Callable[[s
     assert interactive.get_xunit_text(1e5 / 299792.458, "beta") == " [km/s]"
 
 
-def test_interactive_keeps_the_last_warning_of_a_plot(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_keeps_the_last_warning_of_a_plot(
+    make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer],
+) -> None:
     """A limit outside the data gives a warning, which the status bar of the window shows after the plot."""
     viewer = make_viewer("estimators", ["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
     assert not viewer.warning
@@ -820,7 +848,7 @@ def test_interactive_directives_of_a_subplot() -> None:
 
 
 def test_interactive_menu_plots_a_cell_against_time_and_a_snapshot_at_a_time(
-    make_viewer: Callable[[str, list[str]], t.Any],
+    make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer],
 ) -> None:
     """The menu of a snapshot names the cell at the pointer, and the menu of a plot against time names the time."""
     viewer = make_viewer("estimators", ["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
@@ -854,7 +882,7 @@ def reread_model_data(viewer: interactive.EstimatorViewer) -> interactive.ModelD
 
 
 def test_interactive_reload_keeps_the_time_range_inside_the_valid_timesteps(
-    make_viewer: Callable[[str, list[str]], t.Any],
+    make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer],
 ) -> None:
     """A reload reads the valid timesteps again.
 
@@ -881,7 +909,7 @@ def test_interactive_reload_keeps_the_time_range_inside_the_valid_timesteps(
 
 
 def test_interactive_empty_selection_with_bins_gives_the_message(
-    make_viewer: Callable[[str, list[str]], t.Any],
+    make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer],
 ) -> None:
     """An empty cell with -xbins gave a TypeError, because the bins read the minimum of no rows.
 
@@ -903,7 +931,7 @@ def test_interactive_empty_selection_with_bins_gives_the_message(
 
 
 def test_interactive_cells_apply_only_where_cell_selects_the_cells(
-    make_viewer: Callable[[str, list[str]], t.Any],
+    make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer],
 ) -> None:
     """-slice, -dimensionreduce 2, and -readonlymgi select the cells, thus the window offers no -cell with them.
 
@@ -924,7 +952,9 @@ def test_interactive_cells_apply_only_where_cell_selects_the_cells(
     assert viewer.step_cell(1) is not None
 
 
-def test_interactive_subplot_types_and_suggestions(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_subplot_types_and_suggestions(
+    make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer],
+) -> None:
     """The type of a subplot sets its choices and its suggestions, and each result draws with plotestimators."""
     viewer = make_viewer("estimators", [str(modelpath), "-timestep", "50", "--interactive"])
     columns = viewer.modeldata.estimatorcolumns
@@ -997,7 +1027,7 @@ def test_interactive_subplot_types_and_suggestions(make_viewer: Callable[[str, l
 
 
 def test_interactive_ionpoptype_belongs_to_each_populations_subplot(
-    make_viewer: Callable[[str, list[str]], t.Any],
+    make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer],
 ) -> None:
     """The window sets the quantity of the ions for each populations subplot, thus --ionpoptype goes to them."""
     tokens = [
@@ -1033,7 +1063,7 @@ def test_interactive_ionpoptype_belongs_to_each_populations_subplot(
     assert "--ionpoptype" in teviewer.get_plot_tokens()
 
 
-def test_interactive_geometry_modes_draw(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_geometry_modes_draw(make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer]) -> None:
     """Each way to select the cells of a 3D model gives a command that plotestimators draws."""
     viewer = make_viewer("estimators", ["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
     for mode in interactive.GEOMETRY_MODES:
@@ -1145,7 +1175,9 @@ def test_interactive_geometry_modes_draw(make_viewer: Callable[[str, list[str]],
     assert "needs a 3D model" in message
 
 
-def test_interactive_smoothing_and_section_rows(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_smoothing_and_section_rows(
+    make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer],
+) -> None:
     """A smoothing draws, and the rows of the sections and of the output stay in the command.
 
     The window dropped --dpi, thus a PDF file lost the resolution of its raster parts. The table hid --verbose, thus
@@ -1166,7 +1198,7 @@ def test_interactive_smoothing_and_section_rows(make_viewer: Callable[[str, list
     assert viewer.modelformatflags == {"--classicartis"}
 
 
-def test_interactive_level_populations(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_level_populations(make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer]) -> None:
     """A model with NLTE populations offers the level populations, with the lowest NLTE levels of each ion.
 
     The choices came from the atomic data, thus they gave levels with no NLTE population, e.g. Fe V 3 and each level
@@ -1197,7 +1229,7 @@ def test_interactive_level_populations(make_viewer: Callable[[str, list[str]], t
     assert set(plotitems.SERIESTYPES) <= {*subplotcards.SPECIES_FAMILIES, *subplotcards.NLTE_SERIESTYPES}
 
 
-def test_subplots_per_row_fill_each_row(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_subplots_per_row_fill_each_row(make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer]) -> None:
     """-subplotsperrow puts the subplots in rows from the left, and the lowest subplot of each column has x labels.
 
     A column whose last place is empty takes its x labels on the subplot above that place.
@@ -1215,7 +1247,9 @@ def test_subplots_per_row_fill_each_row(make_viewer: Callable[[str, list[str]], 
         assert haslabel == [index + expectedcolumns >= 3 for index in range(3)], count
 
 
-def test_interactive_image_panels_name_their_subplot(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_image_panels_name_their_subplot(
+    make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer],
+) -> None:
     """Each panel of a colour image names its subplot, thus Set current range finds the colour scale of each subplot.
 
     A subplot of two ions gives two panels, and a subplot that an image cannot show gives none.
@@ -1241,7 +1275,9 @@ def test_interactive_image_panels_name_their_subplot(make_viewer: Callable[[str,
     assert labels == [plotestimators.get_panel_axes_label(index) for index in (0, 1, 1)]
 
 
-def test_image_shows_the_average_ionisation(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_image_shows_the_average_ionisation(
+    make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer],
+) -> None:
     """A colour image shows the average ion charge of an element. The image left out a subplot of averageionisation.
 
     The mean over the cells of a pixel takes the number density of the element as a weight, as the line does. Thus
@@ -1282,7 +1318,9 @@ def test_image_shows_the_average_ionisation(make_viewer: Callable[[str, list[str
     assert np.isclose(mean, (1e3 * 1 + 1e5 * 3) / (1e3 + 1e5), rtol=1e-12)
 
 
-def test_interactive_initial_abundance_of_an_isotope(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_initial_abundance_of_an_isotope(
+    make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer],
+) -> None:
     """An isotope such as Fe52 has its own column of initial abundances, and not the column of its element.
 
     plotestimators removed the mass number and plotted the abundance of Fe with the label Fe52.
@@ -1297,7 +1335,7 @@ def test_interactive_initial_abundance_of_an_isotope(make_viewer: Callable[[str,
 
 
 def test_interactive_x_variable_with_no_value_names_the_variable(
-    make_viewer: Callable[[str, list[str]], t.Any],
+    make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer],
 ) -> None:
     """A column with no value in the rows of the plot, e.g. tmid_days_prevtimestep at timestep 0, gives its name.
 

@@ -3,7 +3,6 @@ import dataclasses as dc
 import math
 import shlex
 import sys
-import typing as t
 from collections.abc import Callable
 from pathlib import Path
 from unittest import mock
@@ -30,7 +29,9 @@ modelpath = at.get_path("testdata") / "testmodel"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
 
 
-def test_deltalogx_largestscale_is_the_diagonal_of_a_cell(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_deltalogx_largestscale_is_the_diagonal_of_a_cell(
+    make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer],
+) -> None:
     """-deltalogx largestscale gives Δv/c of the diagonal of a cell of a 3D grid, and the viewer keeps the keyword."""
     vmax_cmps = 2892020000.0
     expected = math.sqrt(3) * 2 * vmax_cmps / 10 / at.constants.C_cm_per_s
@@ -48,7 +49,7 @@ def test_deltalogx_largestscale_is_the_diagonal_of_a_cell(make_viewer: Callable[
 
 
 def test_explicit_linear_yscale_with_logscaley_stops_the_command(
-    make_viewer: Callable[[str, list[str]], t.Any],
+    make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer],
 ) -> None:
     """An explicit -yscale linear gives a different scale from --logscaley, also when linear is the default.
 
@@ -137,7 +138,9 @@ def test_interactive_time_range_argument() -> None:
             assert bounds[0] <= float(text) <= bounds[1], (centre, width, text)
 
 
-def test_interactive_continuous_range_keeps_its_bounds(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_continuous_range_keeps_its_bounds(
+    make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer],
+) -> None:
     """A --notimeclamp range of days keeps its bounds when the viewer opens, also inside one timestep.
 
     The viewer changed a range that holds the middle of one timestep or of no timestep into a single time, and a
@@ -153,7 +156,9 @@ def test_interactive_continuous_range_keeps_its_bounds(make_viewer: Callable[[st
     assert viewer.values.width > 0.0
 
 
-def test_interactive_continuous_width_is_never_zero(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_continuous_width_is_never_zero(
+    make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer],
+) -> None:
     """Each width mode of a continuous range gives a width above 0, and the width follows the time.
 
     A continuous width of 0 selected the whole timestep that holds the time, which is the clamped range.
@@ -177,7 +182,7 @@ def test_interactive_continuous_width_is_never_zero(make_viewer: Callable[[str, 
     assert viewer.step_width(1).widthmode == "days"
 
 
-def test_interactive_valid_timesteps(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_valid_timesteps(make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer]) -> None:
     """The time controls stay inside the valid times, thus a step after the last valid timestep gives None."""
     viewer = make_viewer("spectra", [str(modelpath), "--interactive"])
     validstart, validend = viewer.grid.timebounds
@@ -202,7 +207,7 @@ def test_interactive_valid_timesteps(make_viewer: Callable[[str, list[str]], t.A
 
 
 def test_interactive_up_key_at_the_last_timestep_widens_the_range_backwards(
-    make_viewer: Callable[[str, list[str]], t.Any],
+    make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer],
 ) -> None:
     """The Up key at the last valid timestep adds the timestep before the range, as the estimators viewer does.
 
@@ -217,7 +222,7 @@ def test_interactive_up_key_at_the_last_timestep_widens_the_range_backwards(
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_interactive_command_reproduces_plot(
-    mockplot: mock.MagicMock, tmp_path: Path, make_viewer: Callable[[str, list[str]], t.Any]
+    mockplot: mock.MagicMock, tmp_path: Path, make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer]
 ) -> None:
     """The command that the viewer shows must draw the same data as the viewer."""
     viewer = make_viewer("spectra", [str(modelpath), "-t", "290", "--interactive"])
@@ -244,7 +249,7 @@ def test_interactive_command_reproduces_plot(
     assert np.allclose(np.array(mockplot.call_args[0][2]), viewery, rtol=1e-12, atol=0.0)
 
 
-def test_interactive_emission_options(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_emission_options(make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer]) -> None:
     """A change that plotspectra rejects must keep the old values, and --showabsorption draws a taller frame."""
     # the test model has no emission.out, thus plotspectra cannot draw its emission plot
     viewer = make_viewer("spectra", [str(modelpath), "-t", "300", "--interactive"])
@@ -271,7 +276,7 @@ def test_interactive_emission_options(make_viewer: Callable[[str, list[str]], t.
     assert "nuclide" in rejection
 
 
-def test_interactive_xunit_and_references(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_xunit_and_references(make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer]) -> None:
     """A new x unit converts and sorts the limits, and a reference spectrum goes after the model paths."""
     viewer = make_viewer("spectra", [str(modelpath), "-t", "300", "--deltax", "20", "--interactive"])
     # a frequency increases where the wavelength decreases, thus the limit of 19000 Å becomes the minimum
@@ -290,7 +295,7 @@ def test_interactive_xunit_and_references(make_viewer: Callable[[str, list[str]]
 
 
 def test_interactive_spectra_hold_the_models_and_the_references(
-    monkeypatch: pytest.MonkeyPatch, make_viewer: Callable[[str, list[str]], t.Any]
+    monkeypatch: pytest.MonkeyPatch, make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer]
 ) -> None:
     """The list of spectra holds each ARTIS model and each reference, also the model of the working folder.
 
@@ -312,7 +317,9 @@ def test_interactive_spectra_hold_the_models_and_the_references(
     assert viewerseries.get_series_item_text(interactive.REFERENCE_DATA, reference).startswith("Reference: /")
 
 
-def test_interactive_new_first_model_gives_the_time_grid(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_new_first_model_gives_the_time_grid(
+    make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer],
+) -> None:
     """A new order of the models gives the time controls the timesteps of the new first model.
 
     A snapped range keeps its middle and its count of timesteps on the new grid. The new first model has longer
@@ -332,7 +339,9 @@ def test_interactive_new_first_model_gives_the_time_grid(make_viewer: Callable[[
     assert viewer.grid.tmids[first] < centre < viewer.grid.tmids[last]
 
 
-def test_interactive_time_grid_of_a_later_model(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_time_grid_of_a_later_model(
+    make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer],
+) -> None:
     """A model that is not first can give its timesteps to the time controls, and the valid times apply to all models.
 
     plotspectra rejects a time outside the timesteps of each model, thus the valid times stay inside both models.
@@ -371,7 +380,9 @@ def test_interactive_time_fits_the_timestep_of_each_model() -> None:
     assert interactive.fits_each_model([(classic1dpath, modeltimes)], f"{tstarts[timestep - 1] + 0.001:.6f}")
 
 
-def test_interactive_series_styles_stay_on_their_spectrum(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_series_styles_stay_on_their_spectrum(
+    make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer],
+) -> None:
     """A new order of the spectra keeps each --label and each --color on its spectrum.
 
     Each option gives its values in the order of the spectra. Thus a spectrum with no value in front of a spectrum with
@@ -402,7 +413,7 @@ def test_interactive_series_styles_stay_on_their_spectrum(make_viewer: Callable[
 
 
 def test_interactive_list_gives_a_reference_spectrum_its_legend_label(
-    tmp_path: Path, make_viewer: Callable[[str, list[str]], t.Any]
+    tmp_path: Path, make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer]
 ) -> None:
     """The list of spectra gives a reference spectrum the label of its line in the legend.
 
@@ -429,7 +440,9 @@ def test_reference_spectrum_names_are_files_that_plotspectra_finds() -> None:
     assert all(plotspectra.find_reference_spectrum_file_or_none(name) is not None for name in names)
 
 
-def test_interactive_paths_keep_their_place(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_paths_keep_their_place(
+    make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer],
+) -> None:
     """Each path of the command stays a path and keeps its place, also a path after an option.
 
     The viewer took the paths only from the start of the command, and it put the references after the models. Thus a
@@ -455,7 +468,9 @@ def test_interactive_paths_keep_their_place(make_viewer: Callable[[str, list[str
     assert str(modelpath_classic_3d) in shlex.split(viewer.get_command())
 
 
-def test_interactive_command_gives_the_series_count_of_the_box(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_command_gives_the_series_count_of_the_box(
+    make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer],
+) -> None:
     """The command gives the count of the box, also when that count is the default without -fixedionlist.
 
     plotspectra gives a missing count the length of -fixedionlist, thus a count of 14 with a list needs the option.
@@ -469,7 +484,7 @@ def test_interactive_command_gives_the_series_count_of_the_box(make_viewer: Call
         assert args.maxseriescount == maxseriescount
 
 
-def test_interactive_fixed_y_axis(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_fixed_y_axis(make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer]) -> None:
     """A fixed y axis keeps a negative --ymin through the command, and the limits stay when the time changes."""
     viewer = make_viewer("spectra", [str(modelpath), "-t", "300", "--interactive"])
     assert apply_values(viewer, dc.replace(viewer.values, ymin="-1e-13", ymax="3e-13")) is None
@@ -479,7 +494,9 @@ def test_interactive_fixed_y_axis(make_viewer: Callable[[str, list[str]], t.Any]
     assert np.allclose(viewer.axes[0].get_ylim(), (-1e-13, 3e-13), rtol=1e-9, atol=0.0)
 
 
-def test_interactive_figwidthscale_fills_the_plot_area(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_figwidthscale_fills_the_plot_area(
+    make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer],
+) -> None:
     """The viewer sets --figwidthscale to give the figure the shape of the plot area, and the command shows it."""
     viewer = make_viewer("spectra", [str(modelpath), "-t", "300", "--figwidthscale", "1.5", "--interactive"])
     for areawidth, areaheight in ((1600.0, 500.0), (600.0, 500.0)):
@@ -491,7 +508,9 @@ def test_interactive_figwidthscale_fills_the_plot_area(make_viewer: Callable[[st
         assert f" --figwidthscale {figwidthscale:g}" in viewer.get_command()
 
 
-def test_maxseriescount_cuts_the_fixedionlist(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_maxseriescount_cuts_the_fixedionlist(
+    make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer],
+) -> None:
     """A smaller -maxseriescount removes the last entries of -fixedionlist, and a list alone keeps each entry.
 
     Before the correction, a -fixedionlist kept each entry, and -maxseriescount applied only to the names in the
@@ -511,7 +530,7 @@ def test_maxseriescount_cuts_the_fixedionlist(make_viewer: Callable[[str, list[s
 
 
 def test_interactive_render_changes_nothing_until_the_window_shows_the_plot(
-    make_viewer: Callable[[str, list[str]], t.Any],
+    make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer],
 ) -> None:
     """A render draws a new figure and changes nothing of the viewer. Only the function that it returns shows the plot.
 
@@ -532,7 +551,9 @@ def test_interactive_render_changes_nothing_until_the_window_shows_the_plot(
     assert viewer.fig.canvas is oldfig.canvas, "the canvas of the window must show the new figure"
 
 
-def test_interactive_assertion_of_plotspectra_is_a_rejection(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_assertion_of_plotspectra_is_a_rejection(
+    make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer],
+) -> None:
     """An AssertionError of plotspectra is a rejection, and the viewer keeps the old values.
 
     The viewer caught fewer errors than the CLI, thus the error left the window with the rejected values.
@@ -546,7 +567,9 @@ def test_interactive_assertion_of_plotspectra_is_a_rejection(make_viewer: Callab
     assert viewer.values == oldvalues
 
 
-def test_interactive_rejected_frames_leave_a_plot_on_the_figure(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_rejected_frames_leave_a_plot_on_the_figure(
+    make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer],
+) -> None:
     """An error of the new frames empties the figure, and the next plot must make new frames on it.
 
     The viewer kept the key of the old frames, thus each later plot went to axes that the figure did not hold.
@@ -557,7 +580,9 @@ def test_interactive_rejected_frames_leave_a_plot_on_the_figure(make_viewer: Cal
     assert viewer.fig.axes, "the figure must hold the frames of the plot"
 
 
-def test_interactive_redraw_matches_a_new_plot(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_redraw_matches_a_new_plot(
+    make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer],
+) -> None:
     """A plot that the viewer draws again gives the same pixels as a new plot of the same command.
 
     The viewer keeps the tick objects and the title position from one plot to the next.
@@ -582,7 +607,7 @@ def test_interactive_redraw_matches_a_new_plot(make_viewer: Callable[[str, list[
 
 
 def test_interactive_tick_labels_come_back_after_hidexticklabels(
-    make_viewer: Callable[[str, list[str]], t.Any],
+    make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer],
 ) -> None:
     """The tick labels come back when the user removes --hidexticklabels from the table.
 
@@ -595,7 +620,9 @@ def test_interactive_tick_labels_come_back_after_hidexticklabels(
         assert viewer.axes[0].xaxis.get_major_ticks()[0].label1.get_visible() is labelsvisible
 
 
-def test_interactive_status_line_gives_the_error(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_status_line_gives_the_error(
+    make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer],
+) -> None:
     """The status line gives the error of argparse, and not the usage line that argparse prints before it."""
     viewer = make_viewer("spectra", [str(modelpath), "-t", "300", "--interactive"])
     rejection = viewer.get_rejection(dc.replace(viewer.values, deltax="20", otheroptions=(("-deltalambda", ("5",)),)))
@@ -603,7 +630,9 @@ def test_interactive_status_line_gives_the_error(make_viewer: Callable[[str, lis
     assert rejection.startswith("Argument --deltalambda")
 
 
-def test_interactive_zero_xmin_keeps_its_side_in_a_new_unit(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_zero_xmin_keeps_its_side_in_a_new_unit(
+    make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer],
+) -> None:
     """A minimum wavelength of 0 becomes a range of frequencies above the other limit, and not below it.
 
     The zero limit took the default limit at the same position, thus the range went to the other side of 5000 Å.
@@ -645,7 +674,9 @@ def test_interactive_reference_name_finds_the_picked_file(tmp_path: Path, monkey
     assert viewerseries.get_reference_token(str(bundledfile), find) == str(bundledfile)
 
 
-def test_interactive_valid_times_of_each_model(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_valid_times_of_each_model(
+    make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer],
+) -> None:
     """The time controls stay inside the times that are valid for every model of the command.
 
     plotspectra checks the times of each model, and the viewer took the valid times of the first model only.
@@ -674,7 +705,9 @@ def test_interactive_command_of_a_dispatcher_call() -> None:
     )
 
 
-def test_interactive_unlock_gives_the_default_count(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_unlock_gives_the_default_count(
+    make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer],
+) -> None:
     """A count that came from the length of -fixedionlist becomes the default count when the lock ends."""
     viewer = make_viewer("spectra", [str(modelpath), "-t", "300", "--interactive"])
     locked = dc.replace(viewer.values, fixedionlist=("Fe II", "Co II"), maxseriescount=2)
@@ -682,7 +715,7 @@ def test_interactive_unlock_gives_the_default_count(make_viewer: Callable[[str, 
     assert interactive.remove_series_lock(dc.replace(locked, maxseriescount=5)).maxseriescount == 5
 
 
-def test_interactive_data_source(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_data_source(make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer]) -> None:
     """The data source gives --frompackets, Auto names the files that it selects, and Text files refuses the packets.
 
     The --frompackets box showed only the flag of the user. An option that needs the packets, e.g. -groupby element,
@@ -708,7 +741,9 @@ def test_interactive_data_source(make_viewer: Callable[[str, list[str]], t.Any])
     assert viewer.values == oldvalues
 
 
-def test_interactive_direction_and_bin_controls(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_direction_and_bin_controls(
+    make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer],
+) -> None:
     """The controls of the viewing direction and the bins take the options of the user, and give each option one time.
 
     The deprecated --average-every-tenth-viewing-angle becomes --average-over-phi-angle, and the table of the other
@@ -812,7 +847,9 @@ def test_interactive_option_rows() -> None:
     assert viewercore.get_default_tokens(actions["--title"]) is None
 
 
-def test_interactive_other_options_reach_the_command(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_other_options_reach_the_command(
+    make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer],
+) -> None:
     """The command contains each row of the table, and a row that plotspectra rejects keeps the old options."""
     viewer = make_viewer("spectra", [str(modelpath), "-t", "300", "--filtermovingavg", "3", "--interactive"])
     assert viewer.values.otheroptions == (("--filtermovingavg", ("3",)),)
@@ -830,7 +867,7 @@ def test_interactive_other_options_reach_the_command(make_viewer: Callable[[str,
     assert viewer.values.otheroptions == otheroptions
 
 
-def test_interactive_lock_series(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_lock_series(make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer]) -> None:
     """A locked list of series keeps the colour of each series when the time changes."""
     viewer = make_viewer("spectra", [str(modelpath_classic_3d), "-t", "4", "--showemission", "--interactive"])
 
@@ -898,7 +935,9 @@ def test_interactive_spectrum_path_is_the_same_for_each_spelling(monkeypatch: py
     assert get_full_path(".") != get_full_path(str(modelpath.parent))
 
 
-def test_interactive_switch_between_r_packets_and_gamma_packets(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_switch_between_r_packets_and_gamma_packets(
+    make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer],
+) -> None:
     """The packet control switches the plot between the r-packets and the gamma packets, with the units of each.
 
     --gamma was an option of the table, thus the x unit, the x range, and the grouping kept the defaults of the
@@ -951,7 +990,9 @@ def test_interactive_gamma_spectrum_needs_one_source_for_all_models(tmp_path: Pa
     assert not interactive.has_gamma_spectrum([specmodel, packetsmodel])
 
 
-def test_interactive_direction_kinds_follow_the_first_model(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_direction_kinds_follow_the_first_model(
+    make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer],
+) -> None:
     """The kinds of viewing direction come from the first model of the list, also after a change of the list.
 
     The kinds came from the first model of the command, thus a new first model with no vpkt.txt kept -plotvspecpol.
@@ -995,7 +1036,9 @@ def test_viewer_command_keeps_the_time_grid_of_a_later_model() -> None:
     assert reopened.values.timegrid == models[1]
 
 
-def test_interactive_command_reads_one_grid_of_the_models(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+def test_interactive_command_reads_one_grid_of_the_models(
+    make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer],
+) -> None:
     """The worker thread makes the command from the timestep grid while the window can load the models again.
 
     A new model replaced the grid during a plot, and the worker then read a timestep of the old grid in the new grid.
