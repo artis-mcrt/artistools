@@ -12,6 +12,7 @@ from artistools.constants import day_to_s
 from artistools.constants import EV_to_erg
 from artistools.constants import hour_to_s
 from artistools.constants import km_to_cm
+from artistools.misc.console import suggest_names
 
 # a number, then an optional unit, e.g. 600nm, 2.5 d, or 1e5. The unit starts with a character that no number holds
 VALUE_WITH_UNIT_PATTERN: t.Final = re.compile(r"\s*([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)\s*([^\d\s.+-].*?)?\s*")
@@ -158,8 +159,6 @@ def parse_xunit_argument(value: str) -> str:
     argparse calls this while it reads the command line, thus a name with a mistake stops the
     command before it reads a file. convert_xunit_aliases_to_canonical guards the keyword of the API.
     """
-    from artistools.misc.console import suggest_names
-
     try:
         return convert_xunit_aliases_to_canonical(value)
     except ValueError:
