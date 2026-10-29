@@ -44,13 +44,13 @@ license-files = ["LICEN[CS]E*"]
 readme = { file = "README.md", content-type = 'text/markdown' }
 dependencies = [
     "argcomplete>=3.7.2",
-    "extinction>=0.4.9",
-    "matplotlib>=3.11",
-    "numpy>=2.5.2",
+    "extinction>=0.4.10",
+    "matplotlib>=3.11.2",
+    "numpy>=2.5.4",
     "polars>=2.1.0",
     "pyyaml>=6.0.3",
     "rich>=15.0.0",
-    "tqdm>=4.70.0",
+    "tqdm>=4.70.1",
     "zstandard>=0.25.0;python_version<'3.14'",
 ]
 
@@ -60,9 +60,9 @@ dependencies = [
 # loads needs no entry
 extras = [
     "george>=0.4.4;python_version<'3.15'", # not compatible with 3.15 yet
-    "imageio>=2.37.4",
-    "plotly>=6.9.0",
-    "pypdf>=6.16.2",
+    "imageio>=2.38.1",
+    "plotly>=7.1.0",
+    "pypdf>=6.21.4",
     "pynonthermal>=2026.9.30",
     # the viewers of --interactive use AppKit to copy a PDF or an SVG file to the clipboard of macOS. Qt gives such
     # a file a type that no other application reads
@@ -71,24 +71,24 @@ extras = [
     # application binary interface (ABI), and a free-threaded build cannot load them. CI installs the extras only on
     # the build of Python 3.14 that is not free-threaded
     "pyside6-essentials>=6.11.2",
-    "pyvista>=0.48.4;python_version<'3.15'", # not compatible with 3.15 yet
+    "pyvista>=0.49.2;python_version<'3.15'", # not compatible with 3.15 yet
 ]
 
 [dependency-groups]
 dev = [
     "imageio>=2.38.1",
-    "prek>=0.5.5",
+    "prek>=0.5.7",
     "pynonthermal>=2026.9.30",
-    "pypdf>=6.21",
+    "pypdf>=6.21.4",
     "pyrefly>=1.4.0",
-    "pytest>=9.1.1",
+    "pytest>=9.2.0",
     "pytest-codspeed>=5.0.3",
     "pytest-cov>=7.1.0",
     "pytest-xdist[psutil]>=3.8.0",
-    "ruff>=0.17.0,<0.18",
-    "ty>=0.0.89",
-    "types-pyyaml>=6.0.12.20260408",
-    "types-tqdm>=4.67.3.20260408",
+    "ruff>=0.17.3,<0.18",
+    "ty>=0.0.94",
+    "types-pyyaml>=6.0.12.20260906",
+    "types-tqdm>=4.70.0.20260906",
     "vulture>=2.16",
 ]
 

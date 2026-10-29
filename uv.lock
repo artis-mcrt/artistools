@@ -60,21 +60,21 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "argcomplete", specifier = ">=3.7.2" },
-    { name = "extinction", specifier = ">=0.4.9" },
+    { name = "extinction", specifier = ">=0.4.10" },
     { name = "george", marker = "python_full_version < '3.15' and extra == 'extras'", specifier = ">=0.4.4" },
-    { name = "imageio", marker = "extra == 'extras'", specifier = ">=2.37.4" },
-    { name = "matplotlib", specifier = ">=3.11" },
-    { name = "numpy", specifier = ">=2.5.2" },
-    { name = "plotly", marker = "extra == 'extras'", specifier = ">=6.9.0" },
+    { name = "imageio", marker = "extra == 'extras'", specifier = ">=2.38.1" },
+    { name = "matplotlib", specifier = ">=3.11.2" },
+    { name = "numpy", specifier = ">=2.5.4" },
+    { name = "plotly", marker = "extra == 'extras'", specifier = ">=7.1.0" },
     { name = "polars", specifier = ">=2.1.0" },
     { name = "pynonthermal", marker = "extra == 'extras'", specifier = ">=2026.9.30" },
     { name = "pyobjc-framework-cocoa", marker = "sys_platform == 'darwin' and extra == 'extras'", specifier = ">=12.2.2" },
-    { name = "pypdf", marker = "extra == 'extras'", specifier = ">=6.16.2" },
+    { name = "pypdf", marker = "extra == 'extras'", specifier = ">=6.21.4" },
     { name = "pyside6-essentials", marker = "extra == 'extras'", specifier = ">=6.11.2" },
-    { name = "pyvista", marker = "python_full_version < '3.15' and extra == 'extras'", specifier = ">=0.48.4" },
+    { name = "pyvista", marker = "python_full_version < '3.15' and extra == 'extras'", specifier = ">=0.49.2" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "rich", specifier = ">=15.0.0" },
-    { name = "tqdm", specifier = ">=4.70.0" },
+    { name = "tqdm", specifier = ">=4.70.1" },
     { name = "zstandard", marker = "python_full_version < '3.14'", specifier = ">=0.25.0" },
 ]
 provides-extras = ["extras"]
@@ -82,18 +82,18 @@ provides-extras = ["extras"]
 [package.metadata.requires-dev]
 dev = [
     { name = "imageio", specifier = ">=2.38.1" },
-    { name = "prek", specifier = ">=0.5.5" },
+    { name = "prek", specifier = ">=0.5.7" },
     { name = "pynonthermal", specifier = ">=2026.9.30" },
-    { name = "pypdf", specifier = ">=6.21" },
+    { name = "pypdf", specifier = ">=6.21.4" },
     { name = "pyrefly", specifier = ">=1.4.0" },
-    { name = "pytest", specifier = ">=9.1.1" },
+    { name = "pytest", specifier = ">=9.2.0" },
     { name = "pytest-codspeed", specifier = ">=5.0.3" },
     { name = "pytest-cov", specifier = ">=7.1.0" },
     { name = "pytest-xdist", extras = ["psutil"], specifier = ">=3.8.0" },
-    { name = "ruff", specifier = ">=0.17.0,<0.18" },
-    { name = "ty", specifier = ">=0.0.89" },
-    { name = "types-pyyaml", specifier = ">=6.0.12.20260408" },
-    { name = "types-tqdm", specifier = ">=4.67.3.20260408" },
+    { name = "ruff", specifier = ">=0.17.3,<0.18" },
+    { name = "ty", specifier = ">=0.0.94" },
+    { name = "types-pyyaml", specifier = ">=6.0.12.20260906" },
+    { name = "types-tqdm", specifier = ">=4.70.0.20260906" },
     { name = "vulture", specifier = ">=2.16" },
 ]
 
@@ -1219,7 +1219,7 @@ wheels = [
 
 [[package]]
 name = "pyvista"
-version = "0.49.1"
+version = "0.49.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cyclopts" },
@@ -1233,9 +1233,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "vtk" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7b/1f/77d43ddf04d8fb7703bc125a6546d6300657f56464c76c18550aa0c991f4/pyvista-0.49.1.tar.gz", hash = "sha256:e3a37f2330ce9d2d680a153ac08fea2bd900aa59d13db46da8f64c92896ddd8e", size = 2705888, upload-time = "2026-10-11T16:53:05.078Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/65/9b/6ae34b3fcde3ab8e4e59d4727ef6733ed938e8ad5b3ec05655f1e0cd296d/pyvista-0.49.2.tar.gz", hash = "sha256:24cf548b15a375ddb0952bda5ea0ae4948006c7ab724cd676c420f8e04b3718d", size = 2707024, upload-time = "2026-10-28T22:24:34.54Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/0e/48/39c762c55cb110aa1bd72cebbcc927c1a481f5bd17db4cab86933ce03578/pyvista-0.49.1-py3-none-any.whl", hash = "sha256:e4bd78c829051207e885281c45d03280dcde25445e1885c0824518ea7849b1c8", size = 2734000, upload-time = "2026-10-11T16:53:02.571Z" },
+    { url = "https://files.pythonhosted.org/packages/5e/72/0d1da868fc241bb2ab930ff9b802bbc17a1df7e9f36565769a978d052dbf/pyvista-0.49.2-py3-none-any.whl", hash = "sha256:63f78495b30e146c9d1debeca7fa44c7a3935cc9f9ded8638b809ef955fc167a", size = 2734789, upload-time = "2026-10-28T22:24:32.607Z" },
 ]
 
 [[package]]
