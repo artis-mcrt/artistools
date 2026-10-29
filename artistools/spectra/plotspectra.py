@@ -479,10 +479,11 @@ def plot_reference_spectrum(
     filepath = find_reference_spectrum_file(filename)
 
     metadata = get_file_metadata(filepath)
-    # an empty --label gives the line no legend entry, thus the log and the summary take the label of the file
-    legendlabel = plotkwargs.pop("label", None)
-    assert legendlabel is None or isinstance(legendlabel, str)
-    label = legendlabel or get_metadata_label(metadata, filename)
+    # an empty --label gives the line no legend entry, thus the log, the tables, and the residuals take the label of
+    # the file
+    givenlabel = plotkwargs.pop("label", None)
+    assert givenlabel is None or isinstance(givenlabel, str)
+    label = givenlabel or get_metadata_label(metadata, filename)
 
     print_heading(f"Reference spectrum '{label}'")
     specdata = get_reference_spectrum(filepath, metadata)
@@ -505,10 +506,7 @@ def plot_reference_spectrum(
         timefactor = timeshift_fluxscale_co56law(scaletoreftime, float(metadata["t"]))
         print_detail(f"Scaled from time {metadata['t']} to {scaletoreftime}, factor {timefactor} by the Co56 decay law")
         specdata = specdata.with_columns(f_lambda=pl.col("f_lambda") * timefactor)
-        scaletext = f" * {timefactor:.2f}"
-        label += scaletext
-        if legendlabel:
-            legendlabel += scaletext
+        label += f" * {timefactor:.2f}"
 
     if "scale_factor" in metadata:
         specdata = specdata.with_columns(f_lambda=pl.col("f_lambda") * metadata["scale_factor"])
@@ -545,12 +543,12 @@ def plot_reference_spectrum(
         assert offset == 0
     ymax = specdata["y"].max()
     assert isinstance(ymax, float)
-    if legendlabel is None:
-        legendlabel = label
-    (lineplot,) = axis.plot(specdata["x"], specdata["y"], label=legendlabel, **plotkwargs)
+    hasnolegendentry = givenlabel is not None and not givenlabel
+    legendlabel = "" if hasnolegendentry else label
+    (lineplot,) = axis.plot(specdata["x"], specdata["y"], label=legendlabel, gid=label, **plotkwargs)
     print_spectrum_summary(label, specdata, (xmin, xmax), xunit, yvariable, summaryrows=summaryrows)
 
-    add_residual_series(residualseries, legendlabel, lineplot, specdata["x"].to_numpy(), specdata["y"].to_numpy())
+    add_residual_series(residualseries, label, lineplot, specdata["x"].to_numpy(), specdata["y"].to_numpy())
 
     return lineplot, legendlabel, ymax
 
@@ -1517,7 +1515,8 @@ def get_drawn_lines_table(
     return pl.concat(
         [
             pl.DataFrame({
-                "series": str(line.get_label()),
+                # a line with no legend entry has an empty label, and its gid then names the series
+                "series": line.get_gid() or str(line.get_label()),
                 f"x_plotted_{args.xunit}": np.asarray(line.get_xdata(), dtype=np.float64),
                 ycolumn or f"{args.yvariable}_plotted": np.asarray(line.get_ydata(), dtype=np.float64),
             }).select("series", pl.lit(specpath, dtype=pl.String).alias("specpath"), pl.exclude("series"))

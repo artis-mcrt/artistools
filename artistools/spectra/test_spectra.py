@@ -1699,6 +1699,28 @@ def test_empty_label_hides_a_reference_spectrum_in_the_legend(
     assert "Reference spectrum ''" not in capsys.readouterr().out
 
 
+def test_empty_label_keeps_the_name_of_a_reference_spectrum_in_the_tables(
+    tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
+    """A reference spectrum with an empty -label keeps the label of its file in the tables and the residuals.
+
+    The line had an empty label, thus the table of the reference spectra named it _child1, and the residual table
+    named it "".
+    """
+    obsfile = write_fake_observed_spectrum(tmp_path)
+    at.spectra.plot(
+        argsraw=["-label", "default", ""],
+        specpath=[modelpath, obsfile],
+        timestep=54,
+        residualbaselineseries=1,
+        write_data=True,
+        outputfile=tmp_path / "emptylabel.pdf",
+    )
+
+    assert read_data_file(tmp_path / "emptylabel_references.txt")["series"].unique().to_list() == ["fake observation"]
+    assert read_data_file(tmp_path / "emptylabel_residuals.txt")["reference"].item() == "fake observation"
+
+
 @mock.patch.object(mplax.Axes, "set_yscale", side_effect=mplax.Axes.set_yscale, autospec=True)
 def test_plotspectra_takes_the_yscale_argument(mockyscale: mock.MagicMock) -> None:
     """The command took --logscaley alone, thus -yscale worked on the light curves and not here."""
