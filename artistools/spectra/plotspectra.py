@@ -55,6 +55,7 @@ from artistools.misc import find_reference_data_file
 from artistools.misc import format_frame_path
 from artistools.misc import get_artis_model_folders
 from artistools.misc import get_dirbin_definitions
+from artistools.misc import get_dirbin_labels
 from artistools.misc import get_file_metadata
 from artistools.misc import get_filterfunc
 from artistools.misc import get_metadata_label
@@ -2602,6 +2603,13 @@ def check_emission_plot_args(args: argparse.Namespace) -> None:
         exit_with_error(
             f"An emission plot draws one direction bin, and the command gives {len(dirbins)} of them",
             "Give one bin, e.g. --plotviewingangle 0",
+        )
+    if args.plotviewingangle and not args.plotvspecpol:
+        # a bin that an average leaves out has no packets, thus the check comes before the read of --frompackets
+        get_dirbin_labels(
+            args.plotviewingangle[:1],
+            average_over_phi=args.average_over_phi_angle,
+            average_over_theta=args.average_over_theta_angle,
         )
 
     if args.timedayslist and len(args.timedayslist) > 1:

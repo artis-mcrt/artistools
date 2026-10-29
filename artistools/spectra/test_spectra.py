@@ -3738,25 +3738,31 @@ def test_plotspectra_x_still_gives_the_unit() -> None:
     assert parser.parse_args([".", "-xunit", "Hz"]).xunit == "hz"
 
 
-def test_emission_plot_names_a_direction_bin_that_the_average_leaves_out(tmp_path: Path) -> None:
-    """The emission plot gives the error of the shared check for a bin that an average over phi leaves out.
+def test_emission_plot_names_a_direction_bin_that_the_average_leaves_out(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The command refuses a bin that an average over phi leaves out, before it reads data.
 
     The emission plot checked the bin with a bare assert, thus the command gave the message of a fault of artistools.
+    With --frompackets, the command read each packet before the error.
     """
-    with pytest.raises(ValueError, match=r"Direction bin 5 is not the first bin of an average group"):
-        at.spectra.plot(
-            argsraw=[
-                str(modelpath_classic_3d),
-                "--showemission",
-                "-plotviewingangle",
-                "5",
-                "--average-over-phi-angle",
-                "-ts",
-                "10",
-                "-o",
-                str(tmp_path / "emission.pdf"),
-            ]
-        )
+    for packetargs in ([], ["--frompackets"]):
+        with pytest.raises(ValueError, match=r"Direction bin 5 is not the first bin of an average group"):
+            at.spectra.plot(
+                argsraw=[
+                    str(modelpath_classic_3d),
+                    "--showemission",
+                    *packetargs,
+                    "-plotviewingangle",
+                    "5",
+                    "--average-over-phi-angle",
+                    "-ts",
+                    "10",
+                    "-o",
+                    str(tmp_path / "emission.pdf"),
+                ]
+            )
+        assert "packets" not in capsys.readouterr().out
 
 
 def test_gamma_spectrum_check_follows_the_working_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
