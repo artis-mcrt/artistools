@@ -52,6 +52,7 @@ from artistools.misc import convert_xunit_aliases_to_canonical
 from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import exit_with_error
 from artistools.misc import find_reference_data_file
+from artistools.misc import format_frame_path
 from artistools.misc import get_artis_model_folders
 from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_file_metadata
@@ -1821,7 +1822,7 @@ def get_plot_outputfile(args: argparse.Namespace) -> str:
         strdirectionbins = ""
 
     if args.timemin is not None and args.timemax is not None:
-        return outputfile.format(timemin=args.timemin, timemax=args.timemax, directionbins=strdirectionbins)
+        return format_frame_path(outputfile, timemin=args.timemin, timemax=args.timemax, directionbins=strdirectionbins)
     if "{" in outputfile:
         # no model resolved both bounds, thus the time placeholders get no values
         return str(Path(outputfile).with_name("plotspectra.pdf"))

@@ -3676,3 +3676,21 @@ def test_emission_plot_names_a_direction_bin_that_the_average_leaves_out(tmp_pat
                 str(tmp_path / "emission.pdf"),
             ]
         )
+
+
+def test_output_template_names_a_field_that_plotspectra_does_not_give(tmp_path: Path) -> None:
+    """A field of -o that the command does not give gets a clear error, as in the other commands.
+
+    get_plot_outputfile filled the template with str.format, thus the command stopped with the traceback of a KeyError.
+    """
+    args = argparse.Namespace(
+        outputfile=tmp_path / "spec_{foo}.pdf",
+        showemission=False,
+        showabsorption=False,
+        plotviewingangle=None,
+        plotvspecpol=None,
+        timemin=300.0,
+        timemax=301.0,
+    )
+    with pytest.raises(ValueError, match=r"holds the field 'foo'"):
+        plotspectra.get_plot_outputfile(args)
