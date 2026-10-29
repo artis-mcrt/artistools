@@ -1029,6 +1029,19 @@ def test_viewer_typed_centre_gives_back_the_range() -> None:
             assert viewercore.get_nearest_range_start(tmids, centre, count) == start, (count, start)
 
 
+def test_range_slider_handle_keeps_the_range_inside_the_timesteps() -> None:
+    """A press beside a handle at an end of the range slider gives a valid range of one timestep or more.
+
+    The slider then gives the position -1 or the count, and the estimators viewer read the timestep at that position.
+    Thus it raised IndexError, or it gave the reversed range --timestep 99-0.
+    """
+    assert viewercore.get_dragged_range((0, 0), 0, -1, 100) == (0, 1)
+    assert viewercore.get_dragged_range((99, 99), 1, 100, 100) == (98, 99)
+    assert viewercore.get_dragged_range((0, 0), 1, 1, 1) == (0, 0)
+    assert viewercore.get_dragged_range((10, 20), 0, 5, 100) == (5, 20)
+    assert viewercore.get_dragged_range((10, 20), 1, 30, 100) == (10, 30)
+
+
 def test_viewer_option_rows_split_a_group_of_switches() -> None:
     """Argparse reads -qv as -q and -v, and the option table must give each switch its own row.
 

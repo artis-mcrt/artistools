@@ -85,6 +85,7 @@ from artistools.viewertools.core import exit_for_other_actions
 from artistools.viewertools.core import get_actions_by_flag
 from artistools.viewertools.core import get_centred_range
 from artistools.viewertools.core import get_clamped_range
+from artistools.viewertools.core import get_dragged_range
 from artistools.viewertools.core import get_end_range
 from artistools.viewertools.core import get_figure_option_tokens
 from artistools.viewertools.core import get_fitted_figwidthscale
@@ -1617,12 +1618,9 @@ def open_window(
         apply(viewer.select_centre(days))
 
     def on_trange(handle: int, position: int) -> None:
-        firstpos, lastpos = viewer.get_selection_positions()
-        if handle == 0:
-            firstpos = position
-        else:
-            lastpos = position
-        apply(viewer.select_positions(viewer.values, (firstpos, lastpos)))
+        count = len(viewer.modeldata.validtimesteps)
+        positions = get_dragged_range(viewer.get_selection_positions(), handle, position, count)
+        apply(viewer.select_positions(viewer.values, positions))
 
     def on_trangeedit() -> None:
         tminedit.setModified(False)

@@ -823,6 +823,16 @@ def get_centred_range(positions: tuple[int, int], centre: int, count: int) -> tu
     return get_clamped_range(centre - (width - 1) // 2, width, count)
 
 
+def get_dragged_range(positions: tuple[int, int], handle: int, position: int, count: int) -> tuple[int, int]:
+    """Return the range of positions after a move of one handle of a range slider to a position.
+
+    A press beside a handle at an end of the slider gives a position outside the count positions. Thus the range stays
+    inside them, with a width of one position at least.
+    """
+    firstpos, lastpos = (position, positions[1]) if handle == 0 else (positions[0], position)
+    return get_clamped_range(firstpos, lastpos - firstpos + 1, count)
+
+
 class PlotValues(t.Protocol):
     """The values of the controls of a viewer: a dataclass with the width and the resolution of the figure."""
 
