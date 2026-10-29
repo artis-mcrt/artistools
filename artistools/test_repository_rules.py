@@ -130,12 +130,18 @@ def test_reader_prefix_tells_lazy_from_eager() -> None:
     """A reader with the prefix scan_ returns a LazyFrame, and a reader with the prefix read_ returns eager data.
 
     The README gives this rule to the users. read_spec returned a LazyFrame, and get_spectra returned a dictionary of
-    them, thus the name did not tell a user when the data was read.
+    them, thus the name did not tell a user when the data was read. The test read only the core modules and misc, thus
+    scan_cell_estimators of writecomparisondata returned a DataFrame.
     """
     import ast
 
     packagefolder = Path(at.__file__).parent
-    modules = [*packagefolder.glob("*/core.py"), *(packagefolder / "misc").glob("*.py")]
+    # a name with a space is an iCloud conflict copy
+    modules = [
+        path
+        for path in sorted(packagefolder.rglob("*.py"))
+        if not path.name.startswith("test_") and " " not in path.name
+    ]
     wrongnames = []
     for module in modules:
         for node in ast.parse(module.read_text(encoding="utf-8")).body:

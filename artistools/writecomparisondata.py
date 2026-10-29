@@ -95,7 +95,7 @@ def get_nonempty_cells(
     ), modelmeta
 
 
-def scan_cell_estimators(
+def read_cell_estimators(
     modelpath: str | Path, selected_timesteps: Sequence[int], modeldata: pl.DataFrame, modelmeta: dict[str, t.Any]
 ) -> pl.DataFrame:
     """Return the estimators of the selected timesteps, joined to the model data of each non-empty cell.
@@ -345,7 +345,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             .to_list()
         )
         modeldata, modelmeta = get_nonempty_cells(modelpath, allnonemptymgilist)
-        dfestimators = scan_cell_estimators(modelpath, selected_timesteps, modeldata, modelmeta)
+        dfestimators = read_cell_estimators(modelpath, selected_timesteps, modeldata, modelmeta)
 
         # with no estimator files, the scan gives only the columns of the model, thus each select of Te stops
         if "Te" not in dfestimators.columns:
