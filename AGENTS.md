@@ -2,7 +2,21 @@
 
 Artistools is a toolkit that plots data, analyses data, and converts files for the [ARTIS](https://github.com/artis-mcrt/artis) radiative transfer code. It is a Python package (`artistools/`) and a small Rust extension (`rust/`, imported as `artistools.rustext`).
 
-The package has **no public API**. You can delete code that has no callers. This includes a function parameter that no call passes. A `quiet` flag or a `verbose` flag is never dead code, even when no call passes it, because a user sets it at the point of use. You can rename or refactor a function freely. Do not add a compatibility shim or a deprecation path for a name in the code, e.g. a function, a parameter, or a module. Correct the design instead.
+The package has **no public API**. You can delete code that has no callers. This includes a function parameter that no call passes. A `quiet` flag or a `verbose` flag is never dead code, even when no call passes it, because a user sets it at the point of use. You can rename or refactor a function freely.
+
+A script of a user can call a renamed function, parameter, or module by its old name. You can keep the old name as an
+alias, but you must mark the alias as deprecated. The alias then gives a `DeprecationWarning` that names the new name.
+For a function, give the alias the decorator `warnings.deprecated`. The type checkers then also report each use. Do
+not use a deprecated alias in the code of artistools. A later release can delete the alias.
+
+```python
+@warnings.deprecated("get_modeldata is deprecated. Use scan_modeldata, which returns the same values.")
+def get_modeldata(
+    modelpath: Path | str = ".", get_elemabundances: bool = False, printwarningsonly: bool = False
+) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
+    """Return the result of scan_modeldata, which is the new name of this function."""
+    return scan_modeldata(modelpath, get_elemabundances=get_elemabundances, printwarningsonly=printwarningsonly)
+```
 
 Two packages outside this repository read artistools:
 
@@ -12,7 +26,7 @@ Two packages outside this repository read artistools:
 
 Keep these names and their paths, because a release that moves one of them stops the installed package. The test `test_external_packages_find_their_names` holds this list.
 
-A command-line argument is different. A user writes such an argument in a script and in a note, thus a
+A command-line argument always keeps its old spelling. A user writes such an argument in a script and in a note, thus a
 new spelling that takes the old one away stops that work. Keep the old spelling of a renamed argument
 as an alias, and give it `help=argparse.SUPPRESS`. The help text then gives one spelling, and a script
 that holds the old one still runs.
