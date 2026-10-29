@@ -29,6 +29,19 @@ outputpath = at.get_path("testoutput")
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
 
 
+@pytest.fixture
+def patch_scan_packets(monkeypatch: pytest.MonkeyPatch) -> Callable[[pl.DataFrame], None]:
+    """Return a function that makes the spectra code read the given packets in place of the packets of a model."""
+
+    def patch_scan_packets(dfpackets: pl.DataFrame) -> None:
+        def scan_packets(*_args: t.Any, **_kwargs: t.Any) -> tuple[int, pl.LazyFrame]:
+            return 1, dfpackets.lazy()
+
+        monkeypatch.setattr(atspectra, "scan_packets", scan_packets)
+
+    return patch_scan_packets
+
+
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_spectraplot(mockplot: mock.MagicMock, tmp_path: Path) -> None:
     at.spectra.plot(
