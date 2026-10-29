@@ -991,13 +991,12 @@ def scan_specpol_res(modelpath: Path) -> dict[int, pl.LazyFrame]:
 
 
 @on_model_host
-def scan_specpol_data(dirbin: int = -1, modelpath: Path | None = None) -> dict[str, pl.LazyFrame]:
+def scan_specpol_data(modelpath: Path, dirbin: int = -1) -> dict[str, pl.LazyFrame]:
     """Return the I, Q, and U spectra of one direction bin.
 
     specpol.out holds the spherically averaged spectra, which dirbin -1 selects. specpol_res.out holds
     one table for each direction bin, in the layout of spec_res.out.
     """
-    assert modelpath is not None
     if dirbin == -1:
         specfilename = firstexisting("specpol.out", folder=modelpath, tryzipped=True)
         print(f"Reading {specfilename}")
