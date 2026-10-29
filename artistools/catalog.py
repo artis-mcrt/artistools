@@ -7,7 +7,6 @@ folder of many models takes a short time.
 """
 
 import argparse
-import os
 import typing as t
 from collections.abc import Callable
 from collections.abc import Sequence
@@ -90,8 +89,7 @@ def find_model_folders(folder: Path) -> list[Path]:
     """
     modelfolders: list[Path] = []
     realfolders: set[Path] = set()
-    for dirpath, dirnames, _ in os.walk(folder, followlinks=True):
-        subfolder = Path(dirpath)
+    for subfolder, dirnames, _ in folder.walk(follow_symlinks=True):
         realfolder = subfolder.resolve()
         if realfolder in realfolders:
             dirnames.clear()

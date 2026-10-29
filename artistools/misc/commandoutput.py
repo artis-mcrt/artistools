@@ -252,7 +252,7 @@ def output_data(args: argparse.Namespace, tables: "Mapping[str, pl.DataFrame]", 
         filesuffix = {"json": ".json", "csv": ".csv"}.get(outputformat or "text", ".txt")
         for suffix, dfdata in tables.items():
             datafile = Path(outputfile).with_name(f"{Path(outputfile).stem}{suffix}{filesuffix}")
-            if dfdata.is_empty() and not os.path.lexists(datafile):
+            if dfdata.is_empty() and not datafile.exists(follow_symlinks=False):
                 continue
             emptylines = (
                 ["the table has no rows, e.g. because the plot has no point in the selected range"]
