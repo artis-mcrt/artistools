@@ -3995,7 +3995,7 @@ def test_viewer_reads_the_type_of_a_subplot_as_the_command_does(capsys: pytest.C
     """The viewer must give a subplot the type that the command reads.
 
     The viewer read the type of a subplot with its own copy of the code. It tested a list of ions with is_valid_ion,
-    and the command tested could_be_ion. Thus the card of ("Fe II", "te") became a subplot of variables, but the
+    and the command tested could_be_ion. Thus the card of ("Fe II", "te") became a subplot of variables. The
     command read a plot of populations and gave the message for that plot. The copy also read an alias as an ion,
     e.g. n_e as nitrogen.
     """

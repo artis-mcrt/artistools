@@ -2748,7 +2748,7 @@ def collect_emission_and_absorption(
 ) -> tuple[list[pl.DataFrame], list[pl.DataFrame]]:
     """Return the emission spectra and the absorption spectra of every contribution.
 
-    One call runs every query together. A collect for each contribution runs them one after the other,
+    One call of collect_all runs every query together. A call of collect for each contribution runs them in turn,
     which costs about four times as much for the default series count. The emission queries and the
     absorption queries are independent, thus one call takes both sets.
     """

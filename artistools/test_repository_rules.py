@@ -173,7 +173,7 @@ def test_package_modules_import_no_package_alias(package_modules: list[Path]) ->
     """
     aliasimport = re.compile(r"^\s*import artistools(\.[\w.]+)? as \w+", re.MULTILINE)
     packagedir = Path(at.__file__).parent
-    # a test can use the alias
+    # package_modules leaves out the test modules, because a test can use the alias
     offenders = [
         str(path.relative_to(packagedir))
         for path in package_modules

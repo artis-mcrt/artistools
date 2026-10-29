@@ -817,9 +817,9 @@ def get_stepped_range(positions: tuple[int, int], step: int, count: int) -> tupl
 
 
 def get_frame_ranges(positions: tuple[int, int], count: int) -> list[tuple[int, int]]:
-    """Return the range of positions of each frame of an animation that keeps the width of positions.
+    """Return the range of positions of each frame of an animation, with the same width as positions.
 
-    The frames start at each of count positions where a range of that width fits.
+    The first frame starts at position 0, and the last frame ends at the last of count positions.
     """
     width = positions[1] - positions[0] + 1
     return [(start, start + width - 1) for start in range(count - width + 1)]

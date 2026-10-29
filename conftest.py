@@ -88,7 +88,7 @@ def get_plot_xy() -> "Callable[[t.Any], tuple[np.ndarray, np.ndarray]]":
 def package_modules() -> list[Path]:
     """Return the path of each module of the package artistools, with no test module, in the order of the paths.
 
-    A name with a space is an iCloud conflict copy, thus the list leaves it out.
+    A file with a space in its name is an iCloud conflict copy, thus the list leaves it out.
     """
     import artistools as at
 
@@ -144,7 +144,7 @@ def copy_vpktcontrib_model() -> "Callable[[Path, str, str], Path]":
         for filename in ("input.txt", "vpackets_0000.out.zst", "vpackets_0001.out.zst"):
             shutil.copy(sourcedir / filename, modelfolder / filename)
         vpktlines = (sourcedir / "vpkt.txt").read_text(encoding="utf-8").splitlines()
-        # the fifth line is the time window override, and the sixth line is the custom wavelength range flag
+        # the fifth line of vpkt.txt gives the time window, and the sixth line gives the wavelength ranges
         vpktlines[4:6] = [timewindowline, rangesline]
         (modelfolder / "vpkt.txt").write_text("\n".join(vpktlines) + "\n", encoding="utf-8")
         return modelfolder
