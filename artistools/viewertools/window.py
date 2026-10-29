@@ -12,6 +12,7 @@ from types import MappingProxyType
 import numpy as np
 
 from artistools.misc import clear_reload_caches
+from artistools.misc import is_remote_path
 from artistools.misc import on_model_host
 from artistools.misc import print_error
 from artistools.plottools import apply_dark_colours
@@ -114,8 +115,10 @@ def reload_models(
 
     def read() -> None:
         clear_reload_caches(("estimators",) if estimatorsonly else ("estimators", "output"))
+        # the call above cleared the caches of this process, thus only a remote model needs a clear on its host
         for modelfolder in modelfolders:
-            clear_output_caches_of_model(Path(modelfolder), estimatorsonly)
+            if is_remote_path(modelfolder):
+                clear_output_caches_of_model(Path(modelfolder), estimatorsonly)
         if read_models is not None:
             read_models()
 
