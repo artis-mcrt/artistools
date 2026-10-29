@@ -1,4 +1,4 @@
-"""Read the log files of the ranks of an ARTIS run: the messages, the ranks, and the time that each stage took."""
+"""Read the log files of the ranks of an ARTIS model: the messages, the ranks, and the time that each stage took."""
 
 import filecmp
 import itertools

@@ -94,8 +94,8 @@ jobs:
               continue-on-error: true
               run: uv run -- vulture
 
-            # the steps above run Ruff and ty from uv.lock. This step skips their hooks: the Ruff hooks show only the
-            # files that they change, and the ty hook runs the version of its rev, which can differ from uv.lock
+            # the steps above run Ruff and ty from uv.lock, thus this step skips their hooks. The Ruff hooks show
+            # only the files that they change. The ty hook runs the version of its `rev`, which can differ from uv.lock
             - name: Run prek pre-commit checks
               if: always()
               uses: j178/prek-action@v3.1.0

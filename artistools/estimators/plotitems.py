@@ -416,8 +416,8 @@ def get_subplot_names(subplot: Sequence[str]) -> list[str]:
 def get_seriestype_of_names(names: Sequence[t.Any], estimatorcolumns: Collection[str]) -> str | None:
     """Return the type of series of the names of a subplot, e.g. "populations", or None for a subplot of variables.
 
-    The names have no directive and no style, and an alias has changed to its variable. A type of series comes first
-    in the names, e.g. "populations Fe II". A list of ions with no type is a plot of populations. This reading comes
+    The caller gives the names with no directive, no style, and no alias. A type of series comes first in the names,
+    e.g. "populations Fe II". A list of ions with no type is a plot of populations. The function tests for this case
     last, thus an estimator column first in the list gives a subplot of variables, e.g. "Te" and not tellurium.
     """
     if not names:
@@ -435,7 +435,7 @@ def get_seriestype_of_names(names: Sequence[t.Any], estimatorcolumns: Collection
 def get_subplot_seriestype(subplot: Sequence[str], estimatorcolumns: Collection[str]) -> str | None:
     """Return the type of series of a subplot, e.g. "populations", or None for a subplot of variables.
 
-    normalise_plotitems uses the same reading. Thus the viewer gives a subplot the type that the command reads, also
+    normalise_plotitems uses the same rule. Thus the viewer gives a subplot the type that the command reads, also
     for a subplot that the command then rejects, e.g. ("Fe II", "te").
     """
     names = [VARIABLE_ALIASES.get(name, name) for name in get_subplot_names(subplot)]

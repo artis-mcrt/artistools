@@ -1,4 +1,4 @@
-"""Read the log files of an ARTIS run, and summarise the messages, the ranks, and the time of each stage."""
+"""Read the log files of an ARTIS model, and summarise the messages, the ranks, and the time of each stage."""
 
 __all__ = ["plot"]
 

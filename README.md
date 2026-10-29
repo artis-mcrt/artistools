@@ -154,7 +154,7 @@ A function with the prefix `scan_` returns a polars LazyFrame, or one LazyFrame 
 
 ### The command of a package
 
-A package that has a plot command gives it as the function `plot`. This function is the command itself. These packages have a `plot` function:
+Some packages give their plot command as the function `plot`. This function is the command itself. These packages have a `plot` function:
 
 - `at.spectra`;
 - `at.lightcurve`;
