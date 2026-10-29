@@ -911,9 +911,7 @@ def test_interactive_time_stays_inside_the_models_of_the_list(tmp_path: Path) ->
     modeltext = (modelpath / "model.txt").read_text(encoding="utf-8")
     (widemodel / "model.txt").write_text(modeltext.replace("8000.", "1000.", 1), encoding="utf-8")
 
-    fig = mplfig.Figure()
-    FigureCanvasAgg(fig)
-    viewer = interactive.SpectrumViewer([str(widemodel), "-t", "300", "--interactive"], fig)
+    viewer = interactive.SpectrumViewer([str(widemodel), "-t", "300", "--interactive"], mplfig.Figure())
     widestart = viewer.grid.timebounds[0]
     viewer.load_models((str(widemodel), str(modelpath)))
     assert viewer.grid.timebounds[0] > widestart
@@ -1005,9 +1003,7 @@ def test_interactive_direction_kinds_follow_the_first_model(
 
 def test_viewer_keys_the_models_by_the_tokens_of_the_list() -> None:
     """A path with a trailing slash must give the model of its row, or the window stops at the start."""
-    fig = mplfig.Figure()
-    FigureCanvasAgg(fig)
-    viewer = interactive.SpectrumViewer([f"{modelpath}/", "-t", "300"], fig)
+    viewer = interactive.SpectrumViewer([f"{modelpath}/", "-t", "300"], mplfig.Figure())
     assert set(viewer.grid.modeltimes) == set(viewer.values.spectra)
     assert viewer.grid.loadkey == (viewer.values.spectra, viewer.values.timegrid)
 
@@ -1024,9 +1020,7 @@ def test_viewer_command_keeps_the_time_grid_of_a_later_model() -> None:
     ]
 
     def make(tokens: list[str]) -> interactive.SpectrumViewer:
-        fig = mplfig.Figure()
-        FigureCanvasAgg(fig)
-        return interactive.SpectrumViewer(tokens, fig)
+        return interactive.SpectrumViewer(tokens, mplfig.Figure())
 
     viewer = make([*models, "-t", "4.5-5"])
     viewer.values = interactive.set_models(viewer, viewer.values.spectra, models[1])

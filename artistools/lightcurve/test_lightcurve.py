@@ -34,7 +34,6 @@ from artistools.lightcurve import interactive
 from artistools.lightcurve import viewingangleanalysis
 from artistools.lightcurve.core import bracket_spectrum_to_band
 from artistools.viewertools.window import apply_values
-from artistools.viewertools.window import draw_values
 
 modelpath = at.get_path("testdata") / "testmodel"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
@@ -2724,22 +2723,21 @@ def test_band_lightcurve_of_the_angle_average_with_virtual_packets() -> None:
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_interactive_command_reproduces_plot(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+def test_interactive_command_reproduces_plot(
+    mockplot: mock.MagicMock, tmp_path: Path, make_viewer: Callable[[str, list[str]], interactive.LightCurveViewer]
+) -> None:
     """The command of the viewer must draw the same curves as the viewer, and the old flags give the particle lists.
 
     --plotalphadeposition gives the deposition rates, the emission rates, and the analytical alpha rate. The command
     gives these as lists of particles, and a list takes each word after it. Thus a path after a list would be a
     particle, and the command must give the paths first.
     """
-    fig = mplfig.Figure()
-    FigureCanvasAgg(fig)
-    viewer = interactive.LightCurveViewer([str(modelpath_classic_3d), "--plotalphadeposition", "--interactive"], fig)
+    viewer = make_viewer("lightcurve", [str(modelpath_classic_3d), "--plotalphadeposition", "--interactive"])
     assert (viewer.values.deposition, viewer.values.emission, viewer.values.analyticemission) == (
         ("gamma", "betaminus", "alpha"),
         ("betaminus", "alpha"),
         ("alpha",),
     )
-    assert draw_values(viewer) is None
     # the deposition.out of this model is older than the fission columns, and ARTIS writes no emission rate of positrons
     assert viewer.get_energy_rate_reason("deposition", "fission") is not None
     assert viewer.get_energy_rate_reason("emission", "betaplus") is not None
@@ -2847,9 +2845,9 @@ def test_viewer_gives_a_magnitude_plot_no_log_scale() -> None:
 
     The window has no scale control for a magnitude, and a log axis of magnitudes showed no curve.
     """
-    fig = mplfig.Figure()
-    FigureCanvasAgg(fig)
-    viewer = interactive.LightCurveViewer([str(modelpath), "--magnitude", "-yscale", "log", "--interactive"], fig)
+    viewer = interactive.LightCurveViewer(
+        [str(modelpath), "--magnitude", "-yscale", "log", "--interactive"], mplfig.Figure()
+    )
     assert viewer.values.yscale == viewer.defaultyscale
     assert "-yscale" not in viewer.get_command()
 
@@ -3063,27 +3061,24 @@ def test_filter_data_gives_the_reference_wavelength() -> None:
     )
 
 
-def test_viewer_drops_the_options_that_the_command_refuses_together() -> None:
+def test_viewer_drops_the_options_that_the_command_refuses_together(
+    make_viewer: Callable[[str, list[str]], interactive.LightCurveViewer],
+) -> None:
     """The window starts from a command with --magnitude --plotcmf, or with --topnucs and an observer, and draws a plot.
 
     The command stops for these pairs, and the viewer stopped with it at the start. The controls of the window drop
     the same options, thus the start does the same.
     """
-    fig = mplfig.Figure()
-    FigureCanvasAgg(fig)
-    viewer = interactive.LightCurveViewer([str(modelpath), "--magnitude", "--plotcmf", "--interactive"], fig)
+    viewer = make_viewer("lightcurve", [str(modelpath), "--magnitude", "--plotcmf", "--interactive"])
     assert (viewer.values.lumunit, viewer.values.plotcmf) == ("mag", False)
-    assert draw_values(viewer) is None
 
     vpktmodelpath = at.get_path("testdata") / "vpktcontrib"
-    fig = mplfig.Figure()
-    FigureCanvasAgg(fig)
-    viewer = interactive.LightCurveViewer(
-        [str(vpktmodelpath), "--plotvspecpol", "0", "--topnucs", "2", "--use-pellet-decay-time", "--interactive"], fig
+    viewer = make_viewer(
+        "lightcurve",
+        [str(vpktmodelpath), "--plotvspecpol", "0", "--topnucs", "2", "--use-pellet-decay-time", "--interactive"],
     )
     assert viewer.values.directionkind == "vpkt"
     assert (viewer.values.frompackets, viewer.values.topnucs, viewer.values.usepelletdecaytime) == (True, 0, False)
-    assert draw_values(viewer) is None
     assert "--frompackets --plotvspecpol 0" in viewer.get_command()
 
 
@@ -3092,10 +3087,10 @@ def test_viewer_controls_read_the_refused_options_of_the_command() -> None:
 
     The viewer held its own copy of each rule of the command, thus a new rule of the command did not reach the window.
     """
-    fig = mplfig.Figure()
-    FigureCanvasAgg(fig)
     vpktmodelpath = at.get_path("testdata") / "vpktcontrib"
-    viewer = interactive.LightCurveViewer([str(vpktmodelpath), "--frompackets", "--topnucs", "2", "--interactive"], fig)
+    viewer = interactive.LightCurveViewer(
+        [str(vpktmodelpath), "--frompackets", "--topnucs", "2", "--interactive"], mplfig.Figure()
+    )
     observervalues = dc.replace(
         viewer.values, directionkind="vpkt", directionbins=(0,), topnucs=2, usepelletdecaytime=True, plotcmf=True
     )
@@ -3137,7 +3132,9 @@ def test_ab_filter_zero_point_is_the_flux_of_an_ab_flat_spectrum() -> None:
 
 
 def test_pellet_decay_time_without_packets_stops_with_a_message(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    make_viewer: Callable[[str, list[str]], interactive.LightCurveViewer],
 ) -> None:
     """Only the packets give the decay time of a pellet. The command and the viewer read one rule.
 
@@ -3149,11 +3146,8 @@ def test_pellet_decay_time_without_packets_stops_with_a_message(
         )
     assert "decay time of a pellet" in capsys.readouterr().err
 
-    fig = mplfig.Figure()
-    FigureCanvasAgg(fig)
-    viewer = interactive.LightCurveViewer([str(modelpath), "--use-pellet-decay-time", "--interactive"], fig)
+    viewer = make_viewer("lightcurve", [str(modelpath), "--use-pellet-decay-time", "--interactive"])
     assert not viewer.values.usepelletdecaytime
-    assert draw_values(viewer) is None
     reasons = interactive.get_refused_reasons(viewer, viewer.values)
     assert "decay time of a pellet" in reasons["--use-pellet-decay-time"]
     assert "--use-pellet-decay-time" not in interactive.get_refused_reasons(
@@ -3180,9 +3174,9 @@ def test_gamma_light_curve_of_a_virtual_packet_observer_stops_with_a_message(
         )
     assert "no gamma-ray light curve" in capsys.readouterr().err
 
-    fig = mplfig.Figure()
-    FigureCanvasAgg(fig)
-    viewer = interactive.LightCurveViewer([str(vpktmodelpath), "-plotvspecpol", "1", "--gamma", "--interactive"], fig)
+    viewer = interactive.LightCurveViewer(
+        [str(vpktmodelpath), "-plotvspecpol", "1", "--gamma", "--interactive"], mplfig.Figure()
+    )
     assert not viewer.values.gamma
     assert "no gamma-ray light curve" in interactive.get_refused_reasons(viewer, viewer.values)["--gamma"]
     assert not viewer.drop_refused_options(dc.replace(viewer.values, gamma=True)).gamma
@@ -3385,7 +3379,9 @@ def test_band_name_with_an_instrument_folder_gives_valid_file_names(tmp_path: Pa
 
 
 def test_average_over_an_angle_needs_the_first_bin_of_each_group(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    make_viewer: Callable[[str, list[str]], interactive.LightCurveViewer],
 ) -> None:
     """An average over phi gives one curve for each cos(theta) bin, which its first direction bin names.
 
@@ -3403,13 +3399,10 @@ def test_average_over_an_angle_needs_the_first_bin_of_each_group(
             )
         assert f"bins {dirbin} start no group" in capsys.readouterr().err
 
-    fig = mplfig.Figure()
-    FigureCanvasAgg(fig)
-    viewer = interactive.LightCurveViewer(
-        [str(modelpath_classic_3d), "-plotviewingangle", "5", "--average_over_phi_angle", "--interactive"], fig
+    viewer = make_viewer(
+        "lightcurve", [str(modelpath_classic_3d), "-plotviewingangle", "5", "--average_over_phi_angle", "--interactive"]
     )
     assert viewer.values.directionkind == "bin"
-    assert draw_values(viewer) is None
 
 
 def test_brightness_at_time_takes_the_output_folder_and_one_time(
