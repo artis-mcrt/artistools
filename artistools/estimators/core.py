@@ -1962,9 +1962,9 @@ def get_cell_edges(axisname: str, modelmeta: Mapping[str, t.Any]) -> "npt.NDArra
 def get_layer_bounds(condition: tuple[str, float, str], modelmeta: Mapping[str, t.Any]) -> str:
     """Return the edges of the layer of cells that holds a condition of --slice, e.g. "-0.01c ≤ z < 0.01c".
 
-    parse_slice_argument of plotestimators gives the condition with a label in the unit of the user, e.g. "z = 5000
-    km/s". The edges take km/s for a position in km/s, and c for each other position. get_cells_of_slice rejects a
-    position outside the grid, thus the text then gives the range of the grid.
+    parse_slice_argument gives the condition with a label in the unit of the user, e.g. "z = 5000 km/s". The edges
+    take km/s for a position in km/s, and c for each other position. get_cells_of_slice rejects a position outside the
+    grid, thus the text then gives the range of the grid.
     """
     axisname, velocity_cmps, label = condition
     unit = "kmps" if label.endswith("km/s") else "c"
@@ -1982,16 +1982,15 @@ MEAN_WEIGHT_TEXT: t.Final = (
 )
 
 
-def get_cell_selection_description(
-    args: argparse.Namespace, conditions: Sequence[tuple[str, float, str]], modelmeta: Mapping[str, t.Any]
-) -> str:
+def get_cell_selection_description(args: argparse.Namespace, modelmeta: Mapping[str, t.Any]) -> str:
     """Return the cells that the plot reads in the terms of the model grid, or an empty text for listed cells.
 
-    args holds the arguments after resolve_snapshot_arguments of plotestimators, and conditions holds the conditions
-    of --slice that it returns. x, y, and z are the velocity coordinates of the grid, and (x_c, y_c, z_c) is the centre
-    of a cell. The edges of the cells come from the grid of the model, thus the text gives the range of each
-    coordinate that the selected cells cover. plotestimators logs this text, and its window shows it.
+    args holds the arguments after resolve_snapshot_arguments of plotestimators. x, y, and z are the velocity
+    coordinates of the grid, and (x_c, y_c, z_c) is the centre of a cell. The edges of the cells come from the grid of
+    the model, thus the text gives the range of each coordinate that the selected cells cover. plotestimators logs
+    this text, and its window shows it.
     """
+    conditions = parse_slice_argument(args.slice) if args.slice is not None else []
     dimensions = int(modelmeta["dimensions"])
     vmaxtext = format_cell_edge(float(modelmeta["vmax_cmps"]), "c")
     if len(conditions) == 1:

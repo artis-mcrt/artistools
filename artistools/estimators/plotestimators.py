@@ -3019,8 +3019,8 @@ def set_x_and_timesteps(args: argparse.Namespace, modelpath: Path) -> tuple[int,
     return timestepmin, timestepmax
 
 
-def resolve_snapshot_arguments(args: argparse.Namespace) -> list[tuple[str, float, str]]:
-    """Apply --slice and --dimensionreduce to the arguments, and return the conditions of --slice.
+def resolve_snapshot_arguments(args: argparse.Namespace) -> None:
+    """Apply --slice and --dimensionreduce to the arguments.
 
     A plane of --slice gives a colour image, and a line of --slice gives a plot against the velocity on
     its axis. An argument that disagrees with the selection stops the command.
@@ -3051,7 +3051,7 @@ def resolve_snapshot_arguments(args: argparse.Namespace) -> list[tuple[str, floa
     args.sliceaxis = projection or (conditions[0][0] if isimage and conditions else None)
     args.slicelabel = ", ".join(label for _, _, label in conditions)
     if not isimage and not conditions:
-        return conditions
+        return
 
     selection = "-projection" if projection else "-slice" if conditions else "--dimensionreduce 2"
     if args.readonlymgi or args.modelgridindex is not None:
@@ -3084,8 +3084,6 @@ def resolve_snapshot_arguments(args: argparse.Namespace) -> list[tuple[str, floa
     elif args.x is None:
         lineaxis = next(axisname for axisname in "xyz" if axisname not in {axisname for axisname, _, _ in conditions})
         args.x = f"vel_{lineaxis}_mid_on_c"
-
-    return conditions
 
 
 def select_cells_of_slice(
@@ -3455,8 +3453,7 @@ def get_figures_data(
 
     estimators, modelmeta = get_plot_estimators(args, modelpath, timesteps_included, batchcaches)
     estimators, estimatorcolumns = add_plot_columns(args, estimators, modelmeta)
-    conditions = parse_slice_argument(args.slice) if args.slice is not None else []
-    if description := get_cell_selection_description(args, conditions, modelmeta):
+    if description := get_cell_selection_description(args, modelmeta):
         print_detail(description)
     plotlist = resolve_plotlist(args, estimatorcolumns, modelpath)
 

@@ -641,8 +641,8 @@ def test_half_axis_description_holds_the_centre_cell_of_an_odd_grid() -> None:
         "ncoordgridz": 11,
     }
     for axis, axisrange in (("+z", "-0.009091c ≤ z < 0.1c"), ("-z", "-0.1c ≤ z < 0.009091c")):
-        args = argparse.Namespace(projection=None, dimensionreduce=1, axis=axis, readonlymgi="alongaxis")
-        assert axisrange in at.estimators.core.get_cell_selection_description(args, [], modelmeta), axis
+        args = argparse.Namespace(slice=None, projection=None, dimensionreduce=1, axis=axis, readonlymgi="alongaxis")
+        assert axisrange in at.estimators.core.get_cell_selection_description(args, modelmeta), axis
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)

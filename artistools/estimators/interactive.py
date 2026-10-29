@@ -489,7 +489,7 @@ def get_geometry_mode(values: "ControlValues") -> str:
 def get_slice_parts(slicetext: str) -> tuple[str, str]:
     """Return the plane and the offset along its normal of a --slice plane, e.g. ("xy", "-0.2c") for "z=-0.2c".
 
-    parse_slice_argument of plotestimators reads the same forms, e.g. "zx" for the plane xz and "z = -0.2c".
+    parse_slice_argument of estimators/core.py reads the same forms, e.g. "zx" for the plane xz and "z = -0.2c".
     """
     text = slicetext.strip().lower()
     if len(text) == 2 and text[0] != text[1] and set(text) <= set("xyz"):
@@ -545,8 +545,8 @@ def get_geometry_description(tokens: "Sequence[str]", modelmeta: "Mapping[str, t
 
     def describe() -> None:
         args = parse_cli_args(addargs, None, None, tokens)
-        conditions = resolve_snapshot_arguments(args)
-        descriptions.append(get_cell_selection_description(args, conditions, modelmeta))
+        resolve_snapshot_arguments(args)
+        descriptions.append(get_cell_selection_description(args, modelmeta))
 
     run_command_step(describe, echo=False)
     return descriptions[0] if descriptions else ""
