@@ -47,15 +47,20 @@ from artistools.plottools import set_legend
 from artistools.plottools import set_plot_title
 
 
-def get_band_lightcurve_options(args: argparse.Namespace) -> dict[str, t.Any]:
-    """Return the keyword arguments of generate_band_lightcurve_data that the options of the command give."""
-    return {
-        "vpkt_observers": bool(args.plotvspecpol),
-        "timemin": args.timemin,
-        "timemax": args.timemax,
-        "average_over_phi": args.average_over_phi_angle,
-        "average_over_theta": args.average_over_theta_angle,
-    }
+def generate_band_lightcurve_data_for_args(
+    modelpath: Path | str, filternames: Sequence[str], dirbin: int, args: argparse.Namespace
+) -> dict[str, list[tuple[float, float]]]:
+    """Return the band magnitudes of generate_band_lightcurve_data, with the options that the command gives."""
+    return generate_band_lightcurve_data(
+        Path(modelpath),
+        filternames,
+        dirbin=dirbin,
+        vpkt_observers=bool(args.plotvspecpol),
+        timemin=args.timemin,
+        timemax=args.timemax,
+        average_over_phi=args.average_over_phi_angle,
+        average_over_theta=args.average_over_theta_angle,
+    )
 
 
 def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> tuple[Sequence[int], dict[int, str]]:
@@ -705,9 +710,7 @@ def second_band_brightness_at_peak_first_band(
     """Return the second band's magnitude at the time the first band peaks, for each direction bin."""
     second_band_brightness: list[float] = []
     for anglenumber, _ in enumerate(data[f"time_{bands[0]}max"]):
-        lightcurve_data = generate_band_lightcurve_data(
-            modelpath, args.filter, dirbin=anglenumber, **get_band_lightcurve_options(args)
-        )
+        lightcurve_data = generate_band_lightcurve_data_for_args(modelpath, args.filter, anglenumber, args)
         time, brightness_in_mag = get_band_lightcurve(
             lightcurve_data, bands[1], timemin=args.timemin, timemax=args.timemax
         )
@@ -808,12 +811,7 @@ def peakmag_risetime_declinerate_init(
             print(f"Reading spectra: {get_model_logname(modelpath)}")
         # the spectra of a direction bin hold every band, thus read each direction bin one time before the band loop
         lightcurve_data_filters_of_dirbin = (
-            {
-                dirbin: generate_band_lightcurve_data(
-                    Path(modelpath), args.filter, dirbin=dirbin, **get_band_lightcurve_options(args)
-                )
-                for dirbin in dirbins
-            }
+            {dirbin: generate_band_lightcurve_data_for_args(modelpath, args.filter, dirbin, args) for dirbin in dirbins}
             if args.filter
             else {}
         )

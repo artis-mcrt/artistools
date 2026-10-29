@@ -26,7 +26,6 @@ from artistools.constants import Msun_to_g
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import scan_modeldata
 from artistools.lightcurve.core import FILTERNAME_ALIASES
-from artistools.lightcurve.core import generate_band_lightcurve_data
 from artistools.lightcurve.core import get_band_gap_times
 from artistools.lightcurve.core import get_band_lightcurve
 from artistools.lightcurve.core import get_colour_delta_mag
@@ -41,7 +40,7 @@ from artistools.lightcurve.core import read_bol_reflightcurve_data
 from artistools.lightcurve.core import read_hesma_lightcurve
 from artistools.lightcurve.core import read_reflightcurve_band_data
 from artistools.lightcurve.core import split_at_valid_range
-from artistools.lightcurve.viewingangleanalysis import get_band_lightcurve_options
+from artistools.lightcurve.viewingangleanalysis import generate_band_lightcurve_data_for_args
 from artistools.lightcurve.viewingangleanalysis import make_peak_colour_viewing_angle_plot
 from artistools.lightcurve.viewingangleanalysis import parse_directionbin_args
 from artistools.lightcurve.viewingangleanalysis import peakmag_risetime_declinerate_init
@@ -1428,9 +1427,7 @@ def make_band_lightcurves_plot(modelpaths: Sequence[str | Path], args: argparse.
             linelabel_is_custom = get_series_label(args.label, modelnumber, modelname) != modelname
             if args.verbose:
                 print(f"Reading spectra: {get_model_logname(modelpath)} (angle {dirbin})")
-            band_lightcurve_data = generate_band_lightcurve_data(
-                modelpath, bandnames, dirbin=dirbin, **get_band_lightcurve_options(args)
-            )
+            band_lightcurve_data = generate_band_lightcurve_data_for_args(modelpath, bandnames, dirbin, args)
 
             for plotnumber, band_name in enumerate(band_lightcurve_data):
                 axis = axes[plotnumber]
@@ -1633,9 +1630,7 @@ def colour_evolution_plot(modelpaths: Sequence[str | Path], args: argparse.Names
             else:
                 dirbincolor = args.color[modelnumber]
 
-            band_lightcurve_data = generate_band_lightcurve_data(
-                Path(modelpath), bandnames, dirbin=dirbin, **get_band_lightcurve_options(args)
-            )
+            band_lightcurve_data = generate_band_lightcurve_data_for_args(modelpath, bandnames, dirbin, args)
 
             for plotnumber, filters in enumerate(args.colour_evolution):
                 filter_names = filters.split("-")
