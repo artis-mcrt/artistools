@@ -1279,3 +1279,59 @@ def test_plotopacity_writes_the_drawn_values(
         assert np.allclose(
             dfbins[f"ratio_{column}_to_exopac"].to_numpy(), ratioy[0::3], rtol=1e-12, atol=0.0, equal_nan=True
         )
+
+
+def test_expansion_opacities_give_zero_for_a_cell_with_no_temperature() -> None:
+    """A null T_exc and a T_exc of zero give a zero expansion opacity, and a positive T_exc gives a finite value."""
+    timestep = 40
+    time_days = at.get_timestep_times(modelpath)[timestep]
+    dfcell = at.lines.core.get_cell_estimators(modelpath, timestep, None, "Te")
+    assert dfcell.height == 1
+    edges = at.lines.core.get_lambda_bin_edges(3000.0, 4000.0, 20.0)
+    lines = at.lines.core.get_opacity_lines(
+        at.lines.core.get_opacity_atomic_data(modelpath), dfcell.columns, edges, time_days
+    )
+    dfcells = pl.concat([dfcell, dfcell, dfcell]).with_columns(
+        modelgridindex=pl.Series([0, 1, 2], dtype=dfcell["modelgridindex"].dtype),
+        T_exc=pl.Series([None, 0.0, dfcell["T_exc"].item()], dtype=pl.Float64),
+    )
+    dfbins = at.lines.core.get_expansion_opacities(lines, dfcells, edges, time_days)
+    for column in at.lines.core.get_opacity_columns(at.lines.core.DEFAULT_TAUCAPS):
+        values = dfbins.group_by("modelgridindex", maintain_order=True).agg(pl.col(column).abs().sum())[column]
+        assert values[0] == pytest.approx(0.0)
+        assert values[1] == pytest.approx(0.0)
+        assert np.isfinite(values[2])
+        assert values[2] > 0.0
+
+
+def test_opacity_levels_are_the_levels_that_artis_keeps() -> None:
+    """The opacities take only the first nlevelsmax levels of each ion from compositiondata.txt, as ARTIS does.
+
+    The partition function summed all 1792 levels of Fe I in adata.txt. ARTIS keeps 500 of them in the classic test
+    model, and the sum of all the levels is 1.97 times the sum of the kept levels at 20000 K.
+    """
+    classicmodelpath = at.get_path("testdata") / "test-classicmode_3d"
+    adata = at.lines.core.get_opacity_atomic_data(classicmodelpath)
+    keptlevelcount_of_element = at.atomic.get_kept_level_counts(classicmodelpath)
+    alllevels = at.atomic.get_levels(classicmodelpath)
+    for Z, ion_stage, dflevels in adata.select("Z", "ion_stage", "levels").iter_rows():
+        levelcount = alllevels.filter(pl.col("Z") == Z, pl.col("ion_stage") == ion_stage)["levels"].item().height
+        keptlevelcount = keptlevelcount_of_element[Z]
+        assert dflevels.height == (levelcount if keptlevelcount is None else min(keptlevelcount, levelcount))
+    assert adata.filter(pl.col("Z") == 26, pl.col("ion_stage") == 1)["levels"].item().height == 500
+
+    # the test model keeps all the levels, because its compositiondata.txt gives -1
+    assert at.get_composition_data(modelpath)["nlevelsmax_readin"].to_list() == [-1, -1]
+    testmodeladata = at.lines.core.get_opacity_atomic_data(modelpath)
+    pltest.assert_series_equal(
+        testmodeladata.select(pl.col("levels").map_elements(len, return_dtype=pl.Int64)).to_series(),
+        at.atomic.get_levels(modelpath).select(pl.col("levels").map_elements(len, return_dtype=pl.Int64)).to_series(),
+    )
+
+
+def test_opacity_lines_name_an_ion_with_no_transition_table() -> None:
+    """An ion with no table in transitiondata.txt gives a clear error and not ColumnNotFoundError."""
+    adata = at.lines.core.get_opacity_atomic_data(modelpath)
+    adata = adata.with_columns(pl.Series("transitions", [pl.LazyFrame() for _ in range(adata.height)], dtype=pl.Object))
+    with pytest.raises(ValueError, match=r"transitiondata\.txt holds no table for Fe_II"):
+        at.lines.core.get_opacity_lines(adata, ["nnion_Fe_II"], [3000.0, 4000.0], 10.0)
