@@ -1985,9 +1985,9 @@ def open_window(
                 newvalues = dc.replace(values, centre=centre, width=width)
         else:
             firstpos, lastpos = viewer.get_selection_positions()
-            count = lastpos - firstpos + 1 if width is None else round(width)
+            timestepwidth = lastpos - firstpos + 1 if width is None else round(width)
             validtmids = [grid.tmids[timestep] for timestep in grid.validtimesteps]
-            newvalues = viewer.select_positions(values, get_nearest_range(validtmids, centre, count))
+            newvalues = viewer.select_positions(values, get_nearest_range(validtmids, centre, timestepwidth))
         apply(newvalues)
 
     def plot_shows_values() -> bool:

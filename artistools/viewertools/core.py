@@ -773,28 +773,28 @@ def get_first_line(errortext: str) -> str:
     return errorline.removeprefix("error: ") if errorline is not None else REJECTED_MESSAGE
 
 
-def get_nearest_range_start(tmids: "Sequence[float]", centre: float, count: int) -> int:
-    """Return the first index of the range of count timesteps that has its centre nearest to the given time.
+def get_nearest_range_start(tmids: "Sequence[float]", centre: float, width: int) -> int:
+    """Return the first index of the range of width timesteps that has its centre nearest to the given time.
 
     The time field shows the centre of the range, thus a Return with no edit gives the same range. The centre of a
-    range of an even count is near the boundary of two timesteps. Thus either timestep can hold the time.
+    range of an even width is near the boundary of two timesteps. Thus either timestep can hold the time.
     """
 
     def get_centre_offset(start: int) -> float:
-        return abs((tmids[start] + tmids[start + count - 1]) / 2.0 - centre)
+        return abs((tmids[start] + tmids[start + width - 1]) / 2.0 - centre)
 
-    return min(range(len(tmids) - count + 1), key=get_centre_offset)
+    return min(range(len(tmids) - width + 1), key=get_centre_offset)
 
 
-def get_nearest_range(tmids: "Sequence[float]", centre: float, count: int) -> tuple[int, int]:
-    """Return the first and the last position of the range of count timesteps with its centre nearest to centre.
+def get_nearest_range(tmids: "Sequence[float]", centre: float, width: int) -> tuple[int, int]:
+    """Return the first and the last position of the range of width timesteps with its centre nearest to centre.
 
-    tmids holds the middle time of each valid timestep. The function changes a count below 1 to 1, and a count above
+    tmids holds the middle time of each valid timestep. The function changes a width below 1 to 1, and a width above
     the number of valid timesteps to that number.
     """
-    count = min(max(count, 1), len(tmids))
-    start = get_nearest_range_start(tmids, centre, count)
-    return start, start + count - 1
+    width = min(max(width, 1), len(tmids))
+    start = get_nearest_range_start(tmids, centre, width)
+    return start, start + width - 1
 
 
 def get_clamped_range(firstpos: int, width: int, count: int) -> tuple[int, int]:
