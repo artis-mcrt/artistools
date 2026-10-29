@@ -9,8 +9,8 @@ from pathlib import Path
 from types import MappingProxyType
 
 from artistools.misc import import_optional
+from artistools.misc import is_remote_path
 from artistools.misc import write_gif
-from artistools.misc.remote import is_remote_path
 from artistools.viewertools.application import activate_window
 from artistools.viewertools.application import APPEARANCES
 from artistools.viewertools.application import apply_appearance
@@ -27,6 +27,7 @@ from artistools.viewertools.core import remove_options
 from artistools.viewertools.core import run_command_step
 from artistools.viewertools.core import SIDEBAR_WIDTH
 from artistools.viewertools.core import standardise_flags
+from artistools.viewertools.sections import add_y_axis_actions
 from artistools.viewertools.widgets import add_row
 from artistools.viewertools.widgets import add_section
 from artistools.viewertools.widgets import copy_text
@@ -45,11 +46,13 @@ if t.TYPE_CHECKING:
     from collections.abc import Mapping
     from collections.abc import Sequence
 
+    import matplotlib.axes as mplax
     import matplotlib.figure as mplfig
     from PySide6 import QtWidgets
 
-    from artistools.commands import SuggestingArgumentParser
+    from artistools.misc import SuggestingArgumentParser
     from artistools.viewertools.core import PlotValues
+    from artistools.viewertools.core import YAxisValues
     from artistools.viewertools.window import DrawQueue
     from artistools.viewertools.window import PlotViewer
 
@@ -826,6 +829,38 @@ def open_model_window(
     if not folder:
         return None
     return open_model_folder(folder, open_window, windows)
+
+
+def show_plot_menu[ValuesT: YAxisValues](
+    window: "QtWidgets.QWidget",
+    queue: "DrawQueue[ValuesT]",
+    yaxis: "mplax.Axes | None",
+    add_figure_actions: "Callable[[QtWidgets.QMenu], None]",
+    *,
+    hasyscale: bool = True,
+) -> None:
+    """Show the actions on the frame and the figure under the pointer, as the context menu of a Mac app does.
+
+    yaxis is the frame of --ymin and --ymax under the pointer. It is None for a different frame, and while the plot on
+    the screen does not show the values yet. hasyscale is False for an axis with no choice of scale, e.g. a magnitude.
+    """
+    from PySide6 import QtGui
+    from PySide6 import QtWidgets
+
+    menu = QtWidgets.QMenu(window)
+    if yaxis is not None:
+        values = queue.viewer.values
+        add_y_axis_actions(
+            menu,
+            yaxis.get_yscale() == "log" if hasyscale else None,
+            bool(values.ymin or values.ymax),
+            lambda yscale: queue.apply(dc.replace(queue.viewer.values, yscale=yscale)),
+            lambda: queue.apply(dc.replace(queue.viewer.values, ymin="", ymax="")),
+        )
+    add_figure_actions(menu)
+    menu.exec(QtGui.QCursor.pos())
+    # the window is the parent of the menu, thus without this the window keeps each menu until it closes
+    menu.deleteLater()
 
 
 def add_window_actions[ValuesT: PlotValues](

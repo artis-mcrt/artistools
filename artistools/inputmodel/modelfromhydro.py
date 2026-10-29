@@ -20,8 +20,8 @@ from artistools.inputmodel.core import save_empty_abundance_file
 from artistools.inputmodel.core import save_initelemabundances
 from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.core import scale_model_to_time
-from artistools.inputmodel.opacityinputfile import opacity_by_Ye
-from artistools.inputmodel.opacityinputfile import write_Ye_file
+from artistools.inputmodel.opacityinputfile import opacity_by_ye
+from artistools.inputmodel.opacityinputfile import write_ye_file
 from artistools.inputmodel.rprocess_from_trajectory import add_abundancecontributions
 from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions_or_none
 from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
@@ -367,10 +367,10 @@ def makemodelfromgriddata(
 
     if getcellopacityfromYe:
         # the reduction changes the cells, thus opacity.txt must name the cells of the output model
-        opacity_by_Ye(outputpath, dfmodel)
+        opacity_by_ye(outputpath, dfmodel)
 
     if "Ye" in dfmodel:
-        write_Ye_file(outputpath, dfmodel)
+        write_ye_file(outputpath, dfmodel)
 
     if dfgridcontributions is not None:
         save_gridparticlecontributions(dfgridcontributions, Path(outputpath, "gridcontributions.txt"))

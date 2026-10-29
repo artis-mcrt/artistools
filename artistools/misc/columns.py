@@ -495,6 +495,7 @@ def get_column_description(column: str) -> tuple[str, str] | None:
     for pattern, meaning, unit in COMPILED_COLUMN_FAMILIES:
         if match := pattern.fullmatch(column):
             if unit is None:
+                # artistools.estimators imports artistools.misc, thus this import runs at call time
                 from artistools.estimators import get_units
 
                 return meaning.format(*match.groups()), get_units(column, latex=False) or ""

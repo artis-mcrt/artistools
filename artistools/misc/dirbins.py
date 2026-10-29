@@ -11,6 +11,10 @@ import numpy.typing as npt
 import polars as pl
 from polars import selectors as cs
 
+from artistools.misc.argparser import get_standard_flag
+from artistools.misc.console import exit_with_error
+from artistools.misc.console import print_detail
+from artistools.misc.console import print_warning
 from artistools.misc.modelinfo import get_vpkt_config
 
 
@@ -45,7 +49,6 @@ def average_direction_bins(
     single dark bin sends the mean to infinity. Derive such a column after averaging, not before.
     """
     dirbincount = get_viewingdirectionbincount()
-    nphibins = get_viewingdirection_phibincount()
 
     if overangle not in {"phi", "theta"}:
         msg = "overangle must be 'phi' or 'theta'"
@@ -73,10 +76,8 @@ def average_direction_bins(
     dirbindataframesout: dict[int, pl.LazyFrame] = {}
 
     for start_bin in start_bin_range:
-        # dirbin == costheta_index * nphibins + phi_index, so the bins sharing a costheta index are contiguous, while
-        # the bins sharing a phi index are nphibins apart
-        contribbins = list(
-            range(start_bin, start_bin + nphibins) if overangle == "phi" else range(start_bin, dirbincount, nphibins)
+        contribbins = get_average_group_dirbins(
+            start_bin, average_over_phi=overangle == "phi", average_over_theta=overangle == "theta"
         )
 
         colnames = dirbindataframes[start_bin].collect_schema().names()
@@ -133,6 +134,23 @@ def get_dirbins(average_over_phi: bool = False, average_over_theta: bool = False
     return list(range(get_viewingdirectionbincount()))
 
 
+def get_average_group_dirbins(dirbin: int, *, average_over_phi: bool, average_over_theta: bool) -> list[int]:
+    """Return the direction bins that the average of a bin holds, or the bin alone with no average.
+
+    The bin of an average is the first bin of its group, and a different bin raises ValueError. The function reads
+    no file of the model.
+    """
+    get_dirbin_labels([dirbin], average_over_phi=average_over_phi, average_over_theta=average_over_theta)
+    # dirbin == costheta_index * nphibins + phi_index, thus the bins of one costheta index are contiguous, and the bins
+    # of one phi index are nphibins apart
+    nphibins = get_viewingdirection_phibincount()
+    if average_over_phi:
+        return list(range(dirbin, dirbin + nphibins))
+    if average_over_theta:
+        return list(range(dirbin, get_viewingdirectionbincount(), nphibins))
+    return [dirbin]
+
+
 def get_dirbin_definitions(
     modelpath: Path | str,
     dirbins: Sequence[int] | None = None,
@@ -142,7 +160,12 @@ def get_dirbin_definitions(
     average_over_theta: bool = False,
     usedegrees: bool = False,
 ) -> dict[int, str]:
-    """Return a label for each direction bin, or for each virtual packet observer when vpkt_observers is set."""
+    """Return a label for each direction bin, or for each virtual packet observer when vpkt_observers is set.
+
+    The function raises ValueError for averages over both angles, and for a bin that an average leaves out.
+    """
+    # the check comes before the virtual packet observers, because both averages are also an error for an observer
+    check_averaging_angles(average_over_phi, average_over_theta)
     if vpkt_observers:
         return get_vspec_dir_labels(modelpath=modelpath, usedegrees=usedegrees)
 
@@ -301,6 +324,7 @@ def get_costhetabin_phibin_labels(usedegrees: bool) -> tuple[list[str], list[str
 
 def get_opacity_condition_label(z_exclude: int) -> str:
     """Return the label for a virtual packet opacity exclusion code, such as 'no-bb' or 'no-Fe'."""
+    # artistools.atomic imports artistools.misc, thus this import runs at call time
     from artistools.atomic import get_elsymbol
 
     # codes match the opacityexclusions handling in read_vpktparameterfile() and trace_vpkt_direction()
@@ -392,9 +416,6 @@ def check_dirbin(dirbin: int, optionname: str, *, averageoverphi: bool, allowall
     With averageoverphi, as with --average-over-phi-angle of plotspectra, dirbin must be the first bin of its costheta
     bin.
     """
-    from artistools.commands import get_standard_flag
-    from artistools.misc.cliutils import exit_with_error
-
     # the caller can give the declared spelling, and the message gives the spelling of the help
     optionname = get_standard_flag(optionname)
     if averageoverphi:
@@ -409,9 +430,6 @@ def check_dirbin(dirbin: int, optionname: str, *, averageoverphi: bool, allowall
 
 def check_costheta_dirbin(dirbin: int, optionname: str, *, allowall: bool) -> None:
     """Exit with an error if dirbin is not the first direction bin of a costheta bin, or -1 when allowall is true."""
-    from artistools.commands import get_standard_flag
-    from artistools.misc.cliutils import exit_with_error
-
     optionname = get_standard_flag(optionname)
     nphibins = get_viewingdirection_phibincount()
     ndirbins = get_viewingdirectionbincount()
@@ -459,9 +477,6 @@ def get_costheta_range(args: argparse.Namespace, quiet: bool = False) -> tuple[f
     The range of --dirbin includes both edges, as the range of --costhetamin and --costhetamax does. Thus a cell with
     its centre on an edge is in two adjacent bins. With quiet, the function does not log the range of --dirbin.
     """
-    from artistools.misc.cliutils import exit_with_error
-    from artistools.misc.cliutils import print_detail
-
     if args.dirbin is not None:
         if args.costhetamin is not None or args.costhetamax is not None:
             exit_with_error(
@@ -496,3 +511,21 @@ def get_costheta_range(args: argparse.Namespace, quiet: bool = False) -> tuple[f
 def format_costheta_range(costhetarange: tuple[float, float]) -> str:
     """Return the text of a range of cos θ of the cells, e.g. "0 ≤ cos θ ≤ 0.2". The range includes both edges."""
     return f"{costhetarange[0]:g} ≤ cos θ ≤ {costhetarange[1]:g}"
+
+
+def warn_direction_bin_noise(source: str, *, average_over_phi: bool, average_over_theta: bool) -> None:
+    """Print a warning that a direction bin holds a small part of the packets, and thus has a larger noise.
+
+    A file of the direction bins, e.g. spec_res.out, gives no packet count. If the packets escape in all directions
+    alike, a bin of the n bins holds 1/n of the packets, and its relative noise is sqrt(n) times that of the average.
+    """
+    bincount = get_viewingdirection_costhetabincount() * get_viewingdirection_phibincount()
+    if average_over_phi:
+        bincount = get_viewingdirection_costhetabincount()
+    elif average_over_theta:
+        bincount = get_viewingdirection_phibincount()
+    print_warning(
+        f"Each direction bin of {source} holds about 1/{bincount} of the escaped packets, if they escape in all"
+        f" directions alike. Thus its Monte Carlo noise is about {math.sqrt(bincount):.3g} times the noise of the"
+        f" angle average. {source} gives no packet count, and --frompackets gives the noise of each bin"
+    )

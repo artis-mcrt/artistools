@@ -25,7 +25,6 @@ from artistools.misc import addarg_averageoverphi
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
 from artistools.misc import addarg_figscale
-from artistools.misc import addarg_maxpacketfiles
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_plotinvalidpart
@@ -33,8 +32,12 @@ from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import addarg_wavelengthrange
+from artistools.misc import check_dirbin
 from artistools.misc import check_time_range_is_valid
+from artistools.misc import CommaJoinAction
 from artistools.misc import exit_with_error
+from artistools.misc import get_costheta_bins
+from artistools.misc import get_dirbin_labels
 from artistools.misc import get_model_name
 from artistools.misc import get_selected_timestep
 from artistools.misc import get_timestep_of_timedays
@@ -44,24 +47,21 @@ from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import get_weighted_quantile_expr
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
+from artistools.misc import positive_int_arg
 from artistools.misc import print_detail
 from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
-from artistools.misc.cliutils import CommaJoinAction
-from artistools.misc.cliutils import positive_int_arg
-from artistools.misc.dirbins import check_dirbin
-from artistools.misc.dirbins import get_costheta_bins
-from artistools.misc.dirbins import get_dirbin_labels
+from artistools.packets.core import addarg_maxpacketfiles
 from artistools.packets.core import addarg_velocitykind
 from artistools.packets.core import filter_packets_dirbin
 from artistools.packets.core import get_emission_time_expr
 from artistools.packets.core import get_last_interaction_velocity_expr
-from artistools.packets.core import get_packets
 from artistools.packets.core import get_relative_error_expr
 from artistools.packets.core import NOISY_RELATIVE_ERROR
 from artistools.packets.core import print_arrival_time_method
 from artistools.packets.core import print_last_interaction_convention
 from artistools.packets.core import print_velocity_method
+from artistools.packets.core import scan_packets
 from artistools.plottools import addarg_velocitybins
 from artistools.plottools import convert_velocity_columns
 from artistools.plottools import format_velocity
@@ -97,7 +97,7 @@ def get_required_packets(
     Each item of ions is (Z, ion_stage), and a None in it selects each element or each ion stage. The Sr II triplet
     takes the place of ions.
     """
-    nprocs_read, dfpackets = get_packets(
+    nprocs_read, dfpackets = scan_packets(
         modelpath=modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
 
@@ -909,10 +909,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_maxpacketfiles(parser)
 
 
-def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
-    """Plot last packet interaction properties versus ejecta velocity for selected packets."""
-    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
-
+def resolve_plot_args(args: argparse.Namespace) -> None:
+    """Check the options, and give args the wavelength range and the time of the selected timestep."""
     if (args.wavelen is None) != (args.binwidth is None):
         exit_with_error("--wavelen and --binwidth give a range together", "Give --lambdamin and --lambdamax")
     if args.wavelen is not None:
@@ -942,13 +940,18 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     check_dirbin(args.dirbin, "-dirbin", averageoverphi=args.average_over_phi_angle, allowall=True)
 
-    ions = get_selected_ions(args)
-
     if args.groupby is None and args.velocitykind != "radial":
         exit_with_error(
             "--velocitykind applies only with --groupby. The 2D image always gives v_cyl and v_z",
             "Remove --velocitykind, or give --groupby",
         )
+
+
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
+    """Plot last packet interaction properties versus ejecta velocity for selected packets."""
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    resolve_plot_args(args)
+    ions = get_selected_ions(args)
     if args.groupby is not None:
         plot_velocity_profiles_from_args(args, ions)
         return

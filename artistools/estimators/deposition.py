@@ -10,16 +10,18 @@ import polars as pl
 from artistools.constants import EV_to_erg
 from artistools.estimators.core import scan_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
-from artistools.inputmodel import get_modeldata
+from artistools.inputmodel import scan_modeldata
 from artistools.misc import addarg_force
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import addarg_verbose
+from artistools.misc import CommaJoinAction
 from artistools.misc import get_artis_options
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
+from artistools.misc import get_provenance_lines
 from artistools.misc import get_time_range
 from artistools.misc import get_timestep_times
 from artistools.misc import normalize_path_list
@@ -30,8 +32,6 @@ from artistools.misc import print_product
 from artistools.misc import print_saved
 from artistools.misc import print_warning
 from artistools.misc import resolve_table_outputfile
-from artistools.misc.cliutils import CommaJoinAction
-from artistools.misc.cliutils import get_provenance_lines
 
 DEPOSITIONPREFIX = "deposition_"
 DEFAULTOUTPUTNAME = "deposition.txt"
@@ -212,7 +212,7 @@ def check_ye_range(modelpath: Path | str, yerange: tuple[float, float], verbose:
     costs little on a model of many cells.
     """
     modelname = get_model_name(modelpath)
-    dfmodel, modelmeta = get_modeldata(modelpath, printwarningsonly=not verbose)
+    dfmodel, modelmeta = scan_modeldata(modelpath, printwarningsonly=not verbose)
     dfmodel = add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta)
     if "Ye" not in dfmodel.collect_schema().names():
         msg = f"{modelname} gives no init_Ye of a cell. The model file must hold a Ye column"

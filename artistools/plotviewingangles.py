@@ -10,7 +10,7 @@ import numpy.typing as npt
 import polars as pl
 
 from artistools.inputmodel import add_derived_cols_to_modeldata
-from artistools.inputmodel import get_modeldata
+from artistools.inputmodel import scan_modeldata
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
 from artistools.misc import addarg_modelpath
@@ -148,7 +148,7 @@ def viewing_angles_visualisation(
     go = import_optional("plotly.graph_objects")
 
     # the volume holds the density of each cell, thus the model gives the positions and the densities
-    lzmodel, modelmeta = get_modeldata(modelfile)
+    lzmodel, modelmeta = scan_modeldata(modelfile)
     dfmodel = (
         add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
         .select("pos_x_mid", "pos_y_mid", "pos_z_mid", "rho")

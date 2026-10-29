@@ -80,7 +80,7 @@ print(
     .sort(["kind", "rate_erg/s"], descending=[False, True])
 )
 
-dfdep = at.get_deposition(modelpath).filter(pl.col("timestep") == timestep).collect()
+dfdep = at.scan_deposition(modelpath).filter(pl.col("timestep") == timestep).collect()
 dflc = at.lightcurve.scan_lightcurve(at.lightcurve.find_lightcurve_file(modelpath))[-1].collect()
 lcrow = dflc.with_columns(dt=(pl.col("time_days") - tmid_days).abs()).sort("dt").head(1)
 print(f"deposition {dfdep['total_dep_Lsun'].item() * Lsun_to_erg_per_s:.4g} erg/s")
@@ -258,7 +258,7 @@ from artistools.constants import km_to_cm
 modelpath = "."
 lambdamin, lambdamax = 3500.0, 4500.0
 timestepmin, timestepmax, daysmin, daysmax = at.misc.get_time_range(modelpath, timemin=10, timemax=12)
-_, lfpackets = at.packets.get_packets(modelpath, escape_type="TYPE_RPKT")
+_, lfpackets = at.packets.scan_packets(modelpath, escape_type="TYPE_RPKT")
 dfpackets = (
     lfpackets
     .filter(pl.col("t_arrive_d").is_between(daysmin, daysmax, closed="left"))
@@ -276,7 +276,7 @@ if dfpackets.height > 0:
             for quantile in (0.1, 0.5, 0.9)
         )
     )
-    dflines = at.atomic.get_linelist_pldf(modelpath).collect()
+    dflines = at.atomic.scan_linelist(modelpath).collect()
     print(
         dfpackets
         .filter(pl.col("emissiontype") >= 0)
@@ -320,7 +320,7 @@ Do these steps in this sequence, for each direction bin:
    on its blue side can hide the feature. Compare the opacity at these wavelengths with the opacity at the wavelength
    of the line.
 6. Compare the composition of the cells of each direction with `at.scan_estimators(..., join_modeldata=True)` and
-   `at.get_modeldata(..., get_elemabundances=True)`. Select the cells by cos θ = v_z / |v| of the cell centre.
+   `at.scan_modeldata(..., get_elemabundances=True)`. Select the cells by cos θ = v_z / |v| of the cell centre.
    Examples of the values are:
    - Ye;
    - the mass fraction of the element;

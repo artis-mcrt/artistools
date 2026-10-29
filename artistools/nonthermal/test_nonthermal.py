@@ -35,7 +35,7 @@ def test_spencerfano(tmp_path: Path) -> None:
     # 300 days is in timestep 54
     assert len(list(tmp_path.glob("spencerfano_cell00000_ts054_*.pdf"))) == 1
     dfstats = read_ntstats(ostatfile)
-    assert dfstats["frac_excitation"].item() == 0.0
+    assert dfstats["frac_excitation"].item() == 0
     assert dfstats["frac_sum"].item() == pytest.approx(1.0, abs=0.1)
 
 
@@ -63,7 +63,7 @@ def test_spencerfano_ostat_takes_a_changing_ion_list(tmp_path: Path) -> None:
     assert dfstats.height == 9
     assert {"frac_ionization_FeI", "frac_ionization_FeII", "frac_ionization_FeXI"} <= set(dfstats.columns)
     # an ion that a step does not hold takes zero, e.g. Fe I at the highest electron fraction
-    assert dfstats["frac_ionization_FeI"][-1] == 0.0
+    assert dfstats["frac_ionization_FeI"][-1] == 0
     assert dfstats["frac_ionization_FeXI"][-1] > 0.0
 
     # the heating, the ionisation, and the excitation take all of the deposited energy. The grid of this

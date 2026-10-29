@@ -10,11 +10,11 @@ import polars as pl
 from artistools.constants import Msun_to_g
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import dimension_reduce_model
-from artistools.inputmodel.core import get_initelemabundances
-from artistools.inputmodel.core import get_modeldata
 from artistools.inputmodel.core import MODEL_FILE_NAMES
 from artistools.inputmodel.core import save_initelemabundances
 from artistools.inputmodel.core import save_modeldata
+from artistools.inputmodel.core import scan_initelemabundances
+from artistools.inputmodel.core import scan_modeldata
 from artistools.inputmodel.downscale3dgrid import get_downscale_outputfolder
 from artistools.inputmodel.downscale3dgrid import make_downscaled_3d_grid
 from artistools.inputmodel.energyinputfiles import make_energy_files
@@ -166,13 +166,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         ndim_out = args.dimensionreduce
         assert ndim_out in {0, 1, 2}
         for modelpath, outdir in zip(args.modelpath, outputfolders["dimensionreduce"], strict=True):
-            dfmodel, modelmeta = get_modeldata(modelpath)
+            dfmodel, modelmeta = scan_modeldata(modelpath)
             ndim_in = modelmeta["dimensions"]
             if ndim_in <= ndim_out:
                 msg = f"Cannot reduce {ndim_in}D model to {ndim_out}D"
                 raise ValueError(msg)
 
-            dfelabundances = get_initelemabundances(modelpath)
+            dfelabundances = scan_initelemabundances(modelpath)
             dfgridcontributions = get_gridparticlecontributions_or_none(modelpath)
 
             (dfmodel_out, dfelabundances_out, dfgridcontributions_out, modelmeta_out) = dimension_reduce_model(
@@ -204,7 +204,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
 
     if args.makeenergyinputfiles:
-        plmodel, modelmeta = get_modeldata(args.modelpath[0])
+        plmodel, modelmeta = scan_modeldata(args.modelpath[0])
         cellmass_grams = (
             add_derived_cols_to_modeldata(plmodel, modelmeta=modelmeta)
             .select(pl.col("mass_g").cast(pl.Float64))

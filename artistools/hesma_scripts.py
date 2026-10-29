@@ -9,7 +9,6 @@ import matplotlib.axes as mplax
 import polars as pl
 import polars.selectors as cs
 
-from artistools.commands import get_standard_flag
 from artistools.constants import c_ang_per_s
 from artistools.lightcurve.writebollightcurvedata import get_bol_lc_from_lightcurveout
 from artistools.misc import addarg_action
@@ -25,6 +24,7 @@ from artistools.misc import addarg_unsupported
 from artistools.misc import confirm_overwrite
 from artistools.misc import exit_with_error
 from artistools.misc import get_model_name
+from artistools.misc import get_standard_flag
 from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import get_vpkt_config
 from artistools.misc import match_closest_time
@@ -36,7 +36,7 @@ from artistools.misc import split_multitable_dataframe
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
-from artistools.spectra import get_vspecpol_data
+from artistools.spectra import scan_vspecpol_data
 
 
 def plot_hesma_spectrum(timeavg: float, axes: Sequence[mplax.Axes], hesmafile: Path | str) -> None:
@@ -118,7 +118,7 @@ def make_hesma_vspecfiles(modelpath: Path, outpath: Path | None = None) -> None:
 
         for vspecindex, angle_name in zip(vspecindexes, angle_names, strict=True):
             print(angle_name)
-            vspecdata = get_vspecpol_data(vspecindex=vspecindex, modelpath=modelpath)["I"].collect()
+            vspecdata = scan_vspecpol_data(vspecindex=vspecindex, modelpath=modelpath)["I"].collect()
 
             timearray = vspecdata.columns[1:]
             vspecdata = (

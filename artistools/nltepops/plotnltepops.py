@@ -27,7 +27,7 @@ from artistools.constants import km_to_cm
 from artistools.estimators import read_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_mgi_of_velocity_kms
-from artistools.inputmodel import get_modeldata
+from artistools.inputmodel import scan_modeldata
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
@@ -40,8 +40,10 @@ from artistools.misc import addarg_output
 from artistools.misc import addarg_positional_items
 from artistools.misc import addarg_show
 from artistools.misc import addarg_verbose
+from artistools.misc import CellListAction
 from artistools.misc import exit_with_error
 from artistools.misc import format_frame_path
+from artistools.misc import get_cell_list
 from artistools.misc import get_model_name
 from artistools.misc import get_npts_model
 from artistools.misc import get_single_modelgridindex
@@ -56,10 +58,8 @@ from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_positional_modelpath
-from artistools.misc.cliutils import CellListAction
-from artistools.misc.cliutils import get_cell_list
-from artistools.misc.cliutils import time_days_range_arg
-from artistools.misc.cliutils import TIME_UNIT_HELP
+from artistools.misc import time_days_range_arg
+from artistools.misc import TIME_UNIT_HELP
 from artistools.nltepops.core import add_lte_pops
 from artistools.nltepops.core import read_nltepops
 from artistools.nltepops.core import texifyconfiguration
@@ -239,7 +239,7 @@ def get_floers_data(
         if floersmultizonepath is not None:
             # the reference file names the outer velocity of each shell. vel_r_max is in cm/s, and
             # add_derived_cols_to_modeldata gives it for a model of any dimension
-            dfmodel, modelmeta = get_modeldata(modelpath)
+            dfmodel, modelmeta = scan_modeldata(modelpath)
             modeldata = add_derived_cols_to_modeldata(dfmodel, modelmeta).select("vel_r_max").collect()
             vel_outer = modeldata["vel_r_max"].item(modelgridindex) / km_to_cm
             print(f"  Reading {floersmultizonepath} for vel_outer {vel_outer} and Te {T_e}")
@@ -708,7 +708,7 @@ def make_plot_populations_with_time_or_velocity(
 
     set_axis_properties(ax, args)
 
-    outputfilename = str(args.outputfile).format(elsymbol=get_elsymbol(atomic_number))
+    outputfilename = format_frame_path(args.outputfile, elsymbol=get_elsymbol(atomic_number))
     xcolumn = "time_days" if args.x == "time" else "vel_r_mid_kmps"
     if seriestables := [dfseries for _, axistables in tablesofaxis for dfseries in axistables]:
         output_data(
@@ -752,7 +752,7 @@ def plot_populations_with_time_or_velocity(
 
     if args.x == "velocity":
         # vel_r_mid is the mid-point radial velocity of a cell in a model of any dimension, in cm/s
-        dfmodel, modelmeta = get_modeldata(modelpaths[0])
+        dfmodel, modelmeta = scan_modeldata(modelpaths[0])
         modeldata = add_derived_cols_to_modeldata(dfmodel, modelmeta).select("vel_r_mid").collect()
         velocity = modeldata["vel_r_mid"] / km_to_cm
         modelgridindex_list = [mgi for mgi, _ in enumerate(velocity)]
@@ -962,7 +962,7 @@ def make_singletimestep_plot(
 
     # invariant to the cell loop, so read the estimators and the model once instead of once per cell
     estimators = read_estimators(modelpath, timestep=timestep, modelgridindex=list(mgilist))
-    lzmodeldata, modelmeta = get_modeldata(modelpath)
+    lzmodeldata, modelmeta = scan_modeldata(modelpath)
     lzmodeldata = add_derived_cols_to_modeldata(lzmodeldata, modelmeta=modelmeta)
     velocity_kmps_of_mgi = {
         mgi: vel_r_mid / km_to_cm
@@ -1173,9 +1173,17 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_data_output(parser)
 
 
-def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
-    """Plot ARTIS non-LTE populations."""
-    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+def resolve_plot_args(args: argparse.Namespace) -> list[int]:
+    """Give args the values that the plot reads, and return the timesteps of a plot against the level index.
+
+    The values are:
+
+    - the elements;
+    - the ion stages;
+    - the range of the timesteps;
+    - the cells;
+    - the output file.
+    """
     # the parser gives text such as "1-3", and a keyword argument of main() can also give a number or a list
     args.ion_stages = get_cell_list(args.ion_stages) if args.ion_stages else None
     # the ARTIS folder is the last positional argument, thus "plotnltepops Fe mymodel" reads mymodel
@@ -1246,15 +1254,22 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if outofrange := [mgi for mgi in mgilist if not 0 <= mgi < npts_model]:
         exit_with_error(f"Model grid cell {outofrange[0]} is outside the range 0 to {npts_model - 1}")
 
+    return timesteps_selected if timesteps_selected is not None else list(range(args.timestepmin, args.timestepmax + 1))
+
+
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
+    """Plot ARTIS non-LTE populations."""
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    timesteps_included = resolve_plot_args(args)
+
     if args.x in {"time", "velocity"}:
         # each element takes a figure of its own, as in a plot against the level index
         for atomic_number in get_atomic_numbers(args.elements):
             make_plot_populations_with_time_or_velocity(args.modelpath, atomic_number, args)
         return
 
-    timesteps_included = (
-        timesteps_selected if timesteps_selected is not None else list(range(args.timestepmin, args.timestepmax + 1))
-    )
     for atomic_number in get_atomic_numbers(args.elements):
         for timestep in timesteps_included:
-            make_singletimestep_plot(modelpath, atomic_number, args.ion_stages, mgilist, timestep, args)
+            make_singletimestep_plot(
+                args.modelpath, atomic_number, args.ion_stages, args.modelgridindex, timestep, args
+            )

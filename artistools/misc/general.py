@@ -1,10 +1,15 @@
 """Small generic utilities."""
 
+import argparse
 import functools
+import itertools
+import re
 import sys
 import typing as t
 from collections.abc import Callable
 from collections.abc import Iterable
+from collections.abc import Sequence
+from pathlib import Path
 
 import numpy as np
 import numpy.typing as npt
@@ -279,3 +284,124 @@ def parallel_map[IterableType, ResultType](
     # as one item, and a callback after close() has no effect. Thus that progress bar stops below the total.
     with executor:
         return list(progressclass(executor.map(fn, *iterables, chunksize=chunksize), **progresskwargs))
+
+
+def contiguous_runs(numbers: Sequence[int]) -> list[list[int]]:
+    """Split a sorted sequence of integers into the runs that have no gap."""
+    runs: list[list[int]] = []
+    for number in numbers:
+        if runs and number == runs[-1][-1] + 1:
+            runs[-1].append(number)
+        else:
+            runs.append([number])
+
+    return runs
+
+
+def format_range_list(numbers: Iterable[int]) -> str:
+    """Return the text that parse_range_list reads for these numbers, e.g. "3-7,9" for [3, 4, 5, 6, 7, 9]."""
+    return ",".join(
+        str(run[0]) if len(run) == 1 else f"{run[0]}-{run[-1]}" for run in contiguous_runs(sorted(set(numbers)))
+    )
+
+
+def parse_float_range(text: str, description: str) -> tuple[float, float]:
+    """Return the two numbers of a range such as 2.2-2.8, in the order that the text gives them.
+
+    A hyphen also appears inside an exponent, e.g. 1e-2, and in front of a negative number. Thus only
+    a hyphen that comes after a digit or after a decimal point separates the two ends of the range.
+    The description names what the caller expects, and the message of an error gives that name.
+    """
+    try:
+        first, second = (float(part) for part in re.split(r"(?<=[0-9.])-", text.strip()))
+    except ValueError as exc:
+        msg = f"Cannot read {text!r} as {description}"
+        raise ValueError(msg) from exc
+
+    return first, second
+
+
+def parse_range(rng: str, dictvars: dict[str, int]) -> Iterable[int]:
+    """Parse a string with an integer range and return a list of numbers, replacing special variables in dictvars.
+
+    A hyphen also stands in front of a negative number, thus only a hyphen that follows a digit or a
+    letter separates the two ends of the range. "-1" then names one number, which the caller refuses.
+    """
+    strparts = re.split(r"(?<=[0-9a-zA-Z])-", rng.strip())
+
+    if len(strparts) not in {1, 2}:
+        msg = f"Bad range: '{rng}'"
+        raise ValueError(msg)
+
+    parts = [int(i) if i not in dictvars else dictvars[i] for i in strparts]
+    start: int = parts[0]
+    end: int = start if len(parts) == 1 else parts[1]
+
+    if start > end:
+        # "last-1" reads as "the timestep before the last", thus a swap would select almost all the timesteps
+        if any(part in dictvars for part in strparts):
+            msg = f"The range '{rng}' ends before it starts. Give the two ends as numbers, e.g. 40-45"
+            raise ValueError(msg)
+        end, start = start, end
+
+    return range(start, end + 1)
+
+
+def parse_range_list(rngs: str, dictvars: dict[str, int] | None = None) -> list[int]:
+    """Return the sorted integers in any of the comma-separated ranges of a string, e.g. "1,3-5"."""
+    return sorted(set(itertools.chain.from_iterable([parse_range(rng, dictvars or {}) for rng in rngs.split(",")])))
+
+
+def makelist(x: Sequence[t.Any] | str | Path | None) -> list[t.Any]:
+    """If x is not a list (or is a string), make a list containing x."""
+    if x is None:
+        return []
+    return [x] if isinstance(x, str | Path) else list(x)
+
+
+def trim_or_pad(requiredlength: int, *listoflistin: t.Any) -> Sequence[Sequence[t.Any]]:
+    """Make lists equal in length to requiredlength either by padding with None or truncating."""
+    list_sequence = []
+    for listin in listoflistin:
+        listin_makelist = makelist(listin)
+
+        listout = [listin_makelist[i] if i < len(listin_makelist) else None for i in range(requiredlength)]
+
+        assert len(listout) == requiredlength
+        list_sequence.append(listout)
+    return list_sequence
+
+
+def flatten_list(listin: list[t.Any]) -> list[t.Any]:
+    """Flatten a list of lists."""
+    listout = []
+    for elem in listin:
+        if isinstance(elem, list):
+            listout.extend(elem)
+        else:
+            listout.append(elem)
+    return listout
+
+
+def get_filterfunc(args: argparse.Namespace) -> "Callable[[npt.ArrayLike], npt.NDArray[np.float64]] | None":
+    """Return the filter function that the command-line arguments select, or None.
+
+    The function is a partial of a module function, thus pickle can send it to the server of a remote model.
+    """
+    filterfunc = None
+    dictargs = vars(args)
+
+    if dictargs.get("filtermovingavg", False):
+        filterfunc = functools.partial(moving_average_filter, n=args.filtermovingavg)
+
+    if dictargs.get("filtersavgol", False):
+        if filterfunc is not None:
+            msg = "Give only one of --filtermovingavg and --filtersavgol"
+            raise ValueError(msg)
+
+        window_length, polyorder = (int(x) for x in args.filtersavgol)
+        filterfunc = functools.partial(savgol_filter, window_length=window_length, polyorder=polyorder)
+
+        print("Applying Savitzky-Golay filter")
+
+    return filterfunc

@@ -1,4 +1,6 @@
 import shutil
+import typing as t
+from collections.abc import Callable
 from pathlib import Path
 from unittest import mock
 
@@ -10,113 +12,102 @@ import pytest
 import artistools as at
 
 
+@pytest.mark.parametrize(
+    ("plotargs", "expected_std", "expected_mean"),
+    [
+        pytest.param(
+            {
+                "specpath": [at.get_path("testdata") / "vspecpolmodel", "sn2011fe_PTF11kly_20120822_norm.txt"],
+                "plotvspecpol": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+                "timemin": 11,
+                "timemax": 12,
+                "distmpc": 1.0,
+            },
+            [
+                2.01529689e-12,
+                2.05807110e-12,
+                2.01551623e-12,
+                2.18216916e-12,
+                2.85477069e-12,
+                3.34384407e-12,
+                2.94892344e-12,
+                2.29084411e-12,
+                2.05916843e-12,
+                2.00515984e-12,
+            ],
+            [
+                2.9864681492951925e-12,
+                3.0063451037690416e-12,
+                2.9785924608537284e-12,
+                3.2028094816751935e-12,
+                4.097482117229833e-12,
+                4.663450168092402e-12,
+                4.231106733071208e-12,
+                3.350080172063692e-12,
+                3.0234533505898177e-12,
+                2.9721539798925583e-12,
+            ],
+            id="vspecpol_files",
+        ),
+        pytest.param(
+            {
+                "specpath": [at.get_path("testdata") / "vpktcontrib"],
+                "plotvspecpol": [0, 1, 2, 3, 4, 5, 6, 7, 8],
+                "frompackets": True,
+                "maxpacketfiles": 2,
+                "timemin": 130,
+                "timemax": 135,
+            },
+            [
+                2.327497886235515e-15,
+                1.3598207820269362e-14,
+                5.008263656577672e-15,
+                2.2846087128139245e-15,
+                1.3201387803043819e-14,
+                4.942566647559291e-15,
+                2.3914786916308798e-15,
+                1.3150990321980048e-14,
+                4.713373632148831e-15,
+            ],
+            [
+                1.2260651224209835e-15,
+                8.443895573486584e-15,
+                3.2160750274055088e-15,
+                1.2006100531102612e-15,
+                8.309438486245869e-15,
+                3.2461295230908496e-15,
+                1.2303479856067529e-15,
+                8.224253260472366e-15,
+                3.1773192704100478e-15,
+            ],
+            id="vpkt_packets",
+        ),
+    ],
+)
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_vspectraplot(mockplot: mock.MagicMock) -> None:
-    at.spectra.plot(
-        argsraw=[],
-        specpath=[at.get_path("testdata") / "vspecpolmodel", "sn2011fe_PTF11kly_20120822_norm.txt"],
-        outputfile=at.get_path("testoutput") / "test_vspectra.pdf",
-        plotvspecpol=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
-        timemin=11,
-        timemax=12,
-        distmpc=1.0,
-    )
+def test_virtual_spectrum_plot(
+    mockplot: mock.MagicMock,
+    tmp_path: Path,
+    plotargs: dict[str, t.Any],
+    expected_std: list[float],
+    expected_mean: list[float],
+) -> None:
+    """Each direction of a virtual spectrum plot has the same wavelengths, and its own fluxes."""
+    at.spectra.plot(argsraw=[], outputfile=tmp_path / "vspectra.pdf", **plotargs)
+    ndirections = len(plotargs["plotvspecpol"])
 
     arr_time_d = np.array(mockplot.call_args_list[0][0][1])
-    assert all(np.array_equal(arr_time_d, np.array(mockplot.call_args_list[vspecdir][0][1])) for vspecdir in range(10))
-
-    arr_allvspec = np.vstack([np.array(mockplot.call_args_list[vspecdir][0][2]) for vspecdir in range(10)])
-    assert np.allclose(
-        arr_allvspec.std(axis=1),
-        [
-            2.01529689e-12,
-            2.05807110e-12,
-            2.01551623e-12,
-            2.18216916e-12,
-            2.85477069e-12,
-            3.34384407e-12,
-            2.94892344e-12,
-            2.29084411e-12,
-            2.05916843e-12,
-            2.00515984e-12,
-        ],
-        rtol=0.001,
-        atol=0.0,
+    assert all(
+        np.array_equal(arr_time_d, np.array(mockplot.call_args_list[vspecdir][0][1])) for vspecdir in range(ndirections)
     )
 
-    assert np.allclose(
-        arr_allvspec.mean(axis=1),
-        [
-            2.9864681492951925e-12,
-            3.0063451037690416e-12,
-            2.9785924608537284e-12,
-            3.2028094816751935e-12,
-            4.097482117229833e-12,
-            4.663450168092402e-12,
-            4.231106733071208e-12,
-            3.350080172063692e-12,
-            3.0234533505898177e-12,
-            2.9721539798925583e-12,
-        ],
-        rtol=0.001,
-        atol=0.0,
-    )
-
-
-@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-@pytest.mark.benchmark
-def test_vpkt_frompackets_spectrum_plot(mockplot: mock.MagicMock) -> None:
-    at.spectra.plot(
-        argsraw=[],
-        specpath=[at.get_path("testdata") / "vpktcontrib"],
-        outputfile=at.get_path("testoutput") / "test_vpktscontrib_spectra.pdf",
-        plotvspecpol=[0, 1, 2, 3, 4, 5, 6, 7, 8],
-        frompackets=True,
-        maxpacketfiles=2,
-        timemin=130,
-        timemax=135,
-    )
-
-    arr_time_d = np.array(mockplot.call_args_list[0][0][1])
-    assert all(np.array_equal(arr_time_d, np.array(mockplot.call_args_list[vspecdir][0][1])) for vspecdir in range(9))
-
-    arr_allvspec = np.vstack([np.array(mockplot.call_args_list[vspecdir][0][2]) for vspecdir in range(9)])
+    arr_allvspec = np.vstack([np.array(mockplot.call_args_list[vspecdir][0][2]) for vspecdir in range(ndirections)])
     print("expecting (std): ", [float(x) for x in arr_allvspec.std(axis=1)])
-    assert np.allclose(
-        arr_allvspec.std(axis=1),
-        [
-            2.327497886235515e-15,
-            1.3598207820269362e-14,
-            5.008263656577672e-15,
-            2.2846087128139245e-15,
-            1.3201387803043819e-14,
-            4.942566647559291e-15,
-            2.3914786916308798e-15,
-            1.3150990321980048e-14,
-            4.713373632148831e-15,
-        ],
-        rtol=0.001,
-        atol=0.0,
-    )
+    assert np.allclose(arr_allvspec.std(axis=1), expected_std, rtol=0.001, atol=0.0)
 
     print("expecting (mean): ", [float(x) for x in arr_allvspec.mean(axis=1)])
-    assert np.allclose(
-        arr_allvspec.mean(axis=1),
-        [
-            1.2260651224209835e-15,
-            8.443895573486584e-15,
-            3.2160750274055088e-15,
-            1.2006100531102612e-15,
-            8.309438486245869e-15,
-            3.2461295230908496e-15,
-            1.2303479856067529e-15,
-            8.224253260472366e-15,
-            3.1773192704100478e-15,
-        ],
-        rtol=0.001,
-        atol=0.0,
-    )
+    assert np.allclose(arr_allvspec.mean(axis=1), expected_mean, rtol=0.001, atol=0.0)
 
 
 def test_average_vspecpol_files(tmp_path: Path) -> None:
@@ -169,20 +160,9 @@ def test_make_virtual_spectra_summed_file(tmp_path: Path) -> None:
         assert np.allclose(total[1:, 1:], 2 * source[1:, 1:], rtol=1e-12, atol=0.0)
 
 
-def copy_vpktcontrib_model(modelfolder: Path, timewindowline: str, rangesline: str) -> Path:
-    """Copy the vpktcontrib model with a new time window line and a new wavelength range line in vpkt.txt."""
-    sourcedir = at.get_path("testdata") / "vpktcontrib"
-    modelfolder.mkdir()
-    for filename in ("input.txt", "vpackets_0000.out.zst", "vpackets_0001.out.zst"):
-        shutil.copy(sourcedir / filename, modelfolder / filename)
-    vpktlines = (sourcedir / "vpkt.txt").read_text(encoding="utf-8").splitlines()
-    # the fifth line is the time window override, and the sixth line is the custom wavelength range flag
-    vpktlines[4:6] = [timewindowline, rangesline]
-    (modelfolder / "vpkt.txt").write_text("\n".join(vpktlines) + "\n", encoding="utf-8")
-    return modelfolder
-
-
-def test_vpkt_frompackets_spectrum_keeps_the_rows_inside_the_vpkt_ranges(tmp_path: Path) -> None:
+def test_vpkt_frompackets_spectrum_keeps_the_rows_inside_the_vpkt_ranges(
+    tmp_path: Path, copy_vpktcontrib_model: Callable[[Path, str, str], Path]
+) -> None:
     """The spectrum of a virtual observer bins only the rows with nu_rf inside a wavelength range of vpkt.txt.
 
     ARTIS also writes a row when only the absorption frequency is inside a range, and it keeps that row out of
@@ -193,7 +173,7 @@ def test_vpkt_frompackets_spectrum_keeps_the_rows_inside_the_vpkt_ranges(tmp_pat
     lambda_bin_edges = np.arange(3000.0, 8000.0, 100.0)
 
     def get_flambda(modelpath: Path) -> npt.NDArray[np.floating]:
-        dfspectrum = at.spectra.get_from_packets(
+        dfspectrum = at.spectra.scan_spectra_from_packets(
             modelpath,
             timelowdays=131.0,
             timehighdays=139.0,
@@ -214,7 +194,7 @@ def test_vpkt_frompackets_spectrum_keeps_the_rows_inside_the_vpkt_ranges(tmp_pat
     assert not flambda_ranges[outsideranges].any()
 
     with pytest.raises(ValueError, match="outside the virtual packets, which cover 130"):
-        at.spectra.get_from_packets(
+        at.spectra.scan_spectra_from_packets(
             rangesmodel,
             timelowdays=125.0,
             timehighdays=135.0,
@@ -224,7 +204,9 @@ def test_vpkt_frompackets_spectrum_keeps_the_rows_inside_the_vpkt_ranges(tmp_pat
         )
 
 
-def test_vpkt_frompackets_plot_refuses_a_time_range_outside_the_vpkt_window(tmp_path: Path) -> None:
+def test_vpkt_frompackets_plot_refuses_a_time_range_outside_the_vpkt_window(
+    tmp_path: Path, copy_vpktcontrib_model: Callable[[Path, str, str], Path]
+) -> None:
     """--frompackets with -plotvspecpol stops as the vspecpol branch does when the time range leaves the window.
 
     ARTIS writes a virtual packet only inside the time window of vpkt.txt. The flux of the packets took the full

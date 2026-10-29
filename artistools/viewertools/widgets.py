@@ -1,10 +1,10 @@
 """Make the widgets of a viewer window, e.g. the sections, the option table, the sliders, and the status bar."""
 
 import argparse
+import contextlib
 import html
 import json
 import math
-import re
 import shlex
 import sys
 import typing as t
@@ -23,12 +23,14 @@ from artistools.viewertools.core import get_actions_by_flag
 from artistools.viewertools.core import get_default_tokens
 from artistools.viewertools.core import get_helptexts
 from artistools.viewertools.core import get_option_kind
+from artistools.viewertools.core import get_slider_handle_position
 from artistools.viewertools.core import get_table_actions
 from artistools.viewertools.core import OptionRows
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
     from collections.abc import Collection
+    from collections.abc import Generator
     from collections.abc import Mapping
     from collections.abc import Sequence
 
@@ -555,6 +557,18 @@ def get_elided_label_class() -> "type[QtWidgets.QLabel]":
             fulltext = str(self.property("fulltext") or "")
             self.setText(self.fontMetrics().elidedText(fulltext, QtCore.Qt.TextElideMode.ElideMiddle, self.width()))
 
+        @t.override
+        def sizeHint(self) -> QtCore.QSize:
+            # a label with a different size policy, e.g. a name before a path, asks for the width of its full text
+            hint = super().sizeHint()
+            fontmetrics = self.fontMetrics()
+            textwidth = fontmetrics.horizontalAdvance(str(self.property("fulltext") or ""))
+            return QtCore.QSize(hint.width() - fontmetrics.horizontalAdvance(self.text()) + textwidth, hint.height())
+
+        @t.override
+        def minimumSizeHint(self) -> QtCore.QSize:
+            return QtCore.QSize(0, super().minimumSizeHint().height())
+
     return ElidedLabel
 
 
@@ -762,7 +776,8 @@ def make_range_slider(
         """A slider with two handles, which give the minimum and the maximum of a range.
 
         Qt has no slider with two handles. A drag moves the handle that is nearer to the pointer, and the minimum
-        stays below the maximum. The signal gives the index of the handle that moved and its new position.
+        stays below the maximum or equal to it. The signal gives the index of the handle that moved and its new
+        position.
         """
 
         limitmoved = QtCore.Signal(int, int)
@@ -833,11 +848,8 @@ def make_range_slider(
         def move_handle(self, pixel: float) -> None:
             if self.draghandle is None:
                 return
-            position = self.get_position(pixel)
-            if self.draghandle == 0:
-                position = min(position, self.positions[1] - 1)
-            else:
-                position = max(position, self.positions[0] + 1)
+            low, high = self.positions
+            position = get_slider_handle_position((low, high), self.draghandle, self.get_position(pixel), self.steps)
             if position != self.positions[self.draghandle]:
                 self.positions[self.draghandle] = position
                 self.update()
@@ -1483,17 +1495,24 @@ def get_python_call(functionname: str, kwargs: "Mapping[str, t.Any]") -> str:
 
 
 def get_python_code(
-    parser: argparse.ArgumentParser, tokens: "Sequence[str]", commandname: str, functionname: str
+    parser: argparse.ArgumentParser,
+    tokens: "Sequence[str]",
+    commandname: str,
+    functionname: str,
+    get_keyword_arguments: "Callable[[argparse.Namespace], Mapping[str, t.Any]] | None" = None,
 ) -> str:
     """Return the Python code that draws the plot of the command, with each argument that differs from its default.
 
     commandname names the command in the comment of a rejection. functionname is the function that the code calls,
-    e.g. "at.lightcurve.plot".
+    e.g. "at.lightcurve.plot". get_keyword_arguments gives the arguments of the call from the parsed arguments, e.g.
+    with the plot list in the form of main. With no get_keyword_arguments, the call takes each argument that differs
+    from its default.
     """
     args = parse_command_tokens(parser, tokens)
     if args is None:
         return f"# {commandname} rejects the command"
-    return get_python_call(functionname, get_changed_arguments(parser, args))
+    kwargs = get_changed_arguments(parser, args) if get_keyword_arguments is None else get_keyword_arguments(args)
+    return get_python_call(functionname, kwargs)
 
 
 # a box of text shows at least this number of lines
@@ -1536,6 +1555,19 @@ def start_play_timer(playtimer: "QtCore.QTimer", plotseconds: float, fps: float)
     A plot that takes longer than 1/fps seconds gives a lower rate.
     """
     playtimer.start(max(0, round(1000.0 / fps - plotseconds * 1000.0)))
+
+
+def make_timer(window: "QtWidgets.QWidget", milliseconds: int) -> "QtCore.QTimer":
+    """Return a single-shot timer.
+
+    The window is the parent of the timer, thus the timer stops when the window closes.
+    """
+    from PySide6 import QtCore
+
+    timer = QtCore.QTimer(window)
+    timer.setSingleShot(True)
+    timer.setInterval(milliseconds)
+    return timer
 
 
 def get_icon(symbol: str, themeicon: "QtGui.QIcon.ThemeIcon") -> "QtGui.QIcon":
@@ -1802,6 +1834,23 @@ def set_spin_value(box: "QtWidgets.QSpinBox | QtWidgets.QDoubleSpinBox", value: 
         box.setValue(value)
 
 
+@contextlib.contextmanager
+def blocked_signals(widgets: "Sequence[QtCore.QObject]") -> "Generator[None]":
+    """Block the signals of the widgets in the with statement.
+
+    Then a widget that shows a value does not apply it again. An error in the with statement, e.g. a bad colour in the
+    option table, must not leave the signals blocked.
+    """
+    from PySide6 import QtCore
+
+    blockers = [QtCore.QSignalBlocker(widget) for widget in widgets]
+    try:
+        yield
+    finally:
+        for blocker in blockers:
+            blocker.unblock()
+
+
 def make_note_label() -> "QtWidgets.QLabel":
     """Return a label for a note in a section, which shows a summary and a link to the full text.
 
@@ -1830,7 +1879,8 @@ def make_note_label() -> "QtWidgets.QLabel":
 def set_note_text(label: "QtWidgets.QLabel", summary: str, detail: str = "") -> None:
     """Show a summary in a note label, with a More link to the detail if the detail gives more. No summary hides it."""
     label.setProperty("notesummary", summary)
-    label.setProperty("notedetail", detail if detail != summary else "")
+    # get_first_sentence gives the summary with no full stop, thus a detail of one sentence adds no text to the summary
+    label.setProperty("notedetail", detail if detail.removesuffix(".") != summary.removesuffix(".") else "")
     label.setToolTip(detail or summary)
     show_note_text(label)
     label.setVisible(bool(summary))
@@ -1845,11 +1895,6 @@ def show_note_text(label: "QtWidgets.QLabel") -> None:
         label.setText(html.escape(detail).replace("\n", "<br>") + ' <a href="less">Less</a>')
     else:
         label.setText(html.escape(summary) + ' <a href="more">More…</a>')
-
-
-def get_first_sentence(text: str) -> str:
-    """Return the first sentence of a text, or all the text if it has one sentence."""
-    return re.split(r"(?<=[.:])\s+(?=[A-Z])", text, maxsplit=1)[0]
 
 
 def align_section_labels(window: "QtCore.QObject") -> None:

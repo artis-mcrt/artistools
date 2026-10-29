@@ -12,10 +12,10 @@ import polars as pl
 import polars.selectors as cs
 
 from artistools.constants import day_to_s
-from artistools.inputmodel.core import get_initelemabundances
-from artistools.inputmodel.core import get_modeldata
 from artistools.inputmodel.core import save_initelemabundances
 from artistools.inputmodel.core import save_modeldata
+from artistools.inputmodel.core import scan_initelemabundances
+from artistools.inputmodel.core import scan_modeldata
 from artistools.plottools import save_figure
 from artistools.plottools import set_mpl_style
 
@@ -74,13 +74,13 @@ def make_downscaled_3d_grid(
     """
     modelpath = Path(modelpath)
 
-    pldfmodel, modelmeta = get_modeldata(modelpath)
+    pldfmodel, modelmeta = scan_modeldata(modelpath)
     # save_modeldata also writes Ye, q, and tracercount, thus the downscaled model must keep them
     modelcolnames = pldfmodel.collect_schema().names()
     massweightedcols = [col for col in ("Ye", "q") if col in modelcolnames]
     summedcols = [col for col in ("tracercount",) if col in modelcolnames]
     dfmodel = pldfmodel.select("rho", cs.starts_with("X_"), *massweightedcols, *summedcols).collect()
-    dfelemabund = get_initelemabundances(modelpath=modelpath).collect()
+    dfelemabund = scan_initelemabundances(modelpath=modelpath).collect()
 
     grid = int(modelmeta["ncoordgridx"])
     smallgrid = outputgridsize

@@ -1,5 +1,5 @@
 [build-system]
-requires = ["maturin>=1.15,<2.0"]
+requires = ["maturin>=1.16,<2.0"]
 build-backend = "maturin"
 
 [project]
@@ -44,50 +44,50 @@ license-files = ["LICEN[CS]E*"]
 readme = { file = "README.md", content-type = 'text/markdown' }
 dependencies = [
     "argcomplete>=3.7.2",
-    "extinction>=0.4.9",
-    "matplotlib>=3.11",
-    "numpy>=2.5.2",
+    "extinction>=0.4.10",
+    "matplotlib>=3.11.2",
+    "numpy>=2.5.4",
     "polars>=2.1.0",
     "pyyaml>=6.0.3",
     "rich>=15.0.0",
-    "tqdm>=4.70.0",
+    "tqdm>=4.70.1",
     "zstandard>=0.25.0;python_version<'3.14'",
 ]
 
 [project.optional-dependencies]
 # a package that the code imports with an import statement also needs an entry in `ignore-missing-imports` under
-# [tool.pyrefly]. A package that `import_optional` loads needs no entry
+# [tool.pyrefly] and in `allowed-unresolved-imports` under [tool.ty.analysis]. A package that `import_optional`
+# loads needs no entry
 extras = [
     "george>=0.4.4;python_version<'3.15'", # not compatible with 3.15 yet
-    "imageio>=2.37.4",
-    "plotly>=6.9.0",
-    "pypdf>=6.16.2",
+    "imageio>=2.38.1",
+    "plotly>=7.1.0",
+    "pypdf>=6.21.4",
     "pynonthermal>=2026.9.30",
     # the viewers of --interactive use AppKit to copy a PDF or an SVG file to the clipboard of macOS. Qt gives such
     # a file a type that no other application reads
     "pyobjc-framework-cocoa>=12.2.2;sys_platform=='darwin'",
-    # plotspectra --interactive needs this package, which has no wheels for Python 3.15. Its wheels use the stable
-    # application binary interface (ABI), and a free-threaded build cannot load them. CI installs the extras only on
-    # the build of Python 3.14 that is not free-threaded
-    "pyside6-essentials>=6.11.2",
-    "pyvista>=0.48.4;python_version<'3.15'", # not compatible with 3.15 yet
+    # the viewers of --interactive need this package. Version 6.12 is the first with wheels for Python 3.15. Its
+    # wheels use the stable application binary interface (ABI), and a free-threaded build cannot load them
+    "pyside6-essentials>=6.12.0",
+    "pyvista>=0.49.2;python_version<'3.15'", # not compatible with 3.15 yet
 ]
 
 [dependency-groups]
 dev = [
     "imageio>=2.38.1",
-    "prek>=0.5.5",
+    "prek>=0.5.7",
     "pynonthermal>=2026.9.30",
-    "pypdf>=6.21",
+    "pypdf>=6.21.4",
     "pyrefly>=1.4.0",
-    "pytest>=9.1.1",
+    "pytest>=9.2.0",
     "pytest-codspeed>=5.0.3",
     "pytest-cov>=7.1.0",
     "pytest-xdist[psutil]>=3.8.0",
-    "ruff>=0.17.0,<0.18",
-    "ty>=0.0.89",
-    "types-pyyaml>=6.0.12.20260408",
-    "types-tqdm>=4.67.3.20260408",
+    "ruff>=0.17.3,<0.18",
+    "ty>=0.0.94",
+    "types-pyyaml>=6.0.12.20260906",
+    "types-tqdm>=4.70.0.20260906",
     "vulture>=2.16",
 ]
 
@@ -134,12 +134,14 @@ select = "cp315t-manylinux_*"
 audit-command = ""
 
 [tool.coverage.run]
-# --cov=./ also measured conftest.py, set_version.py and tests/__init__.py. Test modules are
-# ~100% covered by definition, so counting them inflated the project figure; dropping them is a
-# one-off baseline reset of about 4.5 points, not a regression.
+# a test module runs almost all of its own lines, thus the coverage of the package omits the test modules
 source = ["artistools"]
 omit = ["*/test_*.py", "*/conftest.py"]
 branch = true
+
+[tool.coverage.report]
+# only a type checker reads the code in a TYPE_CHECKING block, thus the tests never run it
+exclude_also = ["if t.TYPE_CHECKING:"]
 
 [tool.uv]
 required-version = ">=0.12.9"
@@ -177,17 +179,15 @@ project-excludes = [
     '**/build/**',
     '**/dist/**',
     '**/target/**',
-    '**/.venv/**',
 ]
 python-interpreter-path = ".venv/bin/python3"
-# missing-import is left enabled so a renamed or mistyped first-party module is an error (no other
-# checker catches that: pyright downgrades it to information).
+# missing-import stays on, thus an import of a renamed or mistyped module of artistools gives an error. ty also
+# reports it with unresolved-import, and pyright gives only information.
 # The [project.optional-dependencies] packages are absent from a plain `uv sync`, and zstandard is
 # not installed on 3.14+, so those resolve to Any rather than erroring.
 ignore-missing-imports = [
     "george",
     "george.*",
-    "pypdf",
     "PySide6",
     "PySide6.*",
     "shiboken6",
@@ -243,6 +243,14 @@ unreachable-match-case = "error"
 unresolvable-dunder-all = "error"
 useless-overload-body = "error"
 variance-mismatch = "error"
+
+# an __init__.py re-exports the deprecated alias of an old name, thus a script that reads the old name still runs.
+# The re-export is not a use of the alias
+[[tool.pyrefly.sub-config]]
+matches = "artistools/**/__init__.py"
+
+[tool.pyrefly.sub-config.errors]
+deprecated = "ignore"
 
 [tool.pyright]
 venvPath = "."
@@ -300,7 +308,6 @@ preview = true
 
 [tool.ruff.format]
 skip-magic-trailing-comma = true
-preview = true
 docstring-code-format = true
 
 [tool.ruff.lint]
@@ -320,7 +327,6 @@ ignore = [
     "commented-out-code",
     "boolean-type-hint-positional-argument",
     "boolean-default-value-positional-argument",
-    "invalid-function-name",
     "invalid-argument-name",
     "non-lowercase-variable-in-function",
     "import-outside-top-level",
@@ -332,7 +338,6 @@ ignore = [
     "too-many-arguments",
     "too-many-statements",
     "magic-value-comparison",
-    "float-equality-comparison",
     "assert",
     "print",
 ]
@@ -352,11 +357,11 @@ unfixable = [
     "undocumented-public-class",
     "undocumented-public-function",
     "banned-api",
+    "suspicious-subprocess-import",
 ]
 "**/conftest.py" = ["undocumented-public-module", "undocumented-public-function"]
-"tests/__init__.py" = ["undocumented-public-package"]
-"artistools/misc/test_misc.py" = ["suspicious-subprocess-import"]
-"artistools/test_artistools.py" = ["suspicious-subprocess-import"]
+# a test compares floats with a tolerance, thus the rule applies to the tests alone
+"!**/test_*.py" = ["float-equality-comparison"]
 "set_version.py" = ["suspicious-subprocess-import", "start-process-with-partial-path"]
 
 [tool.ruff.lint.flake8-import-conventions.extend-aliases]
@@ -400,8 +405,12 @@ strict = true
 force-single-line = true
 order-by-type = false
 
+[tool.ty.analysis]
+# the same list as ignore-missing-imports of pyrefly. A plain `uv sync` installs none of these packages,
+# except zstandard on Python 3.13
+allowed-unresolved-imports = ["george.**", "PySide6.**", "shiboken6.**", "zstandard.**"]
+
 [tool.ty.rules]
-unresolved-import = "ignore"
 # these rules are off by default
 blanket-ignore-comment = "error"
 disjoint-cast = "error"
@@ -414,21 +423,26 @@ possibly-missing-attribute = "error"
 possibly-missing-import = "error"
 unsupported-dynamic-base = "error"
 
-[tool.ty.src]
-exclude = [".venv/**"]
+# the reason is at the sub-config of pyrefly
+[[tool.ty.overrides]]
+include = ["artistools/**/__init__.py"]
+
+[tool.ty.overrides.rules]
+deprecated = "ignore"
 
 [tool.vulture]
 exclude = [".*", "build/", ".eggs/", ".venv", "venv"]
 paths = ["artistools"]
 sort_by_size = true
+# a deprecated alias keeps an old name for the scripts of the users, thus no code of artistools calls it
+ignore_decorators = ["@warnings.deprecated"]
 ignore_names = [
     # reached by name from subcommandtree in commands.py, so there is no textual call site
     "get_artistools_path",
+    "show_python",
     "show_version",
     # NamedTuple field
     "ion_pot",
-    # run by the CodSpeed benchmark fixture rather than called directly
-    "run_dimension_reduce",
     # attributes set on pyvista plotters and matplotlib axis objects
     "camera_position",
     "azimuth",
@@ -444,10 +458,14 @@ ignore_names = [
     "paintEvent",
     "_check_value",
     "find_class",
+    # attributes that argparse and importlib read
+    "_max_help_position",
+    "__loader__",
     # keys of the TypedDict SubplotSettings, which the code reads with a string
     "ylim",
     "exponentlabel",
     "cliplogbottom",
+    "elementcolours",
     # names that only a quoted annotation uses. Python 3.13 evaluates an annotation with no quotes at import time
     "FigureCanvasBase",
     "mpllegendhandler",

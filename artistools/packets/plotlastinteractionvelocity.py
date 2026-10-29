@@ -14,14 +14,16 @@ from artistools.misc import addarg_averageoverphi
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
 from artistools.misc import addarg_figscale
-from artistools.misc import addarg_maxpacketfiles
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_plotinvalidpart
 from artistools.misc import addarg_show
 from artistools.misc import addarg_timeminmax
 from artistools.misc import addarg_wavelengthrange
+from artistools.misc import check_dirbin
 from artistools.misc import exit_with_error
+from artistools.misc import get_bin_index_expr
+from artistools.misc import get_dirbin_labels
 from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_model_name
 from artistools.misc import get_timestep_times
@@ -33,16 +35,14 @@ from artistools.misc import parse_cli_args
 from artistools.misc import print_detail
 from artistools.misc import print_modelpath
 from artistools.misc import print_warning
-from artistools.misc.dirbins import check_dirbin
-from artistools.misc.dirbins import get_dirbin_labels
-from artistools.misc.general import get_bin_index_expr
+from artistools.packets.core import addarg_maxpacketfiles
 from artistools.packets.core import addarg_velocitykind
 from artistools.packets.core import get_last_interaction_velocity_expr
-from artistools.packets.core import get_packets
 from artistools.packets.core import NOISY_RELATIVE_ERROR
 from artistools.packets.core import print_arrival_time_method
 from artistools.packets.core import print_last_interaction_convention
 from artistools.packets.core import print_velocity_method
+from artistools.packets.core import scan_packets
 from artistools.plottools import addarg_velocityunit
 from artistools.plottools import convert_velocity_columns
 from artistools.plottools import format_velocity
@@ -91,7 +91,7 @@ def get_last_interaction_velocity_quartiles(
     histogram. One scan of the packets gives the quartiles of all the direction bins. A direction bin takes all the phi
     bins of its costheta bin, and -1 takes all the directions.
     """
-    _, lzpackets = get_packets(
+    _, lzpackets = scan_packets(
         modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
     tstarts = get_timestep_times(modelpath, loc="start")
@@ -241,7 +241,7 @@ def plot_velocity_against_time(
     args: argparse.Namespace, unit: t.Literal["kmps", "c"]
 ) -> "tuple[dict[str, pl.DataFrame], mplfig.Figure]":
     """Plot the median and the quartiles of each model and direction bin, and return the tables and the figure."""
-    from artistools.inputmodel import get_modeldata
+    from artistools.inputmodel import scan_modeldata
 
     fig, axesgrid = make_frame_figure(args, aspect=0.6)
     ax = axesgrid[0, 0]
@@ -251,7 +251,7 @@ def plot_velocity_against_time(
     summaryrows = []
     for modelpath in args.modelpath:
         print_modelpath(modelpath)
-        _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
+        _, modelmeta = scan_modeldata(modelpath, printwarningsonly=True)
         histogrambinwidth_kmps = get_grid_corner_velocity_kmps(modelmeta) / VELOCITYHISTOGRAMBINS
         print_method(position, args.velocitykind, args.xmin, args.xmax, histogrambinwidth_kmps)
         dirbinlabels = get_dirbin_labels(args.dirbin, average_over_phi=args.average_over_phi_angle)

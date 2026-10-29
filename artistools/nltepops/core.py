@@ -10,14 +10,15 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 
+from artistools.atomic import get_boltzmann_factor_expr
 from artistools.atomic import get_ionstring
 from artistools.atomic import get_kept_levels
-from artistools.constants import K_B_ev_per_K
+from artistools.misc import clear_at_reload
+from artistools.misc import folder_holds_match
+from artistools.misc import is_remote_path
+from artistools.misc import on_model_host
 from artistools.misc import read_rank_outputfiles
-from artistools.misc.fileio import folder_holds_match
-from artistools.misc.fileio import resolve_modelpath
-from artistools.misc.remote import is_remote_path
-from artistools.misc.remote import on_model_host
+from artistools.misc import resolve_modelpath
 
 
 def texifyterm(strterm: str) -> str:
@@ -94,7 +95,7 @@ def add_lte_pops(
         gs_g = float(ionlevels["g"].item(0))
         gs_energy = float(ionlevels["energy_ev"].item(0))
         return [
-            (pl.col("g") / gs_g * (-(pl.col("energy_ev") - gs_energy) / K_B_ev_per_K / T_exc).exp()).alias(columnname)
+            get_boltzmann_factor_expr(pl.col("g") / gs_g, pl.col("energy_ev") - gs_energy, T_exc).alias(columnname)
             for columnname, T_exc in columntemperature_tuples
         ]
 
@@ -219,6 +220,7 @@ def read_nltepops(
 
 # a window reads the levels of one cell for its menu, and a cache of one read would then drop the frame of the plot.
 # A frame of a large model can hold several GB, thus the cache keeps only these two reads
+@clear_at_reload("estimators")
 @lru_cache(maxsize=2)
 @on_model_host
 def read_nltepops_cached(modelpath: Path, timestep: int | None, cells: int | tuple[int, ...] | None) -> pl.DataFrame:

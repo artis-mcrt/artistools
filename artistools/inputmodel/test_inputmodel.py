@@ -8,6 +8,7 @@ import shutil
 import tarfile
 import time
 import typing as t
+from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 from pathlib import Path
@@ -89,38 +90,13 @@ modelpath_classic_3d = testdatapath / "test-classicmode_3d"
 
 def get_derived_modeldata(modelpath: Path, **kwargs: t.Any) -> tuple[pl.LazyFrame, dict[str, t.Any]]:
     """Return the model with the derived columns, e.g. the mass of each cell, and the metadata."""
-    lzdfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, **kwargs)
+    lzdfmodel, modelmeta = at.inputmodel.scan_modeldata(modelpath, **kwargs)
     return at.inputmodel.add_derived_cols_to_modeldata(lzdfmodel, modelmeta=modelmeta), modelmeta
 
 
-def write_trajectory_archive(
-    traj_root: Path, particleid: int, members: dict[str, str], suffix: str = ".tar.xz"
-) -> Path:
-    """Write a small trajectory archive {particleid}.tar.xz whose members are the files of its Run_rprocess folder."""
-    import io
-
-    from artistools.misc.fileio import get_decompress_open
-
-    traj_root.mkdir(parents=True, exist_ok=True)
-    archivepath = traj_root / f"{particleid}{suffix}"
-    tarbytes = io.BytesIO()
-    with tarfile.open(fileobj=tarbytes, mode="w") as tarfilehandle:
-        for filename, text in members.items():
-            data = text.encode("utf-8")
-            tarinfo = tarfile.TarInfo(name=f"./Run_rprocess/{filename}")
-            tarinfo.size = len(data)
-            tarfilehandle.addfile(tarinfo, io.BytesIO(data))
-
-    if suffix == ".tar":
-        archivepath.write_bytes(tarbytes.getvalue())
-    else:
-        with get_decompress_open(archivepath.suffix)(archivepath, "wb") as archivefile:
-            archivefile.write(tarbytes.getvalue())
-
-    return archivepath
-
-
-def test_trajectory_archive_formats_give_the_same_table(tmp_path: Path) -> None:
+def test_trajectory_archive_formats_give_the_same_table(
+    tmp_path: Path, write_trajectory_archive: Callable[[Path, int, dict[str, str], str], Path]
+) -> None:
     """A .tar.zst, a .tar.xz, and a .tar give the same table, and a .tar.zst comes before a .tar.xz."""
     members = {
         "energy_thermo.dat": "#count time/s Qdot\n     1  1.000000E+00  1.500000E+21\n",
@@ -142,7 +118,9 @@ def test_trajectory_archive_formats_give_the_same_table(tmp_path: Path) -> None:
     assert archivepath.name == "3.tar.zst"
 
 
-def test_trajectory_qdotintegral_is_zero_before_one_second(tmp_path: Path) -> None:
+def test_trajectory_qdotintegral_is_zero_before_one_second(
+    tmp_path: Path, write_trajectory_archive: Callable[[Path, int, dict[str, str], str], Path]
+) -> None:
     """A last timestep before one second gives a zero integral, because the integration starts at one second.
 
     The filter on the last timestep came before the check for a time of one second or more, thus the check
@@ -159,9 +137,10 @@ def test_trajectory_qdotintegral_is_zero_before_one_second(tmp_path: Path) -> No
                 "     3  4.000000E+00  1.000000E+10\n"
             )
         },
+        ".tar.xz",
     )
     qdotintegral = at.inputmodel.rprocess_from_trajectory.get_trajectory_qdotintegral
-    assert qdotintegral(6, tmp_path, nts_max=1, t_model_s=4.0) == 0.0
+    assert qdotintegral(6, tmp_path, nts_max=1, t_model_s=4.0) == 0
     # Qdot * t / t_model is 1e10 at both timesteps, thus the trapezoid over two seconds gives 2e10
     assert qdotintegral(6, tmp_path, nts_max=3, t_model_s=4.0) == pytest.approx(2.0e10)
 
@@ -178,6 +157,7 @@ def test_trajectory_qdotintegral_is_zero_before_one_second(tmp_path: Path) -> No
                 "     3  4.000000E+00  1.000000E+10\n"
             )
         },
+        ".tar.xz",
     )
     with pytest.raises(FileNotFoundError, match="no column Qdot"):
         qdotintegral(6, tmp_path / "corrupt", nts_max=3, t_model_s=4.0)
@@ -192,6 +172,7 @@ def test_trajectory_qdotintegral_is_zero_before_one_second(tmp_path: Path) -> No
                 "#count time/s Qdot\n     1  2.000000E+00  2.000000E+10\n     3  4.000000E+00  1.000000E+10\n"
             )
         },
+        ".tar.xz",
     )
     with pytest.raises(ValueError, match="no Qdot value at each timestep up to 3"):
         qdotintegral(6, tmp_path / "gap", nts_max=3, t_model_s=4.0)
@@ -212,6 +193,7 @@ def test_trajectory_qdotintegral_is_zero_before_one_second(tmp_path: Path) -> No
                 "  3  4.000000E+00   1.0E-06   2.0E-12   0.0E+00   6.3E-06\n  2   2 -1.27404E+00  0.0  0.0\n"
             ),
         },
+        ".tar.xz",
     )
     # the trajectory has no network data at that timestep, thus the particle is one with no network data
     with pytest.raises(FileNotFoundError, match="ends at timestep 2 before timestep 3"):
@@ -314,7 +296,7 @@ def test_describeinputmodel_3d(capsys: pytest.CaptureFixture[str]) -> None:
     assert "M_tot_rho" in output
 
 
-def test_get_modeldata_1d() -> None:
+def test_scan_modeldata_1d() -> None:
     lzdfmodel, modelmeta = get_derived_modeldata(modelpath)
     assert math.isclose(modelmeta["t_model_init_days"], 0.00115740740741, rel_tol=0.0001)
     assert math.isclose(modelmeta["vmax_cmps"], 800000000.0)
@@ -325,7 +307,7 @@ def test_get_modeldata_1d() -> None:
 
 
 @pytest.mark.benchmark
-def test_get_modeldata_3d() -> None:
+def test_scan_modeldata_3d() -> None:
     lzdfmodel, modelmeta = get_derived_modeldata(modelpath_3d)
     assert math.isclose(modelmeta["vmax_cmps"], 2892020000.0)
     assert modelmeta["dimensions"] == 3
@@ -364,23 +346,23 @@ def test_get_spatial_scales_follows_the_working_folder(monkeypatch: pytest.Monke
 
 
 @pytest.mark.parametrize("cachecontents", [b"", b"not a parquet file", b"PAR1" + bytes(64)])
-def test_get_modeldata_replaces_unreadable_cache(tmp_path: Path, cachecontents: bytes) -> None:
+def test_scan_modeldata_replaces_unreadable_cache(tmp_path: Path, cachecontents: bytes) -> None:
     """A damaged parquet cache must be deleted and rebuilt, not raise from read_parquet_metadata."""
     shutil.copy(modelpath / "model.txt", tmp_path)
     cachefilepath = tmp_path / "model.txt.parquet.tmp"
     cachefilepath.write_bytes(cachecontents)
 
-    lzdfmodel, modelmeta = at.get_modeldata(modelpath=tmp_path)
+    lzdfmodel, modelmeta = at.scan_modeldata(modelpath=tmp_path)
     assert modelmeta["npts_model"] == 1
 
     # the rebuilt cache is written even though the text model is far under the 2 MiB threshold
     cachemetadata = pl.read_parquet_metadata(cachefilepath)
     assert cachemetadata["cacheversion"] == str(CACHEVERSION)
     assert cachemetadata["textsource_mtime"] == str((tmp_path / "model.txt").stat().st_mtime)
-    pltest.assert_frame_equal(lzdfmodel.collect(), at.get_modeldata(modelpath=tmp_path)[0].collect())
+    pltest.assert_frame_equal(lzdfmodel.collect(), at.scan_modeldata(modelpath=tmp_path)[0].collect())
 
 
-def test_get_modeldata_rejects_cache_without_metadata(tmp_path: Path) -> None:
+def test_scan_modeldata_rejects_cache_without_metadata(tmp_path: Path) -> None:
     """A readable parquet file that is missing the artistools metadata keys must not be trusted."""
     shutil.copy(modelpath / "model.txt", tmp_path)
     textfilepath = tmp_path / "model.txt"
@@ -392,17 +374,17 @@ def test_get_modeldata_rejects_cache_without_metadata(tmp_path: Path) -> None:
         metadata={"cacheversion": str(CACHEVERSION), "textsource_mtime": str(textfilepath.stat().st_mtime)},
     )
 
-    _, modelmeta = at.get_modeldata(modelpath=tmp_path)
+    _, modelmeta = at.scan_modeldata(modelpath=tmp_path)
     assert modelmeta["npts_model"] == 1
     assert "modelmeta_json" in pl.read_parquet_metadata(cachefilepath)
 
 
-def test_get_modeldata_refreshes_stale_cache(tmp_path: Path) -> None:
+def test_scan_modeldata_refreshes_stale_cache(tmp_path: Path) -> None:
     """A cache whose recorded text-source mtime no longer matches must be rewritten from the text source."""
     shutil.copy(modelpath / "model.txt", tmp_path)
     textfilepath = tmp_path / "model.txt"
     cachefilepath = tmp_path / "model.txt.parquet.tmp"
-    lzdfmodel, modelmeta = at.get_modeldata(modelpath=tmp_path)
+    lzdfmodel, modelmeta = at.scan_modeldata(modelpath=tmp_path)
     # the version matches, thus the reader rejects the cache for the stale mtime alone
     at.misc.write_parquet_atomic(
         lzdfmodel.collect(),
@@ -410,7 +392,7 @@ def test_get_modeldata_refreshes_stale_cache(tmp_path: Path) -> None:
         metadata={"cacheversion": str(CACHEVERSION), "textsource_mtime": "0", "modelmeta_json": json.dumps(modelmeta)},
     )
 
-    assert at.get_modeldata(modelpath=tmp_path)[1]["npts_model"] == 1
+    assert at.scan_modeldata(modelpath=tmp_path)[1]["npts_model"] == 1
     assert pl.read_parquet_metadata(cachefilepath)["textsource_mtime"] == str(textfilepath.stat().st_mtime)
 
 
@@ -603,7 +585,7 @@ def test_makeartismodelfrom_fortrangriddat(tmp_path: Path) -> None:
     )
 
     # grid.dat gives 8 cells, and the command expands the grid to the time of the snapshot
-    _, modelmeta = at.inputmodel.get_modeldata(outpath_kn, printwarningsonly=True)
+    _, modelmeta = at.inputmodel.scan_modeldata(outpath_kn, printwarningsonly=True)
     assert modelmeta["dimensions"] == 3
     assert modelmeta["npts_model"] == 8
     assert np.isclose(modelmeta["t_model_init_days"], 0.1)
@@ -620,7 +602,7 @@ def test_make1dmodelfromcone(tmp_path: Path) -> None:
         coneangle=60,
     )
 
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(tmp_path / "model_1d.txt", printwarningsonly=True)
+    dfmodel, modelmeta = at.inputmodel.scan_modeldata(tmp_path / "model_1d.txt", printwarningsonly=True)
     assert modelmeta["dimensions"] == 1
     assert 1 <= modelmeta["npts_model"] <= 4
     assert dfmodel.select(pl.col("logrho").max()).collect().item() > -90.0
@@ -697,7 +679,7 @@ def test_makemodel_dimensionreduce_writes_the_gridcontributions(tmp_path: Path) 
     modelfolder.mkdir()
     for filename in ("model.txt.xz", "abundances.txt.xz"):
         shutil.copy(modelpath_3d / filename, modelfolder)
-    dfmodel = at.inputmodel.get_modeldata(modelfolder, printwarningsonly=True)[0].collect()
+    dfmodel = at.inputmodel.scan_modeldata(modelfolder, printwarningsonly=True)[0].collect()
     nonemptyids = dfmodel.filter(pl.col("rho") > 0)["inputcellid"].to_list()
     (modelfolder / "gridcontributions.txt").write_text(
         "particleid cellindex frac_of_cellmass\n" + "".join(f"7 {cellid} 1.0\n" for cellid in nonemptyids),
@@ -709,7 +691,7 @@ def test_makemodel_dimensionreduce_writes_the_gridcontributions(tmp_path: Path) 
 
     reducedfolder = outfolder / "model3d_dimreduce_1d"
     dfcontribs = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(reducedfolder)
-    _, modelmeta = at.inputmodel.get_modeldata(reducedfolder, printwarningsonly=True)
+    _, modelmeta = at.inputmodel.scan_modeldata(reducedfolder, printwarningsonly=True)
     assert set(dfcontribs["particleid"].to_list()) == {7}
     assert dfcontribs["cellindex"].max() <= modelmeta["npts_model"]
 
@@ -733,27 +715,27 @@ def test_maketardismodel(tmp_path: Path) -> None:
 def test_make_empty_abundance_file(tmp_path: Path) -> None:
     at.inputmodel.save_empty_abundance_file(npts_model=50, outputfilepath=tmp_path)
 
-    dfabund = at.inputmodel.get_initelemabundances(tmp_path, printwarningsonly=True).collect()
+    dfabund = at.inputmodel.scan_initelemabundances(tmp_path, printwarningsonly=True).collect()
     assert dfabund["inputcellid"].to_list() == list(range(1, 51))
-    assert dfabund.select(cs.starts_with("X_").abs().max()).max_horizontal().item() == 0.0
+    assert dfabund.select(cs.starts_with("X_").abs().max()).max_horizontal().item() == 0
 
 
-def test_opacity_by_Ye_file(tmp_path: Path) -> None:
+def test_opacity_by_ye_file(tmp_path: Path) -> None:
     griddata = pl.DataFrame({
         "Ye": [0.0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.5],
         "rho": [0.0, 99.0, 99.0, 99.0, 99.0, 99.0, 99.0, 99.0],
         "inputcellid": range(1, 9),
     })
-    at.inputmodel.opacityinputfile.opacity_by_Ye(tmp_path, griddata=griddata)
+    at.inputmodel.opacityinputfile.opacity_by_ye(tmp_path, griddata=griddata)
 
     # Table 1 of Tanaka et al. (2020), and zero for the empty cell
     opacities = np.loadtxt(tmp_path / "opacity.txt", skiprows=1)[:, 1]
     assert np.allclose(opacities, [0.0, 19.5, 32.2, 22.3, 5.6, 5.36, 3.3, 0.96])
 
 
-def test_opacity_by_integer_Ye(tmp_path: Path) -> None:
+def test_opacity_by_integer_ye(tmp_path: Path) -> None:
     griddata = pl.DataFrame({"Ye": [0, 1], "rho": [1.0, 1.0], "inputcellid": [1, 2]})
-    at.inputmodel.opacityinputfile.opacity_by_Ye(tmp_path, griddata=griddata)
+    at.inputmodel.opacityinputfile.opacity_by_ye(tmp_path, griddata=griddata)
     assert np.allclose(np.loadtxt(tmp_path / "opacity.txt", skiprows=1)[:, 1], [19.5, 0.96])
 
 
@@ -781,7 +763,9 @@ def test_get_elemabund_from_nucabund() -> None:
     assert result_abunds == all_expected_abunds
 
 
-def test_trajectory_archive_joins_the_timestep_tables_and_the_named_abundance_file(tmp_path: Path) -> None:
+def test_trajectory_archive_joins_the_timestep_tables_and_the_named_abundance_file(
+    tmp_path: Path, write_trajectory_archive: Callable[[Path, int, dict[str, str], str], Path]
+) -> None:
     """A row holds energy_thermo.dat and heating.dat for its timestep, and a named abundance file is a row of its own.
 
     The named file tday_nz-plane has the timestep number of nz-plane00002 in its header, but its time differs. A
@@ -812,6 +796,7 @@ def test_trajectory_archive_joins_the_timestep_tables_and_the_named_abundance_fi
             "tday_nz-plane": "  2  8.640000E+04   1.0E-06   2.0E-12   0.0E+00   6.3E-06\n" + nuclidelines,
             "._nz-plane00002": "resource fork\n",
         },
+        ".tar.xz",
     )
 
     dftrajectory, leftoutfiles = at.inputmodel.rprocess_from_trajectory.read_trajectory_network_data(archivepath)
@@ -852,7 +837,9 @@ def test_trajectory_archive_joins_the_timestep_tables_and_the_named_abundance_fi
 
 
 def test_trajectory_archive_leaves_out_a_corrupt_timestep_table(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    write_trajectory_archive: Callable[[Path, int, dict[str, str], str], Path],
 ) -> None:
     """A corrupt time in heating.dat must not stop a read of the abundance files, which do not need that table."""
     nuclidelines = "  0   1 -1.11798E+01  0.00000E+00  0.00000E+00\n"
@@ -868,6 +855,7 @@ def test_trajectory_archive_leaves_out_a_corrupt_timestep_table(
             "heating.dat": "#count time/s hbeta\n     1  corrupt  2.000000E+09\n",
             "nz-plane00001": "  1  1.000000E+00   1.0E-06   2.0E-12   0.0E+00   6.3E-06\n" + nuclidelines,
         },
+        ".tar.xz",
     )
     _, timesecs = at.inputmodel.rprocess_from_trajectory.get_trajectory_timestepfiles_nuc_abund(
         tmp_path, 5, ["nz-plane00001"]
@@ -888,15 +876,19 @@ def test_trajectory_archive_leaves_out_a_corrupt_timestep_table(
         at.inputmodel.rprocess_from_trajectory.get_network_timesteps_table(tmp_path, 5, ("hbeta",))
 
 
-def test_trajectory_archive_without_network_files_raises(tmp_path: Path) -> None:
+def test_trajectory_archive_without_network_files_raises(
+    tmp_path: Path, write_trajectory_archive: Callable[[Path, int, dict[str, str], str], Path]
+) -> None:
     """An archive with no file that artistools reads gives an error that names the archive."""
-    archivepath = write_trajectory_archive(tmp_path, 8, {"evol.dat": "1 2\n"})
+    archivepath = write_trajectory_archive(tmp_path, 8, {"evol.dat": "1 2\n"}, ".tar.xz")
     with pytest.raises(FileNotFoundError, match=r"8\.tar\.xz"):
         at.inputmodel.rprocess_from_trajectory.read_trajectory_network_data(archivepath)
 
 
 def test_trajectory_timestep_files_reject_a_blank_header_line(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    write_trajectory_archive: Callable[[Path, int, dict[str, str], str], Path],
 ) -> None:
     """A timestep file whose first line is blank gives no time, thus the cache leaves it out and names that file.
 
@@ -908,7 +900,7 @@ def test_trajectory_timestep_files_reject_a_blank_header_line(
     goodfile = "  1  8.873645E+03   6.601614E-06   2.981756E-12   0.000000E+00   6.377000E-06\n" + abundlines
     reader = at.inputmodel.rprocess_from_trajectory.get_trajectory_timestepfiles_nuc_abund
 
-    write_trajectory_archive(tmp_path / "good", 1, {"nz-plane00001": goodfile})
+    write_trajectory_archive(tmp_path / "good", 1, {"nz-plane00001": goodfile}, ".tar.xz")
     _, timesecs = reader(tmp_path / "good", 1, ["nz-plane00001"])
     assert timesecs == [8873.645]
 
@@ -923,6 +915,7 @@ def test_trajectory_timestep_files_reject_a_blank_header_line(
             "nz-plane00004": "  4  8.87x645E+03   6.6E-06   2.9E-12   0.0E+00   6.3E-06\n" + abundlines,
             "nz-plane00005": "  5  8.873645E+03   6.601614E-06   2.981756E-12   0.000000E+00   6.377000E-06\n",
         },
+        ".tar.xz",
     )
     _, timesecs = reader(tmp_path / "bad", 1, ["nz-plane00001"])
     assert timesecs == [8873.645]
@@ -942,1162 +935,15 @@ def test_get_trajectory_abund_q(trajectory_copy: Path) -> None:
         particleid=particleid, traj_root=trajectory_copy, t_model_s=0.1 * 86400
     )
 
-    expected: dict[tuple[int, int] | str, float] = {
-        (1, 0): 1.1725174399442242e-08,
-        (1, 1): 6.87589611931013e-14,
-        (1, 2): 2.1603323339255077e-14,
-        (2, 1): 5.094722875888864e-19,
-        (2, 2): 0.0003685948834888951,
-        (3, 3): 7.412258580243427e-14,
-        (3, 4): 3.3327086685721643e-12,
-        (4, 3): 2.0123214250136768e-21,
-        (4, 5): 1.1804071203265773e-06,
-        (4, 6): 1.4554567718658872e-11,
-        (4, 7): 1.8745282777794778e-24,
-        (5, 5): 2.9525639382289222e-16,
-        (5, 6): 5.478882621054788e-12,
-        (6, 6): 2.1994320898574446e-06,
-        (6, 7): 3.327075554820993e-09,
-        (6, 8): 1.666546158184778e-06,
-        (6, 9): 6.749794801230545e-22,
-        (7, 6): 1.397792363264548e-22,
-        (7, 7): 1.2204706692728568e-10,
-        (7, 8): 4.362953357553692e-05,
-        (7, 9): 3.052947202912274e-19,
-        (8, 8): 1.560483905335538e-06,
-        (8, 9): 2.3951804184281023e-08,
-        (8, 10): 4.928693552465263e-06,
-        (8, 11): 8.799396999315596e-20,
-        (9, 9): 1.8305087795669485e-17,
-        (9, 10): 6.887044863250963e-06,
-        (9, 11): 7.63887329964985e-16,
-        (10, 10): 6.713350264025027e-07,
-        (10, 11): 9.487867386043015e-07,
-        (10, 12): 5.590774709546083e-06,
-        (10, 13): 8.095191877083904e-18,
-        (10, 14): 2.989582570052557e-19,
-        (11, 11): 2.4769771024677297e-19,
-        (11, 12): 9.317022560845928e-08,
-        (11, 13): 1.0556028468913273e-07,
-        (11, 14): 6.872888839268174e-17,
-        (12, 12): 1.1466491483239816e-08,
-        (12, 13): 1.0547737663718423e-06,
-        (12, 14): 2.2943657929457154e-07,
-        (12, 15): 3.4424138093243784e-12,
-        (12, 16): 8.31528889679871e-08,
-        (12, 17): 1.171378663096373e-19,
-        (13, 13): 4.9336991020015275e-20,
-        (13, 14): 6.894187255496836e-08,
-        (13, 15): 1.4902438644223594e-10,
-        (13, 16): 6.779494441633905e-14,
-        (14, 14): 6.435278437822719e-09,
-        (14, 15): 9.133711905091654e-08,
-        (14, 16): 2.0111319514266216e-07,
-        (14, 17): 2.3872120881299773e-08,
-        (14, 18): 1.687676835394388e-07,
-        (14, 19): 1.5563714336976585e-18,
-        (15, 16): 1.988707927435867e-08,
-        (15, 17): 2.354774311626188e-13,
-        (15, 18): 3.1644136628510475e-07,
-        (15, 19): 4.606575867717251e-17,
-        (16, 16): 6.282742919883985e-16,
-        (16, 17): 8.279674258615179e-10,
-        (16, 18): 4.229102665074332e-07,
-        (16, 19): 1.9553628306359053e-07,
-        (16, 20): 3.897371561642963e-07,
-        (16, 21): 2.9792094382743146e-15,
-        (16, 22): 1.59265939461423e-07,
-        (16, 23): 3.738211921241075e-18,
-        (17, 18): 1.4722018374990565e-10,
-        (17, 19): 1.9638206023059097e-16,
-        (17, 20): 2.263502795338896e-07,
-        (17, 21): 3.848069504317361e-08,
-        (17, 22): 1.9060483724002614e-08,
-        (17, 23): 2.3820962335686178e-17,
-        (18, 20): 8.108357856539368e-08,
-        (18, 21): 8.418096852711038e-08,
-        (18, 22): 2.0474782754875155e-07,
-        (18, 23): 1.444818080642224e-07,
-        (18, 24): 1.57318066998605e-06,
-        (18, 25): 2.8116921389780335e-14,
-        (18, 26): 6.54262437919545e-10,
-        (18, 27): 7.934358599843073e-20,
-        (19, 20): 3.61047147486636e-14,
-        (19, 21): 1.2129958148190953e-20,
-        (19, 22): 1.981222118456089e-07,
-        (19, 23): 8.911454653426272e-12,
-        (19, 24): 5.895868202954704e-07,
-        (19, 25): 5.191848218816556e-08,
-        (19, 26): 1.2314359410232332e-08,
-        (19, 27): 1.990935281294967e-17,
-        (20, 22): 6.279840328684508e-13,
-        (20, 23): 4.104476435791273e-08,
-        (20, 24): 1.724137856203299e-06,
-        (20, 25): 2.411136652070219e-06,
-        (20, 26): 3.095188782681818e-07,
-        (20, 27): 1.7259061211805264e-06,
-        (20, 28): 1.3676045860844737e-06,
-        (20, 29): 4.8149900180941484e-12,
-        (20, 30): 3.6599008104869696e-22,
-        (21, 24): 8.015153146321533e-10,
-        (21, 25): 2.1456414124169807e-15,
-        (21, 26): 2.5085754573666088e-08,
-        (21, 27): 1.724013048265231e-13,
-        (21, 28): 4.771065634900593e-08,
-        (21, 29): 6.277248411160005e-17,
-        (22, 24): 9.39846963847091e-19,
-        (22, 25): 2.50090485149744e-10,
-        (22, 26): 6.17789536633892e-15,
-        (22, 27): 1.6578887751255285e-07,
-        (22, 28): 7.427613817030457e-07,
-        (22, 29): 4.375921143787054e-14,
-        (22, 30): 1.4655567995202804e-22,
-        (23, 28): 3.386955473154129e-07,
-        (23, 29): 1.3040752566298634e-14,
-        (23, 30): 1.7313113681377496e-22,
-        (24, 28): 5.660602446534781e-07,
-        (24, 29): 7.230281075207171e-08,
-        (24, 30): 2.713770211065358e-07,
-        (24, 31): 1.1985661291394263e-15,
-        (24, 32): 2.930133030310556e-14,
-        (24, 33): 7.787071579204953e-24,
-        (25, 30): 2.0045735729702534e-08,
-        (25, 31): 9.242880499399146e-08,
-        (25, 32): 1.9974419506680544e-15,
-        (25, 38): 1.5835794618418754e-23,
-        (26, 30): 7.218007651618376e-08,
-        (26, 31): 6.369042791457269e-08,
-        (26, 32): 4.1689559341995316e-08,
-        (26, 33): 3.9158073997635444e-08,
-        (26, 34): 4.103652350399286e-08,
-        (26, 35): 1.522401299940522e-14,
-        (26, 36): 6.519150400858357e-23,
-        (26, 37): 4.669171871681747e-22,
-        (26, 38): 1.9542462402016735e-22,
-        (26, 39): 1.4444837740031599e-22,
-        (26, 40): 1.722040045605936e-20,
-        (26, 41): 2.986579734127306e-21,
-        (26, 42): 3.4754274245628244e-18,
-        (27, 32): 5.835140569641484e-11,
-        (27, 33): 7.900426944289527e-16,
-        (27, 34): 3.082755960351965e-08,
-        (27, 35): 2.975027610063178e-16,
-        (27, 36): 2.0693781565613924e-21,
-        (27, 37): 3.347952479905496e-23,
-        (27, 38): 1.905955110178637e-22,
-        (27, 39): 9.517946222236464e-21,
-        (27, 40): 6.0030797620558526e-18,
-        (27, 41): 7.411536023246397e-18,
-        (27, 42): 6.77561002377083e-18,
-        (27, 43): 6.410580396155907e-18,
-        (27, 44): 5.464590966059332e-18,
-        (28, 32): 2.4845661353215756e-20,
-        (28, 33): 4.504526499048022e-08,
-        (28, 34): 3.1356024896318145e-07,
-        (28, 35): 3.9793291250585437e-07,
-        (28, 36): 2.574834295533078e-07,
-        (28, 37): 2.3888708318969186e-07,
-        (28, 38): 2.4508867652669657e-07,
-        (28, 39): 4.497530464863378e-16,
-        (28, 40): 1.085196098730324e-15,
-        (28, 41): 4.3126915893039534e-16,
-        (28, 42): 1.0653623657031356e-15,
-        (28, 43): 8.453910774455933e-16,
-        (28, 44): 5.961174122825455e-16,
-        (28, 45): 3.309193565665582e-16,
-        (28, 46): 1.77595121173941e-17,
-        (29, 34): 7.098063177755408e-13,
-        (29, 35): 8.975926446459445e-18,
-        (29, 36): 2.1015158396723667e-07,
-        (29, 37): 3.8365710612325815e-10,
-        (29, 38): 3.0958086815986717e-07,
-        (29, 39): 2.2793353385585177e-15,
-        (29, 40): 6.866705185569963e-15,
-        (29, 41): 8.027814915848203e-15,
-        (29, 42): 6.452940487398701e-15,
-        (29, 43): 3.834703656120446e-15,
-        (29, 44): 3.2901990393233008e-15,
-        (29, 45): 2.2815554640706586e-14,
-        (29, 46): 1.5716671448662566e-15,
-        (29, 47): 5.586153989087397e-16,
-        (29, 48): 1.946659691586303e-18,
-        (30, 34): 3.923550846032333e-19,
-        (30, 36): 6.868521256753923e-09,
-        (30, 37): 8.040889867210706e-09,
-        (30, 38): 3.062514994949566e-07,
-        (30, 39): 6.560824215500163e-08,
-        (30, 40): 1.2798154571465015e-07,
-        (30, 41): 5.2584489228373346e-14,
-        (30, 42): 4.5298289971537253e-07,
-        (30, 43): 1.4901231823107428e-13,
-        (30, 44): 8.168287793032997e-13,
-        (30, 45): 2.391445976612268e-14,
-        (30, 46): 1.6626961967523589e-13,
-        (30, 47): 3.468886069229793e-14,
-        (30, 48): 3.741914963759276e-14,
-        (30, 49): 1.548197644595237e-14,
-        (30, 50): 9.573909063859315e-22,
-        (31, 38): 2.698040110513013e-07,
-        (31, 39): 3.3457797716192167e-13,
-        (31, 40): 3.385459789117904e-07,
-        (31, 41): 1.497206857266668e-08,
-        (31, 42): 4.25384999562207e-07,
-        (31, 43): 7.729137454498417e-12,
-        (31, 44): 3.0992782927727176e-13,
-        (31, 45): 9.550209603574726e-13,
-        (31, 46): 2.3811679931159117e-13,
-        (31, 47): 2.8293971633894435e-13,
-        (31, 48): 2.2244692282102327e-13,
-        (31, 49): 8.747607697968025e-14,
-        (31, 50): 9.021615840566435e-14,
-        (31, 51): 4.726211618499431e-16,
-        (32, 38): 3.518822425856773e-12,
-        (32, 39): 2.146138076519197e-17,
-        (32, 40): 8.786821571276786e-10,
-        (32, 41): 1.637352439586579e-07,
-        (32, 42): 2.4702506988566555e-07,
-        (32, 43): 4.391476615559927e-07,
-        (32, 44): 3.087897695507159e-06,
-        (32, 45): 4.890351056125403e-06,
-        (32, 46): 2.5115042290491444e-06,
-        (32, 47): 1.4952933517505451e-12,
-        (32, 48): 2.6423436437547063e-12,
-        (32, 49): 1.2461901951965964e-12,
-        (32, 50): 9.83814373920489e-13,
-        (32, 51): 3.806952021353249e-13,
-        (32, 52): 7.472718063449909e-14,
-        (32, 53): 3.9784896887497937e-16,
-        (33, 42): 9.103126429217848e-07,
-        (33, 43): 1.9364794980974685e-11,
-        (33, 44): 7.280815673545969e-07,
-        (33, 45): 2.7531122180893717e-06,
-        (33, 46): 1.992628797199733e-10,
-        (33, 47): 1.365806886375829e-12,
-        (33, 48): 5.222570724920931e-12,
-        (33, 49): 5.28217959837513e-12,
-        (33, 50): 4.289210924735388e-12,
-        (33, 51): 1.7453341933698895e-12,
-        (33, 52): 8.752220222786646e-13,
-        (33, 53): 5.102673287560342e-13,
-        (33, 54): 9.674278013467641e-14,
-        (33, 55): 2.466504903839459e-23,
-        (34, 42): 8.855496247972613e-13,
-        (34, 43): 1.5421266281898205e-08,
-        (34, 44): 2.139803599765774e-06,
-        (34, 45): 4.530711434268795e-06,
-        (34, 46): 6.260071565141096e-06,
-        (34, 47): 4.446868940544001e-08,
-        (34, 48): 6.471473296781788e-06,
-        (34, 49): 6.131368290079535e-08,
-        (34, 50): 1.4304694828971084e-10,
-        (34, 51): 1.594476918492813e-11,
-        (34, 52): 8.939181646516463e-12,
-        (34, 53): 4.012532506204259e-12,
-        (34, 54): 1.447711363288519e-12,
-        (34, 55): 2.0192464021920966e-13,
-        (34, 56): 1.8388310162225693e-15,
-        (35, 44): 2.2684353287326724e-15,
-        (35, 45): 3.802675775553803e-21,
-        (35, 46): 7.062270207798341e-06,
-        (35, 47): 4.9114888616625e-10,
-        (35, 48): 2.4914226218502815e-06,
-        (35, 49): 6.299971679584764e-07,
-        (35, 50): 8.722043268815616e-11,
-        (35, 51): 3.497017151389568e-11,
-        (35, 52): 5.0654561915035954e-11,
-        (35, 53): 2.1290309910425315e-11,
-        (35, 54): 6.296356614901904e-12,
-        (35, 55): 3.041878200583256e-12,
-        (35, 56): 9.500374021489366e-13,
-        (35, 57): 2.4332522769633057e-13,
-        (35, 58): 1.0085147623083784e-16,
-        (36, 44): 2.247446168057366e-20,
-        (36, 46): 1.9930269139847503e-11,
-        (36, 47): 1.6636708357793023e-06,
-        (36, 48): 1.0525399702287734e-05,
-        (36, 49): 6.223407469999163e-06,
-        (36, 50): 5.740209754360258e-06,
-        (36, 51): 2.0776317032944796e-06,
-        (36, 52): 2.3122350665118277e-06,
-        (36, 53): 3.2232153137052037e-10,
-        (36, 54): 6.252328969001437e-11,
-        (36, 55): 2.0423995373691235e-11,
-        (36, 56): 4.377106750200196e-12,
-        (36, 57): 3.666758096849571e-12,
-        (36, 58): 3.815286577829525e-13,
-        (36, 59): 4.0497005998530764e-15,
-        (36, 60): 7.51398881301659e-20,
-        (37, 48): 1.013253789890559e-10,
-        (37, 49): 1.679181969717008e-15,
-        (37, 50): 5.05427145972112e-06,
-        (37, 51): 2.682390382234109e-07,
-        (37, 52): 8.475968182116505e-09,
-        (37, 53): 3.145877596243868e-10,
-        (37, 54): 1.4013309158551144e-10,
-        (37, 55): 1.351098893923337e-11,
-        (37, 56): 2.0872874392893242e-11,
-        (37, 57): 1.2830015017070817e-11,
-        (37, 58): 1.7235461489642354e-12,
-        (37, 59): 1.0501964457487025e-12,
-        (37, 60): 3.5446311145156353e-13,
-        (37, 61): 6.1535450838134144e-15,
-        (37, 62): 1.6543770839144762e-22,
-        (38, 48): 3.756624290498714e-18,
-        (38, 49): 1.0602751033433084e-20,
-        (38, 50): 1.4650484363522892e-06,
-        (38, 51): 2.3618880983871347e-06,
-        (38, 52): 3.946224790652165e-06,
-        (38, 53): 3.0959982278642833e-06,
-        (38, 54): 3.1285790906978583e-06,
-        (38, 55): 1.9814460847489112e-09,
-        (38, 56): 3.5442729867362825e-10,
-        (38, 57): 1.4093631642399515e-10,
-        (38, 58): 7.622028075360255e-12,
-        (38, 59): 3.3256079168426635e-12,
-        (38, 60): 5.3484185547736984e-12,
-        (38, 61): 1.701118257372798e-12,
-        (38, 62): 6.61758168992777e-13,
-        (38, 63): 4.327336669387223e-16,
-        (39, 50): 2.4928108010734795e-09,
-        (39, 51): 2.3683278418617598e-11,
-        (39, 52): 5.446540074432334e-07,
-        (39, 53): 2.0491659860689267e-06,
-        (39, 54): 3.3805102699493096e-06,
-        (39, 55): 4.8410232083965214e-08,
-        (39, 56): 4.945644738593302e-09,
-        (39, 57): 3.8068918940436786e-11,
-        (39, 58): 2.91723251415436e-11,
-        (39, 59): 5.54913623026602e-12,
-        (39, 60): 1.6612481323557366e-11,
-        (39, 61): 8.252761816745031e-12,
-        (39, 62): 4.5858588669973315e-12,
-        (39, 63): 1.3483401997079782e-12,
-        (39, 64): 3.982323492771872e-14,
-        (39, 65): 1.1490333933736814e-19,
-        (40, 50): 2.867753513625724e-13,
-        (40, 51): 3.139356985600816e-10,
-        (40, 52): 5.53129903964775e-07,
-        (40, 53): 5.186594075866859e-07,
-        (40, 54): 5.91748498603076e-06,
-        (40, 55): 6.165849449005616e-06,
-        (40, 56): 8.557177570259005e-06,
-        (40, 57): 7.16326545342274e-06,
-        (40, 58): 3.173404160559496e-10,
-        (40, 59): 2.3331061888688183e-11,
-        (40, 60): 9.783614028603176e-11,
-        (40, 61): 3.3614037859708706e-11,
-        (40, 62): 4.856232631348011e-11,
-        (40, 63): 2.0489744163762286e-11,
-        (40, 64): 1.3534201884510573e-11,
-        (40, 65): 3.5529460271933343e-12,
-        (40, 66): 3.5188858296443386e-14,
-        (41, 52): 2.778959769727968e-17,
-        (41, 54): 5.626300400612841e-09,
-        (41, 55): 7.99227730705508e-14,
-        (41, 56): 3.888848687493679e-07,
-        (41, 57): 2.9581853829743554e-11,
-        (41, 58): 1.6712233915923173e-10,
-        (41, 59): 2.0672800383178105e-11,
-        (41, 60): 1.0390122905415585e-10,
-        (41, 61): 7.207746151060798e-11,
-        (41, 62): 2.683098001632081e-11,
-        (41, 63): 9.739410037776667e-11,
-        (41, 64): 5.209410849228491e-11,
-        (41, 65): 2.0132846223419384e-11,
-        (41, 66): 2.451788980495473e-12,
-        (41, 67): 6.6286191411428e-14,
-        (41, 68): 2.9310674261306633e-18,
-        (42, 53): 4.8119700587532185e-12,
-        (42, 54): 3.1584248221906207e-15,
-        (42, 55): 3.187873249051841e-07,
-        (42, 56): 5.961497783160832e-06,
-        (42, 57): 6.674896034596579e-06,
-        (42, 58): 5.275811996869361e-06,
-        (42, 59): 2.7267208868895227e-08,
-        (42, 60): 1.5069869200774353e-08,
-        (42, 61): 1.2230283827675367e-09,
-        (42, 62): 1.2232990836158082e-09,
-        (42, 63): 7.639916467717192e-10,
-        (42, 64): 2.0174611316362974e-10,
-        (42, 65): 7.974125909546146e-11,
-        (42, 66): 2.469579813785875e-11,
-        (42, 67): 1.2859551114814696e-11,
-        (42, 68): 2.1105322669087333e-12,
-        (42, 69): 4.924048136875073e-14,
-        (42, 70): 9.118372582388076e-21,
-        (43, 56): 1.6029298102281883e-07,
-        (43, 57): 5.5924139594508855e-15,
-        (43, 58): 8.369522570473622e-08,
-        (43, 59): 1.1757080258201606e-10,
-        (43, 60): 9.918283910744312e-10,
-        (43, 61): 6.550020366802616e-08,
-        (43, 62): 1.0920150157411e-08,
-        (43, 63): 8.281426969846127e-10,
-        (43, 64): 4.849345070198511e-10,
-        (43, 65): 1.35651020902822e-10,
-        (43, 66): 2.793996186681645e-11,
-        (43, 67): 2.011833318142413e-11,
-        (43, 68): 7.718311283105388e-12,
-        (43, 69): 5.148934104056912e-12,
-        (43, 70): 9.753887778348314e-13,
-        (43, 71): 1.6455237786031509e-15,
-        (44, 55): 6.874395360786583e-17,
-        (44, 56): 9.455822496691471e-12,
-        (44, 57): 6.529812108461843e-06,
-        (44, 58): 5.543569323769062e-06,
-        (44, 59): 7.851389734562965e-06,
-        (44, 60): 5.411188343702584e-06,
-        (44, 61): 7.3982433113879214e-06,
-        (44, 62): 9.99919818834975e-06,
-        (44, 63): 5.3837277360558215e-09,
-        (44, 64): 7.589673031579007e-09,
-        (44, 65): 8.507967241231965e-10,
-        (44, 66): 3.159308211329794e-10,
-        (44, 67): 5.454089871478194e-11,
-        (44, 68): 4.610174176909224e-11,
-        (44, 69): 1.6965933272836073e-11,
-        (44, 70): 1.1076541077832673e-11,
-        (44, 71): 2.3131146087565298e-12,
-        (44, 72): 8.246265251688055e-14,
-        (44, 73): 7.866565676313759e-18,
-        (45, 58): 1.2739035146237079e-08,
-        (45, 59): 1.2428898757935595e-15,
-        (45, 60): 2.733622939092305e-06,
-        (45, 61): 9.567647722525779e-12,
-        (45, 62): 2.3419794974902164e-07,
-        (45, 63): 4.687303412135353e-10,
-        (45, 64): 2.003206907343032e-09,
-        (45, 65): 8.794112078076617e-11,
-        (45, 66): 2.836104897902667e-10,
-        (45, 67): 8.962255767372015e-11,
-        (45, 68): 7.009350133989663e-11,
-        (45, 69): 5.067621411487696e-11,
-        (45, 70): 2.5989453745264083e-11,
-        (45, 71): 1.504379131493133e-11,
-        (45, 72): 6.350167381673609e-12,
-        (45, 73): 1.5998575619860567e-12,
-        (45, 74): 4.469369618872965e-14,
-        (45, 75): 1.6247275964644184e-20,
-        (46, 58): 3.879114960185547e-13,
-        (46, 59): 5.968959197662555e-08,
-        (46, 60): 1.8017941659024628e-09,
-        (46, 61): 1.157692150853466e-05,
-        (46, 62): 2.4636730147087162e-05,
-        (46, 63): 2.7701023074451927e-05,
-        (46, 64): 4.766416576609212e-05,
-        (46, 65): 7.727914168954787e-07,
-        (46, 66): 3.128868663964542e-05,
-        (46, 67): 2.3717983062331396e-09,
-        (46, 68): 4.095473898784136e-09,
-        (46, 69): 6.590178097957998e-10,
-        (46, 70): 3.138754152828658e-10,
-        (46, 71): 1.068034232449744e-10,
-        (46, 72): 3.835140848770662e-11,
-        (46, 73): 1.6320981499512218e-11,
-        (46, 74): 3.5808040590712986e-12,
-        (46, 75): 1.1206878961566996e-13,
-        (46, 76): 3.622923316550405e-15,
-        (47, 60): 2.3663723861833915e-16,
-        (47, 61): 8.194511453552651e-23,
-        (47, 62): 3.311965537015363e-06,
-        (47, 63): 1.833969024675605e-13,
-        (47, 64): 3.94132537939874e-05,
-        (47, 65): 1.90878640773196e-06,
-        (47, 66): 2.6276514362260186e-05,
-        (47, 67): 1.299882695882794e-10,
-        (47, 68): 3.299112698882091e-07,
-        (47, 69): 6.424765788742418e-09,
-        (47, 70): 1.8547491163658976e-09,
-        (47, 71): 8.757523641710354e-11,
-        (47, 72): 1.2698320155464935e-10,
-        (47, 73): 3.049864586359017e-11,
-        (47, 74): 1.1489064865834993e-11,
-        (47, 75): 5.602206870117723e-12,
-        (47, 76): 9.93354863727005e-13,
-        (47, 77): 2.770262966184515e-14,
-        (47, 78): 1.358342609286647e-19,
-        (48, 60): 2.8295870981263614e-21,
-        (48, 62): 1.1127356346106907e-10,
-        (48, 63): 2.7019187796878085e-07,
-        (48, 64): 5.338107725093629e-07,
-        (48, 65): 8.808617555298163e-06,
-        (48, 66): 3.20895895692327e-05,
-        (48, 67): 3.008618706441382e-05,
-        (48, 68): 2.6559341328465052e-05,
-        (48, 69): 1.5480863197440685e-05,
-        (48, 70): 3.630039229213544e-06,
-        (48, 71): 3.5379058591178954e-09,
-        (48, 72): 1.0310519718378888e-09,
-        (48, 73): 2.2661292758071382e-10,
-        (48, 74): 7.802955708793501e-11,
-        (48, 75): 2.3099598030138277e-11,
-        (48, 76): 1.2399980330550155e-11,
-        (48, 77): 4.553122385926125e-12,
-        (48, 78): 2.2561597972544416e-13,
-        (48, 79): 7.11873837242316e-15,
-        (48, 80): 4.64846195384038e-20,
-        (49, 66): 7.144258356159721e-07,
-        (49, 67): 2.6017004994649263e-14,
-        (49, 68): 4.915245031302886e-06,
-        (49, 69): 6.023949444229198e-09,
-        (49, 70): 3.2617169649499686e-09,
-        (49, 71): 6.255766890079109e-11,
-        (49, 72): 3.897487055070064e-10,
-        (49, 73): 2.2343908373878e-11,
-        (49, 74): 7.792995447629318e-11,
-        (49, 75): 3.691654052880547e-11,
-        (49, 76): 2.611014743311094e-11,
-        (49, 77): 1.5380478828164354e-11,
-        (49, 78): 9.302571828655678e-12,
-        (49, 79): 3.408860905711463e-12,
-        (49, 80): 1.873221015294219e-13,
-        (49, 81): 1.7411759643367605e-17,
-        (50, 66): 1.5475949372974968e-11,
-        (50, 67): 8.491514838476481e-06,
-        (50, 68): 1.970839774513399e-05,
-        (50, 69): 2.4047851006799963e-05,
-        (50, 70): 2.378759617314161e-05,
-        (50, 71): 2.71509282096531e-05,
-        (50, 72): 2.2934492889484717e-05,
-        (50, 73): 2.384429150201167e-05,
-        (50, 74): 2.119781005329415e-05,
-        (50, 75): 8.948068995003671e-05,
-        (50, 76): 0.00017827886323559488,
-        (50, 77): 0.0004949975302450281,
-        (50, 78): 0.0010550165701705288,
-        (50, 79): 1.7623372521358582e-09,
-        (50, 80): 2.6058095021133674e-09,
-        (50, 81): 3.4164148958419413e-10,
-        (50, 82): 1.2687417822613138e-11,
-        (50, 83): 2.219989662135499e-19,
-        (51, 70): 1.6253042890124776e-06,
-        (51, 71): 8.008646820106952e-11,
-        (51, 72): 1.2156384343571939e-08,
-        (51, 73): 7.651049227558554e-13,
-        (51, 74): 6.164946670498779e-07,
-        (51, 75): 3.4743203188211205e-11,
-        (51, 76): 0.0005541700261741622,
-        (51, 77): 0.003786424318521629,
-        (51, 78): 0.023441695559365133,
-        (51, 79): 0.0024582874466173694,
-        (51, 80): 0.001372526084195079,
-        (51, 81): 3.1569902622234427e-09,
-        (51, 82): 1.1715233580646705e-09,
-        (51, 83): 3.886906640649112e-13,
-        (51, 84): 3.367697539367917e-14,
-        (52, 70): 1.4140316873661144e-12,
-        (52, 71): 1.9606696331668215e-17,
-        (52, 72): 7.071653882493421e-16,
-        (52, 73): 2.0370858125639023e-11,
-        (52, 74): 1.6744410259000684e-13,
-        (52, 75): 5.0929924463839635e-06,
-        (52, 76): 0.0004391868020932847,
-        (52, 77): 0.00529698839433998,
-        (52, 78): 0.022205096424140706,
-        (52, 79): 0.006516893244991944,
-        (52, 80): 0.08977868548840638,
-        (52, 81): 1.9641784961378128e-05,
-        (52, 82): 0.008479380215415703,
-        (52, 83): 3.405125159771696e-10,
-        (52, 84): 1.658204996674113e-10,
-        (52, 85): 7.615876243932464e-13,
-        (52, 86): 2.7949780238888415e-18,
-        (53, 74): 3.141470834417253e-07,
-        (53, 75): 8.072522808159738e-13,
-        (53, 76): 0.004715188088582197,
-        (53, 77): 4.0194132831247765e-08,
-        (53, 78): 0.07197482320218584,
-        (53, 79): 0.0013165072112010228,
-        (53, 80): 0.02738047336136532,
-        (53, 81): 0.024388444930194125,
-        (53, 82): 0.00752268851213735,
-        (53, 83): 2.4090078737292387e-09,
-        (53, 84): 6.501594483575706e-10,
-        (53, 85): 6.640157757539762e-11,
-        (53, 86): 1.913877387884259e-12,
-        (53, 87): 2.658442961990819e-13,
-        (53, 88): 5.541386262904644e-20,
-        (54, 74): 1.2379676063878006e-12,
-        (54, 75): 2.0430971660867037e-14,
-        (54, 76): 2.441420930014615e-09,
-        (54, 77): 0.00034176737814847123,
-        (54, 78): 0.0004931093555695662,
-        (54, 79): 0.00181430773480129,
-        (54, 80): 0.04941787988578467,
-        (54, 81): 0.0018738424774860023,
-        (54, 82): 0.01414126365426733,
-        (54, 83): 7.3946883999026766e-09,
-        (54, 84): 5.643368341440968e-05,
-        (54, 85): 1.0752615378651954e-09,
-        (54, 86): 3.4286830998393124e-10,
-        (54, 87): 1.5751373284069566e-11,
-        (54, 88): 6.437061456500149e-13,
-        (54, 89): 9.400162224712024e-15,
-        (55, 78): 1.0103013936405157e-05,
-        (55, 79): 6.639022025645653e-11,
-        (55, 80): 0.00017508666867373145,
-        (55, 81): 9.825128056040087e-10,
-        (55, 82): 0.012670386948323564,
-        (55, 83): 0.00431875330930714,
-        (55, 84): 3.6749726503710164e-07,
-        (55, 85): 2.208143771673354e-09,
-        (55, 86): 7.052099378326065e-10,
-        (55, 87): 4.741193228786236e-11,
-        (55, 88): 3.6285686877753714e-11,
-        (55, 89): 8.595315117041287e-12,
-        (55, 90): 1.5633899409949438e-13,
-        (55, 91): 3.072218973002651e-20,
-        (56, 78): 2.145873464892928e-15,
-        (56, 79): 8.287682016049695e-15,
-        (56, 80): 2.2836956227868407e-12,
-        (56, 81): 7.311557138182178e-08,
-        (56, 82): 0.03908214552291092,
-        (56, 83): 0.0027452639770256,
-        (56, 84): 0.009668015695278824,
-        (56, 85): 6.191821441476833e-06,
-        (56, 86): 1.406234198693149e-07,
-        (56, 87): 4.758119537668278e-10,
-        (56, 88): 3.2950484379024714e-10,
-        (56, 89): 9.814480429131756e-11,
-        (56, 90): 1.7699140095798952e-11,
-        (56, 91): 3.421500799784375e-13,
-        (56, 92): 8.450084006253293e-15,
-        (56, 93): 1.9741746890869377e-20,
-        (57, 82): 0.004860199667181408,
-        (57, 83): 4.87660238561062e-05,
-        (57, 84): 0.0007543596038252696,
-        (57, 85): 0.00031188727469820494,
-        (57, 86): 7.088679622394049e-07,
-        (57, 87): 1.3824893779896386e-09,
-        (57, 88): 7.643060781634252e-10,
-        (57, 89): 1.5902015296743303e-10,
-        (57, 90): 9.643099453419985e-11,
-        (57, 91): 2.1035896555639098e-11,
-        (57, 92): 6.198485355978624e-12,
-        (57, 93): 8.442879096736899e-14,
-        (57, 94): 4.44402259512148e-15,
-        (58, 82): 9.614957010013207e-07,
-        (58, 83): 0.0002901405458448422,
-        (58, 84): 0.00047175624230583153,
-        (58, 85): 0.00047705159097495206,
-        (58, 86): 0.0005761184760173033,
-        (58, 87): 5.784519818185516e-09,
-        (58, 88): 6.317018763511267e-07,
-        (58, 89): 1.5915366566645396e-09,
-        (58, 90): 1.5451157749235456e-09,
-        (58, 91): 9.919404019099273e-11,
-        (58, 92): 1.1510404082066397e-10,
-        (58, 93): 1.1980536273227228e-11,
-        (58, 94): 4.538819364185836e-13,
-        (58, 95): 7.98896910985905e-14,
-        (58, 96): 1.7414861783271294e-20,
-        (59, 82): 2.660225326140368e-07,
-        (59, 83): 9.054983337489589e-13,
-        (59, 84): 1.9861651099344316e-05,
-        (59, 85): 2.419311574484936e-08,
-        (59, 86): 0.0004257624078697521,
-        (59, 87): 2.6979392532905293e-05,
-        (59, 88): 8.226150406246602e-07,
-        (59, 89): 3.84645828180225e-09,
-        (59, 90): 3.303585714977309e-09,
-        (59, 91): 1.424592226286395e-10,
-        (59, 92): 3.7503885007701623e-10,
-        (59, 93): 5.343710219577956e-11,
-        (59, 94): 3.674436461295892e-11,
-        (59, 95): 7.0181077536024614e-12,
-        (59, 96): 1.468354806806018e-13,
-        (59, 97): 1.6384149777182538e-15,
-        (60, 82): 2.846345763846909e-14,
-        (60, 83): 4.2973957359163113e-08,
-        (60, 84): 1.0886087059771149e-07,
-        (60, 85): 0.00012414445130774155,
-        (60, 86): 0.0005955965410233968,
-        (60, 87): 0.0008125248381614189,
-        (60, 88): 0.0015562201221171641,
-        (60, 89): 0.0005698041126643981,
-        (60, 90): 0.0013172874982388407,
-        (60, 91): 8.682329396519345e-07,
-        (60, 92): 3.885374620812782e-07,
-        (60, 93): 4.831597433693298e-10,
-        (60, 94): 3.0117577179284627e-10,
-        (60, 95): 7.713136359638007e-11,
-        (60, 96): 2.4844136657414356e-11,
-        (60, 97): 1.509033786477472e-12,
-        (60, 98): 1.9326641824132883e-14,
-        (60, 99): 2.1056997007965846e-20,
-        (61, 86): 4.179329821480845e-06,
-        (61, 87): 1.524969039273784e-10,
-        (61, 88): 0.0008121113487248512,
-        (61, 89): 5.818225777883846e-08,
-        (61, 90): 0.001493503547084651,
-        (61, 91): 2.1924661607583374e-07,
-        (61, 92): 5.185501233659742e-09,
-        (61, 93): 2.3573280934720428e-09,
-        (61, 94): 4.405863209020285e-10,
-        (61, 95): 2.5575486841034855e-10,
-        (61, 96): 6.668051778114646e-11,
-        (61, 97): 1.8830263531512678e-11,
-        (61, 98): 1.2262991731176607e-12,
-        (61, 99): 3.980331959809802e-14,
-        (61, 100): 1.0380665268052717e-14,
-        (61, 101): 1.2975207912735558e-21,
-        (62, 85): 1.269453057242486e-10,
-        (62, 86): 1.0082332750410623e-12,
-        (62, 87): 1.3768466730792137e-05,
-        (62, 88): 2.9582888058592086e-08,
-        (62, 89): 7.42482562269849e-05,
-        (62, 90): 0.001384021698702897,
-        (62, 91): 0.0008938831318100172,
-        (62, 92): 0.0013309754101674279,
-        (62, 93): 1.7375247888106962e-05,
-        (62, 94): 0.0010713809239729026,
-        (62, 95): 2.302390388018306e-08,
-        (62, 96): 2.174985660617197e-09,
-        (62, 97): 4.646184326477402e-11,
-        (62, 98): 3.302321056737034e-11,
-        (62, 99): 7.084760721968465e-12,
-        (62, 100): 1.090973811600183e-12,
-        (62, 101): 8.725431542527086e-15,
-        (62, 102): 7.492783070031728e-16,
-        (63, 88): 6.721655627877742e-11,
-        (63, 89): 3.0785265190659707e-15,
-        (63, 90): 2.930560839485674e-05,
-        (63, 91): 4.368376196411209e-09,
-        (63, 92): 0.0011424600154012236,
-        (63, 93): 0.00019636492202268398,
-        (63, 94): 0.0017869770030016525,
-        (63, 95): 0.000295288407764226,
-        (63, 96): 1.7947188961786894e-05,
-        (63, 97): 1.900725029684469e-10,
-        (63, 98): 8.219117462041534e-11,
-        (63, 99): 5.3581433160132865e-11,
-        (63, 100): 9.644659851100176e-12,
-        (63, 101): 1.0238660889563823e-12,
-        (63, 102): 2.9914603803786286e-14,
-        (63, 103): 4.146745663296523e-15,
-        (64, 88): 3.828625601167929e-21,
-        (64, 90): 5.420258909003983e-14,
-        (64, 91): 3.3784773313279296e-08,
-        (64, 92): 4.409546324614019e-07,
-        (64, 93): 0.00017950599753322022,
-        (64, 94): 0.0017714398002044425,
-        (64, 95): 0.0030221529178916374,
-        (64, 96): 0.004019011915263824,
-        (64, 97): 1.3747546177434866e-09,
-        (64, 98): 7.801611605407935e-08,
-        (64, 99): 1.3743169900288532e-10,
-        (64, 100): 5.968197125442628e-11,
-        (64, 101): 1.0509529058007799e-11,
-        (64, 102): 2.3540050985114053e-12,
-        (64, 103): 2.6632735885687664e-13,
-        (64, 104): 3.838915853976611e-15,
-        (64, 105): 8.086973420506725e-17,
-        (65, 94): 0.00021889529933834947,
-        (65, 95): 1.8420410055035238e-08,
-        (65, 96): 0.0051159369928824435,
-        (65, 97): 5.104043013134853e-07,
-        (65, 98): 6.715632396625395e-05,
-        (65, 99): 3.6571532472779054e-10,
-        (65, 100): 1.5616483810944804e-10,
-        (65, 101): 3.026964998528553e-11,
-        (65, 102): 1.0125483778744541e-11,
-        (65, 103): 4.2355381011406135e-12,
-        (65, 104): 8.785895141548643e-13,
-        (65, 105): 3.4621687533716765e-15,
-        (65, 106): 3.0401528659521413e-18,
-        (66, 94): 9.120513568102676e-12,
-        (66, 95): 4.7290639523734116e-05,
-        (66, 96): 0.004759313637629454,
-        (66, 97): 0.00790527378436746,
-        (66, 98): 0.005803007864616735,
-        (66, 99): 0.0033906522898027383,
-        (66, 100): 0.0042520405654584235,
-        (66, 101): 3.216738686947844e-09,
-        (66, 102): 1.3070090442578946e-07,
-        (66, 103): 1.5370429940263495e-11,
-        (66, 104): 1.3644204891735522e-11,
-        (66, 105): 9.806079763056952e-14,
-        (66, 106): 2.912243992174634e-15,
-        (66, 107): 3.576394466289812e-18,
-        (67, 98): 0.0031949440363052877,
-        (67, 99): 8.116847736582442e-05,
-        (67, 100): 0.003590589712560569,
-        (67, 101): 7.120796799436772e-08,
-        (67, 102): 1.349851569128132e-10,
-        (67, 103): 5.2547037028790394e-11,
-        (67, 104): 9.094847503524868e-12,
-        (67, 105): 3.077710442032444e-12,
-        (67, 106): 1.3738692847562457e-13,
-        (67, 107): 2.836276452694435e-16,
-        (68, 98): 2.4394807708271984e-06,
-        (68, 99): 0.002192733149396067,
-        (68, 100): 0.005764592240644999,
-        (68, 101): 0.003399272772868292,
-        (68, 102): 0.003082962431258793,
-        (68, 103): 0.003160715611281968,
-        (68, 104): 0.003325812475056546,
-        (68, 105): 7.439528540867637e-11,
-        (68, 106): 1.5012345793987074e-11,
-        (68, 107): 5.776135329363036e-14,
-        (68, 108): 1.7037739701643757e-15,
-        (68, 109): 1.4268311347303852e-19,
-        (69, 100): 2.2696349771545793e-05,
-        (69, 101): 1.3033115153956992e-09,
-        (69, 102): 0.0007364536543049477,
-        (69, 103): 0.00010720320218000449,
-        (69, 104): 0.003181672060264477,
-        (69, 105): 3.2624852689250347e-09,
-        (69, 106): 7.508053520456339e-06,
-        (69, 107): 4.2064136581958745e-12,
-        (69, 108): 4.1992581856686305e-15,
-        (69, 109): 6.601145621530041e-18,
-        (70, 100): 3.9668724134324053e-13,
-        (70, 101): 3.581998680183735e-08,
-        (70, 102): 1.3531556586164089e-06,
-        (70, 103): 0.000665112965983352,
-        (70, 104): 0.004565186868623065,
-        (70, 105): 0.0033368551889722967,
-        (70, 106): 0.0038965654814280166,
-        (70, 107): 0.0014959000526484562,
-        (70, 108): 0.0012184264364590099,
-        (70, 109): 2.7590676051427577e-08,
-        (70, 110): 3.5137577475851056e-15,
-        (70, 111): 3.084451075255323e-23,
-        (70, 112): 1.9287267287874196e-22,
-        (71, 104): 4.415779305070263e-05,
-        (71, 105): 1.7002468500081025e-09,
-        (71, 106): 0.0018790683494401509,
-        (71, 107): 0.00065993219095562,
-        (71, 108): 0.0021385644447888628,
-        (71, 109): 3.082278068981989e-09,
-        (71, 110): 2.53675126707242e-14,
-        (71, 111): 1.9668475497737257e-20,
-        (72, 105): 1.0518954521820105e-05,
-        (72, 106): 0.0024968894445948496,
-        (72, 107): 0.000792779373340489,
-        (72, 108): 0.0033707133119760656,
-        (72, 109): 0.0023229929189725333,
-        (72, 110): 0.002292137672551246,
-        (72, 111): 0.00020352154967537053,
-        (72, 112): 0.000750856827458031,
-        (72, 113): 4.054814954167616e-11,
-        (72, 114): 6.2002936051830255e-18,
-        (73, 108): 3.455396475792914e-06,
-        (73, 109): 1.4752672419454122e-10,
-        (73, 110): 0.0007321674218558078,
-        (73, 111): 0.0003182783765005391,
-        (73, 112): 5.531476090334698e-05,
-        (73, 113): 1.1331365685693492e-07,
-        (73, 114): 6.753686817653551e-14,
-        (73, 115): 1.155998206703345e-21,
-        (74, 108): 5.0103803918941133e-14,
-        (74, 109): 5.871923661146703e-06,
-        (74, 110): 3.1890192008879467e-05,
-        (74, 111): 0.00029529836304365427,
-        (74, 112): 0.0006291326949596788,
-        (74, 113): 0.00028371409854610716,
-        (74, 114): 0.0006976332322896861,
-        (74, 115): 1.5785964262288223e-07,
-        (74, 116): 0.000102297003400733,
-        (74, 117): 1.1793227550778828e-13,
-        (74, 118): 2.4266131112326733e-21,
-        (75, 110): 1.6267508394135422e-07,
-        (75, 111): 3.291639424656539e-12,
-        (75, 112): 1.8788881079036706e-05,
-        (75, 113): 6.248088326801046e-07,
-        (75, 114): 0.0007992471848923699,
-        (75, 115): 1.178916136167853e-05,
-        (75, 116): 1.792927292964219e-07,
-        (75, 117): 4.350113013264676e-15,
-        (75, 118): 2.7724046596759863e-08,
-        (75, 119): 6.261826656140272e-17,
-        (76, 110): 2.4474411362286434e-14,
-        (76, 111): 1.900382041190099e-19,
-        (76, 112): 2.9399988488507804e-08,
-        (76, 113): 4.687390281727068e-05,
-        (76, 114): 0.0022856141289452543,
-        (76, 115): 0.002433507439958045,
-        (76, 116): 0.009313234532495418,
-        (76, 117): 0.017010090338736197,
-        (76, 118): 0.05103416824496645,
-        (76, 119): 6.232379960336069e-08,
-        (76, 120): 0.007269346701977294,
-        (76, 121): 2.416938152273086e-10,
-        (76, 122): 2.8843934545627073e-06,
-        (76, 123): 1.442953671375164e-15,
-        (77, 114): 9.654786585551587e-06,
-        (77, 115): 3.303699516689867e-10,
-        (77, 116): 0.0008599765720329166,
-        (77, 117): 1.4973421187527638e-06,
-        (77, 118): 0.04485325057934541,
-        (77, 119): 0.0001851166074073327,
-        (77, 120): 2.5444008809062123e-08,
-        (77, 121): 3.8903126141506206e-08,
-        (77, 122): 2.2108149235296978e-15,
-        (77, 123): 5.153820715107516e-23,
-        (78, 114): 1.611389538590975e-13,
-        (78, 115): 2.013986801482756e-18,
-        (78, 116): 6.276839749068187e-08,
-        (78, 117): 0.04044491457482553,
-        (78, 118): 0.10025253947699177,
-        (78, 119): 0.08882711097032245,
-        (78, 120): 0.0315532792750547,
-        (78, 121): 0.0003654116484533768,
-        (78, 122): 0.0013841377286955628,
-        (78, 123): 1.222912455963321e-11,
-        (78, 124): 0.00017470312783945366,
-        (78, 125): 1.915117165814097e-13,
-        (78, 126): 7.958468076126777e-23,
-        (79, 118): 0.00667691023016813,
-        (79, 119): 1.655253448553885e-07,
-        (79, 120): 0.007322382096876807,
-        (79, 121): 7.936687976639209e-05,
-        (79, 122): 6.854335664814223e-06,
-        (79, 123): 3.1328577840438924e-08,
-        (79, 124): 5.37026045172238e-13,
-        (79, 125): 3.550009199822564e-21,
-        (80, 118): 2.220570169664351e-09,
-        (80, 119): 0.00011218179570185278,
-        (80, 120): 0.00010503627384002939,
-        (80, 121): 0.0002145089260285422,
-        (80, 122): 6.3521490574131735e-06,
-        (80, 123): 4.8620044165798526e-05,
-        (80, 124): 7.181075263791588e-05,
-        (80, 125): 2.840881850120149e-12,
-        (80, 126): 2.260302323509424e-09,
-        (80, 127): 8.003310320424991e-18,
-        (80, 128): 3.78401322924511e-05,
-        (80, 129): 1.9730841016359462e-15,
-        (81, 122): 6.771975044494191e-08,
-        (81, 123): 2.660293041840247e-13,
-        (81, 124): 5.428666621919115e-05,
-        (81, 125): 2.309758273787298e-09,
-        (81, 126): 9.904661928838597e-06,
-        (81, 127): 3.968465837741922e-06,
-        (81, 128): 8.925562536787066e-08,
-        (81, 129): 4.658205092509753e-10,
-        (81, 130): 3.8563972669233004e-18,
-        (82, 122): 7.788063403946254e-18,
-        (82, 124): 0.0001424414977192285,
-        (82, 125): 0.0005245412617215834,
-        (82, 126): 0.00037429381100858515,
-        (82, 127): 0.0004774584647081263,
-        (82, 128): 0.000919408693321405,
-        (82, 129): 6.615943175573833e-05,
-        (82, 130): 0.0007326982799847714,
-        (82, 131): 5.218538772746563e-07,
-        (82, 132): 1.7992150882774157e-05,
-        (82, 133): 9.453394264570559e-07,
-        (82, 134): 4.883745929442486e-15,
-        (83, 126): 0.00020493002697115893,
-        (83, 127): 5.91042357220516e-09,
-        (83, 128): 4.103947216497746e-06,
-        (83, 129): 5.704993737640164e-05,
-        (83, 130): 8.789191247081695e-05,
-        (83, 131): 3.32501098507311e-05,
-        (83, 132): 3.8779104056358135e-06,
-        (83, 133): 2.1719661987309891e-13,
-        (83, 134): 2.863907883534937e-20,
-        (83, 136): 1.5081461366994637e-22,
-        (84, 126): 3.433354171219833e-11,
-        (84, 127): 4.552833481386972e-11,
-        (84, 128): 2.964388856490295e-15,
-        (84, 129): 1.1659472824947946e-13,
-        (84, 130): 4.558406849294183e-12,
-        (84, 131): 1.518230707029653e-11,
-        (84, 132): 9.073044945254237e-11,
-        (84, 133): 2.6391194351034538e-09,
-        (84, 134): 1.6751195402841718e-07,
-        (84, 135): 1.4067062788511243e-05,
-        (84, 136): 3.7138297590940383e-13,
-        (84, 137): 6.305094277514647e-22,
-        (84, 138): 1.0828100688777844e-08,
-        (84, 139): 5.102748622585078e-21,
-        (85, 130): 1.9608201942671736e-14,
-        (85, 132): 7.119656567010336e-11,
-        (85, 133): 2.700572274857561e-13,
-        (85, 134): 4.492038046139498e-11,
-        (85, 135): 7.629955269613022e-13,
-        (85, 136): 7.648769700377066e-20,
-        (85, 137): 1.1883716579392717e-09,
-        (85, 138): 1.0809464365027068e-17,
-        (85, 139): 1.7050900866762618e-19,
-        (86, 131): 1.5155108325169818e-16,
-        (86, 132): 1.0714102693115051e-17,
-        (86, 133): 8.73863150009007e-10,
-        (86, 134): 3.5431700146885075e-08,
-        (86, 135): 3.550271652451957e-06,
-        (86, 136): 0.0003029090755477173,
-        (86, 137): 5.170638483082292e-06,
-        (86, 138): 0.00015415134892364532,
-        (86, 139): 9.28072339862161e-13,
-        (86, 140): 1.6073399912159205e-09,
-        (86, 141): 1.3744380456157378e-20,
-        (87, 134): 6.364900000235822e-07,
-        (87, 135): 1.1501441784453779e-13,
-        (87, 136): 1.6279241808971068e-05,
-        (87, 137): 4.951506225653773e-06,
-        (87, 138): 4.985191308951835e-12,
-        (87, 139): 1.9939200949193404e-10,
-        (87, 140): 5.42781664243994e-19,
-        (88, 133): 3.0247646217315497e-12,
-        (88, 134): 4.701671535987349e-15,
-        (88, 135): 0.00022209264388063199,
-        (88, 136): 0.00020495915855314146,
-        (88, 137): 0.0002978186078642228,
-        (88, 138): 0.0004485777727239677,
-        (88, 139): 3.510388379906796e-05,
-        (88, 140): 0.0005655150380823367,
-        (88, 141): 1.0014627346697562e-13,
-        (88, 142): 0.0002330811472781996,
-        (88, 143): 2.393377979771355e-15,
-        (88, 144): 7.100473256049638e-14,
-        (88, 145): 4.760529186442873e-23,
-        (89, 136): 1.201771302708931e-06,
-        (89, 137): 1.3037903138611864e-14,
-        (89, 138): 0.00027509023118373483,
-        (89, 139): 1.5611123451357116e-08,
-        (89, 140): 9.736991557318172e-05,
-        (89, 141): 5.209993087875339e-06,
-        (89, 142): 2.5451377409063687e-09,
-        (89, 143): 6.974085959464298e-14,
-        (89, 144): 2.646398441603589e-19,
-        (89, 147): 1.2572200951387355e-12,
-        (89, 148): 2.882356249398703e-22,
-        (90, 136): 1.44313762710332e-16,
-        (90, 137): 1.4693496988547585e-09,
-        (90, 138): 2.088498453927818e-09,
-        (90, 139): 0.00031136141584045307,
-        (90, 140): 0.0004070775453801844,
-        (90, 141): 0.00042358570081234645,
-        (90, 142): 0.000500953362464162,
-        (90, 143): 8.946542556964837e-06,
-        (90, 144): 0.0007957289679125669,
-        (90, 145): 2.1070127972802746e-09,
-        (90, 146): 7.06352219387763e-05,
-        (90, 147): 3.6228275117200216e-12,
-        (90, 148): 1.8284212841861895e-08,
-        (90, 149): 1.7534654460279992e-17,
-        (91, 140): 2.4424815452822467e-05,
-        (91, 141): 3.6214900472726965e-13,
-        (91, 142): 0.0005805574895884075,
-        (91, 143): 1.9266603884535976e-06,
-        (91, 144): 2.1561410765142053e-05,
-        (91, 145): 2.2775677994568458e-05,
-        (91, 146): 2.8603399844392067e-08,
-        (91, 147): 5.855665609330731e-09,
-        (91, 148): 0.00011368605910507375,
-        (91, 149): 1.527251473497947e-13,
-        (91, 150): 2.641291621167574e-22,
-        (92, 140): 1.0572733758673837e-14,
-        (92, 141): 1.0786119613669408e-06,
-        (92, 142): 2.3561078622933838e-07,
-        (92, 143): 0.0006778867938880007,
-        (92, 144): 0.0006939869662705961,
-        (92, 145): 0.0005661449752125268,
-        (92, 146): 0.0003749784142576571,
-        (92, 147): 3.0173605786390947e-05,
-        (92, 148): 0.00013188049021997254,
-        (92, 149): 2.7511632001030037e-15,
-        (92, 150): 3.653630946197205e-07,
-        (92, 151): 2.3999687384016165e-14,
-        (92, 152): 1.666821667876146e-16,
-        (93, 144): 4.784842612307313e-06,
-        (93, 145): 4.6224930637923794e-14,
-        (93, 146): 0.00012857816162567296,
-        (93, 147): 7.871555335699072e-06,
-        (93, 148): 1.3925678154054415e-07,
-        (93, 149): 5.505473506754784e-08,
-        (93, 150): 3.253910360368232e-14,
-        (93, 151): 3.629853834903883e-16,
-        (94, 144): 8.146597660593724e-16,
-        (94, 145): 1.6729663746035363e-06,
-        (94, 146): 7.722902514503417e-06,
-        (94, 147): 9.953741403919081e-05,
-        (94, 148): 9.539918775932217e-05,
-        (94, 149): 4.617592294550349e-05,
-        (94, 150): 8.160732407084723e-05,
-        (94, 151): 4.189434409931446e-05,
-        (94, 152): 8.420045109740208e-05,
-        (94, 153): 4.4354354615359466e-05,
-        (94, 154): 2.946802244190642e-10,
-        (94, 155): 7.462745963135181e-19,
-        (94, 156): 7.57947840227764e-23,
-        (95, 146): 1.0454815033238425e-09,
-        (95, 147): 5.977432452179712e-18,
-        (95, 148): 1.6093688261982705e-05,
-        (95, 149): 1.1370750688697398e-13,
-        (95, 150): 4.691215628640435e-06,
-        (95, 151): 1.9208985035157098e-07,
-        (95, 152): 3.0892728266323245e-07,
-        (95, 153): 1.974472057031667e-10,
-        (95, 154): 1.2586316781833212e-12,
-        (95, 155): 6.633447858659327e-21,
-        (96, 146): 2.524728468286442e-19,
-        (96, 148): 1.1876518167967381e-14,
-        (96, 149): 2.1105973837699827e-06,
-        (96, 150): 3.219840940796489e-07,
-        (96, 151): 1.0009128488041935e-06,
-        (96, 152): 6.782206237361578e-05,
-        (96, 153): 9.877536841447543e-06,
-        (96, 154): 2.4637652177747596e-05,
-        (96, 155): 9.227053369380382e-08,
-        (96, 156): 1.7864046966967554e-05,
-        (96, 157): 3.1843429330382775e-10,
-        (96, 158): 5.781799506609079e-08,
-        (96, 159): 1.227268229010037e-19,
-        (96, 160): 3.862240169207326e-21,
-        (97, 152): 2.9473971429193343e-05,
-        (97, 153): 2.395186414976764e-12,
-        (97, 154): 5.9607791677583944e-06,
-        (97, 155): 8.012902381015885e-07,
-        (97, 156): 1.3479687755239318e-06,
-        (97, 157): 2.5161297209164154e-08,
-        (97, 158): 1.771901156234015e-10,
-        (97, 159): 1.515441849946671e-15,
-        (97, 160): 1.9188120380386513e-15,
-        (98, 151): 3.438734597909422e-09,
-        (98, 152): 8.909212541981125e-13,
-        (98, 153): 1.8521366796750675e-05,
-        (98, 154): 1.7653867060566037e-06,
-        (98, 155): 4.382277068620514e-06,
-        (98, 156): 3.981191129275365e-06,
-        (98, 157): 7.795419507346261e-07,
-        (98, 158): 2.2497759838522334e-09,
-        (98, 159): 4.09602345088566e-08,
-        (98, 160): 1.1518581965424049e-06,
-        (98, 161): 4.121915412325569e-11,
-        (98, 162): 5.842149402363841e-09,
-        (98, 163): 3.351504589448925e-21,
-        (99, 154): 9.806630957762736e-09,
-        (99, 155): 1.3388534058862815e-19,
-        (99, 156): 1.2824767234166165e-06,
-        (99, 157): 3.293360530866396e-16,
-        (99, 158): 7.028820206453398e-08,
-        (99, 159): 7.294894527384282e-10,
-        (99, 160): 5.481495667482413e-12,
-        (99, 161): 1.7826769909515782e-10,
-        (99, 162): 8.385709597659692e-22,
-        (100, 155): 9.881878083632129e-10,
-        (100, 156): 1.048912537286759e-15,
-        (100, 157): 3.7422468753098786e-10,
-        (100, 158): 1.2184817169171942e-16,
-        (100, 159): 1.0451992157354727e-14,
-        (100, 160): 9.49669869192098e-09,
-        (100, 161): 1.8851235479804257e-11,
-        (100, 162): 4.043901814477197e-12,
-        (100, 163): 2.048590052703321e-18,
-        (101, 160): 3.7665160156354723e-13,
-        (101, 162): 2.626364863419118e-18,
-        (102, 159): 2.0727160885628824e-18,
-        (102, 161): 4.2496685570656285e-20,
-        # this value needs float64. An earlier reader gave time/s at float32, and the integration lost precision
-        "q": 5351333204182925.0,
-    }
+    dfexpected = pl.read_csv(at.get_path("testdata") / "kilonova" / f"trajectory_{particleid}_massfractions.csv")
+    nuclidekeys = list(zip(dfexpected["Z"], dfexpected["N"], strict=True))
+    missingkeys = [key for key in nuclidekeys if key not in abund_q]
+    assert not missingkeys, f"Keys {missingkeys} not found in abund_q"
+    massfracs = np.array([abund_q[key] for key in nuclidekeys])
+    assert np.allclose(massfracs, dfexpected["massfrac"].to_numpy(), rtol=1e-9, atol=0.0)
 
-    for key, value in expected.items():
-        assert key in abund_q, f"Key {key} not found in abund_q"
-        assert math.isclose(abund_q[key], value)
+    # this value needs float64. An earlier reader gave time/s at float32, and the integration lost precision
+    assert math.isclose(abund_q["q"], 5351333204182925.0)
 
 
 def test_plotdensity(tmp_path: Path) -> None:
@@ -2127,7 +973,7 @@ def test_plotdensity_nbins_covers_the_model_below_xmax(mockplot: mock.MagicMock,
     The bins ended at -xmax, thus get_binned_profile dropped each cell above it. The profile then gave
     no mass above -xmax, which a reader takes for an empty outer model.
     """
-    _, modelmeta = at.inputmodel.get_modeldata(modelpath_3d, printwarningsonly=True)
+    _, modelmeta = at.inputmodel.scan_modeldata(modelpath_3d, printwarningsonly=True)
     vmax_on_c = modelmeta["vmax_cmps"] / at.constants.C_cm_per_s
     xmax = vmax_on_c / 2.0
 
@@ -2154,13 +1000,10 @@ def test_plotinitialcomposition(tmp_path: Path) -> None:
     assert (tmp_path / "plotcomposition_rho,fe.pdf").is_file()
 
 
-def read_data_table(path: Path) -> pl.DataFrame:
-    """Read a table of --write_data, which starts with comment lines and gives a missing value as nan."""
-    return pl.read_csv(path, separator=" ", null_values="nan", comment_prefix="#")
-
-
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_plotdensity_write_data_gives_the_plotted_profiles(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+def test_plotdensity_write_data_gives_the_plotted_profiles(
+    mockplot: mock.MagicMock, tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """--write_data gives the points of each curve of each panel, and a model with no Ye has a null Ye.
 
     The enclosed mass and the dM/dv profile have different velocity grids, thus each one has its own table.
@@ -2189,8 +1032,8 @@ def test_plotdensity_write_data_gives_the_plotted_profiles(mockplot: mock.MagicM
         quiet=True,
     )
 
-    dfenclosed = read_data_table(tmp_path / "densityprofile.txt")
-    dfprofile = read_data_table(tmp_path / "densityprofile_massprofile.txt")
+    dfenclosed = read_data_file(tmp_path / "densityprofile.txt")
+    dfprofile = read_data_file(tmp_path / "densityprofile_massprofile.txt")
     assert dfprofile.filter(pl.col("model") == "noye")["Ye"].is_null().all()
 
     # main names the axes after it draws on them, thus the label of the axes gives the panel of each call
@@ -2208,13 +1051,15 @@ def test_plotdensity_write_data_gives_the_plotted_profiles(mockplot: mock.MagicM
     assert ncurves == 5
 
 
-def test_plotinitialcomposition_write_data_gives_each_pixel_of_the_slice(tmp_path: Path) -> None:
+def test_plotinitialcomposition_write_data_gives_each_pixel_of_the_slice(
+    tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """--write_data gives one row for each pixel, with the velocities of the cell and the value of each panel.
 
     The values are the values of the images, thus they have the log10 of the colour scale, and a hidden empty cell
     has a null value.
     """
-    from artistools.inputmodel.plotinitialcomposition import get_2D_slice_through_3d_model
+    from artistools.inputmodel.plotinitialcomposition import get_2d_slice_through_3d_model
 
     with mock.patch.object(mplax.Axes, "imshow", side_effect=mplax.Axes.imshow, autospec=True) as mockimshow:
         at.inputmodel.plotinitialcomposition.main(
@@ -2222,7 +1067,7 @@ def test_plotinitialcomposition_write_data_gives_each_pixel_of_the_slice(tmp_pat
             write_data=True,
         )
 
-    dftable = read_data_table(tmp_path / "plotcomposition_rho,fe.txt")
+    dftable = read_data_file(tmp_path / "plotcomposition_rho,fe.txt")
     assert mockimshow.call_count == 2
     for call, column in zip(mockimshow.call_args_list, ["log10_rho_g_per_cm3", "log10_rho_Fe_g_per_cm3"], strict=True):
         valuegrid = call.args[1]
@@ -2233,7 +1078,7 @@ def test_plotinitialcomposition_write_data_gives_each_pixel_of_the_slice(tmp_pat
 
     # the default slice is the layer above the origin along z, which shows x against y
     dfmodel, modelmeta = get_derived_modeldata(modelpath_3d)
-    dfslice = get_2D_slice_through_3d_model(dfmodel.collect(), "z")
+    dfslice = get_2d_slice_through_3d_model(dfmodel.collect(), "z")
     t_model_s = modelmeta["t_model_init_days"] * day_to_s
     for axis in ("x", "y"):
         vel_mid_on_c = (
@@ -2332,7 +1177,7 @@ def test_save_load_3d_model(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
     for loadnumber in (0, 1):
         assert cachefilepath.is_file() == (loadnumber == 1)
         capsys.readouterr()
-        dfmodel_loaded, modelmeta_loaded = at.inputmodel.get_modeldata(modelpath=outpath)
+        dfmodel_loaded, modelmeta_loaded = at.inputmodel.scan_modeldata(modelpath=outpath)
         output = capsys.readouterr().out
         assert (f"Reading table from {cachefilepath}" in output) == (loadnumber == 1)
         assert (f"Saving {cachefilepath}" in output) == (loadnumber == 0)
@@ -2342,7 +1187,7 @@ def test_save_load_3d_model(tmp_path: Path, capsys: pytest.CaptureFixture[str]) 
         )
         assert modelmeta == modelmeta_loaded
 
-        dfelemabundances_loaded = at.inputmodel.get_initelemabundances(outpath)
+        dfelemabundances_loaded = at.inputmodel.scan_initelemabundances(outpath)
         pltest.assert_frame_equal(
             dfelemabundances,
             dfelemabundances_loaded.select(
@@ -2470,7 +1315,7 @@ def test_vel_on_c_excludes_kmps_columns() -> None:
 
 
 def test_scale_model_to_time() -> None:
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath)
+    dfmodel, modelmeta = at.inputmodel.scan_modeldata(modelpath)
     t_model_init_days = modelmeta["t_model_init_days"]
 
     dfmodel_collected = dfmodel.collect()
@@ -2497,7 +1342,7 @@ def test_scale_model_to_time_keeps_empty_cells_and_scales_volume() -> None:
     assert dfscaled["volume"].to_list() == pytest.approx([0.4**3, 2.0 * 0.4**3])
 
 
-def test_get_initelemabundances_reads_both_delimiter_formats(tmp_path: Path) -> None:
+def test_scan_initelemabundances_reads_both_delimiter_formats(tmp_path: Path) -> None:
     """Read an abundances.txt that has one space between two values with no call of read_wsv.
 
     An older file with more spaces, and a file with a nan token, must give the same table as read_wsv gives.
@@ -2510,7 +1355,7 @@ def test_get_initelemabundances_reads_both_delimiter_formats(tmp_path: Path) -> 
     onespacefolder = tmp_path / "onespace"
     at.inputmodel.save_initelemabundances(dfelabundances, outpath=onespacefolder)
     with mock.patch("artistools.inputmodel.core.read_wsv", side_effect=AssertionError("the slow reader ran")):
-        dfonespace = at.inputmodel.get_initelemabundances(onespacefolder).collect()
+        dfonespace = at.inputmodel.scan_initelemabundances(onespacefolder).collect()
 
     morespacesfolder = tmp_path / "morespaces"
     morespacesfolder.mkdir()
@@ -2520,14 +1365,14 @@ def test_get_initelemabundances_reads_both_delimiter_formats(tmp_path: Path) -> 
         "\n".join(line if line.startswith("#") else "   " + line.replace(" ", "   ") for line in lines) + "\n",
         encoding="utf-8",
     )
-    pltest.assert_frame_equal(dfonespace, at.inputmodel.get_initelemabundances(morespacesfolder).collect())
+    pltest.assert_frame_equal(dfonespace, at.inputmodel.scan_initelemabundances(morespacesfolder).collect())
     pltest.assert_frame_equal(dfonespace, dfelabundances.with_columns(pl.col("inputcellid").cast(pl.Int32)))
 
     # read_wsv gives null and not NaN for a nan token, and the fast reader must not change that
     nanfolder = tmp_path / "nan"
     nanfolder.mkdir()
     (nanfolder / "abundances.txt").write_text("1 nan 0.5\n2 0.25 0.75\n", encoding="utf-8")
-    assert at.inputmodel.get_initelemabundances(nanfolder).collect()["X_H"].to_list() == [None, 0.25]
+    assert at.inputmodel.scan_initelemabundances(nanfolder).collect()["X_H"].to_list() == [None, 0.25]
 
 
 def test_slice_abundance_file_renumbers_the_cells(tmp_path: Path) -> None:
@@ -2545,7 +1390,7 @@ def test_slice_abundance_file_renumbers_the_cells(tmp_path: Path) -> None:
 
     slice_abundance_file(inputfolder, outputfolder, {1: 1, 3: 2})
 
-    dfelabundances = at.inputmodel.get_initelemabundances(outputfolder).collect()
+    dfelabundances = at.inputmodel.scan_initelemabundances(outputfolder).collect()
     assert dfelabundances["inputcellid"].to_list() == [1, 2]
     assert np.allclose(dfelabundances["X_H"], [0.001, 0.003], rtol=1e-6)
 
@@ -2577,7 +1422,7 @@ def test_slice_3dmodel_takes_the_cells_that_hold_the_axis(
     wid_init_kmps = 2 * vmax_cmps / ncoordgrid / at.constants.km_to_cm
     vel_r_max_first = wid_init_kmps / 2 if ncoordgrid % 2 else wid_init_kmps
     assert xlist == pytest.approx([vel_r_max_first, vel_r_max_first + wid_init_kmps], rel=1e-5)
-    dfmodel1d, modelmeta1d = at.inputmodel.get_modeldata(outputfolder)
+    dfmodel1d, modelmeta1d = at.inputmodel.scan_modeldata(outputfolder)
     assert modelmeta1d["dimensions"] == 1
     assert dfmodel1d.collect()["vel_r_max_kmps"].to_list() == pytest.approx(xlist, rel=1e-5)
 
@@ -2699,13 +1544,13 @@ def write_2d_model(
     return modelfile
 
 
-def test_get_modeldata_2d(tmp_path: Path) -> None:
+def test_scan_modeldata_2d(tmp_path: Path) -> None:
     """A 2D cylindrical model must be read with the right grid metadata and cell positions."""
     ncoordgridrcyl, ncoordgridz = 4, 6
     vmax_cmps, t_model_days = 1.0e9, 1.0
     modelfile = write_2d_model(tmp_path, ncoordgridrcyl, ncoordgridz, vmax_cmps, t_model_days)
 
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(modelfile)
+    dfmodel, modelmeta = at.inputmodel.scan_modeldata(modelfile)
 
     assert modelmeta["dimensions"] == 2
     assert modelmeta["ncoordgridrcyl"] == ncoordgridrcyl
@@ -2736,14 +1581,14 @@ def test_model_header_comments_round_trip(tmp_path: Path) -> None:
     sourcefolder = tmp_path / "source"
     sourcefolder.mkdir()
     modelfile = write_2d_model(sourcefolder, ncoordgridrcyl, ncoordgridz, vmax_cmps=1.0e9, t_model_days=1.0)
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(modelfile)
+    dfmodel, modelmeta = at.inputmodel.scan_modeldata(modelfile)
     # a comment of a user can start with the same words as a line of the writer
     usercomments = ["created: by hand from a test model", "column units: calibrated by hand"]
     modelmeta["headercommentlines"] = usercomments.copy()
 
     at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta=modelmeta)
 
-    _, modelmeta_saved = at.inputmodel.get_modeldata(tmp_path)
+    _, modelmeta_saved = at.inputmodel.scan_modeldata(tmp_path)
     assert modelmeta_saved["headercommentlines"] == usercomments
     assert modelmeta_saved["ncoordgridrcyl"] == ncoordgridrcyl
     assert modelmeta_saved["ncoordgridz"] == ncoordgridz
@@ -2751,7 +1596,7 @@ def test_model_header_comments_round_trip(tmp_path: Path) -> None:
     assert math.isclose(modelmeta_saved["vmax_cmps"], 1.0e9)
 
 
-def test_get_modeldata_2d_rejects_misplaced_cells(tmp_path: Path) -> None:
+def test_scan_modeldata_2d_rejects_misplaced_cells(tmp_path: Path) -> None:
     """Cell midpoints inconsistent with vmax and the grid size must be rejected rather than read silently."""
     ncoordgridrcyl, ncoordgridz = 4, 6
     vmax_cmps, t_model_days = 1.0e9, 1.0
@@ -2760,7 +1605,7 @@ def test_get_modeldata_2d_rejects_misplaced_cells(tmp_path: Path) -> None:
     modelfile = write_2d_model(tmp_path, ncoordgridrcyl, ncoordgridz, vmax_cmps, t_model_days, zshift=1.5 * wid_init_z)
 
     with pytest.raises(AssertionError, match="pos_z_mid"):
-        at.inputmodel.get_modeldata(modelfile)
+        at.inputmodel.scan_modeldata(modelfile)
 
 
 def test_fromcmfgen_writes_named_columns(tmp_path: Path) -> None:
@@ -2794,7 +1639,7 @@ def test_fromcmfgen_writes_named_columns(tmp_path: Path) -> None:
     with mock.patch.object(cmfgen, "rd_sn_hydro_data", return_value=snapshot):
         cmfgen.main(argsraw=["-snapshot", "unused", "-o", str(tmp_path)])
 
-    dfmodel, modelmeta = at.get_modeldata(tmp_path)
+    dfmodel, modelmeta = at.scan_modeldata(tmp_path)
     dfmodel = dfmodel.collect()
 
     assert modelmeta["npts_model"] == nd
@@ -2809,7 +1654,7 @@ def test_fromcmfgen_writes_named_columns(tmp_path: Path) -> None:
     # Cr, Fe, Co, Ni and Ba are all Z > 20, so the iron-group fraction is their sum
     assert np.allclose(dfmodel["X_Fegroup"].to_numpy(), 0.1 + 0.2 + 0.05 + 0.1 + 0.05, rtol=1e-4)
 
-    dfabund = at.inputmodel.get_initelemabundances(tmp_path).collect()
+    dfabund = at.inputmodel.scan_initelemabundances(tmp_path).collect()
     assert np.allclose(dfabund["X_O"].to_numpy(), 0.5, rtol=1e-4)
     assert np.allclose(dfabund["X_Fe"].to_numpy(), 0.2, rtol=1e-4)
     # Ba is folded into X_Fegroup and gets no element column
@@ -2860,9 +1705,9 @@ def test_make1dmodelfromaxis(tmp_path: Path) -> None:
 
     The positive-axis branch renamed the inner cell edge to vel_r_max_kmps and dropped the cell
     with pos_min == 0. Thus the velocity of each shell was low by one cell width. The branch also
-    read args.t_model, which only the cone branch set, and passed a list of paths to get_modeldata.
+    read args.t_model, which only the cone branch set, and passed a list of paths to scan_modeldata.
     """
-    _, modelmeta3d = at.inputmodel.get_modeldata(modelpath_3d)
+    _, modelmeta3d = at.inputmodel.scan_modeldata(modelpath_3d)
     outdirs = {}
     for axis in ("+z", "-z"):
         outdir = tmp_path / f"axis_{axis[1]}_{'pos' if axis[0] == '+' else 'neg'}"
@@ -2872,8 +1717,8 @@ def test_make1dmodelfromaxis(tmp_path: Path) -> None:
         )
         outdirs[axis] = outdir
 
-    dfpos = at.inputmodel.get_modeldata(outdirs["+z"] / "model_1d.txt")[0].collect()
-    dfneg = at.inputmodel.get_modeldata(outdirs["-z"] / "model_1d.txt")[0].collect()
+    dfpos = at.inputmodel.scan_modeldata(outdirs["+z"] / "model_1d.txt")[0].collect()
+    dfneg = at.inputmodel.scan_modeldata(outdirs["-z"] / "model_1d.txt")[0].collect()
 
     ncells_along_axis = int(modelmeta3d["ncoordgrid"]) // 2
     assert dfpos.height == ncells_along_axis
@@ -3070,12 +1915,12 @@ def test_an_unreadable_model_cache_is_not_deleted(tmp_path: Path) -> None:
     The reader deleted an unreadable file with a bare unlink, outside the identity rule of
     write_parquet_atomic. That unlink can remove the fresh cache that a rival process installed.
     """
-    from artistools.inputmodel.core import read_parquet_cache
+    from artistools.inputmodel.core import scan_parquet_cache
 
     parquetfilepath = tmp_path / "model.txt.parquet.tmp"
     parquetfilepath.write_bytes(b"not parquet")
 
-    assert read_parquet_cache(parquetfilepath, textsource_mtime=1.0) is None
+    assert scan_parquet_cache(parquetfilepath, textsource_mtime=1.0) is None
     assert parquetfilepath.is_file(), "the unreadable cache must stay for the identity-checked rewrite"
 
 
@@ -3103,7 +1948,7 @@ def test_downscale_mass_fractions_matches_cell_loop() -> None:
 
     assert np.allclose(downscale_cell_sums(rho, merge), rho_small_expected, rtol=1e-12, atol=0.0)
     assert np.allclose(downscale_mass_fractions(massfracs, rho, merge), massfracs_small_expected, rtol=1e-12, atol=0.0)
-    assert np.all(downscale_mass_fractions(massfracs, rho, merge)[0, 0, 0] == 0.0)
+    assert np.all(downscale_mass_fractions(massfracs, rho, merge)[0, 0, 0] == 0)
 
 
 def test_remap_mass_weighted_quantity_matches_cell_loop() -> None:
@@ -3148,16 +1993,16 @@ def test_remap_mass_weighted_quantity_gives_zero_for_an_empty_coarse_cell() -> N
 
     ye = remap_mass_weighted_quantity(dfmodel, "Ye", red_fact, n_r_new, n_z_new, n_r_old, 1.0, 1.0)
 
-    assert ye[0] == 0.0
+    assert ye[0] == 0
     assert ye[1] == pytest.approx((0.3 * 1.0 + 0.4 * 3.0 + 0.3 * 1.0 + 0.4 * 1.0) / 6.0)
 
 
-def test_get_modeldata_regenerates_a_cache_with_malformed_metadata(tmp_path: Path) -> None:
+def test_scan_modeldata_regenerates_a_cache_with_malformed_metadata(tmp_path: Path) -> None:
     """A cache with a current stamp but an unreadable modelmeta_json must be regenerated from model.txt."""
     modelfile = tmp_path / "model.txt"
     shutil.copy(at.firstexisting("model.txt", folder=modelpath, tryzipped=True), modelfile)
 
-    dfmodel_expected, modelmeta_expected = at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)
+    dfmodel_expected, modelmeta_expected = at.inputmodel.scan_modeldata(tmp_path, printwarningsonly=True)
 
     # a cache whose stamps are current, thus only the malformed json can reject it
     parquetfile = tmp_path / "model.txt.parquet.tmp"
@@ -3172,7 +2017,7 @@ def test_get_modeldata_regenerates_a_cache_with_malformed_metadata(tmp_path: Pat
     )
     assert parquetfile.is_file()
 
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)
+    dfmodel, modelmeta = at.inputmodel.scan_modeldata(tmp_path, printwarningsonly=True)
 
     assert modelmeta == modelmeta_expected
     pltest.assert_frame_equal(dfmodel.collect(), dfmodel_expected.collect())
@@ -3219,7 +2064,7 @@ def test_plotinitialcomposition_takes_a_zero_floor_value(tmp_path: Path) -> None
             argsraw=["-modelpath", str(modelpath_3d), "-o", str(tmp_path), "-floorval", "0", "rho"]
         )
 
-    assert mockimshow.call_args.kwargs["vmin"] == 0.0
+    assert mockimshow.call_args.kwargs["vmin"] == 0
 
 
 def test_plotinitialcomposition_log_scale_takes_a_linear_floor_value(tmp_path: Path) -> None:
@@ -3250,7 +2095,7 @@ def test_plotinitialcomposition_log_scale_takes_a_linear_floor_value(tmp_path: P
 
 
 def test_model_reader_renames_the_cellye_column_of_an_old_model(tmp_path: Path) -> None:
-    """An old model.txt names the electron fraction cellYe, and get_modeldata returns the column as Ye."""
+    """An old model.txt names the electron fraction cellYe, and scan_modeldata returns the column as Ye."""
     dfmodel = pl.DataFrame({
         "inputcellid": [1, 2],
         "vel_r_max_kmps": [1000.0, 2000.0],
@@ -3268,7 +2113,7 @@ def test_model_reader_renames_the_cellye_column_of_an_old_model(tmp_path: Path) 
     assert " Ye\n" in modeltext
     modelfile.write_text(modeltext.replace(" Ye\n", " cellYe\n"), encoding="utf-8")
 
-    lzdfmodel, _modelmeta = at.inputmodel.get_modeldata(tmp_path)
+    lzdfmodel, _modelmeta = at.inputmodel.scan_modeldata(tmp_path)
 
     columns = lzdfmodel.collect_schema().names()
     assert "Ye" in columns
@@ -3277,10 +2122,10 @@ def test_model_reader_renames_the_cellye_column_of_an_old_model(tmp_path: Path) 
 
 
 @pytest.mark.parametrize("sourcemodelpath", [modelpath, modelpath_3d])
-def test_get_modeldata_gives_only_the_file_columns(sourcemodelpath: Path) -> None:
+def test_scan_modeldata_gives_only_the_file_columns(sourcemodelpath: Path) -> None:
     """Give only the file columns. A change to a file column then keeps each derived column current."""
-    lzdfmodel_file, _ = at.inputmodel.core.read_modelfile_text(sourcemodelpath / "model.txt")
-    lzdfmodel, _ = at.inputmodel.get_modeldata(sourcemodelpath)
+    lzdfmodel_file, _ = at.inputmodel.core.scan_modelfile_text(sourcemodelpath / "model.txt")
+    lzdfmodel, _ = at.inputmodel.scan_modeldata(sourcemodelpath)
     assert lzdfmodel.collect_schema().names() == [*lzdfmodel_file.collect_schema().names(), "modelgridindex"]
 
 
@@ -3337,7 +2182,7 @@ def test_dimension_reduce_takes_a_model_with_a_volume_column() -> None:
     lzdfmodel, modelmeta = get_derived_modeldata(modelpath_3d)
     dfmodel_out, _, _, _ = at.inputmodel.dimension_reduce_model(
         dfmodel=lzdfmodel.select(
-            cs.by_name(at.inputmodel.get_modeldata(modelpath_3d)[0].collect_schema().names()) | cs.by_name("volume")
+            cs.by_name(at.inputmodel.scan_modeldata(modelpath_3d)[0].collect_schema().names()) | cs.by_name("volume")
         ),
         outputdimensions=1,
         modelmeta=modelmeta.copy(),
@@ -3351,7 +2196,7 @@ def test_save_modeldata_writes_the_same_columns_with_the_derived_columns(sourcem
 
     The dataframe also holds rho and logrho, and pos_ and vel_ columns of other dimensions.
     """
-    lzdfmodel_file, _ = at.inputmodel.core.read_modelfile_text(sourcemodelpath / "model.txt")
+    lzdfmodel_file, _ = at.inputmodel.core.scan_modelfile_text(sourcemodelpath / "model.txt")
     lzdfmodel, modelmeta = get_derived_modeldata(sourcemodelpath)
     lzdfmodel_allderived = lzdfmodel.with_columns(
         pl.lit(1.0).alias(col) for col in ("pos_rcyl_mid", "pos_x_mid", "vel_x_mid_on_c", "kinetic_en_erg_x")
@@ -3363,7 +2208,7 @@ def test_save_modeldata_writes_the_same_columns_with_the_derived_columns(sourcem
         outpath = tmp_path / label
         outpath.mkdir()
         at.inputmodel.save_modeldata(dfmodel.collect(), outpath=outpath, modelmeta=modelmeta.copy())
-        dfmodel_written[label] = at.inputmodel.core.read_modelfile_text(outpath / "model.txt.zst")[0].collect()
+        dfmodel_written[label] = at.inputmodel.core.scan_modelfile_text(outpath / "model.txt.zst")[0].collect()
 
     pltest.assert_frame_equal(dfmodel_written["filecolumns"], dfmodel_written["allderived"])
 
@@ -3395,7 +2240,7 @@ def test_save_modeldata_writes_the_extra_columns(
         dfmodel, outpath=tmp_path, modelmeta={"dimensions": 1, "t_model_init_days": 1.0}, **extracolsarg
     )
 
-    lzdfmodel_written, _ = at.inputmodel.core.read_modelfile_text(tmp_path / "model.txt.zst")
+    lzdfmodel_written, _ = at.inputmodel.core.scan_modelfile_text(tmp_path / "model.txt.zst")
     standardcols = at.inputmodel.core.get_standard_columns(1)
     assert lzdfmodel_written.collect_schema().names() == [*standardcols, "X_Sr89", *expectedcustomcols]
 
@@ -3403,7 +2248,7 @@ def test_save_modeldata_writes_the_extra_columns(
 @pytest.mark.parametrize(("sourcemodelpath", "outputdimensions"), [(modelpath_3d, 1), (modelpath, 0)])
 def test_dimension_reduce_takes_the_other_density_column(sourcemodelpath: Path, outputdimensions: int) -> None:
     """A model can give rho in place of logrho, or logrho in place of rho, and the reduction makes the other one."""
-    lzdfmodel, modelmeta = at.inputmodel.core.read_modelfile_text(sourcemodelpath / "model.txt")
+    lzdfmodel, modelmeta = at.inputmodel.core.scan_modelfile_text(sourcemodelpath / "model.txt")
     dfmodel = lzdfmodel.collect()
     densitycol, otherdensitycol = ("rho", "logrho") if modelmeta["dimensions"] == 3 else ("logrho", "rho")
     dfmodel_otherdensity = at.inputmodel.add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta).select(
@@ -3466,8 +2311,8 @@ def test_model_files_with_dotted_names_keep_separate_caches(tmp_path: Path) -> N
         # a cache file that exists makes the reader write a new cache, whatever the size of the model
         (tmp_path / f"model_a.{variant}.txt.parquet.tmp").touch()
 
-    lzdfmodel1, _meta1 = at.inputmodel.get_modeldata(tmp_path / "model_a.1.txt")
-    lzdfmodel2, _meta2 = at.inputmodel.get_modeldata(tmp_path / "model_a.2.txt")
+    lzdfmodel1, _meta1 = at.inputmodel.scan_modeldata(tmp_path / "model_a.1.txt")
+    lzdfmodel2, _meta2 = at.inputmodel.scan_modeldata(tmp_path / "model_a.2.txt")
 
     assert lzdfmodel1.select("logrho").collect().to_series().to_list() == pytest.approx([-10.0, -10.0])
     assert lzdfmodel2.select("logrho").collect().to_series().to_list() == pytest.approx([-12.0, -12.0])
@@ -3490,7 +2335,7 @@ def test_save_modeldata_deletes_an_old_uncompressed_file(tmp_path: Path) -> None
         })
         at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta={"dimensions": 1, "t_model_init_days": 1.0})
         at.inputmodel.save_empty_abundance_file(npts_model=1, outputfilepath=tmp_path)
-        if logrho == -10.0:
+        if logrho == -10:
             for filename in ("model.txt", "abundances.txt"):
                 decompress_file(tmp_path / f"{filename}.zst")
 
@@ -3498,7 +2343,7 @@ def test_save_modeldata_deletes_an_old_uncompressed_file(tmp_path: Path) -> None
         "abundances.txt.zst",
         "model.txt.zst",
     ]
-    lzdfmodel, _ = at.inputmodel.get_modeldata(tmp_path, get_elemabundances=True)
+    lzdfmodel, _ = at.inputmodel.scan_modeldata(tmp_path, get_elemabundances=True)
     assert lzdfmodel.select("logrho").collect().item() == pytest.approx(-12.0)
 
     # a name with a different compression extension gave model.txt.gz.zst, and the writer deleted model.txt.gz
@@ -3638,7 +2483,7 @@ def test_plotinitialabundances_filters_cells_by_velocity_and_polar_angle(tmp_pat
     # a grid with an odd cell count on each axis has a cell at the origin. No polar angle range keeps that cell
     dfmodel_origin, modelmeta_origin = get_empty_3d_model(ncoordgrid=3, vmax=1e9, t_model_init_days=1.0)
     dfcells_origin = at.inputmodel.add_derived_cols_to_modeldata(dfmodel_origin, modelmeta=modelmeta_origin).collect()
-    assert len(dfcells_origin.filter(pl.col("vel_r_mid_on_c") == 0.0)) == 1
+    assert len(dfcells_origin.filter(pl.col("vel_r_mid_on_c") == 0)) == 1
     assert len(dfcells_origin.filter(get_cell_selection())) == 27
     assert len(dfcells_origin.filter(get_cell_selection(thetamin=0.0))) == 26
     assert len(dfcells_origin.filter(get_cell_selection(thetamax=180.0))) == 26
@@ -3697,7 +2542,9 @@ def test_plotinitialabundances_main_passes_the_selection(tmp_path: Path) -> None
     assert (tmp_path / "plotinitialabundances_XvsA_vmax0.02_thetamin90.0.pdf").is_file()
 
 
-def test_plotinitialabundances_write_data_gives_the_plotted_curves(tmp_path: Path) -> None:
+def test_plotinitialabundances_write_data_gives_the_plotted_curves(
+    tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """--write_data gives one table with the points of the curve of each model, which have different nuclides."""
     with mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True) as mockplot:
         at.inputmodel.plotinitialabundances.main(
@@ -3705,7 +2552,7 @@ def test_plotinitialabundances_write_data_gives_the_plotted_curves(tmp_path: Pat
             write_data=True,
         )
 
-    dftable = read_data_table(tmp_path / "plotinitialabundances_abundancevsZ.txt")
+    dftable = read_data_file(tmp_path / "plotinitialabundances_abundancevsZ.txt")
     assert dftable.columns == ["model", "modelpath", "Z", "abundance"]
     assert mockplot.call_count == 2
     for call in mockplot.call_args_list:
@@ -3716,7 +2563,9 @@ def test_plotinitialabundances_write_data_gives_the_plotted_curves(tmp_path: Pat
         assert dfcurve.join(dfdrawn, on=["Z", "abundance"], how="anti").is_empty()
 
 
-def test_plotinitialabundances_table_keeps_two_models_of_one_name_apart(tmp_path: Path) -> None:
+def test_plotinitialabundances_table_keeps_two_models_of_one_name_apart(
+    tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """Two models of one name gave one value of the column model, and the filter took them for one line."""
     modelcopy = tmp_path / "copy" / modelpath.name
     modelcopy.mkdir(parents=True)
@@ -3727,7 +2576,7 @@ def test_plotinitialabundances_table_keeps_two_models_of_one_name_apart(tmp_path
         argsraw=[str(modelpath), str(modelcopy), "-x", "Z", "-y", "abundance", "-o", str(tmp_path)], write_data=True
     )
 
-    dftable = read_data_table(tmp_path / "plotinitialabundances_abundancevsZ.txt")
+    dftable = read_data_file(tmp_path / "plotinitialabundances_abundancevsZ.txt")
     assert sorted(dftable["modelpath"].unique().to_list()) == sorted([str(modelpath), str(modelcopy)])
     curvesizes = dftable.group_by("modelpath").len()["len"].to_list()
     assert len(set(curvesizes)) == 1
@@ -3798,7 +2647,7 @@ def test_from_e2e_model_3d_equatorial_symmetry_with_nodyn(tmp_path: Path, capsys
 
 
 @pytest.mark.parametrize(("prefix", "suffix"), [(" ", ""), ("", " "), ("\t", "")])
-def test_get_modeldata_1d_reads_a_line_with_one_leading_space(tmp_path: Path, prefix: str, suffix: str) -> None:
+def test_scan_modeldata_1d_reads_a_line_with_one_leading_space(tmp_path: Path, prefix: str, suffix: str) -> None:
     """A model.txt whose lines start or end with a space must give the cell ids and the velocities.
 
     The fast reader only tested for a double space. A single leading space gave polars an empty first
@@ -3810,7 +2659,7 @@ def test_get_modeldata_1d_reads_a_line_with_one_leading_space(tmp_path: Path, pr
         encoding="utf-8",
     )
 
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)
+    dfmodel, modelmeta = at.inputmodel.scan_modeldata(tmp_path, printwarningsonly=True)
     dfmodel = dfmodel.collect()
 
     assert dfmodel["inputcellid"].to_list() == [1, 2, 3]
@@ -3819,7 +2668,7 @@ def test_get_modeldata_1d_reads_a_line_with_one_leading_space(tmp_path: Path, pr
     assert np.isclose(modelmeta["vmax_cmps"], 3000.0 * 1e5)
 
 
-def test_get_modeldata_1d_with_one_cell_uses_the_fast_reader(
+def test_scan_modeldata_1d_with_one_cell_uses_the_fast_reader(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """A model.txt with one cell must use the fast reader.
@@ -3828,7 +2677,7 @@ def test_get_modeldata_1d_with_one_cell_uses_the_fast_reader(
     """
     (tmp_path / "model.txt").write_text("1\n1.0\n1 1000.0 -5.0 1.0 0.5 0.0 0.0 0.0\n", encoding="utf-8")
 
-    dfmodel, _ = at.inputmodel.get_modeldata(tmp_path)
+    dfmodel, _ = at.inputmodel.scan_modeldata(tmp_path)
 
     assert "Using fast method" in capsys.readouterr().out
     assert dfmodel.collect()["vel_r_max_kmps"].to_list() == pytest.approx([1000.0])
@@ -3966,13 +2815,13 @@ def test_get_2d_slice_takes_the_side_of_the_axis(ncoordgrid: int, positive_axis:
     The parser read the sign of -axis, but the slice ignored it. Thus both signs gave the layer with pos_z_min == 0.
     The centre layer of an odd grid holds the origin, thus both signs give that layer.
     """
-    from artistools.inputmodel.plotinitialcomposition import get_2D_slice_through_3d_model
+    from artistools.inputmodel.plotinitialcomposition import get_2d_slice_through_3d_model
 
     dfmodel, modelmeta = get_empty_3d_model(ncoordgrid=ncoordgrid, vmax=1e9, t_model_init_days=1.0)
     dfmodel = dfmodel.collect()
     wid = modelmeta["wid_init_z"]
 
-    dfslice = get_2D_slice_through_3d_model(dfmodel, "z", modelmeta, "x", "y", positive_axis=positive_axis)
+    dfslice = get_2d_slice_through_3d_model(dfmodel, "z", modelmeta, "x", "y", positive_axis=positive_axis)
 
     assert dfslice.height == ncoordgrid**2
     assert dfslice["pos_z_min"].to_numpy() == pytest.approx(-modelmeta["vmax_cmps"] * day_to_s + expectedlayer * wid)
@@ -4018,7 +2867,7 @@ def test_save_modeldata_1d_keeps_a_negative_custom_value(tmp_path: Path) -> None
         dfmodel, outpath=tmp_path, modelmeta={"dimensions": 1, "t_model_init_days": 1.0}, extracols=["mycolumn"]
     )
 
-    dfwritten = at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)[0].collect()
+    dfwritten = at.inputmodel.scan_modeldata(tmp_path, printwarningsonly=True)[0].collect()
 
     assert dfwritten["mycolumn"].to_list() == pytest.approx([-3.2e4, 6.0, 0.0])
     assert dfwritten["X_Ni56"].to_list() == pytest.approx([0.5, 0.0, 0.3])
@@ -4114,7 +2963,7 @@ def test_dimension_reduce_keeps_the_centre_cell_of_an_odd_grid(outputdimensions:
     dfmodel3d, modelmeta_3d = get_empty_3d_model(ncoordgrid=ncoordgrid, vmax=1e9, t_model_init_days=1.0)
     dfmodel3d = dfmodel3d.collect().with_columns(rho=pl.lit(1.0))
     dfmodel3d_derived = at.inputmodel.add_derived_cols_to_modeldata(dfmodel3d, modelmeta=modelmeta_3d).collect()
-    assert dfmodel3d_derived.filter(pl.col("vel_r_mid") == 0.0).height == 1
+    assert dfmodel3d_derived.filter(pl.col("vel_r_mid") == 0).height == 1
 
     mass_inside_vmax = dfmodel3d_derived.filter(pl.col("vel_r_mid") <= modelmeta_3d["vmax_cmps"])["mass_g"].sum()
     dfmodel_lowerd, _, _, _ = at.inputmodel.dimension_reduce_model(
@@ -4175,8 +3024,8 @@ def test_dimension_reduce_keeps_abundances_of_empty_shells(tmp_path: Path, zero_
         argsraw=[], modelpath=[modelfolder], dimensionreduce=1, outputpath=tmp_path / "output"
     )
     reducedfolder = tmp_path / "output" / "model2d_dimreduce_1d"
-    dfmodel_read, modelmeta_read = at.inputmodel.get_modeldata(reducedfolder)
-    dfabundances_read = at.inputmodel.get_initelemabundances(reducedfolder)
+    dfmodel_read, modelmeta_read = at.inputmodel.scan_modeldata(reducedfolder)
+    dfabundances_read = at.inputmodel.scan_initelemabundances(reducedfolder)
     assert modelmeta_read["npts_model"] == 4
     pltest.assert_frame_equal(
         dfmodel_read.select("inputcellid").collect(), expected_abundances.select("inputcellid"), check_dtypes=False
@@ -4198,19 +3047,19 @@ def test_dimension_reduce_keeps_abundances_of_empty_shells(tmp_path: Path, zero_
         )
 
 
-def test_get_modeldata_reads_a_header_comment_with_a_quotation_mark(tmp_path: Path) -> None:
+def test_scan_modeldata_reads_a_header_comment_with_a_quotation_mark(tmp_path: Path) -> None:
     """A header comment with one quotation mark must not hide the cells from the fast reader.
 
     The reader took the quotation mark as the start of a quoted field. Thus it skipped the cells after the
     header, and it gave an error for an empty file. save_modeldata writes such a comment again.
     """
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath_3d, printwarningsonly=True)
+    dfmodel, modelmeta = at.inputmodel.scan_modeldata(modelpath_3d, printwarningsonly=True)
     dfmodel = dfmodel.collect()
     at.inputmodel.save_modeldata(
         dfmodel, outpath=tmp_path, modelmeta=modelmeta | {"headercommentlines": ['DDT "N100 model']}
     )
 
-    dfmodel_read, modelmeta_read = at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)
+    dfmodel_read, modelmeta_read = at.inputmodel.scan_modeldata(tmp_path, printwarningsonly=True)
 
     assert modelmeta_read["headercommentlines"] == ['DDT "N100 model']
     pltest.assert_frame_equal(dfmodel_read.collect(), dfmodel, rel_tol=1e-6)
@@ -4224,7 +3073,7 @@ def test_get_modeldata_reads_a_header_comment_with_a_quotation_mark(tmp_path: Pa
     ],
     ids=["onelinepercell", "twolinespercell"],
 )
-def test_get_modeldata_1d_cell_ids_can_start_at_zero(tmp_path: Path, modeltext: str) -> None:
+def test_scan_modeldata_1d_cell_ids_can_start_at_zero(tmp_path: Path, modeltext: str) -> None:
     """sn3d takes the id of the first cell, 0 or 1, as the start of the cell index.
 
     The reader took each id as one more than the cell index. Thus the first cell got the index -1, and the
@@ -4232,14 +3081,14 @@ def test_get_modeldata_1d_cell_ids_can_start_at_zero(tmp_path: Path, modeltext: 
     """
     (tmp_path / "model.txt").write_text(modeltext, encoding="utf-8")
 
-    dfmodel = at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)[0].collect()
+    dfmodel = at.inputmodel.scan_modeldata(tmp_path, printwarningsonly=True)[0].collect()
 
     assert dfmodel["inputcellid"].to_list() == [0, 1, 2]
     assert dfmodel["modelgridindex"].to_list() == [0, 1, 2]
     assert dfmodel["X_Ni56"].to_list() == pytest.approx([0.2, 0.4, 0.6])
 
 
-def test_get_modeldata_2d_cell_ids_can_start_at_zero(tmp_path: Path) -> None:
+def test_scan_modeldata_2d_cell_ids_can_start_at_zero(tmp_path: Path) -> None:
     """A 2D model with the ids 0 to 7 reads, and its cell positions agree with the cell index from 0."""
     ncoordgridrcyl, ncoordgridz = 2, 4
     vmax_cmps = 1e9
@@ -4251,18 +3100,18 @@ def test_get_modeldata_2d_cell_ids_can_start_at_zero(tmp_path: Path) -> None:
         lines.append(f"{mgi} {pos_rcyl_mid:.7e} {pos_z_mid:.7e} 1e-10 0 0 0 0 0")
     (tmp_path / "model.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    dfmodel = at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)[0].collect()
+    dfmodel = at.inputmodel.scan_modeldata(tmp_path, printwarningsonly=True)[0].collect()
 
     assert dfmodel["modelgridindex"].to_list() == list(range(8))
 
 
-def test_get_modeldata_3d_cell_ids_can_start_at_zero(tmp_path: Path) -> None:
+def test_scan_modeldata_3d_cell_ids_can_start_at_zero(tmp_path: Path) -> None:
     """A 3D model with the ids 0 to 7 gives the cell index 0 to 7."""
     lzdfmodel, modelmeta = get_empty_3d_model(ncoordgrid=2, vmax=1e9, t_model_init_days=1.0)
     dfmodel = lzdfmodel.collect().with_columns(pl.col("inputcellid") - 1, rho=pl.lit(1e-10))
     at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta=modelmeta)
 
-    dfmodel_read = at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)[0].collect()
+    dfmodel_read = at.inputmodel.scan_modeldata(tmp_path, printwarningsonly=True)[0].collect()
 
     assert dfmodel_read["inputcellid"].to_list() == list(range(8))
     assert dfmodel_read["modelgridindex"].to_list() == list(range(8))
@@ -4279,7 +3128,7 @@ def test_get_modeldata_3d_cell_ids_can_start_at_zero(tmp_path: Path) -> None:
     ],
     ids=["fastreader", "slowreader", "twolinespercell", "nocells", "missingid"],
 )
-def test_get_modeldata_rejects_a_model_with_missing_cells(tmp_path: Path, modeltext: str, match: str) -> None:
+def test_scan_modeldata_rejects_a_model_with_missing_cells(tmp_path: Path, modeltext: str, match: str) -> None:
     """A model.txt with fewer cells than its header gives, or with a gap in the ids, stops with a message, as in sn3d.
 
     The reader gave the cells that the file held, and the vmax of a 1D model then came from the last of them.
@@ -4287,23 +3136,23 @@ def test_get_modeldata_rejects_a_model_with_missing_cells(tmp_path: Path, modelt
     (tmp_path / "model.txt").write_text(modeltext, encoding="utf-8")
 
     with pytest.raises(ValueError, match=match):
-        at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)
+        at.inputmodel.scan_modeldata(tmp_path, printwarningsonly=True)
 
 
 @pytest.mark.parametrize("skippedline", ["# time of the snapshot [days]\n", "\n", "   # an indented comment\n"])
-def test_get_modeldata_skips_a_comment_before_the_time(tmp_path: Path, skippedline: str) -> None:
+def test_scan_modeldata_skips_a_comment_before_the_time(tmp_path: Path, skippedline: str) -> None:
     """sn3d skips a comment line and an empty line before the time of the model, thus the reader must also skip it."""
     (tmp_path / "model.txt").write_text(
         f"3\n{skippedline}2.5\n1 1000 -10 0 0 0 0 0\n2 2000 -10 0 0 0 0 0\n3 3000 -10 0 0 0 0 0\n", encoding="utf-8"
     )
 
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)
+    dfmodel, modelmeta = at.inputmodel.scan_modeldata(tmp_path, printwarningsonly=True)
 
     assert modelmeta["t_model_init_days"] == pytest.approx(2.5)
     assert dfmodel.collect()["vel_r_max_kmps"].to_list() == pytest.approx([1000.0, 2000.0, 3000.0])
 
 
-def test_get_modeldata_3d_header_with_mid_point_positions(tmp_path: Path) -> None:
+def test_scan_modeldata_3d_header_with_mid_point_positions(tmp_path: Path) -> None:
     """A 3D header can name the positions pos_x_mid, pos_y_mid, and pos_z_mid, which sn3d accepts.
 
     Only the name pos_x_min selected the header names. Each other name went to the code for a file with no
@@ -4320,7 +3169,7 @@ def test_get_modeldata_3d_header_with_mid_point_positions(tmp_path: Path) -> Non
     lines.extend(f"{cellid} {x:.7e} {y:.7e} {z:.7e} {rho} 0 0 0 0 0" for cellid, x, y, z, rho in dfmid.iter_rows())
     (tmp_path / "model.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    dfmodel_read = at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)[0].collect()
+    dfmodel_read = at.inputmodel.scan_modeldata(tmp_path, printwarningsonly=True)[0].collect()
 
     for ax in "xyz":
         np.testing.assert_allclose(
@@ -4341,7 +3190,7 @@ def test_save_modeldata_1d_writes_zero_for_a_null(tmp_path: Path) -> None:
     })
     at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta={"t_model_init_days": 1.0})
 
-    dfwritten = at.inputmodel.get_modeldata(tmp_path, printwarningsonly=True)[0].collect()
+    dfwritten = at.inputmodel.scan_modeldata(tmp_path, printwarningsonly=True)[0].collect()
 
     assert dfwritten["X_Ni56"].to_list() == pytest.approx([0.5, 0.0])
 
@@ -4407,7 +3256,7 @@ def test_make1dmodelfromcone_keeps_ye_q_and_tracercount(tmp_path: Path) -> None:
 
     The cone took only the X_ columns. A kilonova model then had no initial energy and no Ye.
     """
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath_3d, printwarningsonly=True)
+    dfmodel, modelmeta = at.inputmodel.scan_modeldata(modelpath_3d, printwarningsonly=True)
     dfmodel = dfmodel.collect().with_columns(Ye=pl.lit(0.25), q=pl.lit(1e12), tracercount=pl.lit(2, dtype=pl.Int32))
     modelfolder = tmp_path / "model3d"
     at.inputmodel.save_modeldata(dfmodel, outpath=modelfolder, modelmeta=modelmeta)
@@ -4417,7 +3266,7 @@ def test_make1dmodelfromcone_keeps_ye_q_and_tracercount(tmp_path: Path) -> None:
         argsraw=[], modelpath=[modelfolder], outputpath=tmp_path, axis="-z", nshells=4, coneangle=60
     )
 
-    dfcone = at.inputmodel.get_modeldata(tmp_path / "model_1d.txt", printwarningsonly=True)[0].collect()
+    dfcone = at.inputmodel.scan_modeldata(tmp_path / "model_1d.txt", printwarningsonly=True)[0].collect()
     assert dfcone["Ye"].to_list() == pytest.approx([0.25] * dfcone.height)
     assert dfcone["q"].to_list() == pytest.approx([1e12] * dfcone.height, rel=1e-6)
     # each 3D cell gives 2 tracers, thus a shell has an even sum above zero
@@ -4453,7 +3302,7 @@ def test_makeartismodelfromparticlegridmap_trajectory_q_replaces_the_grid_q(
             dimensions=dimensions,
             timedays=0.1,
         )
-        dfmodel = at.inputmodel.get_modeldata(outpath, printwarningsonly=True)[0].collect()
+        dfmodel = at.inputmodel.scan_modeldata(outpath, printwarningsonly=True)[0].collect()
         qvalues = dfmodel.filter(pl.col("q") > 0)["q"].to_numpy()
         assert qvalues.size > 0
         assert not np.allclose(qvalues, 1e10, rtol=1e-3), "the model holds the q of grid.dat"
@@ -4495,7 +3344,7 @@ def test_plotinitialcomposition_2d_slice_reads_ye_from_the_ye_file(tmp_path: Pat
         shutil.copy(modelpath_3d / filename, modelfolder)
     dfmodel = get_derived_modeldata(modelfolder)[0].collect()
     dfmodel = dfmodel.with_columns(Ye=(0.1 + 0.4 * pl.col("modelgridindex") / pl.len()).cast(pl.Float32))
-    at.inputmodel.opacityinputfile.write_Ye_file(modelfolder, dfmodel)
+    at.inputmodel.opacityinputfile.write_ye_file(modelfolder, dfmodel)
 
     with mock.patch.object(mplax.Axes, "imshow", side_effect=mplax.Axes.imshow, autospec=True) as mockimshow:
         at.inputmodel.plotinitialcomposition.main(argsraw=["Ye", str(modelfolder), "-o", str(tmp_path)])
@@ -4552,14 +3401,18 @@ def test_make1dslicefrom3dmodel(tmp_path: Path) -> None:
     outfolder = tmp_path / "slice"
     make1dslicefrom3d.main(argsraw=[str(modelpath_3d), "-o", str(outfolder), "-opdf", str(tmp_path / "slice.pdf")])
 
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(outfolder, get_elemabundances=True, printwarningsonly=True)
+    dfmodel, modelmeta = at.inputmodel.scan_modeldata(outfolder, get_elemabundances=True, printwarningsonly=True)
     # the 10 x 10 x 10 grid has 5 cells on each side of the origin
     assert modelmeta["dimensions"] == 1
     assert dfmodel.collect().height == 5
     assert (tmp_path / "slice.pdf").is_file()
 
 
-def test_makeartismodelfromsingletrajectory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_makeartismodelfromsingletrajectory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    write_trajectory_archive: Callable[[Path, int, dict[str, str], str], Path],
+) -> None:
     """The command takes the trajectory folder and the particle id as arguments, and it writes a one-cell model."""
     particleid = 42
     # N, Z, and the log10 of the number abundance: He4 and Ni56 have a mass fraction of 0.5 each
@@ -4573,6 +3426,7 @@ def test_makeartismodelfromsingletrajectory(tmp_path: Path, monkeypatch: pytest.
             + "\n".join(nuclidelines)
             + "\n"
         },
+        ".tar.xz",
     )
     # the command reads a density profile from the working folder if one exists
     monkeypatch.chdir(tmp_path)
@@ -4581,7 +3435,7 @@ def test_makeartismodelfromsingletrajectory(tmp_path: Path, monkeypatch: pytest.
         argsraw=["-trajectoryroot", str(tmp_path / "trajectories"), "-particleid", str(particleid), "-o", "out"]
     )
 
-    dfmodel, modelmeta = at.inputmodel.get_modeldata(tmp_path / "out", get_elemabundances=True, printwarningsonly=True)
+    dfmodel, modelmeta = at.inputmodel.scan_modeldata(tmp_path / "out", get_elemabundances=True, printwarningsonly=True)
     dfmodel = dfmodel.collect()
     assert modelmeta["t_model_init_days"] == pytest.approx(1.0)
     assert dfmodel["X_Ni56"].to_list() == pytest.approx([0.5], rel=1e-4)
@@ -4631,7 +3485,7 @@ def test_from_e2e_model_main(
 
     gridargs = ["-npz", str(datpath), "-vmax_on_c", "0.4", "-ngridrcyl", "4", "-ngridz", "8"]
     at.inputmodel.from_e2e_model.main(argsraw=[*gridargs, "-o", str(tmp_path / "model2d")])
-    _, modelmeta2d = at.inputmodel.get_modeldata(tmp_path / "model2d", printwarningsonly=True)
+    _, modelmeta2d = at.inputmodel.scan_modeldata(tmp_path / "model2d", printwarningsonly=True)
     assert modelmeta2d["dimensions"] == 2
     assert modelmeta2d["npts_model"] == 32
 
@@ -4648,7 +3502,7 @@ def test_from_e2e_model_main(
         ]
     )
 
-    _, modelmeta3d = at.inputmodel.get_modeldata(tmp_path / "interpolated", printwarningsonly=True)
+    _, modelmeta3d = at.inputmodel.scan_modeldata(tmp_path / "interpolated", printwarningsonly=True)
     assert modelmeta3d["npts_model"] == 64
     for filename in ("dyn_abunds.txt.zst", "dyn_model_notrescaled.txt.zst", "dyn_model_rescaled.txt.zst"):
         assert (tmp_path / "interpolated" / filename).is_file(), filename
@@ -4719,7 +3573,9 @@ def test_closest_network_timesteps_agree_with_a_filter_of_each_time(trajectory_c
     assert get_closest_network_timesteps(trajectory_copy, 114511, times[-1:], cond="greaterorequal") == [None]
 
 
-def test_plotdensity_table_keeps_two_models_of_one_label_apart(tmp_path: Path) -> None:
+def test_plotdensity_table_keeps_two_models_of_one_label_apart(
+    tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """Two models of one label gave one value of the column model, and the filter took them for one line."""
     modelcopy = tmp_path / "copy"
     modelcopy.mkdir()
@@ -4734,12 +3590,14 @@ def test_plotdensity_table_keeps_two_models_of_one_label_apart(tmp_path: Path) -
         quiet=True,
     )
     for filename in ("densityprofile.txt", "densityprofile_massprofile.txt"):
-        dftable = read_data_table(tmp_path / filename)
+        dftable = read_data_file(tmp_path / filename)
         assert sorted(dftable["modelpath"].unique().to_list()) == sorted([str(modelpath), str(modelcopy)]), filename
         assert len(set(dftable.group_by("modelpath").len()["len"].to_list())) == 1, filename
 
 
-def test_plotdensity_write_data_gives_only_the_velocities_of_the_axis(tmp_path: Path) -> None:
+def test_plotdensity_write_data_gives_only_the_velocities_of_the_axis(
+    tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """The axis shows the velocities from -xmin to -xmax, and the tables also gave the points far outside the axis.
 
     A point outside the axis stays only as the end of a segment that crosses an edge of the axis.
@@ -4748,7 +3606,7 @@ def test_plotdensity_write_data_gives_only_the_velocities_of_the_axis(tmp_path: 
         argsraw=[], modelpath=[modelpath], outputpath=tmp_path, xmin=0.01, xmax=0.05, write_data=True, quiet=True
     )
     for filename in ("densityprofile.txt", "densityprofile_massprofile.txt"):
-        dftable = read_data_table(tmp_path / filename)
+        dftable = read_data_file(tmp_path / filename)
         isinside = pl.col("vel_r_on_c").is_between(0.01, 0.05)
         hasinsideneighbour = isinside.shift(1).fill_null(value=False) | isinside.shift(-1).fill_null(value=False)
         assert dftable.filter(isinside).height > 0, filename

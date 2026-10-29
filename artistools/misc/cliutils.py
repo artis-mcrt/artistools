@@ -1,51 +1,56 @@
 """Shared helpers for command-line argument parsing and list/path argument normalisation."""
 
 import argparse
-import contextlib
 import copy
-import dataclasses as dc
 import itertools
 import math
 import operator
-import os
-import re
 import sys
 import typing as t
 from collections.abc import Callable
 from collections.abc import Iterable
-from collections.abc import Mapping
 from collections.abc import Sequence
 from pathlib import Path
-from types import MappingProxyType
 
-import matplotlib.colors as mplcolors
-
-from artistools.commands import CustomArgHelpFormatter
-from artistools.commands import get_shown_flags
-from artistools.commands import get_standard_flag
-from artistools.commands import SuggestingArgumentParser
-from artistools.constants import day_to_s
-from artistools.constants import hour_to_s
-from artistools.misc.columns import get_column_description_lines
-from artistools.misc.fileio import get_file_copies
-from artistools.misc.fileio import print_saved
-from artistools.misc.fileio import write_parquet_atomic
-from artistools.misc.fileio import write_text_file_atomic
+from artistools.misc.argparser import arggroup
+from artistools.misc.argparser import CustomArgHelpFormatter
+from artistools.misc.argparser import get_shown_flags
+from artistools.misc.argparser import get_standard_flag
+from artistools.misc.argparser import KeepGivenPaths
+from artistools.misc.argparser import ReplaceGivenPaths
+from artistools.misc.argparser import separate_trailing_folders
+from artistools.misc.argparser import SuggestingArgumentParser
+from artistools.misc.commandoutput import make_output_folder
+from artistools.misc.commandoutput import OUTPUT_FORMATS
+from artistools.misc.commandoutput import resolve_outputfile
+from artistools.misc.console import exit_with_error
+from artistools.misc.console import print_detail
+from artistools.misc.console import print_heading
+from artistools.misc.dirbins import get_dirbin_labels
+from artistools.misc.dirbins import get_viewingdirectionbincount
+from artistools.misc.general import flatten_list
+from artistools.misc.general import format_range_list
+from artistools.misc.general import parse_range_list
+from artistools.misc.modelpaths import folder_is_artis_model
+from artistools.misc.modelpaths import get_model_folder
+from artistools.misc.modelpaths import path_is_codecomparison
+from artistools.misc.remote import get_canonical_path
+from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import model_path_from_text
+from artistools.misc.seriesstyles import KeepDefaultColors
+from artistools.misc.timesteps import get_time_range
+from artistools.misc.units import time_days_arg
+from artistools.misc.units import time_days_range_arg
+from artistools.misc.units import TIME_UNIT_HELP
+from artistools.misc.units import wavelength_angstroms_arg
+from artistools.misc.units import WAVELENGTH_UNIT_HELP
 
 if t.TYPE_CHECKING:
     from collections.abc import Collection
 
-    import numpy as np
-    import numpy.typing as npt
-    import polars as pl
-
 # a path argument arrives as a scalar, as a sequence, or as a nested sequence from repeated -modelpath
 type PathArg = Path | str | Sequence[PathArg] | None
 
-# a typing error in a flag name, e.g. --listvaraibles, gives a ratio of 0.76 or more. The name of a different flag
-# gives less, e.g. 0.71 for -figscale against -lgoscaley, 0.56 for --listnuclides, and 0.50 for --verbose
-FLAG_SUGGESTION_CUTOFF = 0.75
 
 # an error message names the model folders that are near. A folder of models can hold many,
 # thus this constant gives the maximum number of names
@@ -112,38 +117,6 @@ def get_cell_list(cells: "str | t.SupportsIndex | Iterable[str | t.SupportsIndex
     return [operator.index(cells)]
 
 
-def contiguous_runs(numbers: Sequence[int]) -> list[list[int]]:
-    """Split a sorted sequence of integers into the runs that have no gap."""
-    runs: list[list[int]] = []
-    for number in numbers:
-        if runs and number == runs[-1][-1] + 1:
-            runs[-1].append(number)
-        else:
-            runs.append([number])
-
-    return runs
-
-
-def format_range_list(numbers: Iterable[int]) -> str:
-    """Return the text that parse_range_list reads for these numbers, e.g. "3-7,9" for [3, 4, 5, 6, 7, 9]."""
-    return ",".join(
-        str(run[0]) if len(run) == 1 else f"{run[0]}-{run[-1]}" for run in contiguous_runs(sorted(set(numbers)))
-    )
-
-
-def arggroup(parser: argparse.ArgumentParser, title: str) -> "argparse._ArgumentGroup":  # pyright: ignore[reportPrivateUsage]
-    """Return the argument group of the parser with this title, and make it if the parser has none.
-
-    The flagship commands hold more than 70 options, thus a flat listing is hard to read. Each shared
-    helper puts its arguments into a titled group, and the help of every command gains the same shape.
-    """
-    for group in parser._action_groups:  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
-        if group.title == title:
-            return group
-
-    return parser.add_argument_group(title)
-
-
 def addarg_viewingangle(parser: argparse.ArgumentParser, allow_select_all: bool = False) -> None:
     """Add the viewing direction selection and averaging arguments shared by the plotting commands."""
     arggroup(parser, "Viewing direction").add_argument(
@@ -199,200 +172,6 @@ def addarg_viewingangle(parser: argparse.ArgumentParser, allow_select_all: bool 
     )
 
 
-class KeepGivenPaths(argparse.Action):
-    """Store the paths of a positional argument, but keep the paths that the option form already gave.
-
-    argparse applies a positional after an option that shares its dest, thus a positional that the user
-    left out would otherwise hide the value of that option. argparse gives the default object itself as the
-    value in that case, thus only that object counts as no value. A path that the user writes is a new object,
-    thus it counts also when it is equal to the default.
-    """
-
-    @t.override
-    def __call__(
-        self,
-        parser: argparse.ArgumentParser,
-        namespace: argparse.Namespace,
-        values: "str | Sequence[t.Any] | None",
-        option_string: str | None = None,
-    ) -> None:
-        """Set the paths of the positional argument, unless the option form already gave some."""
-        userwrote = bool(values) and values is not self.default
-        given = getattr(namespace, self.dest, None)
-        optiongave = bool(given) and given is not self.default
-        if userwrote and optiongave:
-            # the option form gives the paths in either order of the two forms
-            if given != values:
-                warn_ignored_paths(ignored=values, kept=given)
-        elif userwrote or given is None:
-            setattr(namespace, self.dest, values)
-
-        if not userwrote:
-            take_back_swallowed_folder(parser, namespace, self)
-
-
-class ReplaceGivenPaths(argparse.Action):
-    """Store the paths of the option form, and give a warning when they replace paths that the user wrote.
-
-    argparse applies an option after a positional that the user wrote in front of it. The option then
-    replaced the paths of the positional, and the user got no message.
-    """
-
-    @t.override
-    def __call__(
-        self,
-        parser: argparse.ArgumentParser,
-        namespace: argparse.Namespace,
-        values: "str | Sequence[t.Any] | None",
-        option_string: str | None = None,
-    ) -> None:
-        """Set the paths of the option, and name the paths that it replaces."""
-        # the namespace holds the default object itself until KeepGivenPaths stores the paths that the user wrote
-        given = getattr(namespace, self.dest, None)
-        if bool(given) and given is not parser.get_default(self.dest) and given != values:
-            warn_ignored_paths(ignored=given, kept=values)
-        setattr(namespace, self.dest, values)
-
-
-def warn_ignored_paths(ignored: "str | Sequence[t.Any] | None", kept: "str | Sequence[t.Any] | None") -> None:
-    """Give a warning that the command reads the paths of the option form and not the other paths."""
-
-    def as_text(paths: "str | Sequence[t.Any] | None") -> str:
-        return ", ".join(f"'{path}'" for path in (paths if isinstance(paths, list) else [paths]))
-
-    print_warning(
-        f"The command ignores the path {as_text(ignored)}, because the option form gives the path {as_text(kept)}."
-        " Give the paths in one form only"
-    )
-
-
-def trailing_folder_count(values: list[t.Any], *, anypath: bool = False) -> int:
-    """Return how many values at the end of a list name an ARTIS model folder, or with anypath, a path that exists.
-
-    The text alone decides for a value of the form host:path. A test of a remote folder asks its host through ssh,
-    and a label of a list option can have that form, e.g. "W7:Kasen". An empty value is a label, and not the
-    working folder.
-    """
-    from artistools.misc.fileio import folder_is_artis_model
-    from artistools.misc.remote import is_remote_path
-    from artistools.misc.remote import names_a_remote_folder
-
-    def names_a_folder(value: str) -> bool:
-        if is_remote_path(value):
-            return names_a_remote_folder(value)
-
-        return Path(value).exists() if anypath else folder_is_artis_model(value)
-
-    count = 0
-    for value in reversed(values):
-        if not isinstance(value, str) or not value or not names_a_folder(value):
-            break
-        count += 1
-
-    return count
-
-
-def separate_trailing_folders(argsraw: "Sequence[str] | None") -> list[str]:
-    """Return the command line with a "--" in front of the ARTIS folders that end it.
-
-    argparse gives every word that follows to an option that reads a list. The separator marks the
-    end of that list, thus each folder reaches the positional path argument.
-    """
-    tokens = list(sys.argv[1:] if argsraw is None else argsraw)
-    if "--" in tokens:
-        return tokens
-
-    count = trailing_folder_count(tokens)
-    # a command line of folders alone gives the folders to the positional argument already
-    if count in {0, len(tokens)}:
-        return tokens
-
-    start = len(tokens) - count
-    # a flag in front of the folders takes them as its own values, e.g. "-modelpath mymodel". The
-    # separator would leave that option with no value at all. A negative number such as the -2 of
-    # "-plotviewingangle -2 mymodel" is a value and not a flag
-    if tokens[start - 1].startswith("-") and not re.match(r"-\.?\d", tokens[start - 1]):
-        return tokens
-
-    return [*tokens[:start], "--", *tokens[start:]]
-
-
-def take_back_swallowed_folder(
-    parser: argparse.ArgumentParser, namespace: argparse.Namespace, pathaction: argparse.Action
-) -> None:
-    """Give the ARTIS folders back to the positional path argument when an option took them.
-
-    argparse gives every word that follows to an option that reads a list. Thus
-    "plotspectra --label mylabel mymodel" left the model path empty and made "mymodel" a second
-    label. The command then plotted the working folder, and it gave no message. The folders come
-    back to the positional argument here, and the option keeps its other values.
-
-    Only the last values of an option can be folders, because the user writes the paths last. Two
-    options that each end with the name of a folder are ambiguous. The command then reads them as
-    the user wrote them.
-
-    A different file or folder stays with the option, because an option such as --reflightcurves reads files. Such a
-    value can be a reference spectrum or a model folder with no input.txt, thus the user gets a warning.
-    """
-    given = getattr(namespace, pathaction.dest, None)
-    # only the default object counts as no value, as in KeepGivenPaths
-    if given and given is not pathaction.default:
-        return
-
-    def taken_folder_count(action: argparse.Action, *, anypath: bool = False) -> int:
-        values = getattr(namespace, action.dest, None)
-        takesalist = (
-            bool(action.option_strings)
-            and action.nargs in {"*", "+"}
-            and isinstance(values, list)
-            # the default list belongs to the parser, thus the user gave no value in that list
-            and values is not action.default
-            and bool(values)
-        )
-        if not takesalist:
-            return 0
-
-        assert isinstance(values, list)
-        count = trailing_folder_count(values, anypath=anypath)
-
-        # every value of the option names a folder, thus which one is the model path is unknown
-        return 0 if count == len(values) else count
-
-    candidates = [
-        (action, count)
-        for action in parser._actions  # ruff:ignore[private-member-access]
-        if (count := taken_folder_count(action))
-    ]
-    if not candidates:
-        for action in parser._actions:  # ruff:ignore[private-member-access]
-            if count := taken_folder_count(action, anypath=True):
-                flag = get_shown_flags(action)[0]
-                paths = ", ".join(f"'{value}'" for value in getattr(namespace, action.dest)[-count:])
-                print_warning(
-                    f"{flag} read {paths} as values, and each one names a file or a folder. To read them as paths,"
-                    f" write them in front of {flag}"
-                )
-    if len(candidates) != 1:
-        return
-
-    action, count = candidates[0]
-    taken = getattr(namespace, action.dest)
-    takesalist = pathaction.nargs in {"*", "+"}
-    # a positional argument that holds one path takes the last folder alone
-    folders = taken[-count:] if takesalist else taken[-1:]
-    setattr(namespace, action.dest, taken[: len(taken) - len(folders)])
-    converter = pathaction.type
-    paths = [converter(folder) for folder in folders] if callable(converter) else list(folders)
-    setattr(namespace, pathaction.dest, paths if takesalist else paths[0])
-
-    flag = get_shown_flags(action)[0]
-    folderword = "folder" if len(folders) == 1 else "folders"
-    print_warning(
-        f"{flag} read the ARTIS {folderword} {', '.join(folders)} as a value. The model path gets "
-        f"the {folderword} back. Write the model path in front of {flag}"
-    )
-
-
 def addarg_pathoption(parser: argparse.ArgumentParser, flag: str, dest: str, *, multiplepaths: bool) -> None:
     """Accept an option that names the same paths as a positional argument.
 
@@ -443,8 +222,6 @@ def item_names_a_path(item: str) -> bool:
     virtual codecomparison data set. A separator alone does not make a path, because an estimator
     variable can have one, e.g. heating_dep/total_dep.
     """
-    from artistools.misc.fileio import path_is_codecomparison
-
     if not item:
         return False
 
@@ -459,8 +236,6 @@ def item_names_a_folder(item: str) -> bool:
     A folder that exists names the model, even when the command has an item of the same name. A name
     that is not last stays an item. A variable thus keeps its meaning when a folder has the same name.
     """
-    from artistools.misc.remote import is_remote_path
-
     # a remote path has no "=" in its host, thus a style value with a colon, e.g. Te@color=tab:red, names no folder
     return bool(item) and (is_remote_path(item) or Path(item).is_dir() or item_names_a_path(item))
 
@@ -492,13 +267,9 @@ def resolve_positional_modelpath(args: argparse.Namespace, dest: str) -> list[st
     The command adds --modelpath with the default of addarg_modelpath, which is None. A value that is
     not None then shows that the user gave --modelpath. The working folder applies at the end.
     """
-    from artistools.misc.fileio import folder_is_artis_model
-
     items: list[str] = list(getattr(args, dest))
 
     if items and item_names_a_folder(items[-1]):
-        from artistools.misc.remote import get_canonical_path
-
         givenpath = get_canonical_path(model_path_from_text(items.pop()))
         # the default of such a command is None, thus a different value is one that the user wrote.
         # A command can also take many paths, and then only the positional argument names the model
@@ -537,8 +308,6 @@ def artis_subfolders(folder: Path) -> list[str]:
     A user often runs a command one level above the model, e.g. in the folder that holds every model.
     An error message can then name the folders that are near. The user does not have to list the folder.
     """
-    from artistools.misc.fileio import folder_is_artis_model
-
     try:
         children = sorted(child.name for child in folder.iterdir() if folder_is_artis_model(child))
     except OSError:
@@ -546,18 +315,6 @@ def artis_subfolders(folder: Path) -> list[str]:
         return []
 
     return children[:MAXNEARBYFOLDERS]
-
-
-def make_output_folder(folder: Path | str, verb: str) -> Path:
-    """Make the folder that holds the output of a command, and refuse a name that a file holds."""
-    folder = Path(folder)
-    if folder.exists() and not folder.is_dir():
-        msg = f"'{folder}' names a file that exists, and this command {verb} a folder of that name"
-        raise ValueError(msg)
-
-    folder.mkdir(parents=True, exist_ok=True)
-
-    return folder
 
 
 def addarg_output(
@@ -840,14 +597,6 @@ def addarg_axislimits(
         group.add_argument("-ymax", type=float, default=None, help="Plot range: y-axis maximum")
 
 
-# an entry of a list of series styles that gives no value to its series, e.g. -label default Model2. A missing entry at
-# the end of a list has the same effect. The token lets a list give a value to a later series only
-SERIES_DEFAULT: t.Final = "default"
-
-# the help text of each list of series styles gives the token
-SERIES_DEFAULT_HELP: t.Final = f"An entry {SERIES_DEFAULT} keeps the default of its series"
-
-
 def positive_int_arg(text: str) -> int:
     """Return the integer of the text, and reject a value below 1 when argparse reads the command line.
 
@@ -862,17 +611,6 @@ def positive_int_arg(text: str) -> int:
         msg = f"{value} is not a positive count. Give 1 or more"
         raise argparse.ArgumentTypeError(msg)
     return value
-
-
-# the line styles of matplotlib that a series style and the line properties popup name
-LINESTYLE_NAMES: t.Final = ("solid", "dashed", "dotted", "dashdot")
-
-# the short names of the line styles of matplotlib, which a command can also give
-LINESTYLE_ALIASES: t.Final = MappingProxyType({"-": "solid", "--": "dashed", ":": "dotted", "-.": "dashdot"})
-
-# the keys of the style of one series, which also name the options of addarg_seriesstyle, e.g. -color. A series style of
-# plotestimators gives the label last, because the label takes the rest of the text, e.g. a comma
-SERIES_STYLE_KEYS: t.Final = ("color", "linestyle", "dashes", "linewidth", "linealpha", "label")
 
 
 def positive_float_arg(text: str) -> float:
@@ -890,248 +628,6 @@ def positive_float_arg(text: str) -> float:
         msg = f"{text} is not a finite number above 0"
         raise argparse.ArgumentTypeError(msg)
     return value
-
-
-# a number, then an optional unit, e.g. 600nm, 2.5 d, or 1e5. The unit starts with a character that no number holds
-VALUE_WITH_UNIT_PATTERN: t.Final = re.compile(r"\s*([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)\s*([^\d\s.+-].*?)?\s*")
-
-# the size of each unit of a time value in days. A value with no unit has the unit "", which is days
-TIME_UNITS_IN_DAYS: t.Final[Mapping[str, float]] = MappingProxyType({
-    "": 1.0,
-    "d": 1.0,
-    "day": 1.0,
-    "days": 1.0,
-    "h": hour_to_s / day_to_s,
-    "hour": hour_to_s / day_to_s,
-    "hours": hour_to_s / day_to_s,
-    "s": 1.0 / day_to_s,
-})
-
-# the help text of each option that takes a time
-TIME_UNIT_HELP: t.Final = "A value with no unit is in days. A unit is optional, e.g. 12h"
-
-# the help text of each option that takes a wavelength in Angstroms
-WAVELENGTH_UNIT_HELP: t.Final = "A value with no unit is in Angstroms. A unit is optional, e.g. 600nm"
-
-# a hyphen that ends a time and starts the next one. A hyphen of an exponent, e.g. 1e-2, follows a digit and an e
-TIME_RANGE_SEPARATOR: t.Final = re.compile(r"(?<=[0-9.a-zA-Z])(?<![0-9.][eE])-")
-
-
-def split_value_and_unit(text: str) -> tuple[float, str]:
-    """Return the number and the unit of a command line value, e.g. (600.0, "nm") for 600nm.
-
-    A value with no unit gives the unit "". A text that does not start with a number gives a ValueError.
-    """
-    if (match := VALUE_WITH_UNIT_PATTERN.fullmatch(text)) is None:
-        msg = f"{text!r} is not a number with an optional unit"
-        raise ValueError(msg)
-    return float(match.group(1)), match.group(2) or ""
-
-
-def time_days_arg(text: str) -> float:
-    """Return the time in days of a command line value, e.g. 300, 300d, 12h, or 2.6e7s.
-
-    A value with no unit is in days.
-    """
-    unitnames = ", ".join(name for name in TIME_UNITS_IN_DAYS if len(name) == 1)
-    try:
-        number, unit = split_value_and_unit(text)
-    except ValueError:
-        msg = f"'{text}' is not a time. Give a number of days, or a number with one of the units {unitnames}"
-        raise argparse.ArgumentTypeError(msg) from None
-    if unit.lower() not in TIME_UNITS_IN_DAYS:
-        msg = f"'{unit}' in '{text}' is not a unit of time. Give one of the units {unitnames}, or no unit for days"
-        raise argparse.ArgumentTypeError(msg)
-    return number * TIME_UNITS_IN_DAYS[unit.lower()]
-
-
-def time_days_range_arg(text: str) -> str:
-    """Return a time or a time range in days, e.g. "250-300" for 250d-300d. A text with no unit stays the same.
-
-    A command reads the time text after the parse, e.g. with parse_timedays_range. Thus the text with a unit becomes
-    the same text in days, and a text with no unit keeps its form, e.g. in the label of a plot. deposition also reads
-    a list such as 1,5,30, thus each item of a list takes the same conversion.
-    """
-    if "," in text:
-        return ",".join(time_days_range_arg(item) for item in text.split(","))
-    try:
-        float(text)
-    except ValueError:
-        pass
-    else:
-        return text
-    parts = TIME_RANGE_SEPARATOR.split(text.strip())
-    if len(parts) > 2:
-        msg = f"'{text}' is not a time or a time range. Give a time or a time range, e.g. 300, 300d, or 250d-300d"
-        raise argparse.ArgumentTypeError(msg)
-    days = [time_days_arg(part) for part in parts]
-    if not any(split_value_and_unit(part)[1] for part in parts):
-        return text
-    return "-".join(f"{value:.10g}" for value in days)
-
-
-def wavelength_angstroms_arg(text: str) -> float:
-    """Return the wavelength in Angstroms of a command line value, e.g. 6000, 6000A, 600nm, or 0.6micron.
-
-    A value with no unit is in Angstroms. A unit is one of the wavelength units of --xunit of plotspectra.
-    """
-    from artistools.spectra.core import convert_xunit_aliases_to_canonical
-    from artistools.spectra.core import XUNITS
-
-    unitnames = ", ".join(name for name, xunit in XUNITS.items() if xunit.kind == "wavelength")
-    try:
-        number, unit = split_value_and_unit(text)
-        xunit = XUNITS[convert_xunit_aliases_to_canonical(unit)] if unit else XUNITS["angstrom"]
-    except ValueError:
-        msg = f"'{text}' is not a wavelength. Give a number of Angstroms, or a number with one of the units {unitnames}"
-        raise argparse.ArgumentTypeError(msg) from None
-    if xunit.kind != "wavelength":
-        msg = f"'{text}' is not a wavelength. Give one of the units {unitnames}, or no unit for Angstroms"
-        raise argparse.ArgumentTypeError(msg)
-    return number * xunit.unit_in_base_units
-
-
-def series_value_arg[T](convert: Callable[[str], T]) -> Callable[[str], T | None]:
-    """Return an argparse type that reads SERIES_DEFAULT as None, and each other value with convert."""
-
-    def convert_or_default(value: str) -> T | None:
-        return None if value == SERIES_DEFAULT else convert(value)
-
-    # argparse names the type in the message of a bad value, e.g. "invalid float value"
-    convert_or_default.__name__ = getattr(convert, "__name__", "value")
-    return convert_or_default
-
-
-class KeepDefaultColors(argparse.Action):
-    """Store the colours of --color, with the default colour of its series for each entry SERIES_DEFAULT.
-
-    A command can give a default colour to each series, e.g. C0 to C9. A --color list replaces the whole default list,
-    thus an entry SERIES_DEFAULT takes the default colour of its place in the list.
-    """
-
-    def with_default_colours(self, colours: "Sequence[t.Any]") -> list[t.Any]:
-        """Return the colours with the default colour of its series for each entry SERIES_DEFAULT."""
-        defaults: Sequence[str] = self.default or []
-        return [
-            defaults[index] if colour is None and index < len(defaults) else colour
-            for index, colour in enumerate(colours)
-        ]
-
-    @t.override
-    def __call__(
-        self,
-        parser: argparse.ArgumentParser,
-        namespace: argparse.Namespace,
-        values: "str | Sequence[t.Any] | None",
-        option_string: str | None = None,
-    ) -> None:
-        """Set the colours, and give each entry SERIES_DEFAULT the default colour of its series."""
-        colours: list[t.Any] = [] if values is None else [values] if isinstance(values, str) else list(values)
-        setattr(namespace, self.dest, self.with_default_colours(colours))
-
-
-def color_arg(value: str) -> str:
-    """Return a colour the user asked for, rejecting one matplotlib cannot parse.
-
-    The colours are compared and resolved long before anything is drawn, so a typo caught here names the
-    argument that caused it instead of surfacing from inside a plotting helper.
-    """
-    if not mplcolors.is_color_like(value):
-        msg = f"Not a matplotlib colour: {value}"
-        raise argparse.ArgumentTypeError(msg)
-
-    return value
-
-
-def dashes_arg(value: str) -> tuple[float, ...]:
-    """Return the dash pattern of one line, which matplotlib reads as a sequence of lengths.
-
-    The user writes the lengths of the dash and of the gap with a comma between them, e.g. 5,2.
-    matplotlib refuses the text, thus this function converts the numbers. The error message then
-    names --dashes.
-
-    A pattern holds a pair of lengths for each dash. matplotlib refuses an odd number of lengths at
-    the time of the plot, and it gives no line for an empty pattern, thus this function refuses both.
-    """
-    try:
-        lengths = tuple(float(part) for part in value.replace(" ", ",").split(",") if part)
-    except ValueError as exc:
-        msg = f"The value {value} is not a dash pattern such as 5,2"
-        raise argparse.ArgumentTypeError(msg) from exc
-
-    if not lengths or len(lengths) % 2 != 0:
-        msg = f"The dash pattern {value} must hold the length of a dash and the length of a gap, e.g. 5,2"
-        raise argparse.ArgumentTypeError(msg)
-
-    # matplotlib refuses a negative length and a pattern with no length above 0 at the time of the plot
-    if not all(math.isfinite(length) and length >= 0.0 for length in lengths) or not any(lengths):
-        msg = f"The dash pattern {value} must hold finite lengths of 0 or more, and at least one length above 0"
-        raise argparse.ArgumentTypeError(msg)
-
-    return lengths
-
-
-def addarg_seriesstyle(
-    parser: argparse.ArgumentParser,
-    *,
-    colordefault: Sequence[str] | None = None,
-    include_linestyles: bool = True,
-    include_linealpha: bool = False,
-    include_dashes: bool = True,
-) -> None:
-    """Add the per-series style list arguments shared by the multi-series plotting commands."""
-    group = arggroup(parser, "Appearance")
-    group.add_argument(
-        "-label",
-        type=series_value_arg(str),
-        default=[],
-        nargs="*",
-        help=f"List of series label overrides. {SERIES_DEFAULT_HELP}",
-    )
-    group.add_argument(
-        "-color",
-        "-colors",
-        dest="color",
-        type=series_value_arg(color_arg),
-        default=list(colordefault) if colordefault else [],
-        action=KeepDefaultColors,
-        nargs="*",
-        help=f"List of line colors. {SERIES_DEFAULT_HELP}",
-    )
-    if include_linestyles:
-        group.add_argument(
-            "-linestyle",
-            type=series_value_arg(str),
-            default=[],
-            nargs="*",
-            help=f"List of line styles. {SERIES_DEFAULT_HELP}",
-        )
-        group.add_argument(
-            "-linewidth",
-            type=series_value_arg(float),
-            default=[],
-            nargs="*",
-            help=(
-                "A list of line widths. For a reference series the value gives the size of the marker."
-                f" {SERIES_DEFAULT_HELP}"
-            ),
-        )
-    if include_linealpha:
-        group.add_argument(
-            "-linealpha",
-            type=series_value_arg(float),
-            default=[],
-            nargs="*",
-            help=f"List of line alphas (opacities). {SERIES_DEFAULT_HELP}",
-        )
-    if include_dashes:
-        group.add_argument(
-            "-dashes",
-            type=series_value_arg(dashes_arg),
-            default=[],
-            nargs="*",
-            help=f"List of dash patterns of lines, each one a list such as 5,2. {SERIES_DEFAULT_HELP}",
-        )
 
 
 def addarg_figscale(
@@ -1171,96 +667,6 @@ def addarg_action(parser: argparse.ArgumentParser, choices: Sequence[str], helpt
         choices=choices,
         help=helptext,
     )
-
-
-def suggest_names(name: str, candidates: "Collection[str]") -> str:
-    """Return a sentence that names the closest candidates, or an empty string when none is close.
-
-    The sentence goes on the help line of an error, thus it carries no leading space. A name that
-    differs only in case comes first, because that mistake is common and difflib scores a short name
-    such as "te" against "Te" below its own threshold.
-    """
-    import difflib
-
-    names = list(candidates)
-    if samecase := [other for other in names if other.lower() == name.lower() and other != name]:
-        return f"Did you mean {samecase[0]}?"
-
-    matches = difflib.get_close_matches(name, names, n=3, cutoff=0.6)
-
-    return f"Did you mean {', '.join(matches)}?" if matches else ""
-
-
-def is_abbreviation(short: str, name: str) -> bool:
-    """Return whether name starts with the first letter of short and holds each letter of short in the same order."""
-    remaining = iter(name)
-    return short[:1] == name[:1] and len(short) < len(name) and all(letter in remaining for letter in short)
-
-
-def suggest_flags(given: str, visibleflags: "Collection[str]") -> str:
-    """Return a sentence that names the flags that the user possibly meant, or an empty string.
-
-    The user can give the start of a longer name, e.g. --dim for --dimensionreduce, thus a flag that starts
-    with the given text comes before the closest name of difflib, which gave "-d". The shortest names
-    come first, and three of them, as suggest_names gives: "-ti" on plotspectra starts 13 flags.
-
-    An abbreviation comes next: a flag with the same first letter that holds the letters of the given name in their
-    order, e.g. --timemin for --tmin. difflib then compares the names without their dashes, because two dashes match
-    in every pair of long flags. "--bogus" got the suggestion "--verbose" with the ratio 0.62, and the ratio of the
-    names alone is 0.50.
-    """
-    import difflib
-
-    starts = sorted(sorted(flag for flag in visibleflags if flag.startswith(given)), key=len)
-    if starts:
-        return f"Did you mean {', '.join(starts[:3])}?"
-
-    givenname = given.lstrip("-")
-    abbreviated = sorted(sorted(flag for flag in visibleflags if is_abbreviation(givenname, flag.lstrip("-"))), key=len)
-    if abbreviated:
-        return f"Did you mean {', '.join(abbreviated[:3])}?"
-
-    flagofname = {flag.lstrip("-"): flag for flag in visibleflags}
-    matches = difflib.get_close_matches(givenname, list(flagofname), n=3, cutoff=FLAG_SUGGESTION_CUTOFF)
-    return f"Did you mean {', '.join(flagofname[name] for name in matches)}?" if matches else ""
-
-
-def print_error(message: str, helptext: str = "") -> None:
-    """Print an error to the standard error, then a help line that says what to do next.
-
-    The error states the fault alone, thus a reader sees the remedy on its own line. rich colours the
-    prefix in a terminal alone.
-    """
-    from rich.console import Console
-    from rich.text import Text
-
-    console = Console(stderr=True, highlight=False, soft_wrap=True)
-    console.print(Text("error: ", style="bold red") + Text(message))
-    if helptext:
-        console.print(Text("help: ", style="bold cyan") + Text(helptext))
-
-
-def print_warning(*values: object) -> None:
-    """Print a warning to the standard error, thus --quiet keeps it and a script reads a clean product.
-
-    rich colours the prefix in a terminal, and it writes plain text into a pipe or under NO_COLOR. The prefix is in
-    lower case, as "error: " and "help: " are. The message after the prefix starts with a capital letter.
-    """
-    from rich.console import Console
-    from rich.text import Text
-
-    message = " ".join(str(value) for value in values)
-    Console(stderr=True, highlight=False, soft_wrap=True).print(Text("warning: ", style="bold yellow") + Text(message))
-
-
-def exit_with_error(message: str, helptext: str = "") -> t.NoReturn:
-    """Print an error message and stop with a failing exit status.
-
-    A mistake in the arguments earns a message rather than a traceback, and a script that runs the
-    command sees that it failed. helptext names what the user can do next.
-    """
-    print_error(message, helptext)
-    raise SystemExit(1)
 
 
 def require_action(args: argparse.Namespace) -> None:
@@ -1391,70 +797,6 @@ def addarg_force(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def confirm_overwrite(folders: Iterable[Path | str], filenames: Sequence[str], force: bool) -> None:
-    """Warn about the output files that exist, and stop the command if the user does not agree to overwrite them.
-
-    The output files are the file names in each of the folders. Each name also stands for its compressed copies,
-    e.g. model.txt for model.txt.zst. A command calls this function before the work starts, thus a refusal costs no
-    time. Nobody can answer when stdin is not a terminal, thus the command then stops if it has no --force.
-    """
-    confirm_overwrite_of_files(
-        [
-            path
-            for folder in folders
-            for filename in filenames
-            for path in get_file_copies(Path(folder, filename))
-            if path.is_file()
-        ],
-        force,
-    )
-
-
-def confirm_overwrite_matches(folder: Path | str, patterns: Sequence[str], force: bool) -> None:
-    """Apply confirm_overwrite to the files of folder that match the glob patterns, e.g. "spectrum_ts*.txt".
-
-    A command whose file names hold a timestep or a value from the data takes patterns, because the command does not
-    know the names before the work starts.
-    """
-    confirm_overwrite_of_files(
-        sorted({path for pattern in patterns for path in Path(folder).glob(pattern) if path.is_file()}), force
-    )
-
-
-def confirm_overwrite_of_files(existingfiles: Sequence[Path], force: bool) -> None:
-    """Warn about each file that exists, and stop the command if the user does not agree to overwrite them."""
-    if not existingfiles:
-        return
-
-    for path in existingfiles:
-        print_warning(f"{path} exists")
-    if not force and not user_agrees("Overwrite the files?"):
-        exit_with_error(
-            "The command stopped, and it did not overwrite the files", "Give -f or --force to overwrite them"
-        )
-
-
-def confirm_deletion(files: Sequence[Path], force: bool) -> None:
-    """List the files, and stop the command if the user does not agree to delete them, as rm -i does."""
-    for path in files:
-        print_detail(path)
-    if not force and not user_agrees(f"Delete the {len(files)} files?"):
-        exit_with_error("The command stopped, and it did not delete the files", "Give -f or --force to delete them")
-
-
-def user_agrees(question: str) -> bool:
-    """Ask a question of the form (y/n) on the terminal, and return True for the answer yes.
-
-    Nobody can answer when stdin is not a terminal, thus the answer is then no.
-    """
-    reply = ""
-    if sys.stdin.isatty():
-        # the end of the input, e.g. from Ctrl-D, is the answer "no"
-        with contextlib.suppress(EOFError):
-            reply = input(f"{question} (y/n) ")
-    return reply.strip().lower() in {"y", "yes"}
-
-
 def addarg_verbose(parser: argparse.ArgumentParser) -> None:
     """Add the --verbose argument that shows the detail of each step.
 
@@ -1471,58 +813,6 @@ def addarg_verbose(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def print_heading(text: str) -> None:
-    """Print the name of the model or the series that the lines below it describe.
-
-    Every command marks such a line, thus one style serves them all. rich gives the line its weight in
-    a terminal alone, and a pipe takes the plain text. "====>" stood in front of it before.
-    """
-    from rich.console import Console
-    from rich.text import Text
-
-    Console(highlight=False, soft_wrap=True).print(Text(text, style="bold"))
-
-
-def print_detail(*values: object) -> None:
-    """Print one line of detail below a heading, with the indent that every command uses."""
-    print(" ", *values)
-
-
-def print_product(args: argparse.Namespace, *values: object) -> None:
-    """Print the product of a command, which --quiet keeps.
-
-    --quiet sends the progress messages to the null device. The product of the command, e.g. the table
-    of --print-data or the listing of --listvariables, must reach the standard output even so. A script
-    then reads that product with no progress message around it.
-    """
-    productstream = getattr(args, "productstream", None) or sys.stdout
-    if len(values) == 1 and not isinstance(values[0], str):
-        import polars as pl
-
-        if isinstance(values[0], pl.DataFrame):
-            write_data_table(values[0], productstream, outputformat=getattr(args, "output_format", None))
-            return
-
-    print(*values, file=productstream)
-
-
-def get_json_rows(dfdata: "pl.DataFrame") -> list[dict[str, t.Any]]:
-    """Return the rows of a table for JSON, with null for a missing value and for an infinite value.
-
-    JSON has no NaN and no infinity. json.dumps wrote Infinity, which a strict parser of JSON refuses.
-    """
-    import polars as pl
-
-    floatcolumns = [name for name, dtype in dfdata.schema.items() if dtype.is_float()]
-    return dfdata.with_columns(
-        pl.when(pl.col(name).is_finite()).then(pl.col(name)).alias(name) for name in floatcolumns
-    ).to_dicts()
-
-
-# the formats of --output-format. "text" has a space between the values, and "csv" has a comma
-OUTPUT_FORMATS: t.Final = ("text", "json", "csv")
-
-
 def addarg_output_format(parser: argparse.ArgumentParser) -> None:
     """Add --output-format, which selects the format of a table, as --output-format of ruff does."""
     arggroup(parser, "Output").add_argument(
@@ -1534,50 +824,6 @@ def addarg_output_format(parser: argparse.ArgumentParser) -> None:
             " suffix of the file gives, e.g. .json"
         ),
     )
-
-
-def write_data_table(
-    dfdata: "pl.DataFrame",
-    destination: "Path | t.TextIO",
-    commentlines: Sequence[str] = (),
-    outputformat: str | None = None,
-) -> None:
-    """Write a table as text with a space between the values and a header row of column names.
-
-    The polars display of a table shows only some rows, thus a reader of the output does not get each value. A reader
-    that splits on spaces moves each later value to the wrong column after an empty field. Thus a missing value is nan.
-    A value or a column name that contains a space has quotes, which polars and pandas read. Each line of commentlines
-    goes before the table with "# " at its start, which pl.read_csv(comment_prefix="#") and np.loadtxt skip. A file
-    replaces a symbolic link at its path, because write_text_file_atomic does not write through a link.
-
-    A file with the suffix .json, .csv, or .parquet takes that format, as the suffix of a figure sets its format.
-    outputformat, e.g. from --output-format, replaces the format of the suffix. A JSON file holds an object with the
-    keys "comments" and "rows", and a missing value is null. A parquet file keeps commentlines in its metadata key
-    "comments".
-    """
-    suffix = destination.suffix.lower() if isinstance(destination, Path) else ""
-    if isinstance(destination, Path) and suffix == ".parquet" and outputformat is None:
-        write_parquet_atomic(dfdata, destination, metadata={"comments": "\n".join(commentlines)})
-        return
-    tableformat = outputformat or {".json": "json", ".csv": "csv"}.get(suffix, "text")
-
-    def write_to_stream(stream: t.TextIO) -> None:
-        if tableformat == "json":
-            import json
-
-            json.dump({"comments": list(commentlines), "rows": get_json_rows(dfdata)}, stream, default=str, indent=1)
-            stream.write("\n")
-            return
-        stream.writelines(f"# {line}\n" for line in commentlines)
-        if tableformat == "csv":
-            dfdata.write_csv(stream)
-            return
-        dfdata.write_csv(stream, separator=" ", null_value="nan")
-
-    if isinstance(destination, Path):
-        write_text_file_atomic(destination, write_to_stream)
-    else:
-        write_to_stream(destination)
 
 
 def addarg_table_output(parser: argparse.ArgumentParser) -> None:
@@ -1597,67 +843,6 @@ def addarg_table_output(parser: argparse.ArgumentParser) -> None:
     addarg_output_format(parser)
 
 
-def resolve_table_outputfile(args: argparse.Namespace, defaultname: str) -> Path | None:
-    """Return the file that -o names, or None when the user gives no -o. Without -o, the command prints its table.
-
-    A -o path with no file extension names a folder, which takes defaultname. The function does the overwrite check
-    here, before the work starts. -f skips the check.
-    """
-    if not args.outputfile:
-        return None
-    outputfile = resolve_outputfile(args.outputfile, defaultname)
-    confirm_overwrite([outputfile.parent], [outputfile.name], force=getattr(args, "force", False))
-    return outputfile
-
-
-def print_or_write_table(
-    args: argparse.Namespace, dftable: "pl.DataFrame", outputfile: Path | None, commentlines: Sequence[str] = ()
-) -> None:
-    """Print the table with no -o, or write it to outputfile with the provenance lines and commentlines.
-
-    A printed JSON table holds commentlines under its key "comments", as a JSON file does. A parser of JSON then reads
-    the whole output, and a line of text in front of the object would stop it.
-    """
-    if outputfile is None:
-        if getattr(args, "output_format", None) == "json":
-            productstream = getattr(args, "productstream", None) or sys.stdout
-            write_data_table(dftable, productstream, commentlines=commentlines, outputformat="json")
-            return
-        print_product(args, dftable)
-        return
-
-    make_output_folder(outputfile.parent, "writes")
-    write_data_table(
-        dftable,
-        outputfile,
-        commentlines=[*get_provenance_lines(args), *commentlines],
-        outputformat=getattr(args, "output_format", None),
-    )
-    print_saved(outputfile)
-
-
-def get_provenance_lines(args: argparse.Namespace) -> list[str]:
-    """Return the lines that tell how a command made its data: the version, the time, the folder, and the command.
-
-    A relative model path in the command starts at the working folder, thus a line gives that folder too. A call from
-    Python has no command line, thus the line then gives each argument that holds a plain value.
-    """
-    import datetime as dt
-    from importlib.metadata import version
-
-    timetext = dt.datetime.now(dt.UTC).isoformat(timespec="seconds")
-    commandline = getattr(args, "commandline", None)
-    if commandline is None:
-        plainvalues = (str, int, float, bool, Path, list, tuple, type(None))
-        argtexts = [f"{key}={value!r}" for key, value in sorted(vars(args).items()) if isinstance(value, plainvalues)]
-        commandline = f"a Python call with the arguments {', '.join(argtexts)}"
-    return [
-        f"artistools {version('artistools')}, {timetext}",
-        f"working folder: {Path.cwd()}",
-        f"command: {commandline}",
-    ]
-
-
 def addarg_data_output(parser: argparse.ArgumentParser) -> None:
     """Add the --print-data and --write-data arguments, which give the plotted data as text."""
     group = arggroup(parser, "Output")
@@ -1672,82 +857,6 @@ def addarg_data_output(parser: argparse.ArgumentParser) -> None:
         help="Write the plotted data to a .txt file beside the figure, with a space between the values",
     )
     addarg_output_format(parser)
-
-
-def output_data(args: argparse.Namespace, tables: "Mapping[str, pl.DataFrame]", outputfile: Path | str) -> None:
-    """Print the plotted data, write it to files, or both, as --print-data and --write-data ask.
-
-    Each key of tables is the end of a file name, e.g. "_residuals" gives myplot_residuals.txt for myplot.pdf, and an
-    empty key gives myplot.txt. The standard output gives the tables in the same order, with an empty line between two
-    tables. --output-format json prints one JSON object, with the rows of each table under its key without the "_",
-    e.g. "residuals", and "data" for the empty key. A parser of JSON reads one document alone. --output-format csv
-    prints the main table alone, with a warning that names the other tables. A reader of CSV takes one header.
-
-    --output-format also gives the format and the suffix of each file, e.g. myplot.json. The function skips an empty
-    table. A file starts with comment lines that tell how the command made the data and what each column holds. A pipe
-    reads the standard output, thus it gets no comment lines. An empty table replaces the file of an earlier run, thus
-    that file cannot seem to hold the data of this run.
-    """
-    outputformat = getattr(args, "output_format", None)
-    printedtables = {suffix: dfdata for suffix, dfdata in tables.items() if not dfdata.is_empty()}
-    # a command can give one figure for each element or each time, thus run_command prints the tables of all the
-    # figures as one document when the command ends
-    if getattr(args, "print_data", False) and (collected := getattr(args, "collectedtables", None)) is not None:
-        collected.append((Path(outputfile).name, printedtables))
-    elif getattr(args, "print_data", False) and outputformat == "json":
-        import json
-
-        document = {suffix.lstrip("_") or "data": get_json_rows(dfdata) for suffix, dfdata in printedtables.items()}
-        print_product(args, json.dumps(document, default=str, indent=1))
-    elif getattr(args, "print_data", False) and outputformat == "csv" and len(printedtables) > 1:
-        # a reader of CSV takes one header, thus the output holds the main table alone
-        mainsuffix = "" if "" in printedtables else next(iter(printedtables))
-        othernames = ", ".join(suffix.lstrip("_") for suffix in printedtables if suffix != mainsuffix)
-        print_product(args, printedtables[mainsuffix])
-        print_warning(
-            f"--output-format csv prints the main table alone, and the other tables stay out: {othernames}."
-            " --output-format json prints each table, and --write-data writes one file for each table"
-        )
-    elif getattr(args, "print_data", False):
-        for tableindex, dfdata in enumerate(printedtables.values()):
-            if tableindex > 0:
-                print_product(args, "")
-            print_product(args, dfdata)
-    if getattr(args, "write_data", False):
-        filesuffix = {"json": ".json", "csv": ".csv"}.get(outputformat or "text", ".txt")
-        for suffix, dfdata in tables.items():
-            datafile = Path(outputfile).with_name(f"{Path(outputfile).stem}{suffix}{filesuffix}")
-            if dfdata.is_empty() and not os.path.lexists(datafile):
-                continue
-            emptylines = (
-                ["the table has no rows, e.g. because the plot has no point in the selected range"]
-                if dfdata.is_empty()
-                else []
-            )
-            commentlines = [*get_provenance_lines(args), *emptylines, *get_column_description_lines(dfdata.columns)]
-            write_data_table(dfdata, datafile, commentlines=commentlines, outputformat=outputformat)
-            print_saved(datafile)
-
-
-def print_collected_data(args: argparse.Namespace) -> None:
-    """Print the tables that output_data collected for each figure as one document of --output-format json or csv.
-
-    A reader of JSON or of CSV takes one document, thus the rows of the tables with one key join one table. With more
-    than one figure, the column "figure" gives the file name of the figure of each row. A table can hold no column of
-    the timestep or of the element, e.g. a table of plotnltepops, and the file name gives them.
-    """
-    import polars as pl
-
-    collected: list[tuple[str, Mapping[str, pl.DataFrame]]] = getattr(args, "collectedtables", None) or []
-    framesofkey: dict[str, list[pl.DataFrame]] = {}
-    for figurename, tables in collected:
-        for suffix, dfdata in tables.items():
-            framesofkey.setdefault(suffix, []).append(
-                dfdata.with_columns(figure=pl.lit(figurename)) if len(collected) > 1 else dfdata
-            )
-    tables = {suffix: pl.concat(frames, how="diagonal_relaxed") for suffix, frames in framesofkey.items()}
-    printargs = argparse.Namespace(**(vars(args) | {"write_data": False, "collectedtables": None}))
-    output_data(printargs, tables, "")
 
 
 def addarg_dpi(parser: argparse.ArgumentParser, *, default: int = 250) -> None:
@@ -1845,23 +954,6 @@ def addarg_legend(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def addarg_maxpacketfiles(parser: argparse.ArgumentParser) -> None:
-    """Add the --maxpacketfiles argument limiting how many packet files are read."""
-    from artistools.packets.core import RANKS_PER_BATCH
-
-    arggroup(parser, "Packets").add_argument(
-        "-maxpacketfiles",
-        "-maxpacketsfiles",
-        type=int,
-        default=None,
-        help=(
-            f"Set the maximum number of packet files to read. The reader reads whole batches of {RANKS_PER_BATCH}"
-            f" files, thus give a value of at least {RANKS_PER_BATCH}. The reader rounds the value down to a multiple"
-            f" of {RANKS_PER_BATCH}"
-        ),
-    )
-
-
 def check_time_selection(
     parser: SuggestingArgumentParser,
     args: argparse.Namespace,
@@ -1953,8 +1045,6 @@ def check_range_order(args: argparse.Namespace) -> None:
 
 def check_direction_bins(args: argparse.Namespace) -> None:
     """Stop when --plotviewingangle names a bin that does not exist, before the command reads the spectra."""
-    from artistools.misc.dirbins import get_viewingdirectionbincount
-
     dirbins = getattr(args, "plotviewingangle", None)
     if not dirbins:
         return
@@ -2048,12 +1138,6 @@ def print_explanation(
 
 def explain_model_selection(modelpath: Path, args: argparse.Namespace) -> None:
     """Print the model folder, the timesteps of the time selection, and the direction bins for one model path."""
-    from artistools.misc.dirbins import get_dirbin_labels
-    from artistools.misc.fileio import folder_is_artis_model
-    from artistools.misc.fileio import get_model_folder
-    from artistools.misc.remote import is_remote_path
-    from artistools.misc.timesteps import get_time_range
-
     if is_remote_path(modelpath):
         print_detail(f"Model: {modelpath} (a remote model. --explain reads no file of it)")
         return
@@ -2129,130 +1213,6 @@ def parse_cli_args(
         raise SystemExit(0)
 
     return args
-
-
-def resolve_outputfile(outputfile: Path | str | None, defaultoutputfile: Path | str) -> Path:
-    """Return the output file path, appending the default filename if outputfile is unset or refers to a folder.
-
-    A path with no file extension is treated as a folder and will be created if it does not exist.
-    """
-    if not outputfile:
-        return Path(defaultoutputfile)
-
-    outputfile = Path(outputfile)
-    if outputfile.is_dir() or not outputfile.suffixes:
-        return make_output_folder(outputfile, "needs") / defaultoutputfile
-
-    return outputfile
-
-
-def get_template_fields(template: Path | str) -> list[str]:
-    """Return the names of the fields that a template of an output name holds."""
-    import re
-
-    return re.findall(r"\{(\w+)", str(template))
-
-
-# the older name of each output template field, which a script can still hold. The help names one
-# spelling for each field, thus the message that lists them leaves these out
-OLDTEMPLATEFIELDS: t.Final[Mapping[str, str]] = MappingProxyType({"modelgridindex": "cell", "time_days": "timedays"})
-
-
-def format_frame_path(frametemplate: Path | str, **fields: t.Any) -> str:
-    """Return the path of one frame, and name the fields of the command for a template that holds another.
-
-    A user writes the template, thus a field that the command does not give is a mistake of the
-    arguments and not a fault of artistools.
-    """
-    fieldsandoldnames = fields | {old: fields[new] for old, new in OLDTEMPLATEFIELDS.items() if new in fields}
-    try:
-        return str(frametemplate).format(**fieldsandoldnames)
-    except KeyError as exc:
-        given = ", ".join(f"{{{name}}}" for name in fields)
-        msg = f"The name of the output holds the field {exc}, and this command gives {given}"
-        raise ValueError(msg) from exc
-    except IndexError as exc:
-        given = ", ".join(f"{{{name}}}" for name in fields)
-        msg = f"The name of the output holds a field with no name, and each field needs one of: {given}"
-        raise ValueError(msg) from exc
-
-
-@dc.dataclass(frozen=True, slots=True)
-class FrameSet:
-    """The frames of a run that draws several figures, and the product that holds them.
-
-    One value says whether the run combines its frames. The command reads it for the figure of each
-    frame, and finish makes the product, thus the three parts of the run cannot disagree.
-    """
-
-    frametemplate: Path
-    productpath: Path | None
-    combines: bool
-    gifduration: float | None = None
-
-    def finish(self, framepaths: "Sequence[str | Path]", args: argparse.Namespace) -> Path | str | None:
-        """Combine the frames into the product, for a run that combines them, and give its path."""
-        if not self.combines:
-            return None
-
-        from artistools.misc.fileio import combine_frames
-
-        return combine_frames(
-            framepaths, self.productpath, openfile=getattr(args, "open", False), gifduration=self.gifduration
-        )
-
-
-def resolve_frameset_paths(
-    outputfile: Path | str | None,
-    *,
-    framecount: int,
-    framename: str,
-    productname: str | None = None,
-    combines: bool = False,
-    gifduration: float | None = None,
-) -> FrameSet:
-    """Return the frames of the run and the product that holds them.
-
-    A run that draws several figures combines them into one product, e.g. a gif or a merged pdf.
-    combines says that such a product comes, and productname gives it a name for a -o path that names a
-    folder. Without that name the combining step names it, as merge_pdf_files takes the names of the
-    first frame and the last one.
-
-    For a run that combines its frames, a -o path that has a file extension names the product itself, thus the
-    frames go in the folder that holds it. A -o path with no file extension names a folder. This makes that folder
-    either way. A -o name that holds a field, e.g. frame_{timestep}.pdf, names each frame and never the product.
-    A run that does not combine its frames makes no product, thus its -o path names the frame.
-    """
-    givenpath = Path(outputfile) if outputfile else Path()
-
-    if combines and givenpath.suffix and not givenpath.is_dir() and "{" not in givenpath.name:
-        # a merge of the frames always writes pdf data, thus a different suffix would name the format incorrectly
-        if gifduration is None and givenpath.suffix.lower() != ".pdf":
-            msg = (
-                f"'{givenpath.name}' names the merged product of {framecount} frames, and a merge writes a pdf file."
-                f" Give a name that ends with .pdf, or a folder with -o"
-            )
-            raise ValueError(msg)
-
-        # the folder of the product can carry a suffix of its own, e.g. results.v1, thus make it here
-        # and let resolve_outputfile read it as a folder and not as the name of one frame
-        givenpath.parent.mkdir(parents=True, exist_ok=True)
-
-        return FrameSet(resolve_outputfile(givenpath.parent, framename), givenpath, combines, gifduration)
-
-    frametemplate = resolve_outputfile(outputfile, framename)
-    if framecount > 1 and "{" not in frametemplate.name:
-        fields = get_template_fields(framename)
-        example = f"-o 'frame_{{{fields[0]}}}{Path(framename).suffix}'" if fields else "-o myfolder"
-        msg = (
-            f"'{frametemplate.name}' names one file, and this command writes {framecount} frames. Give "
-            f"a folder with -o, or a name that holds a field, e.g. {example}"
-        )
-        raise ValueError(msg)
-
-    productpath = frametemplate.parent / productname if productname is not None else None
-
-    return FrameSet(frametemplate, productpath, combines, gifduration)
 
 
 def takes_a_list(action: argparse.Action) -> bool:
@@ -2333,120 +1293,11 @@ def set_args_from_dict(parser: argparse.ArgumentParser, kwargs: dict[str, t.Any]
         raise ValueError(msg)
 
 
-def parse_float_range(text: str, description: str) -> tuple[float, float]:
-    """Return the two numbers of a range such as 2.2-2.8, in the order that the text gives them.
-
-    A hyphen also appears inside an exponent, e.g. 1e-2, and in front of a negative number. Thus only
-    a hyphen that comes after a digit or after a decimal point separates the two ends of the range.
-    The description names what the caller expects, and the message of an error gives that name.
-    """
-    try:
-        first, second = (float(part) for part in re.split(r"(?<=[0-9.])-", text.strip()))
-    except ValueError as exc:
-        msg = f"Cannot read {text!r} as {description}"
-        raise ValueError(msg) from exc
-
-    return first, second
-
-
-def parse_range(rng: str, dictvars: dict[str, int]) -> Iterable[int]:
-    """Parse a string with an integer range and return a list of numbers, replacing special variables in dictvars.
-
-    A hyphen also stands in front of a negative number, thus only a hyphen that follows a digit or a
-    letter separates the two ends of the range. "-1" then names one number, which the caller refuses.
-    """
-    strparts = re.split(r"(?<=[0-9a-zA-Z])-", rng.strip())
-
-    if len(strparts) not in {1, 2}:
-        msg = f"Bad range: '{rng}'"
-        raise ValueError(msg)
-
-    parts = [int(i) if i not in dictvars else dictvars[i] for i in strparts]
-    start: int = parts[0]
-    end: int = start if len(parts) == 1 else parts[1]
-
-    if start > end:
-        # "last-1" reads as "the timestep before the last", thus a swap would select almost all the timesteps
-        if any(part in dictvars for part in strparts):
-            msg = f"The range '{rng}' ends before it starts. Give the two ends as numbers, e.g. 40-45"
-            raise ValueError(msg)
-        end, start = start, end
-
-    return range(start, end + 1)
-
-
-def parse_range_list(rngs: str, dictvars: dict[str, int] | None = None) -> list[int]:
-    """Return the sorted integers in any of the comma-separated ranges of a string, e.g. "1,3-5"."""
-    return sorted(set(itertools.chain.from_iterable([parse_range(rng, dictvars or {}) for rng in rngs.split(",")])))
-
-
-def makelist(x: Sequence[t.Any] | str | Path | None) -> list[t.Any]:
-    """If x is not a list (or is a string), make a list containing x."""
-    if x is None:
-        return []
-    return [x] if isinstance(x, str | Path) else list(x)
-
-
-def trim_or_pad(requiredlength: int, *listoflistin: t.Any) -> Sequence[Sequence[t.Any]]:
-    """Make lists equal in length to requiredlength either by padding with None or truncating."""
-    list_sequence = []
-    for listin in listoflistin:
-        listin_makelist = makelist(listin)
-
-        listout = [listin_makelist[i] if i < len(listin_makelist) else None for i in range(requiredlength)]
-
-        assert len(listout) == requiredlength
-        list_sequence.append(listout)
-    return list_sequence
-
-
-def resolve_series_styles(
-    args: argparse.Namespace, isreference: Sequence[bool], usercolors: Sequence[str | None], *stylenames: str
-) -> list[str]:
-    """Return one colour for each series.
-
-    The function also pads each style list in args to one entry for each series. A colour in usercolors
-    has priority. A reference series gets black and then greys, and an ARTIS
-    model gets a colour of the cycle. A style list gets None where the user gave no entry.
-    """
-    from artistools.plottools import get_series_colors
-
-    seriescount = len(isreference)
-    for stylename in stylenames:
-        setattr(args, stylename, trim_or_pad(seriescount, getattr(args, stylename))[0])
-
-    return get_series_colors(isreference, makelist(usercolors))
-
-
-def get_series_label(labels: Sequence[str | None], index: int, fallback: str) -> str:
-    """Return the --label value for one series, or fallback when the user gave none for it.
-
-    trim_or_pad pads the list with None, so an entry can be missing either as a None or, when the series
-    count is not the model path count, by running off the end. An empty label is not a missing one:
-    matplotlib gives no legend entry to a series labelled "", which is how one is left out of the legend.
-    """
-    label = labels[index] if 0 <= index < len(labels) else None
-
-    return fallback if label is None else label
-
-
-def flatten_list(listin: list[t.Any]) -> list[t.Any]:
-    """Flatten a list of lists."""
-    listout = []
-    for elem in listin:
-        if isinstance(elem, list):
-            listout.extend(elem)
-        else:
-            listout.append(elem)
-    return listout
-
-
 def normalize_path_list(paths: PathArg) -> list[Path]:
     """Return a flat list of Paths from one path or a nested sequence of paths, or the working folder for no path.
 
     A remote path gets the canonical form of get_canonical_path, thus its parent keeps the host.
     """
-    from artistools.misc.remote import get_canonical_path
 
     def to_path(path: str | Path) -> Path:
         return get_canonical_path(model_path_from_text(path) if isinstance(path, str) else Path(path))
@@ -2456,32 +1307,3 @@ def normalize_path_list(paths: PathArg) -> list[Path]:
     if isinstance(paths, str | Path):
         return [to_path(paths)]
     return [to_path(p) for p in flatten_list(list(paths))]
-
-
-def get_filterfunc(args: argparse.Namespace) -> "Callable[[npt.ArrayLike], npt.NDArray[np.float64]] | None":
-    """Return the filter function that the command-line arguments select, or None.
-
-    The function is a partial of a module function, thus pickle can send it to the server of a remote model.
-    """
-    import functools
-
-    from artistools.misc.general import moving_average_filter
-    from artistools.misc.general import savgol_filter
-
-    filterfunc = None
-    dictargs = vars(args)
-
-    if dictargs.get("filtermovingavg", False):
-        filterfunc = functools.partial(moving_average_filter, n=args.filtermovingavg)
-
-    if dictargs.get("filtersavgol", False):
-        if filterfunc is not None:
-            msg = "Give only one of --filtermovingavg and --filtersavgol"
-            raise ValueError(msg)
-
-        window_length, polyorder = (int(x) for x in args.filtersavgol)
-        filterfunc = functools.partial(savgol_filter, window_length=window_length, polyorder=polyorder)
-
-        print("Applying Savitzky-Golay filter")
-
-    return filterfunc

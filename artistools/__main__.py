@@ -10,6 +10,7 @@ import sys
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
+from time import monotonic
 
 import polars as pl
 
@@ -20,14 +21,14 @@ if t.TYPE_CHECKING:
 def build_parser() -> argparse.ArgumentParser:
     """Construct the top-level artistools argument parser."""
     from artistools.commands import addsubparsers
-    from artistools.commands import CustomArgHelpFormatter
+    from artistools.commands import CommandListFormatter
     from artistools.commands import get_epilog
     from artistools.commands import subcommandtree
-    from artistools.commands import SuggestingArgumentParser
     from artistools.commands import VersionAction
+    from artistools.misc import SuggestingArgumentParser
 
     parserkwargs: dict[str, t.Any] = {
-        "formatter_class": CustomArgHelpFormatter,
+        "formatter_class": CommandListFormatter,
         "description": "Plotting and analysis tools for the ARTIS radiative transfer code.",
         "epilog": get_epilog(),
     }
@@ -51,12 +52,10 @@ def run_command(func: "Callable[..., None]", args: argparse.Namespace) -> None:
     redirect then gets the product with no progress message around it, as for ruff and uv. An error message
     also goes to the standard error, thus --quiet keeps it.
     """
-    import time
-
-    from artistools.misc.cliutils import print_collected_data
+    from artistools.misc import print_collected_data
 
     quiet = getattr(args, "quiet", False)
-    starttime = time.monotonic()
+    starttime = monotonic()
     with contextlib.ExitStack() as stack:
         args.productstream = sys.stdout
         # a JSON or a CSV document of --print-data holds the tables of all the figures, thus output_data collects them
@@ -77,7 +76,7 @@ def run_command(func: "Callable[..., None]", args: argparse.Namespace) -> None:
     # nothing, and the line goes to the standard error beside the progress bars. --quiet takes it away,
     # because it reports the progress and not a fault. A window of --show or --interactive waits for the
     # user, thus the time of such a run is not the time of the data
-    elapsed = time.monotonic() - starttime
+    elapsed = monotonic() - starttime
     waitsforuser = getattr(args, "show", False) or getattr(args, "interactive", False)
     if elapsed >= SLOW_COMMAND_SECONDS and not quiet and not waitsforuser:
         print(f"The command took {elapsed:.1f} seconds", file=sys.stderr)
@@ -87,8 +86,8 @@ def resolve_or_explain(
     argparser: argparse.ArgumentParser, args: argparse.Namespace, argsraw: Sequence[str] | None
 ) -> bool:
     """Check and complete the arguments of the command, and return True when --explain printed the plan in its place."""
-    from artistools.misc.cliutils import print_explanation
-    from artistools.misc.cliutils import resolve_args
+    from artistools.misc import print_explanation
+    from artistools.misc import resolve_args
 
     parsedargs = copy.copy(args)
     resolve_args(argparser, args, argsraw)

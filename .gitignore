@@ -67,6 +67,5 @@ artistools/data/lightcurves/SNsample/*.txt
 plottingscripts/*
 plottingscripts/
 
-.dmypy.json
 target
 .antigravitycli

@@ -17,6 +17,13 @@ from artistools.spectra.core import get_vspecpol_data as get_vspecpol_data
 from artistools.spectra.core import make_virtual_spectra_summed_file as make_virtual_spectra_summed_file
 from artistools.spectra.core import read_spec as read_spec
 from artistools.spectra.core import read_spec_res as read_spec_res
+from artistools.spectra.core import scan_spec as scan_spec
+from artistools.spectra.core import scan_spec_res as scan_spec_res
+from artistools.spectra.core import scan_specpol_data as scan_specpol_data
+from artistools.spectra.core import scan_spectra as scan_spectra
+from artistools.spectra.core import scan_spectra_from_packets as scan_spectra_from_packets
+from artistools.spectra.core import scan_spectrum_at_time as scan_spectrum_at_time
+from artistools.spectra.core import scan_vspecpol_data as scan_vspecpol_data
 
 # isort: split
 from artistools.spectra import plotspectra as plotspectra

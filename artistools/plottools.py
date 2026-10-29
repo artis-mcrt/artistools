@@ -31,19 +31,25 @@ from matplotlib.collections import Collection
 from matplotlib.patches import Patch
 from matplotlib.text import Text
 
-from artistools.commands import get_path
-from artistools.commands import get_standard_flag
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
+from artistools.misc import AUTO_VELOCITYUNIT_C_MIN_ON_C
 from artistools.misc import exit_with_error
+from artistools.misc import get_auto_velocity_unit
 from artistools.misc import get_phibin_rank_ascending
+from artistools.misc import get_standard_flag
 from artistools.misc import get_viewingdirection_costhetabincount
 from artistools.misc import get_viewingdirection_phibincount
+from artistools.misc import makelist
+from artistools.misc import positive_int_arg
+from artistools.misc import positive_velocity_kmps_arg
 from artistools.misc import print_detail
 from artistools.misc import print_saved
 from artistools.misc import print_warning
-from artistools.misc.cliutils import positive_int_arg
+from artistools.misc import trim_or_pad
+from artistools.misc import velocity_kmps_arg
+from artistools.paths import get_path
 
 # the code chooses a log axis when the data are below this fraction of the top over half of the x axis. Over half of
 # the wavelength range, the spectra of a kilonova are above 0.026 of the top at each time. The light curve of a
@@ -143,7 +149,7 @@ if t.TYPE_CHECKING:
     from matplotlib.backend_bases import RendererBase
 
 # colorcet.glasbey_category20
-glasbey_category20 = [
+glasbey_category20: t.Final = (
     (0.121569, 0.466667, 0.705882),
     (1.0, 0.498039, 0.054902),
     (0.172549, 0.627451, 0.172549),
@@ -400,7 +406,7 @@ glasbey_category20 = [
     (0.862745, 0.32549, 0.788235),
     (0.466667, 0.470588, 0.203922),
     (0.345098, 0.745098, 0.556863),
-]
+)
 
 
 def remove_greys(palette: Sequence["mplt.ColorType"]) -> list["mplt.ColorType"]:
@@ -408,10 +414,10 @@ def remove_greys(palette: Sequence["mplt.ColorType"]) -> list["mplt.ColorType"]:
     return [color for color in palette if len(set(mplcolors.to_rgb(color))) > 1]
 
 
-glasbey_category20_nogreys = remove_greys(glasbey_category20)
+glasbey_category20_nogreys: t.Final = tuple(remove_greys(glasbey_category20))
 
 # the plot colours of the reference data series, in the order that the code uses them
-refseries_colors = ("0.0", "0.4", "0.6", "0.7")
+refseries_colors: t.Final = ("0.0", "0.4", "0.6", "0.7")
 
 
 def get_assigned_colors(seriescolors: Sequence[str | None]) -> set[str]:
@@ -1003,6 +1009,22 @@ class ResidualSeries(t.NamedTuple):
     unbounded: "npt.NDArray[np.bool_] | None" = None
 
 
+def add_residual_series(
+    residualseries: list[ResidualSeries] | None,
+    label: str,
+    line: mpllines.Line2D,
+    x: "npt.ArrayLike",
+    y: "npt.ArrayLike",
+) -> None:
+    """Add a drawn line and its points to the series of a residual panel. A residualseries of None shows no panel."""
+    if residualseries is not None:
+        residualseries.append(
+            ResidualSeries(
+                label, np.asarray(x, dtype=np.float64), np.asarray(y, dtype=np.float64), line.get_color(), line=line
+            )
+        )
+
+
 def get_residuals(
     reference: ResidualSeries, model: ResidualSeries, xmin: float, xmax: float
 ) -> "tuple[npt.NDArray[np.bool_], npt.NDArray[np.float64], npt.NDArray[np.float64]]":
@@ -1186,22 +1208,24 @@ def plot_residual_panel(
 
 
 def draw_residual_panel(
-    residualaxis: mplax.Axes,
+    residualaxis: mplax.Axes | None,
     mainaxis: mplax.Axes,
-    series: Sequence[ResidualSeries],
+    series: Sequence[ResidualSeries] | None,
     args: argparse.Namespace,
     *,
     ismagnitude: bool = False,
-    plottedpoints: list[pl.DataFrame] | None = None,
-) -> pl.DataFrame:
-    """Draw the selected residual type below the main frame and return the statistics.
+) -> dict[str, pl.DataFrame]:
+    """Draw the selected residual type below the main frame, and return the tables for output_data.
 
-    plottedpoints takes the points of each residual curve in the x range of the main frame, see plot_residual_panel.
-
-    The residual type sets the calculation and the y scale of the panel.
-    Call it after the main frame has its labels and its x range.
-    The panel takes both.
+    The table "_residuals" holds the statistics. The table "_residualcurves" holds the points of each residual curve
+    in the x range of the main frame, see plot_residual_panel. Both tables are empty if the figure has no residual
+    panel. The residual type sets the calculation and the y scale of the panel. Call the function after the main
+    frame has its labels and its x range. The panel takes both.
     """
+    if residualaxis is None or series is None:
+        return {"_residuals": pl.DataFrame(), "_residualcurves": pl.DataFrame()}
+
+    plottedpoints: list[pl.DataFrame] = []
     logscaley = bool(getattr(args, "logscaley", False))
     isratio = not ismagnitude and args.residualtype != "absolute"
     # the shared x axis otherwise takes a new range with the default margin of the residual axis
@@ -1251,7 +1275,10 @@ def draw_residual_panel(
         residualaxis.tick_params(axis="y", which="both", labelleft=False)
         residualaxis.set_ylabel("")
 
-    return dfresidualstats
+    return {
+        "_residuals": dfresidualstats,
+        "_residualcurves": pl.concat(plottedpoints) if plottedpoints else pl.DataFrame(),
+    }
 
 
 def get_axes_title_top(axis: mplax.Axes, renderer: t.Any) -> float:
@@ -1479,7 +1506,7 @@ def save_figure(
     plt.close(fig)
 
     if openfile:
-        from artistools.misc.fileio import open_file
+        from artistools.misc import open_file
 
         open_file(outpath)
 
@@ -1629,24 +1656,6 @@ class PrunedLogLocator(mplticker.LogLocator):
 
         # a log axis of many decades carries few major ticks, thus keep them all rather than leave too few
         return keep if self.minticks <= len(keep) < len(inview) else ticks
-
-
-def warn_direction_bin_noise(source: str, *, average_over_phi: bool, average_over_theta: bool) -> None:
-    """Print a warning that a direction bin holds a small part of the packets, and thus has a larger noise.
-
-    A file of the direction bins, e.g. spec_res.out, gives no packet count. If the packets escape in all directions
-    alike, a bin of the n bins holds 1/n of the packets, and its relative noise is sqrt(n) times that of the average.
-    """
-    bincount = get_viewingdirection_costhetabincount() * get_viewingdirection_phibincount()
-    if average_over_phi:
-        bincount = get_viewingdirection_costhetabincount()
-    elif average_over_theta:
-        bincount = get_viewingdirection_phibincount()
-    print_warning(
-        f"Each direction bin of {source} holds about 1/{bincount} of the escaped packets, if they escape in all"
-        f" directions alike. Thus its Monte Carlo noise is about {math.sqrt(bincount):.3g} times the noise of the"
-        f" angle average. {source} gives no packet count, and --frompackets gives the noise of each bin"
-    )
 
 
 def print_series_summary(
@@ -1965,8 +1974,6 @@ def make_colorbar_viewingangles(
 
 # the number of km/s in each unit of the velocity axis
 KMPS_PER_VELOCITYUNIT: t.Final = MappingProxyType({"kmps": 1.0, "c": C_cm_per_s / km_to_cm})
-# -velocityunit auto takes c for a model with a vmax of this fraction of c or more, e.g. a kilonova
-AUTO_VELOCITYUNIT_C_MIN_ON_C: t.Final = 0.2
 VELOCITYUNIT_LABELS: t.Final = MappingProxyType({"kmps": "km/s", "c": "c"})
 # the axis labels of a velocity and of the inverse of a velocity, as matplotlib text
 VELOCITYUNIT_AXISLABELS: t.Final = MappingProxyType({"kmps": "km/s", "c": "$c$"})
@@ -2006,9 +2013,9 @@ def get_velocity_unit(modelpath: "Path | str", choice: str) -> t.Literal["kmps",
         return "kmps"
     if choice == "c":
         return "c"
-    from artistools.inputmodel import get_modeldata
+    from artistools.inputmodel import scan_modeldata
 
-    _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
+    _, modelmeta = scan_modeldata(modelpath, printwarningsonly=True)
     unit = get_auto_velocity_unit(modelmeta["vmax_cmps"])
     print_detail(
         f"The velocity axis takes units of {VELOCITYUNIT_LABELS[unit]}, because the vmax of the model is"
@@ -2016,11 +2023,6 @@ def get_velocity_unit(modelpath: "Path | str", choice: str) -> t.Literal["kmps",
         f" {AUTO_VELOCITYUNIT_C_MIN_ON_C:g} c or more)"
     )
     return unit
-
-
-def get_auto_velocity_unit(vmax_cmps: float) -> t.Literal["kmps", "c"]:
-    """Return c for a model with a vmax of AUTO_VELOCITYUNIT_C_MIN_ON_C c or more, e.g. a kilonova, else km/s."""
-    return "c" if vmax_cmps / C_cm_per_s >= AUTO_VELOCITYUNIT_C_MIN_ON_C else "kmps"
 
 
 def format_velocity(velocity_kmps: float, unit: t.Literal["kmps", "c"]) -> str:
@@ -2059,66 +2061,15 @@ def get_velocity_bin_edges_kmps(
                 "Give a velocity of 1c or less",
             )
     else:
-        from artistools.inputmodel import get_modeldata
+        from artistools.inputmodel import scan_modeldata
 
-        _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
+        _, modelmeta = scan_modeldata(modelpath, printwarningsonly=True)
         velocitymax_kmps = get_grid_corner_velocity_kmps(modelmeta)
         print_detail(
             f"The velocity bins end at {format_velocity(velocitymax_kmps, unit)}, the corner of the model grid. This"
             f" is vmax times the square root of the number of dimensions ({modelmeta['dimensions']})"
         )
     return [velocitymax_kmps * index / nbins for index in range(nbins + 1)]
-
-
-def parse_velocity_argument(value: str, *, requireunit: bool = False) -> tuple[float, t.Literal["kmps", "c"]]:
-    """Return the velocity [km/s] and the unit of a command line value, e.g. 5000km/s or 0.1c.
-
-    A number with no unit is in km/s. With requireunit, a number with no unit gives an error.
-    """
-    text = value.strip()
-    unit: t.Literal["kmps", "c"]
-    if text.lower().endswith("km/s"):
-        numbertext, unit = text[: -len("km/s")], "kmps"
-    elif text.lower().endswith("c"):
-        numbertext, unit = text[:-1], "c"
-    else:
-        numbertext, unit = text, "kmps"
-    helptext = "Give a number that ends in km/s, e.g. 5000km/s, or a fraction of c, e.g. 0.1c"
-    if requireunit and numbertext == text:
-        msg = f"'{value}' has no unit. {helptext}"
-        raise argparse.ArgumentTypeError(msg)
-    try:
-        number = float(numbertext)
-    except ValueError:
-        number = math.nan
-    if not math.isfinite(number):
-        msg = f"'{value}' is not a finite velocity. {helptext}"
-        raise argparse.ArgumentTypeError(msg)
-
-    return (number * C_cm_per_s / km_to_cm if unit == "c" else number), unit
-
-
-def get_velocity_label(velocity_kmps: float, unit: t.Literal["kmps", "c"]) -> str:
-    """Return a velocity in the unit that the user gave, e.g. 0.1c or 5000 km/s."""
-    return f"{velocity_kmps * km_to_cm / C_cm_per_s:g}c" if unit == "c" else f"{velocity_kmps:g} km/s"
-
-
-def positive_velocity_kmps_arg(text: str) -> float:
-    """Return the velocity [km/s] of a command line value with its unit, e.g. 0.1c or 30000km/s, when it is above 0.
-
-    A bare number gives an error, because its unit is not clear. The unit of the axis can come from the model, with
-    --velocityunit auto.
-    """
-    velocity_kmps, _ = parse_velocity_argument(text, requireunit=True)
-    if velocity_kmps <= 0.0:
-        msg = f"'{text}' is not a velocity above 0"
-        raise argparse.ArgumentTypeError(msg)
-    return velocity_kmps
-
-
-def velocity_kmps_arg(text: str) -> float:
-    """Return the velocity [km/s] of a command line value, e.g. 5000, 5000km/s, or 0.02c. A bare number is in km/s."""
-    return parse_velocity_argument(text)[0]
 
 
 def addarg_cellvelocity(
@@ -2182,3 +2133,19 @@ def get_velocity_bin_index_expr(velocity_kmps: pl.Expr, velocityedges_kmps: Sequ
     lower, upper = velocityedges_kmps[0], velocityedges_kmps[-1]
     binindex = ((velocity_kmps - lower) / (upper - lower) * nbins).floor().cast(pl.Int64).clip(upper_bound=nbins - 1)
     return pl.when(velocity_kmps.is_between(lower, upper)).then(binindex)
+
+
+def resolve_series_styles(
+    args: argparse.Namespace, isreference: Sequence[bool], usercolors: Sequence[str | None], *stylenames: str
+) -> list[str]:
+    """Return one colour for each series.
+
+    The function also pads each style list in args to one entry for each series. A colour in usercolors
+    has priority. A reference series gets black and then greys, and an ARTIS
+    model gets a colour of the cycle. A style list gets None where the user gave no entry.
+    """
+    seriescount = len(isreference)
+    for stylename in stylenames:
+        setattr(args, stylename, trim_or_pad(seriescount, getattr(args, stylename))[0])
+
+    return get_series_colors(isreference, makelist(usercolors))

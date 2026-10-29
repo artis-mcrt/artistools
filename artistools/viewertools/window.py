@@ -11,12 +11,16 @@ from types import MappingProxyType
 
 import numpy as np
 
+from artistools.misc import clear_reload_caches
+from artistools.misc import is_remote_path
+from artistools.misc import on_model_host
 from artistools.misc import print_error
-from artistools.misc.remote import on_model_host
 from artistools.plottools import apply_dark_colours
 from artistools.plottools import DARKMODE_COLOURS
+from artistools.plottools import LABELWIDTH_INCHES
 from artistools.plottools import make_room_for_title
 from artistools.plottools import plain_label
+from artistools.plottools import RIGHTMARGIN_INCHES
 from artistools.viewertools.application import add_recent_model
 from artistools.viewertools.application import clear_field_error
 from artistools.viewertools.application import get_edited_field
@@ -31,7 +35,7 @@ from artistools.viewertools.core import FIT_MILLISECONDS
 from artistools.viewertools.core import FIT_TOLERANCE
 from artistools.viewertools.core import fix_title_position
 from artistools.viewertools.core import get_first_line
-from artistools.viewertools.core import model_has_direction_data
+from artistools.viewertools.core import get_fitted_figwidthscale
 from artistools.viewertools.core import run_command_step
 from artistools.viewertools.core import run_command_step_with_warning
 from artistools.viewertools.core import SIDEBAR_WIDTH
@@ -52,7 +56,10 @@ from artistools.viewertools.widgets import make_option_table
 from artistools.viewertools.widgets import make_plot_area
 from artistools.viewertools.widgets import make_sidebar
 from artistools.viewertools.widgets import make_status_bar
+from artistools.viewertools.widgets import make_timer
+from artistools.viewertools.widgets import set_command_text
 from artistools.viewertools.widgets import set_plot_busy
+from artistools.viewertools.widgets import set_spin_value
 from artistools.viewertools.widgets import show_plot_area_state
 from artistools.viewertools.widgets import show_plot_banner
 from artistools.viewertools.widgets import show_status_message
@@ -72,83 +79,21 @@ if t.TYPE_CHECKING:
     from PySide6 import QtCore
     from PySide6 import QtWidgets
 
-    from artistools.commands import SuggestingArgumentParser
+    from artistools.misc import SuggestingArgumentParser
     from artistools.viewertools.core import OptionRows
     from artistools.viewertools.core import PlotValues
 
 
-def clear_estimator_caches() -> None:
-    """Clear the caches of the estimators and the NLTE populations in this process.
-
-    The estimator viewer clears only these caches, thus the caches of the other viewers stay.
-    """
-    from artistools.estimators.core import scan_parquet_file
-    from artistools.estimators.estimators_classic import read_classic_estimators_cached
-    from artistools.misc.modelinfo import get_runfolder_timesteps_cached
-    from artistools.nltepops.core import read_nltepops_cached
-
-    for cachedfunction in (
-        # a kept scan of a parquet cache also holds the metadata of its file, e.g. 8 MB for 5335 columns
-        scan_parquet_file,
-        get_runfolder_timesteps_cached,
-        read_classic_estimators_cached,
-        read_nltepops_cached,
-    ):
-        cachedfunction.cache_clear()
-
-
-def clear_output_caches() -> None:
-    """Clear each cache of the files that ARTIS writes while it runs, e.g. spec.out, in this process.
-
-    The files of the input of a model stay the same, e.g. input.txt and model.txt, thus their caches stay.
-    """
-    from artistools.misc.modelinfo import get_nu_grid_cached
-    from artistools.misc.timesteps import get_deposition_cached
-    from artistools.misc.timesteps import get_escaped_arrivalrange_cached
-    from artistools.misc.timesteps import get_timestep_times_cached
-    from artistools.packets.core import check_packets_batch_parquet_paths
-    from artistools.packets.core import find_first_rank_textfiles
-    from artistools.spectra.core import get_flux_contributions_cached
-    from artistools.spectra.core import get_vspecpol_data_cached
-    from artistools.spectra.core import read_spec_cached
-    from artistools.spectra.core import read_spec_res_cached
-    from artistools.spectra.core import read_specpol_res_cached
-    from artistools.spectra.plotspectra import get_no_sampled_emission_reason
-    from artistools.spectra.plotspectra import has_gamma_spec_file
-
-    for cachedfunction in (
-        # the file tests of the client also go, e.g. after exspec writes gamma_spec.out
-        has_gamma_spec_file,
-        get_no_sampled_emission_reason,
-        model_has_direction_data,
-        get_nu_grid_cached,
-        get_deposition_cached,
-        get_escaped_arrivalrange_cached,
-        get_timestep_times_cached,
-        check_packets_batch_parquet_paths,
-        find_first_rank_textfiles,
-        get_flux_contributions_cached,
-        get_vspecpol_data_cached,
-        read_spec_cached,
-        read_spec_res_cached,
-        read_specpol_res_cached,
-    ):
-        cachedfunction.cache_clear()
-    clear_estimator_caches()
-
-
 @on_model_host
 def clear_output_caches_of_model(modelfolder: Path, estimatorsonly: bool) -> None:
-    """Clear the caches of the output files on the host of a model.
+    """Clear the caches of the output files on the host of a model, e.g. of spec.out.
 
     For a local model, the function clears the caches of this process. With estimatorsonly, the function clears only
-    the caches of the estimators and the NLTE populations.
+    the caches of the estimators and the NLTE populations, thus the caches of the other viewers stay. The files of the
+    input of a model stay the same, e.g. input.txt and model.txt, thus their caches stay.
     """
     del modelfolder
-    if estimatorsonly:
-        clear_estimator_caches()
-    else:
-        clear_output_caches()
+    clear_reload_caches(("estimators",) if estimatorsonly else ("estimators", "output"))
 
 
 def reload_models(
@@ -160,21 +105,20 @@ def reload_models(
     estimatorsonly: bool = False,
     read_models: "Callable[[], None] | None" = None,
 ) -> None:
-    """Clear the caches of the models in the worker thread, then call on_reloaded.
+    """Clear the caches of the models in the worker thread, then call on_reloaded and draw the plot again.
 
     The user reloads the models e.g. while ARTIS writes more timesteps. The caches of this process and of the host of
     a remote model hold old data, thus the function clears both. The reload waits for the plot in progress, and a new
     plot waits for the reload. read_models reads the models again in the worker thread, because a conversion of new
-    text files can take minutes. on_reloaded runs in the window thread.
+    text files can take minutes. on_reloaded runs in the window thread, e.g. to give the controls the new ranges.
     """
 
     def read() -> None:
-        if estimatorsonly:
-            clear_estimator_caches()
-        else:
-            clear_output_caches()
+        clear_reload_caches(("estimators",) if estimatorsonly else ("estimators", "output"))
+        # the call above cleared the caches of this process, thus only the host of a remote model has caches to clear
         for modelfolder in modelfolders:
-            clear_output_caches_of_model(Path(modelfolder), estimatorsonly)
+            if is_remote_path(modelfolder):
+                clear_output_caches_of_model(Path(modelfolder), estimatorsonly)
         if read_models is not None:
             read_models()
 
@@ -183,6 +127,7 @@ def reload_models(
             show_error(f"The viewer cannot reload the models: {message}")
             return
         on_reloaded()
+        queue.redraw()
 
     if not queue.run_task(lambda: run_command_step(read, quiet=False), "Reload in progress...", on_done):
         show_error("A different task is in progress. Reload the models after it")
@@ -203,15 +148,13 @@ class ViewerWindow(t.NamedTuple):
 def start_viewer_window(
     applicationname: str,
     viewer: "PlotViewer[t.Any]",
-    draw: "Callable[..., str | None]",
     windows: "list[QtWidgets.QMainWindow]",
     document: tuple[Path, str],
 ) -> ViewerWindow | str:
     """Make the window of a viewer with its first plot, the plot area, and the sidebar.
 
-    draw is the draw method of the viewer. document gives the folder of the model and the title of the window. A first
-    plot that the command rejects gives its reason and no window. The terminal shows the whole error, and the first
-    window of a start then stops the process.
+    document gives the folder of the model and the title of the window. A first plot that the command rejects gives
+    its reason and no window. The terminal shows the whole error. If no other window is open, the process stops.
     """
     from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
 
@@ -219,7 +162,7 @@ def start_viewer_window(
     set_window_document(window, *document)
     canvas = FigureCanvasQTAgg(viewer.fig)
     viewer.darkcolours = get_dark_plot_colours()
-    if (message := draw(quiet=False)) is not None:
+    if (message := draw_values(viewer, quiet=False)) is not None:
         if not windows:
             raise SystemExit(1)
         return message
@@ -284,6 +227,31 @@ def add_command_sections(
     )
 
 
+def show_command_sections[ValuesT: PlotValues](
+    sections: CommandSections, viewer: "PlotViewer[ValuesT]", tablerows: "OptionRows", pythoncode: str
+) -> None:
+    """Show the values of the viewer in the sections of add_command_sections.
+
+    tablerows gives the rows of the table of the other options, and pythoncode the code that draws the plot.
+    """
+    sections.set_option_rows(tablerows)
+    defaultdpi: int = viewer.parser.get_default("dpi")
+    set_spin_value(sections.figuresection.dpibox, viewer.values.dpi or defaultdpi)
+    set_command_text(sections.commandtext, viewer.get_command())
+    set_command_text(sections.pythontext, pythoncode)
+
+
+def fit_one_frame_column[ValuesT: PlotValues](
+    viewer: "PlotViewer[ValuesT]", areawidth: float, areaheight: float
+) -> float:
+    """Return the --figwidthscale that gives a figure of one column of frames the shape of the plot area.
+
+    The column has the label of one y axis and the right margin beside its frames, e.g. the spectra and the residuals.
+    """
+    marginwidth = LABELWIDTH_INCHES + RIGHTMARGIN_INCHES
+    return get_fitted_figwidthscale(viewer.figsize, viewer.values.figwidthscale, marginwidth, areawidth, areaheight)
+
+
 def finish_viewer_window[ValuesT: PlotValues](
     viewerwindow: ViewerWindow,
     windows: "list[QtWidgets.QMainWindow]",
@@ -291,19 +259,20 @@ def finish_viewer_window[ValuesT: PlotValues](
     queue: "DrawQueue[ValuesT]",
     get_session_tokens: "Callable[[], list[str]]",
     on_closed: "Callable[[], None] | None" = None,
+    get_fitted_scale: "Callable[[float, float], float] | None" = None,
 ) -> None:
     """Connect the parts that each window of a viewer has, then show the window.
 
     get_session_tokens gives the command that opens the window again at the next start. on_closed runs when the window
-    closes, e.g. to clear the caches of a model.
+    closes, e.g. to clear the caches of a model. get_fitted_scale gives the --figwidthscale that fills a plot area of
+    a width and a height, and the default is fit_one_frame_column.
     """
     window, canvas, plotarea = viewerwindow.window, viewerwindow.canvas, viewerwindow.plotarea
+    get_fitted = get_fitted_scale or partial(fit_one_frame_column, viewer)
 
     def fit_figwidthscale() -> None:
         values = viewer.values
-        figwidthscale = get_new_figwidthscale(
-            plotarea, viewer.figsize, values.figwidthscale, viewer.get_fitted_figwidthscale
-        )
+        figwidthscale = get_new_figwidthscale(plotarea, viewer.figsize, values.figwidthscale, get_fitted)
         # the window sets the width, thus the change is not undoable, and Undo does not return to an old width
         if figwidthscale is not None:
             queue.apply(dc.replace(values, figwidthscale=figwidthscale), undoable=False)
@@ -364,8 +333,27 @@ class PlotViewer[ValuesT](t.Protocol):
     def get_command(self) -> str:
         """Return the command that draws the plot of the current values."""
 
-    def get_fitted_figwidthscale(self, areawidth: float, areaheight: float) -> float:
-        """Return the --figwidthscale that gives the figure the shape of a plot area of this width and height."""
+    def render(self, values: ValuesT, *, quiet: bool = True) -> "Callable[[], str | None]":
+        """Draw the plot of the values on a new figure, and return the function that shows it, see render_command."""
+
+
+def draw_values(viewer: "PlotViewer[t.Any]", *, quiet: bool = True) -> str | None:
+    """Draw the plot of the values of the viewer, and return the reason for the status line if the command rejects it.
+
+    The terminal shows the whole error, and the status line shows its first line.
+    """
+    return viewer.render(viewer.values, quiet=quiet)()
+
+
+def apply_values[ValuesT](viewer: "PlotViewer[ValuesT]", values: ValuesT) -> str | None:
+    """Draw the plot of new values, and keep the old values and the old plot if the command rejects them.
+
+    A test applies values with this function, because the queue of a window draws the plot in a worker thread.
+    """
+    message = viewer.render(values)()
+    if message is None:
+        viewer.values = values
+    return message
 
 
 def render_command[PlotT, ValuesT](
@@ -769,6 +757,20 @@ class DrawQueue[ValuesT]:
         self.show_values()
 
 
+def get_plot_mouse_help_rows(xrange: str, defaultxrange: str) -> tuple[tuple[str, str], ...]:
+    """Return the help rows of the mouse actions of connect_plot_mouse on a plot with one frame of --ymin and --ymax.
+
+    xrange names the range that a drag selects, e.g. "time range". defaultxrange names the range that a double-click
+    gives, e.g. "full time range".
+    """
+    return (
+        ("<b>Drag</b> across the plot", f"Select the {xrange}"),
+        ("<b>Shift-drag</b> up or down the plot", "Select the y range (--ymin and --ymax)"),
+        ("<b>Double-click</b> the plot", f"Get the {defaultxrange}"),
+        ("<b>Right-click</b> the plot", "Change the y scale, get the automatic y range, or copy or save the figure"),
+    )
+
+
 def connect_plot_mouse(
     canvas: "FigureCanvasBase",
     get_frames: "Callable[[], Sequence[mplax.Axes]]",
@@ -1101,16 +1103,3 @@ def show_window(window: "QtWidgets.QMainWindow", on_screen: "Callable[[], None]"
             QtCore.QTimer.singleShot(0, window, on_screen)
 
         windowhandle.screenChanged.connect(on_screen_changed)
-
-
-def make_timer(window: "QtWidgets.QWidget", milliseconds: int) -> "QtCore.QTimer":
-    """Return a single-shot timer.
-
-    The window is the parent of the timer, thus the timer stops when the window closes.
-    """
-    from PySide6 import QtCore
-
-    timer = QtCore.QTimer(window)
-    timer.setSingleShot(True)
-    timer.setInterval(milliseconds)
-    return timer

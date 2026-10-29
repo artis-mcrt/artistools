@@ -2,16 +2,31 @@
 
 Artistools is a toolkit that plots data, analyses data, and converts files for the [ARTIS](https://github.com/artis-mcrt/artis) radiative transfer code. It is a Python package (`artistools/`) and a small Rust extension (`rust/`, imported as `artistools.rustext`).
 
-The package has **no public API**. You can delete code that has no callers. This includes a function parameter that no call passes. A `quiet` flag or a `verbose` flag is never dead code, even when no call passes it, because a user sets it at the point of use. You can rename or refactor a function freely. Do not add a compatibility shim or a deprecation path for a name in the code, e.g. a function, a parameter, or a module. Correct the design instead.
+The package has **no public API**. You can delete code that has no callers. This includes a function parameter that no call passes. A `quiet` flag or a `verbose` flag is never dead code, even when no call passes it, because a user sets it at the point of use. You can rename or refactor a function freely.
+
+A script of a user can call a renamed function, parameter, or module by its old name. You can keep the old name as an
+alias, but you must mark the alias as deprecated. The alias then gives a `DeprecationWarning` that names the new name.
+For a function, give the alias the decorator `warnings.deprecated`. The type checkers then also report each use. Do
+not use a deprecated alias in the code of artistools. A later release can delete the alias.
+
+```python
+@warnings.deprecated("get_modeldata is deprecated. Use scan_modeldata, which returns the same values.")
+def get_modeldata(
+    modelpath: Path | str = ".", get_elemabundances: bool = False, printwarningsonly: bool = False
+) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
+    """Return the result of scan_modeldata, which is the new name of this function."""
+    return scan_modeldata(modelpath, get_elemabundances=get_elemabundances, printwarningsonly=printwarningsonly)
+```
 
 Two packages outside this repository read artistools:
 
 - `pynonthermal` reads `at.get_elsymbol`, `at.get_ionstring`, and `at.atomic.get_levels`.
-- `artisatomic` reads `at.get_composition_data` as `from artistools import get_composition_data`.
+- `artisatomic` reads `get_composition_data` as `from artistools.atomic import get_composition_data`. It also
+  reads `betaminusdecays.txt` and `alphadecays.txt` in `at.get_path("datadir")`.
 
 Keep these names and their paths, because a release that moves one of them stops the installed package. The test `test_external_packages_find_their_names` holds this list.
 
-A command-line argument is different. A user writes such an argument in a script and in a note, thus a
+A command-line argument always keeps its old spelling. A user writes such an argument in a script and in a note, thus a
 new spelling that takes the old one away stops that work. Keep the old spelling of a renamed argument
 as an alias, and give it `help=argparse.SUPPRESS`. The help text then gives one spelling, and a script
 that holds the old one still runs.
@@ -116,16 +131,17 @@ The configuration gives each ruff rule by **name** and not by code (`"any-type"`
 - Use only absolute imports. A relative import is not permitted.
 - Write one import on each line (`force-single-line`). Do not write `from x import a, b`.
 - Use the aliases in `[tool.ruff.lint.flake8-import-conventions.extend-aliases]`, e.g. `artistools as at`, `polars as pl`, and `typing as t`. Ruff rejects a different alias.
-- Each package holds its shared functions in `core.py`, e.g. `artistools/lightcurve/core.py`. From a different package, import a name from the package, e.g. `from artistools.inputmodel import get_modeldata`. Inside the package, import it from the core module, e.g. `from artistools.inputmodel.core import get_modeldata`, because the package is not complete at that moment.
+- Each package holds its shared functions in `core.py`, e.g. `artistools/lightcurve/core.py`. From a different package, import a name from the package, e.g. `from artistools.inputmodel import scan_modeldata`. Inside the package, import it from the core module, e.g. `from artistools.inputmodel.core import scan_modeldata`, because the package is not complete at that moment.
 - For a name that no core module holds, import it from the module that defines it, e.g. `from artistools.plottools import make_colorbar_viewingangles`.
+- `artistools/misc` has no `core.py`, because other packages use each of its modules. Outside `misc`, import a `misc` name from the package, e.g. `from artistools.misc import zopen`. `misc/__init__.py` re-exports each name that a different package uses. Inside `misc`, import the name from the module that defines it, e.g. `from artistools.misc.console import print_warning`.
 - The `__init__.py` of a package re-exports the core names first and imports its other modules after an `# isort: split` line. A plot module can import a module of a different package that imports from this package, thus a name must exist before that cycle comes back.
 - Use `import artistools as at` only in a test or a top-level script. Do not write `import artistools.x.y as z` in a package module, because Python 3.15 binds that alias to the package. A test enforces both rules.
 - If two modules need a name from each other, import the name in the function that uses it. First try to move the shared functions to a module that both can import, e.g. `artistools/plottools.py`.
 - Import a large or optional dependency in the function that uses it. Examples are pyvista, plotly, imageio, pynonthermal, and argcomplete. The rule `import-outside-top-level` is off for this reason, because the CLI must start quickly.
 - flake8-type-checking runs in `strict` mode. Put an import that only the annotations use in an `if t.TYPE_CHECKING:` block after the usual imports. This also decreases the start time. If the code then uses that name at run time, move the import out of the block.
-- Pyrefly reports `missing-import` as an error. Thus CI fails if you rename a module or make an error in its name. A plain `uv sync` does not install an optional dependency. Put such a dependency in `ignore-missing-imports` in `[tool.pyrefly]`.
-- Re-export a name in the parent `__init__.py` only when a test or a top-level script reads it through the package, e.g. `at.spectra.get_spectra`. Use the form `from module import name as name`. The ruff rule `unused-import` reports a plain import in an `__init__.py`. Keep the alphabetical order of the other lines. A package module does not need a re-export, because it imports the name from the module that defines it.
-- The top level holds only the names that a user types in a script, e.g. `at.get_modeldata` and `at.scan_estimators`. The test `test_top_level_api_is_the_documented_list` holds that list, and the README gives a table of it. A different name stays in its package, e.g. `at.misc.addarg_modelpath`.
+- Pyrefly reports `missing-import` as an error, and ty reports `unresolved-import`. Thus CI fails if you rename a module or make an error in its name. A plain `uv sync` does not install an optional dependency. Put such a dependency in `ignore-missing-imports` in `[tool.pyrefly]` and in `allowed-unresolved-imports` in `[tool.ty.analysis]`.
+- Re-export a name in the parent `__init__.py` only when a test or a top-level script reads it through the package, e.g. `at.spectra.scan_spectra`. Use the form `from module import name as name`. The ruff rule `unused-import` reports a plain import in an `__init__.py`. Keep the alphabetical order of the other lines. A package module does not need a re-export, because it imports the name from the module that defines it.
+- The top level holds only the names that a user types in a script, e.g. `at.scan_modeldata` and `at.scan_estimators`. The test `test_top_level_api_is_the_documented_list` holds that list, and the README gives a table of it. A different name stays in its package, e.g. `at.misc.addarg_modelpath`.
 
 ## Polars
 
@@ -240,7 +256,7 @@ The commands plotspectra, plotlightcurves, and plotestimators each have a viewer
   - "Other options".
 - Give a label or a check box the text of its flag, e.g. `--logscalex`. `FLAG_LABELS` gives the readable text that the window shows. When you add a label that shows a new flag, add the flag to `FLAG_LABELS`.
 - Give each control the help text of its option as its tooltip. `get_helptexts(parser)` gives these texts.
-- Test a viewer without Qt: make its viewer class with a `FigureCanvasAgg`, and call `draw` and `change`. Add each new viewer to `VIEWER_CASES` in `artistools/test_artistools.py`. The tests there check the rules of all the viewers.
+- Test a viewer without Qt. Make an instance of its viewer class with a `FigureCanvasAgg`. Then call `draw_values` and `apply_values` from `artistools/viewertools/window.py`. Add each new viewer to `VIEWER_CASES` in `artistools/viewertools/test_viewertools.py`. The tests there check the rules of all the viewers.
 - To check a change of a window without a display, do these steps:
   1. Call `QSettings.setDefaultFormat` and `QSettings.setPath`. Then the check writes no settings of the user.
   2. Set `QT_QPA_PLATFORM=offscreen` and `ARTISTOOLS_VIEWER_IN_BUNDLE=1`.
@@ -249,7 +265,9 @@ The commands plotspectra, plotlightcurves, and plotestimators each have a viewer
 
 ## Tests
 
-- Put a test in the same directory as the code that it tests: `artistools/<area>/test_<area>.py`. Give each test function a `test_` prefix. The `name-tests-test` hook makes this necessary.
+- Put a test in the same directory as the code that it tests: `artistools/<area>/test_<area>.py`. Give each test function a `test_` prefix. pytest collects only a function whose name starts with `test`.
+- Put a helper that two or more test modules use in the root `conftest.py` as a fixture. Examples are `read_data_file` and `write_trajectory_archive`. The root `conftest.py` is outside the wheel, thus the helpers stay out of the installed package.
+- Do not import a name from a different test module. Such an import also runs the module-level code of that module.
 - Find the data with `at.get_path("testdata")` or `at.get_path("testoutput")`. As an alternative, use the pytest `tmp_path` fixture. Do not write a file outside the test output directory of the repository.
 - Compare a number with `np.isclose` or an `rtol` value. Do not compare two floats for exact equality. A physics result changes by a small quantity on a different platform or with a different version of a library.
 - You can test a plot without an image. Patch the axes method and examine the arguments of the call:

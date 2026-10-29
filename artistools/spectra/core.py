@@ -1,10 +1,10 @@
 """Artistools - spectra related functions."""
 
-import argparse
 import io
 import itertools
 import math
 import typing as t
+import warnings
 from collections.abc import Callable
 from collections.abc import Mapping
 from collections.abc import Sequence
@@ -13,7 +13,6 @@ from functools import lru_cache
 from pathlib import Path
 from types import MappingProxyType
 
-import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 import polars as pl
@@ -21,58 +20,78 @@ import polars.selectors as cs
 
 from artistools import constants
 from artistools.atomic import add_ion_str_column
-from artistools.atomic import get_bflist
+from artistools.atomic import get_composition_data
+from artistools.atomic import get_composition_data_from_outputfile
 from artistools.atomic import get_elsymbol
 from artistools.atomic import get_elsymbols_df
 from artistools.atomic import get_ionstring
-from artistools.atomic import get_linelist_pldf
-from artistools.atomic import get_nuclides
+from artistools.atomic import scan_bflist
+from artistools.atomic import scan_linelist
+from artistools.atomic import scan_nuclides
+from artistools.constants import c_ang_per_s
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
-from artistools.constants import EV_to_erg
+from artistools.constants import h_erg_s
+from artistools.constants import h_ev_s
 from artistools.constants import km_to_cm
+from artistools.constants import megaparsec_to_cm
 from artistools.constants import MEV_to_erg
+from artistools.inputmodel import get_spatial_scales
 from artistools.misc import average_direction_bins
 from artistools.misc import check_averaging_angles
+from artistools.misc import clear_at_reload
 from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import drop_trailing_null_column
 from artistools.misc import firstexisting
+from artistools.misc import firstexisting_or_none
+from artistools.misc import get_auto_velocity_unit
+from artistools.misc import get_average_group_dirbins
+from artistools.misc import get_bin_index_expr
+from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_dirbins
 from artistools.misc import get_file_state
+from artistools.misc import get_metadata_path
+from artistools.misc import get_model_logname
+from artistools.misc import get_model_name
 from artistools.misc import get_nprocs
 from artistools.misc import get_nu_grid
 from artistools.misc import get_timestep_times
-from artistools.misc import get_viewingdirection_phibincount
-from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import get_vpkt_config
+from artistools.misc import get_xunit
 from artistools.misc import match_closest_time
+from artistools.misc import modelpath_cache
+from artistools.misc import on_model_host
+from artistools.misc import parse_metadata_redshift
+from artistools.misc import parse_timedays_range
+from artistools.misc import polars_error_note
 from artistools.misc import polars_source
 from artistools.misc import print_detail
 from artistools.misc import print_saved
+from artistools.misc import print_theta_phi_definitions
 from artistools.misc import print_warning
+from artistools.misc import raise_if_cut_line
+from artistools.misc import read_complete_lines
 from artistools.misc import read_wsv
+from artistools.misc import resolve_modelpath
 from artistools.misc import split_multitable_dataframe
-from artistools.misc.fileio import get_metadata_path
-from artistools.misc.fileio import parse_metadata_redshift
-from artistools.misc.fileio import polars_error_note
-from artistools.misc.fileio import raise_if_cut_line
-from artistools.misc.fileio import read_complete_lines
-from artistools.misc.fileio import resolve_modelpath
-from artistools.misc.general import get_bin_index_expr
-from artistools.misc.remote import on_model_host
+from artistools.misc import warn_direction_bin_noise
+from artistools.misc import XUnit
 from artistools.packets import filter_packets_dirbin
 from artistools.packets import get_emission_velocity_expr
 from artistools.packets import get_emission_velocity_lineofsight_expr
 from artistools.packets import get_modelgridindex_expr
 from artistools.packets import get_modelgridindex_from_velocity_expr
-from artistools.packets import get_packets
-from artistools.packets import get_virtual_packets
+from artistools.packets import get_packets_column_names
 from artistools.packets import get_vpkt_in_spectrum_range_expr
 from artistools.packets import has_emission_record_expr
+from artistools.packets import scan_packets
+from artistools.packets import scan_virtual_packets
 from artistools.packets import sum_packets_by_dirbin
 from artistools.packets import sum_virtual_packets_by_observer
 
 if t.TYPE_CHECKING:
+    import argparse
+
     import matplotlib.typing as mplt
 
 
@@ -106,11 +125,6 @@ def get_dfspectrum_x_y_with_units(
     dfspectrum: pl.DataFrame | pl.LazyFrame, xunit: str, yvariable: str, fluxdistance_mpc: float
 ) -> pl.LazyFrame:
     """Add an x column in xunit and a y column for yvariable, scaled to an observer at fluxdistance_mpc."""
-    from artistools.constants import c_ang_per_s
-    from artistools.constants import h_erg_s
-    from artistools.constants import h_ev_s
-    from artistools.constants import megaparsec_to_cm
-
     dfspectrum = dfspectrum.lazy()
 
     if "nu" not in dfspectrum.collect_schema().names():
@@ -197,7 +211,7 @@ def get_dfspectrum_x_y_with_units(
 def get_exspec_lambda_bin_edges(modelpath: Path, gamma: bool = False) -> npt.NDArray[np.floating]:
     """Get the wavelength bins for the emergent spectrum."""
     try:
-        dfspec = read_spec(modelpath, gamma=gamma).collect()
+        dfspec = scan_spec(modelpath, gamma=gamma).collect()
     except FileNotFoundError:
         mnubins = 1000
         if gamma:
@@ -312,77 +326,11 @@ def get_lambda_bin_edges(
     return lambda_bin_edges
 
 
-class XUnit(t.NamedTuple):
-    """One unit of the horizontal axis of a spectrum, and the spellings that a user can give for it.
-
-    The conversions work in a base unit of each kind: the angstrom for a wavelength, the hertz for
-    a frequency, and the electronvolt for an energy. unit_in_base_units gives the size of this unit
-    in that base unit, e.g. 10.0 for a nanometre and 1000.0 for a kiloelectronvolt.
-    """
-
-    kind: t.Literal["wavelength", "frequency", "energy"]
-    unit_in_base_units: float
-    label: str
-    aliases: tuple[str, ...]
-
-
-# one table gives the conversion factor and the axis label. The unit message and the name
-# suggestion also read it, thus a new unit needs one entry only
-XUNITS: t.Final[Mapping[str, XUnit]] = MappingProxyType({
-    # each canonical name is singular, as micron and erg are. A script can still give angstroms
-    "angstrom": XUnit("wavelength", 1.0, "\u00c5", ("angstroms", "a", "ang", "\u00e5", "\u00e5ngstr\u00f6m")),
-    "nm": XUnit("wavelength", 10.0, "nm", ("nanometer", "nanometers")),
-    "micron": XUnit("wavelength", 10000.0, "\u03bcm", ("microns", "mu", "\u03bc", "\u03bcm")),
-    "hz": XUnit("frequency", 1.0, "Hz", ()),
-    "erg": XUnit("energy", 1.0 / EV_to_erg, "erg", ("ergs",)),
-    "ev": XUnit("energy", 1.0, "eV", ("electronvolt",)),
-    "kev": XUnit("energy", 1.0e3, "keV", ("kiloelectronvolt",)),
-    "mev": XUnit("energy", 1.0e6, "MeV", ("megaelectronvolt",)),
-})
-
-
-def get_xunit_names() -> list[str]:
-    """Return every spelling of a unit of the horizontal axis that a user can give."""
-    return [name for canonical, unit in XUNITS.items() for name in (canonical, *unit.aliases)]
-
-
-def get_xunit(xunit: str) -> XUnit:
-    """Return the unit of the horizontal axis for its canonical name or an alias, e.g. "angstroms" or "nanometers"."""
-    return XUNITS[convert_xunit_aliases_to_canonical(xunit)]
-
-
 def get_x_quantity_label(xunit: XUnit) -> str:
     """Return the quantity and the unit of the x axis, e.g. "Rest-frame wavelength [Å]"."""
     # ARTIS gives the spectra in the rest frame of the source. get_reference_spectrum removes the redshift z of a
     # reference, and it takes a reference with no z to be in the rest frame
     return f"Rest-frame {xunit.kind} [{xunit.label}]"
-
-
-def parse_xunit_argument(value: str) -> str:
-    """Return the canonical unit of the horizontal axis, or refuse a name that no unit takes.
-
-    argparse calls this while it reads the command line, thus a name with a mistake stops the
-    command before it reads a file. convert_xunit_aliases_to_canonical guards the keyword of the API.
-    """
-    from artistools.misc import suggest_names
-
-    try:
-        return convert_xunit_aliases_to_canonical(value)
-    except ValueError:
-        suggestion = suggest_names(value, get_xunit_names()) or f"The units are {', '.join(XUNITS)}"
-        msg = f"'{value}' is not a unit of the horizontal axis. {suggestion}"
-        raise argparse.ArgumentTypeError(msg) from None
-
-
-def convert_xunit_aliases_to_canonical(xunit: str) -> str:
-    """Return the canonical spelling of a spectrum x-axis unit name."""
-    lowered = xunit.lower()
-    for canonical, unit in XUNITS.items():
-        if lowered == canonical or lowered in unit.aliases:
-            return canonical
-
-    msg = f"Unknown xunit {xunit}"
-    raise ValueError(msg)
 
 
 @t.overload
@@ -456,26 +404,30 @@ def bin_spectrum(dfspectrum: pl.DataFrame, nbins: int, xcol: str, ycols: str | S
     )
 
 
-def get_spectrum_at_time(
+def scan_spectrum_at_time(
     modelpath: Path,
     timestep: int,
     time: float,
-    args: argparse.Namespace | None,
+    *,
     dirbin: int = -1,
+    vpkt_observers: bool = False,
     average_over_phi: bool | None = None,
     average_over_theta: bool | None = None,
 ) -> pl.LazyFrame:
-    """Return the spectrum of one direction bin at a single timestep."""
+    """Return the spectrum of one direction bin at a single timestep.
+
+    With vpkt_observers, a direction bin names a virtual packet observer of vpkt.txt.
+    """
     if dirbin >= 0:
-        if args is not None and args.plotvspecpol and (modelpath / "vpkt.txt").is_file():
-            return get_vspecpol_spectrum(modelpath, time, dirbin, args)
+        if vpkt_observers and (modelpath / "vpkt.txt").is_file():
+            return scan_vspecpol_spectrum(modelpath, time, dirbin)
         assert average_over_phi is not None
         assert average_over_theta is not None
     else:
         average_over_phi = False
         average_over_theta = False
 
-    return get_spectra(
+    return scan_spectra(
         modelpath=modelpath,
         timestepmin=timestep,
         timestepmax=timestep,
@@ -520,22 +472,17 @@ def select_dirbins(alldirbins: list[int], requested: Sequence[int] | None) -> li
     return list(requested)
 
 
-@lru_cache(maxsize=16)
-def get_escape_surface_gamma_cached(modelpath: Path) -> float:
-    """Return the Lorentz factor correction at the outer model boundary."""
-    from artistools.inputmodel import get_modeldata
-
-    _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
-    vmax_beta = float(modelmeta["vmax_cmps"]) / C_cm_per_s
-    return math.sqrt(1 - vmax_beta**2)
-
-
-def get_escape_surface_gamma(modelpath: Path | str) -> float:
+@modelpath_cache(maxsize=16)
+def get_escape_surface_gamma(modelpath: Path) -> float:
     """Return the Lorentz factor correction at the outer model boundary.
 
     The cache takes the absolute path, thus a change of the working folder gives the new model.
     """
-    return get_escape_surface_gamma_cached(resolve_modelpath(modelpath))
+    from artistools.inputmodel import scan_modeldata
+
+    _, modelmeta = scan_modeldata(modelpath, printwarningsonly=True)
+    vmax_beta = float(modelmeta["vmax_cmps"]) / C_cm_per_s
+    return math.sqrt(1 - vmax_beta**2)
 
 
 def filter_packets_by_time(
@@ -585,7 +532,7 @@ def check_time_range_inside_vpkt_window(
 
 
 @on_model_host
-def get_from_packets(
+def scan_spectra_from_packets(
     modelpath: Path | str,
     timelowdays: float,
     timehighdays: float,
@@ -624,9 +571,9 @@ def get_from_packets(
         nprocs_read, dfpackets = nprocs_read_dfpackets[0], nprocs_read_dfpackets[1].lazy()
     elif directionbins_are_vpkt_observers:
         assert not gamma
-        nprocs_read, dfpackets = get_virtual_packets(modelpath, maxpacketfiles=maxpacketfiles)
+        nprocs_read, dfpackets = scan_virtual_packets(modelpath, maxpacketfiles=maxpacketfiles)
     else:
-        nprocs_read, dfpackets = get_packets(
+        nprocs_read, dfpackets = scan_packets(
             modelpath,
             maxpacketfiles=maxpacketfiles,
             packet_type="TYPE_ESCAPE",
@@ -714,9 +661,12 @@ def get_spectrum_filenames(gamma: bool, directionresolved: bool) -> list[str]:
 
 # maxsize is small because this reads eagerly and every cached entry retains a whole spec file. A cached
 # scan would hold only the query plan, thus each collect by a caller would parse the file again.
-@lru_cache(maxsize=2)
-def read_spec_cached(modelpath: Path, gamma: bool = False) -> pl.LazyFrame:
+@clear_at_reload("output")
+@modelpath_cache(maxsize=2)
+def scan_spec(modelpath: Path, gamma: bool = False) -> pl.LazyFrame:
     """Return the angle-averaged spectra from spec.out or specpol.out, or from gamma_spec.out when gamma is set.
+
+    The cache takes the absolute path, thus a change of the working folder gives the new model.
 
     Callers must not mutate the returned frame, which is shared between calls.
     """
@@ -728,7 +678,7 @@ def read_spec_cached(modelpath: Path, gamma: bool = False) -> pl.LazyFrame:
     # sn3d writes the whole file again at each timestep, thus the file can be empty or end with a cut line
     specbytes = read_complete_lines(specfilename, content="spectrum")
     with polars_error_note(specfilename):
-        # get_spectra counts the time columns, thus the column of a trailing space on each line must go
+        # scan_spectra counts the time columns, thus the column of a trailing space on each line must go
         dfspec = drop_trailing_null_column(
             pl.read_csv(io.BytesIO(specbytes), separator=" ", infer_schema=False, truncate_ragged_lines=True)
         )
@@ -752,18 +702,13 @@ def read_spec_cached(modelpath: Path, gamma: bool = False) -> pl.LazyFrame:
     )
 
 
-def read_spec(modelpath: Path | str, gamma: bool = False) -> pl.LazyFrame:
-    """Return the angle-averaged spectra from spec.out or specpol.out, or from gamma_spec.out when gamma is set.
+# every cached entry holds a whole spec_res file, because each frame of a direction bin is a slice of one frame
+@clear_at_reload("output")
+@modelpath_cache(maxsize=2)
+def scan_spec_res(modelpath: Path, gamma: bool = False) -> dict[int, pl.LazyFrame]:
+    """Return a dict of LazyFrames of time-series spectra keyed to the viewing direction bin.
 
     The cache takes the absolute path, thus a change of the working folder gives the new model.
-    """
-    return read_spec_cached(resolve_modelpath(modelpath), gamma)
-
-
-# every cached entry holds a whole spec_res file, because each frame of a direction bin is a slice of one frame
-@lru_cache(maxsize=2)
-def read_spec_res_cached(modelpath: Path, gamma: bool = False) -> dict[int, pl.LazyFrame]:
-    """Return a dict of LazyFrames of time-series spectra keyed to the viewing direction bin.
 
     Callers must not mutate the returned dict, which is shared between calls.
     """
@@ -772,7 +717,7 @@ def read_spec_res_cached(modelpath: Path, gamma: bool = False) -> dict[int, pl.L
         modelpath if Path(modelpath).is_file() else firstexisting(resfilenames, folder=modelpath, tryzipped=True)
     )
 
-    print(f"Reading {specfilename} (in read_spec_res)")
+    print(f"Reading {specfilename} (in scan_spec_res)")
     res_specdata_in = drop_trailing_null_column(
         pl.read_csv(polars_source(specfilename), separator=" ", has_header=False, infer_schema=False).lazy()
     )
@@ -805,14 +750,6 @@ def read_spec_res_cached(modelpath: Path, gamma: bool = False) -> dict[int, pl.L
     return res_specdata
 
 
-def read_spec_res(modelpath: Path | str, gamma: bool = False) -> dict[int, pl.LazyFrame]:
-    """Return a dict of LazyFrames of time-series spectra keyed to the viewing direction bin.
-
-    The cache takes the absolute path, thus a change of the working folder gives the new model.
-    """
-    return read_spec_res_cached(resolve_modelpath(modelpath), gamma)
-
-
 def read_emission_absorption_file(emabsfilename: Path) -> pl.DataFrame:
     """Read emission.out, emissionpol.out, emissiontrue.out, or absorption.out into a DataFrame.
 
@@ -838,7 +775,7 @@ def read_emission_absorption_file_cached(emabsfilename: Path, filestate: tuple[i
 
 
 @on_model_host
-def get_spectra(
+def scan_spectra(
     modelpath: Path,
     timestepmin: int,
     timestepmax: int | None = None,
@@ -865,7 +802,7 @@ def get_spectra(
         with suppress(FileNotFoundError):
             # the direction-resolved file must match the packet type of the spherically averaged one below,
             # otherwise the dirbins would silently hold UVOIR spectra while dirbin -1 holds gamma spectra
-            res_specdata = read_spec_res(modelpath, gamma=gamma)
+            res_specdata = scan_spec_res(modelpath, gamma=gamma)
             if average_over_theta:
                 res_specdata = average_direction_bins(res_specdata, overangle="theta")
             if average_over_phi:
@@ -874,7 +811,7 @@ def get_spectra(
 
     # spherically averaged spectra
     try:
-        specdata_alltimesteps[-1] = read_spec(modelpath=modelpath, gamma=gamma)
+        specdata_alltimesteps[-1] = scan_spec(modelpath=modelpath, gamma=gamma)
 
     except FileNotFoundError as e:
         if gamma:
@@ -1024,9 +961,12 @@ def name_repeated_columns(colnames: Sequence[str]) -> list[str]:
 
 # maxsize is small because each entry holds a whole specpol_res.out file. A caller reads one direction
 # bin at a time, thus a cache miss on each call would parse the file again for every bin.
-@lru_cache(maxsize=2)
-def read_specpol_res_cached(modelpath: Path) -> dict[int, pl.LazyFrame]:
+@clear_at_reload("output")
+@modelpath_cache(maxsize=2)
+def scan_specpol_res(modelpath: Path) -> dict[int, pl.LazyFrame]:
     """Return the table of each direction bin of specpol_res.out, with the times as the column names.
+
+    The cache takes the absolute path, thus a change of the working folder gives the new model.
 
     This function collects the scan one time, because each collect call of a lazy frame reads the
     file again. A caller collects the I, the Q, and the U frame of each direction bin. Do not change
@@ -1053,22 +993,13 @@ def read_specpol_res_cached(modelpath: Path) -> dict[int, pl.LazyFrame]:
     return dirbintables
 
 
-def read_specpol_res(modelpath: Path | str) -> dict[int, pl.LazyFrame]:
-    """Return the table of each direction bin of specpol_res.out, with the times as the column names.
-
-    The cache takes the absolute path, thus a change of the working folder gives the new model.
-    """
-    return read_specpol_res_cached(resolve_modelpath(modelpath))
-
-
 @on_model_host
-def get_specpol_data(dirbin: int = -1, modelpath: Path | None = None) -> dict[str, pl.LazyFrame]:
+def scan_specpol_data(modelpath: Path, dirbin: int = -1) -> dict[str, pl.LazyFrame]:
     """Return the I, Q, and U spectra of one direction bin.
 
     specpol.out holds the spherically averaged spectra, which dirbin -1 selects. specpol_res.out holds
     one table for each direction bin, in the layout of spec_res.out.
     """
-    assert modelpath is not None
     if dirbin == -1:
         specfilename = firstexisting("specpol.out", folder=modelpath, tryzipped=True)
         print(f"Reading {specfilename}")
@@ -1078,7 +1009,7 @@ def get_specpol_data(dirbin: int = -1, modelpath: Path | None = None) -> dict[st
 
         return split_dataframe_stokesparams(specdata)
 
-    tables = read_specpol_res(modelpath)
+    tables = scan_specpol_res(modelpath)
     if dirbin not in tables:
         msg = f"specpol_res.out of {modelpath} holds {len(tables)} direction bins, and not bin {dirbin}"
         raise ValueError(msg)
@@ -1088,14 +1019,14 @@ def get_specpol_data(dirbin: int = -1, modelpath: Path | None = None) -> dict[st
 
 # maxsize is small because this reads eagerly and every cached entry retains a whole vspecpol_total file.
 # Callers collect the frames once per timestep, so a cache miss on each call would parse the file again.
-@lru_cache(maxsize=2)
+@clear_at_reload("output")
+@modelpath_cache(maxsize=2)
 @on_model_host
-def get_vspecpol_data_cached(vspecindex: int, modelpath: Path) -> dict[str, pl.LazyFrame]:
+def scan_vspecpol_data(modelpath: Path, vspecindex: int) -> dict[str, pl.LazyFrame]:
     """Return the I, Q, and U virtual packet spectra of one observer, summing the per-rank files if needed.
 
-    Callers must not mutate the returned dict, which is shared between calls.
+    Do not change the returned dict. Every caller shares it.
     """
-    assert modelpath is not None
     # alternatively use f'vspecpol_averaged-{angle}.out' ?
 
     try:
@@ -1109,15 +1040,6 @@ def get_vspecpol_data_cached(vspecindex: int, modelpath: Path) -> dict[str, pl.L
     specdata = pl.read_csv(polars_source(specfilename), separator=" ", has_header=True)
 
     return split_dataframe_stokesparams(specdata)
-
-
-def get_vspecpol_data(vspecindex: int, modelpath: Path | str) -> dict[str, pl.LazyFrame]:
-    """Return the I, Q, and U virtual packet spectra of one observer, summing the per-rank files if needed.
-
-    The cache takes the absolute path, thus a change of the working folder gives the new model. Every caller
-    shares the returned dict, thus do not change it.
-    """
-    return get_vspecpol_data_cached(vspecindex, resolve_modelpath(modelpath))
 
 
 def split_dataframe_stokesparams(specdata: pl.DataFrame | pl.LazyFrame) -> dict[str, pl.LazyFrame]:
@@ -1183,11 +1105,12 @@ def check_time_range_overlaps_time_bins(
         )
 
 
-def get_vspecpol_spectrum(
+def scan_vspecpol_spectrum(
     modelpath: Path | str,
     timeavg: float,
     angle: int,
-    args: argparse.Namespace,
+    *,
+    stokesparam: str = "I",
     fluxfilterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     timemin: float | None = None,
     timemax: float | None = None,
@@ -1198,10 +1121,7 @@ def get_vspecpol_spectrum(
     caller that needs the spectrum at one time must leave them out. One point of a light curve is
     such a case.
     """
-    stokes_params = get_vspecpol_data(vspecindex=angle, modelpath=Path(modelpath))
-    if "stokesparam" not in args:
-        args.stokesparam = "I"
-    vspecdata = stokes_params[args.stokesparam]
+    vspecdata = scan_vspecpol_data(vspecindex=angle, modelpath=Path(modelpath))[stokesparam]
 
     arr_tmid = [float(i) for i in vspecdata.collect_schema().names()[1:]]
     arr_tdelta = [l1 - l2 for l1, l2 in zip(arr_tmid[1:], arr_tmid[:-1], strict=False)] + [arr_tmid[-1] - arr_tmid[-2]]
@@ -1288,6 +1208,7 @@ def get_emabs_average(
     return total / (tdeltas.sum() * len(dfemabs_of_dbin))
 
 
+@clear_at_reload("output")
 @lru_cache(maxsize=4)
 @on_model_host
 def get_flux_contributions_cached(
@@ -1339,14 +1260,12 @@ def get_flux_contributions_cached(
     nu_select[selectedbins] = True
     arraynu = arraynu_full[nu_select]
     arraylambda = arraylambda_full[nu_select]
-    from artistools.atomic import get_composition_data
 
     # get_composition_data also reads a compressed copy, thus only a model with no copy needs the log
     try:
         elementlist = get_composition_data(modelpath)
     except FileNotFoundError:
         print_warning("compositiondata.txt not found. Using output_0-0.txt instead")
-        from artistools.atomic import get_composition_data_from_outputfile
 
         elementlist = get_composition_data_from_outputfile(modelpath)
     nelements = len(elementlist)
@@ -1354,16 +1273,11 @@ def get_flux_contributions_cached(
     # the bin -1 is the average over all the directions, also with an average over one angle
     if directionbin is None or directionbin == -1:
         dbinlist = [-1]
-    elif average_over_phi:
-        assert not average_over_theta
-        assert directionbin % get_viewingdirection_phibincount() == 0
-        dbinlist = list(range(directionbin, directionbin + get_viewingdirection_phibincount()))
-    elif average_over_theta:
-        assert not average_over_phi
-        assert directionbin < get_viewingdirection_phibincount()
-        dbinlist = list(range(directionbin, get_viewingdirectionbincount(), get_viewingdirection_phibincount()))
     else:
-        dbinlist = [directionbin]
+        # a library call can name a bin that the average leaves out, thus get_average_group_dirbins gives a clear error
+        dbinlist = get_average_group_dirbins(
+            directionbin, average_over_phi=average_over_phi, average_over_theta=average_over_theta
+        )
 
     emissiondata: dict[int, pl.DataFrame] = {}
     absorptiondata: dict[int, pl.DataFrame] = {}
@@ -1603,7 +1517,7 @@ def get_linelist_label_columns(modelpath: Path | str, groupby: str) -> pl.DataFr
     if groupby not in {"element", "ion"}:
         linecolumns += ["lambda_angstroms_air", "upperlevelindex", "lowerlevelindex"]
 
-    return get_linelist_pldf(modelpath=modelpath).select(linecolumns).collect()
+    return scan_linelist(modelpath=modelpath).select(linecolumns).collect()
 
 
 def get_line_labels(dflines: pl.DataFrame, lineindices: pl.Series, groupby: str, labelcolumn: str) -> pl.LazyFrame:
@@ -1650,23 +1564,23 @@ def get_emission_type_labels(
     emissiontype, trueemissiontype, or pellet_nucindex. A code with no label is not in the frame.
     """
     if groupby == "nuc":
-        emtypelabels = get_nuclides(modelpath=Path(modelpath)).rename({"nucname": "emissiontype_str"})
+        emtypelabels = scan_nuclides(modelpath=Path(modelpath)).rename({"nucname": "emissiontype_str"})
     elif groupby == "nucmass":
-        emtypelabels = get_nuclides(modelpath=Path(modelpath)).with_columns(
+        emtypelabels = scan_nuclides(modelpath=Path(modelpath)).with_columns(
             (pl.when(pl.col("pellet_nucindex") == -1).then("nucname").otherwise(pl.format("A={}", pl.col("A")))).alias(
                 "emissiontype_str"
             )
         )
     elif emtypecolumn == "pellet_nucindex":
         # the nuclide table gives "initial energy" as the element of the initial energy
-        emtypelabels = get_nuclides(modelpath=Path(modelpath)).rename({"elsymbol": "emissiontype_str"})
+        emtypelabels = scan_nuclides(modelpath=Path(modelpath)).rename({"elsymbol": "emissiontype_str"})
     else:
         bflabels = {
             "element": pl.col("elsymbol") + " bound-free",
             "ion": pl.col("ion_str") + " bound-free",
             "line": pl.format("{} bound-free {}-{}", pl.col("ion_str"), pl.col("lowerlevel"), pl.col("upperionlevel")),
         }
-        bflist = get_bflist(modelpath)
+        bflist = scan_bflist(modelpath)
         if groupby == "element":
             bflist = bflist.join(get_elsymbols_df(), on="atomic_number", how="left", maintain_order="left")
 
@@ -1750,15 +1664,13 @@ def get_default_radialvelocity_shells(
     packets from these cells. The labels take the unit of get_auto_velocity_unit(), e.g. c for a kilonova and km/s for a
     supernova.
     """
-    from artistools.inputmodel import get_modeldata
+    from artistools.inputmodel import scan_modeldata
 
-    _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
+    _, modelmeta = scan_modeldata(modelpath, printwarningsonly=True)
     vmax_kmps = modelmeta["vmax_cmps"] / km_to_cm
     edges = [vmax_kmps * i / nshells for i in range(nshells + 1)]
     if modelmeta["dimensions"] > 1:
         edges.append(vmax_kmps * math.sqrt(modelmeta["dimensions"]))
-
-    from artistools.plottools import get_auto_velocity_unit
 
     return edges, get_auto_velocity_unit(modelmeta["vmax_cmps"])
 
@@ -1912,14 +1824,14 @@ def add_ye_columns(
     thermalfromvelocity: bool,
 ) -> pl.LazyFrame:
     """Add a column of the initial electron fraction of the model cell that holds each position."""
-    from artistools.inputmodel import get_modeldata
+    from artistools.inputmodel import scan_modeldata
 
-    dfmodel, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
+    dfmodel, modelmeta = scan_modeldata(modelpath, printwarningsonly=True)
     if "Ye" not in dfmodel.collect_schema().names():
         msg = "The model has no Ye column, thus no Ye shell can hold a packet"
         raise ValueError(msg)
 
-    # the cell ids of a model can start at 0 or 1, thus only the modelgridindex of get_modeldata gives the cell. A
+    # the cell ids of a model can start at 0 or 1, thus only the modelgridindex of scan_modeldata gives the cell. A
     # gather by the cell index keeps the order of the packets, and it is faster than a join over all the packets
     dfcellye = dfmodel.select("modelgridindex", "Ye").collect()
     cellcount = dfcellye.select(pl.col("modelgridindex").max() + 1).item()
@@ -2112,7 +2024,7 @@ def get_flux_contributions_from_packets(
         vpkt_config = get_vpkt_config(modelpath)
         check_time_range_inside_vpkt_window(vpkt_config, timelowdays, timehighdays)
         obsdirindex, opacchoiceindex = divmod(directionbin, vpkt_config["nspectraperobs"])
-        nprocs_read, lzdfpackets = get_virtual_packets(modelpath, maxpacketfiles=maxpacketfiles)
+        nprocs_read, lzdfpackets = scan_virtual_packets(modelpath, maxpacketfiles=maxpacketfiles)
         dirbin_nu_column = f"dir{obsdirindex}_nu_rf"
         # ARTIS keeps a row with nu_rf outside the ranges out of vspecpol, thus the row gives no emission. The row
         # stays for the absorption, because ARTIS writes it for a real packet with an absorption inside a range
@@ -2126,7 +2038,7 @@ def get_flux_contributions_from_packets(
         lzdfpackets = lzdfpackets.filter(pl.col(f"dir{obsdirindex}_t_arrive_d").is_between(timelowdays, timehighdays))
 
     else:
-        nprocs_read, lzdfpackets = get_packets(
+        nprocs_read, lzdfpackets = scan_packets(
             modelpath,
             maxpacketfiles=maxpacketfiles,
             packet_type="TYPE_ESCAPE",
@@ -2235,8 +2147,8 @@ def get_flux_contributions_from_packets(
         if noutside > 0:
             print_warning(f"{noutside} packets lie outside every shell, thus no series holds them")
 
-    # get_from_packets gives the same factors: a virtual packet has its own direction, and a real packet needs the
-    # solid angle of its direction bin
+    # scan_spectra_from_packets gives the same factors: a virtual packet has its own direction, and a real packet
+    # needs the solid angle of its direction bin
     delta_time_s = (timehighdays - timelowdays) * day_to_s
     fluxfactor = (
         1.0 / (delta_time_s * constants.megaparsec_to_cm**2 * nprocs_read)
@@ -2415,7 +2327,7 @@ def get_flux_contributions_from_packets(
         get_series_spectra(labelframes["absorption"], drawnnames) if "absorption" in labelframes else {}
     )
 
-    # a filter applies to the spectrum of each series, as get_from_packets applies it to one spectrum
+    # a filter applies to the spectrum of each series, as scan_spectra_from_packets applies it to one spectrum
     if filterfunc is not None:
         for spectra in (emission_spectra, absorption_spectra):
             for groupname, spectrum in spectra.items():
@@ -2477,71 +2389,6 @@ def rank_flux_series_names(
     keptset = set(keptnames)
 
     return keptnames, [name for name in namesbyflux if name not in keptset]
-
-
-def sort_and_reduce_flux_contribution_list(
-    contribution_list_in: list[FluxContributionTuple],
-    maxseriescount: int,
-    arraylambda_angstroms: npt.NDArray[np.floating],
-    fixedionlist: list[str] | None = None,
-    hideother: bool = False,
-) -> list[FluxContributionTuple]:
-    """Return the contributions sorted by flux, keeping at most maxseriescount and merging the rest into 'Other'."""
-    rowofname = {row.linelabel: row for row in contribution_list_in}
-    # each plot gives its contributions to this function, thus this is the one warning for a missing item. The plot
-    # shows only the first maxseriescount items, and the packet reader puts each item after them in "Other"
-    if fixedionlist and (unrecognised_items := [x for x in fixedionlist[:maxseriescount] if x not in rowofname]):
-        print_warning(f"Did not find {len(unrecognised_items)} items in fixedionlist: {unrecognised_items}")
-
-    keptnames, othernames = rank_flux_series_names(
-        {name: row.fluxcontrib for name, row in rowofname.items()}, maxseriescount, fixedionlist
-    )
-    kept = [rowofname[name] for name in keptnames]
-    other = [rowofname[name] for name in othernames]
-
-    from artistools.plottools import glasbey_category20_nogreys
-    from artistools.plottools import remove_greys
-
-    tab20_rgba = np.asarray(plt.get_cmap("tab20")(np.linspace(0, 1.0, 20)))
-    rgb_candidates: list[mplt.ColorType] = [(float(r), float(g), float(b)) for r, g, b, _a in tab20_rgba]
-    # the first ten glasbey colours repeat the tab10 colours that tab20 already supplies, and skipping
-    # them keeps the order of every series that a published figure already used
-    rgb_candidates.extend(glasbey_category20_nogreys[10:])
-
-    color_list: list[mplt.ColorType] = remove_greys(rgb_candidates)
-
-    print_contribution_table(kept, other, arraylambda_angstroms)
-
-    # a long -fixedionlist holds more entries than the colour list, thus the index wraps around
-    contribution_list_out = [
-        row._replace(color=color_list[(fixedionlist.index(row.linelabel) if fixedionlist else index) % len(color_list)])
-        for index, row in enumerate(kept)
-    ]
-
-    if not fixedionlist:
-        plotted_ion_list = [row.linelabel for row in kept]
-        cmdarg = "'" + "' '".join(plotted_ion_list) + "'"
-        print(f"  --fixedionlist {cmdarg} gives this list of series again")
-
-    remainder_fluxcontrib = sum(row.fluxcontrib for row in other)
-    remainder_flambda_emission = np.zeros_like(arraylambda_angstroms, dtype=float)
-    remainder_flambda_absorption = np.zeros_like(arraylambda_angstroms, dtype=float)
-    for row in other:
-        remainder_flambda_emission += row.array_flambda_emission
-        remainder_flambda_absorption += row.array_flambda_absorption
-
-    if remainder_fluxcontrib > 0.0 and not hideother:
-        contribution_list_out.append(
-            FluxContributionTuple(
-                fluxcontrib=remainder_fluxcontrib,
-                linelabel="Other",
-                array_flambda_emission=remainder_flambda_emission,
-                array_flambda_absorption=remainder_flambda_absorption,
-                color="grey",
-            )
-        )
-
-    return contribution_list_out
 
 
 def print_contribution_table(
@@ -2611,6 +2458,10 @@ def print_integrated_flux(
     return integrated_flux
 
 
+# the folder of the reference spectra in the data of artistools
+REFERENCE_SPECTRA_FOLDER: t.Final = "data/refspectra"
+
+
 def get_reference_spectrum(filepath: Path | str, metadata: dict[str, t.Any]) -> pl.DataFrame:
     """Return a reference spectrum in the rest frame, after its extinction correction and its telluric mask.
 
@@ -2676,3 +2527,570 @@ def get_reference_spectrum(filepath: Path | str, metadata: dict[str, t.Any]) -> 
         print(f"Correcting for redshift z = {z}")
 
     return specdata
+
+
+def get_spatial_scale_deltalogx(
+    modelfolders: Sequence[Path], scale: t.Literal["smallest", "largest"]
+) -> tuple[float, str, list[str]]:
+    """Return the value of --deltalogx for the smallest or the largest spatial scale, a note, and the method lines.
+
+    In a homologous flow, each spatial scale of the model grid is a constant width Δv in velocity. A feature narrower
+    than the Doppler shift across the smallest spatial scale comes from the grid. One bin width applies to all the
+    models. The smallest spatial scale of all the models gives bins that lose no detail of the grid. The largest
+    spatial scale of all the models gives bins that show no detail that is finer than the grid.
+    """
+    spatialscales = {modelfolder: get_spatial_scales(modelfolder) for modelfolder in modelfolders}
+    smallestmodel = min(spatialscales, key=lambda modelfolder: spatialscales[modelfolder][0])
+    largestmodel = max(spatialscales, key=lambda modelfolder: spatialscales[modelfolder][1])
+    choices = {
+        "smallest": (spatialscales[smallestmodel][0], smallestmodel, "lose no detail of the grid"),
+        "largest": (
+            spatialscales[largestmodel][1],
+            largestmodel,
+            (
+                "are at least as wide as each spatial scale of all the models. Thus the bins show no detail that is"
+                " finer than the grid"
+            ),
+        ),
+    }
+    velocity, scalemodelfolder, _ = choices[scale]
+    otherscale = "largest" if scale == "smallest" else "smallest"
+    note = (
+        f"--deltalogx {scale}scale = Δv/c = {velocity / C_cm_per_s:.3g}, where Δv = {velocity / km_to_cm:.0f} km/s is"
+        f" the {scale} spatial scale in {get_model_name(scalemodelfolder)}. The resolving power is λ/Δλ = c/Δv ="
+        f" {C_cm_per_s / velocity:.0f}. --deltalogx {otherscale}scale gives {choices[otherscale][0] / C_cm_per_s:.3g}"
+    )
+    method = [
+        (
+            "Δv is a spatial scale of the model grid in velocity. In a homologous flow, Δv stays constant with time. A"
+            " spectral feature with Δλ/λ less than the smallest Δv/c comes from the grid and not from the physics."
+        ),
+        *(
+            f"The {name} spatial scale of the models: Δv = {width / km_to_cm:.0f} km/s in"
+            f" {resolve_modelpath(widthmodel)}. Δv/c = {width / C_cm_per_s:.3g}, and λ/Δλ = c/Δv ="
+            f" {C_cm_per_s / width:.0f}. Bins of this width {effect}."
+            for name, (width, widthmodel, effect) in choices.items()
+        ),
+        f"--deltalogx {scale}scale selects the {scale} spatial scale.",
+        *(
+            f"{resolve_modelpath(modelfolder)}: {description}."
+            for modelfolder, (_, _, description) in spatialscales.items()
+        ),
+        (
+            "The Monte Carlo noise of the packets can make the resolution worse than this estimate. The estimate does"
+            " not include this noise."
+        ),
+    ]
+    return velocity / C_cm_per_s, note, method
+
+
+def model_covers_timedays(modelpath: Path | str, timedays: str | float | None, *, quiet: bool = False) -> bool:
+    """Return False if timedays names one time outside the timesteps of the model, and print a warning unless quiet.
+
+    A --timemin and --timemax range outside a model skips that model with a warning, thus one time does the same. A
+    range of --timedays and a text that is no number give True, because get_time_range gives their messages.
+    """
+    if timedays is None or parse_timedays_range(timedays) is not None:
+        return True
+    try:
+        timedays_float = float(str(timedays).rstrip("d"))
+    except ValueError:
+        return True
+
+    tstart_first = get_timestep_times(modelpath, loc="start")[0]
+    tend_last = get_timestep_times(modelpath, loc="end")[-1]
+    if tstart_first <= timedays_float <= tend_last:
+        return True
+
+    if not quiet:
+        print_warning(
+            f"{get_model_logname(modelpath)}: no timestep covers {timedays_float:g} days, because the timesteps cover"
+            f" {tstart_first:.2f} to {tend_last:.2f} days. The plot skips this model at this time"
+        )
+    return False
+
+
+def get_xy_spectrum(
+    flambda_array: npt.NDArray[np.floating],
+    arraylambda_angstroms: npt.NDArray[np.floating],
+    *,
+    xunit: str,
+    yvariable: str,
+    fluxdistance_mpc: float,
+) -> pl.LazyFrame:
+    """Return the x series and the y series of one flux array, in the given units."""
+    return get_dfspectrum_x_y_with_units(
+        pl.DataFrame({"f_lambda": flambda_array, "lambda_angstroms": arraylambda_angstroms}),
+        xunit=xunit,
+        yvariable=yvariable,
+        fluxdistance_mpc=fluxdistance_mpc,
+    )
+
+
+def get_emission_contributions(
+    modelpath: Path,
+    *,
+    frompackets: bool,
+    showemission: bool,
+    showabsorption: bool,
+    filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None,
+    xmin: float,
+    xmax: float,
+    xunit: str,
+    timestepmin: int,
+    timestepmax: int,
+    timemin: float,
+    timemax: float,
+    dirbin: int | None,
+    average_over_phi: bool,
+    average_over_theta: bool,
+    maxseriescount: int,
+    fixedionlist: list[str] | None,
+    emissionevent: EmissionEvent,
+    deltax: float | None,
+    deltalogx: float | None,
+    deltalambda: float | None,
+    maxpacketfiles: int | None,
+    groupby: str,
+    use_time: t.Literal["escape", "emission", "arrival"],
+    gamma: bool,
+    directionbins_are_vpkt_observers: bool,
+    vpkt_match_emission_exclusion_to_opac: bool,
+    shelledges: Sequence[float] | None,
+    shellunit: t.Literal["kmps", "c", "ye"],
+    velocityranges: Mapping[str, tuple[float, float]] | None,
+) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
+    """Return the flux contribution of each series, the total emitted flux, and the wavelength grid.
+
+    With frompackets, the function reads the packets files. Without it, the function reads the emission file and the
+    absorption file that ARTIS writes for each timestep. The total emitted flux is the net spectrum, thus a plot of the
+    absorption alone also reads the emission.
+    """
+
+    def read_contributions(
+        getemission: bool, getabsorption: bool
+    ) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
+        """Return the contributions, the total emitted flux, and the wavelength grid of the selected processes."""
+        if not frompackets:
+            assert not vpkt_match_emission_exclusion_to_opac
+            # the emission files of exspec hold no sampled emission, thus resolve_frompackets selects the packets
+            assert emissionevent != "sampled"
+            lambda_min, lambda_max = convert_xlimits_to_lambda_range(xmin, xmax, xunit)
+
+            return get_flux_contributions(
+                modelpath,
+                timestepmin,
+                timestepmax,
+                filterfunc=filterfunc,
+                getemission=getemission,
+                getabsorption=getabsorption,
+                use_lastemissiontype=emissionevent == "last",
+                directionbin=dirbin,
+                average_over_phi=average_over_phi,
+                average_over_theta=average_over_theta,
+                lambda_min=lambda_min,
+                lambda_max=lambda_max,
+                maxseriescount=maxseriescount,
+                fixedionlist=fixedionlist,
+            )
+
+        return get_flux_contributions_from_packets(
+            modelpath,
+            timelowdays=timemin,
+            timehighdays=timemax,
+            lambda_bin_edges=get_lambda_bin_edges(
+                xmin,
+                xmax,
+                deltax=deltax,
+                deltalogx=deltalogx,
+                deltalambda=deltalambda,
+                xunit=xunit,
+                modelpath=modelpath,
+                gamma=gamma,
+            ),
+            getemission=getemission,
+            getabsorption=getabsorption,
+            maxpacketfiles=maxpacketfiles,
+            filterfunc=filterfunc,
+            groupby=groupby,
+            use_time=use_time,
+            fixedionlist=fixedionlist,
+            maxseriescount=maxseriescount + 20,
+            gamma=gamma,
+            emissionevent=emissionevent,
+            directionbin=dirbin,
+            average_over_phi=average_over_phi,
+            average_over_theta=average_over_theta,
+            directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
+            vpkt_match_emission_exclusion_to_opac=vpkt_match_emission_exclusion_to_opac,
+            shelledges=shelledges,
+            shellunit=shellunit,
+            velocityranges=velocityranges,
+        )
+
+    contribution_list, array_flambda_emission_total, arraylambda_angstroms = read_contributions(
+        showemission, showabsorption
+    )
+    if not showemission:
+        # the emission of each series would change the ranking of the absorption series, thus only the total
+        # comes from this call
+        _, array_flambda_emission_total, _ = read_contributions(getemission=True, getabsorption=False)
+
+    return contribution_list, array_flambda_emission_total, arraylambda_angstroms
+
+
+def collect_emission_and_absorption(
+    contributions: Sequence[FluxContributionTuple],
+    arraylambda_angstroms: npt.NDArray[np.floating],
+    *,
+    showemission: bool,
+    showabsorption: bool,
+    xunit: str,
+    yvariable: str,
+    fluxdistance_mpc: float,
+) -> tuple[list[pl.DataFrame], list[pl.DataFrame]]:
+    """Return the emission spectra and the absorption spectra of every contribution.
+
+    One call of collect_all runs every query together. A call of collect for each contribution runs them in turn,
+    which costs about four times as much for the default series count. The emission queries and the
+    absorption queries are independent, thus one call takes both sets.
+    """
+    emissionarrays = [contribution.array_flambda_emission for contribution in contributions] if showemission else []
+    absorptionarrays = (
+        [contribution.array_flambda_absorption for contribution in contributions] if showabsorption else []
+    )
+    collected = pl.collect_all(
+        get_xy_spectrum(
+            flambda_array, arraylambda_angstroms, xunit=xunit, yvariable=yvariable, fluxdistance_mpc=fluxdistance_mpc
+        )
+        for flambda_array in [*emissionarrays, *absorptionarrays]
+    )
+
+    return collected[: len(emissionarrays)], collected[len(emissionarrays) :]
+
+
+@clear_at_reload("output")
+@modelpath_cache(maxsize=64)
+def has_gamma_spec_file(modelfolder: Path) -> bool:
+    """Return True if the model folder has gamma_spec.out.
+
+    The spectrum viewer resolves the arguments at each change, and the search of the subfolders is slow on a network
+    drive. Thus a file that exspec writes later stays unknown until Reload Data clears the cache, and until then the
+    plot reads the packets.
+    """
+    return firstexisting_or_none("gamma_spec.out", folder=modelfolder) is not None
+
+
+@clear_at_reload("output")
+@modelpath_cache(maxsize=64)
+def get_no_sampled_emission_reason(modelfolder: Path) -> str | None:
+    """Return why the packets of the model hold no sampled emission, or None if they hold it.
+
+    A model folder with no packets also gives None, and the packets reader gives its error later. The spectrum viewer
+    resolves the arguments at each change. Thus the cache keeps the result until Reload Data clears it, also after a
+    new run of ARTIS in the folder.
+    """
+    columnnames = get_packets_column_names(modelfolder)
+    return None if columnnames is None else get_no_sampled_emission_message(modelfolder, columnnames)
+
+
+def read_packets_in_time_range(
+    modelpath: Path, timelow: float, timehigh: float, *, maxpacketfiles: int | None, gamma: bool
+) -> tuple[int, pl.DataFrame]:
+    """Return the count of the packets files that the function read, and the escaped packets between two times.
+
+    Each panel of --multispecplot shows one epoch, thus one read of the union of their time ranges serves them all.
+    Each panel then selects its own arrival times from the frame in memory.
+    """
+    nprocs_read, dfpackets = scan_packets(
+        modelpath,
+        maxpacketfiles=maxpacketfiles,
+        packet_type="TYPE_ESCAPE",
+        escape_type="TYPE_GAMMA" if gamma else "TYPE_RPKT",
+    )
+    # scan_spectra_from_packets reads only the time, the frequency, the energy, and the direction bin of each
+    # packet. The packets files hold about 40 columns, thus a frame of every column needs about ten times the memory
+    return (
+        nprocs_read,
+        dfpackets
+        .filter(pl.col("t_arrive_d").is_between(timelow, timehigh))
+        .select(cs.by_name("t_arrive_d", "nu_rf", "e_rf", "dirbin", "costhetabin", "phibin", require_all=False))
+        .collect(),
+    )
+
+
+def read_dirbin_spectra(
+    modelpath: Path,
+    directionbins: Sequence[int],
+    *,
+    timestepmin: int,
+    timestepmax: int,
+    timemin: float,
+    timemax: float,
+    xmin: float,
+    xmax: float,
+    xunit: str,
+    yvariable: str,
+    fluxdistance_mpc: float,
+    frompackets: bool,
+    vpkt_observers: bool,
+    average_over_phi: bool,
+    average_over_theta: bool,
+    usedegrees: bool,
+    filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None,
+    use_time: t.Literal["arrival", "emission", "escape"],
+    maxpacketfiles: int | None,
+    gamma: bool,
+    deltax: float | None,
+    deltalogx: float | None,
+    deltalambda: float | None,
+    stokesparam: str,
+    nprocs_read_dfpackets: tuple[int, pl.DataFrame] | None,
+) -> tuple[dict[int, pl.DataFrame], dict[int, str]] | None:
+    """Return the spectrum of each direction bin in the x range, and the definition of each bin.
+
+    The source is the packets files with frompackets, the virtual packet spectra with vpkt_observers, and the spectrum
+    files of exspec otherwise. Each frame keeps the nearest bin beyond each end of the x range. A requested bin with
+    no data drops out. If no requested bin has data, the angle average of bin -1 replaces them. The function returns
+    None if the model also has no angle average.
+    """
+    dirbin_definitions = get_dirbin_definitions(
+        modelpath,
+        directionbins,
+        vpkt_observers=vpkt_observers,
+        average_over_phi=average_over_phi,
+        average_over_theta=average_over_theta,
+        usedegrees=usedegrees,
+    )
+
+    if frompackets:
+        viewinganglespectra = scan_spectra_from_packets(
+            modelpath,
+            timelowdays=timemin,
+            timehighdays=timemax,
+            lambda_bin_edges=get_lambda_bin_edges(
+                xmin,
+                xmax,
+                deltax=deltax,
+                deltalogx=deltalogx,
+                deltalambda=deltalambda,
+                xunit=xunit,
+                modelpath=modelpath,
+                gamma=gamma,
+            ),
+            use_time=use_time,
+            maxpacketfiles=maxpacketfiles,
+            average_over_phi=average_over_phi,
+            average_over_theta=average_over_theta,
+            fluxfilterfunc=filterfunc,
+            nprocs_read_dfpackets=nprocs_read_dfpackets,
+            directionbins_are_vpkt_observers=vpkt_observers,
+            gamma=gamma,
+            # the packets of each requested bin take a pass of the Rust kernel, thus the plot asks only for its bins
+            directionbins=directionbins,
+            # the squared energies of the packets give the noise of --shownoise and of the summary line. On a model
+            # with 4e8 packets, the sums of the squares did not change the time of the command
+            relnoise=True,
+        )
+
+    elif vpkt_observers:
+        # read virtual packet files (after running plotartisspectrum --makevspecpol)
+        timeavg = (timemin + timemax) / 2.0
+        viewinganglespectra = {
+            dirbin: scan_vspecpol_spectrum(
+                modelpath,
+                timeavg,
+                dirbin,
+                stokesparam=stokesparam,
+                fluxfilterfunc=filterfunc,
+                timemin=timemin,
+                timemax=timemax,
+            )
+            for dirbin in directionbins
+            if dirbin >= 0
+        }
+    else:
+        viewinganglespectra = scan_spectra(
+            modelpath=modelpath,
+            timestepmin=timestepmin,
+            timestepmax=timestepmax,
+            average_over_phi=average_over_phi,
+            average_over_theta=average_over_theta,
+            fluxfilterfunc=filterfunc,
+            gamma=gamma,
+            # bin -1 stays, because the plot shows it in place of a bin that the model does not have
+            directionbins=[-1, *directionbins],
+        )
+        if any(dirbin >= 0 for dirbin in directionbins):
+            warn_direction_bin_noise(
+                "gamma_spec_res.out" if gamma else "spec_res.out",
+                average_over_phi=average_over_phi,
+                average_over_theta=average_over_theta,
+            )
+
+    missingdirectionbins = [dirbin for dirbin in directionbins if dirbin not in viewinganglespectra]
+    founddirectionbins = [dirbin for dirbin in directionbins if dirbin in viewinganglespectra]
+    if missingdirectionbins:
+        print(f"No data for direction bin(s): {missingdirectionbins}")
+        if founddirectionbins:
+            directionbins = founddirectionbins
+        elif -1 in viewinganglespectra:
+            directionbins = [-1]
+            dirbin_definitions = get_dirbin_definitions(modelpath, directionbins, usedegrees=usedegrees)
+            print("Showing spherically-averaged spectrum instead")
+        else:
+            print("No data to plot")
+            return None
+
+    if any(dirbin != -1 for dirbin in directionbins):
+        print_theta_phi_definitions()
+
+    spectra = pl.collect_all([
+        df_filter_minmax_bracketed(
+            get_dfspectrum_x_y_with_units(
+                viewinganglespectra[dirbin], xunit=xunit, yvariable=yvariable, fluxdistance_mpc=fluxdistance_mpc
+            ),
+            colname="x",
+            minval=xmin,
+            maxval=xmax,
+        )
+        for dirbin in directionbins
+    ])
+    return dict(zip(directionbins, spectra, strict=True)), dirbin_definitions
+
+
+# the names before the readers took the prefix scan_ or read_. Each alias keeps the old signature, thus a script
+# of a user still runs, and it gives a DeprecationWarning that names the new function
+@warnings.deprecated("get_spectra is deprecated. Use scan_spectra.")
+def get_spectra(
+    modelpath: Path,
+    timestepmin: int,
+    timestepmax: int | None = None,
+    fluxfilterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
+    average_over_theta: bool = False,
+    average_over_phi: bool = False,
+    gamma: bool = False,
+    directionbins: Sequence[int] | None = None,
+) -> dict[int, pl.LazyFrame]:
+    """Return the result of scan_spectra, the new name of this function."""
+    return scan_spectra(
+        modelpath,
+        timestepmin,
+        timestepmax,
+        fluxfilterfunc=fluxfilterfunc,
+        average_over_theta=average_over_theta,
+        average_over_phi=average_over_phi,
+        gamma=gamma,
+        directionbins=directionbins,
+    )
+
+
+@warnings.deprecated("get_from_packets is deprecated. Use scan_spectra_from_packets.")
+def get_from_packets(
+    modelpath: Path | str,
+    timelowdays: float,
+    timehighdays: float,
+    lambda_bin_edges: npt.NDArray[np.floating] | None = None,
+    use_time: t.Literal["arrival", "emission", "escape"] = "arrival",
+    maxpacketfiles: int | None = None,
+    average_over_phi: bool = False,
+    average_over_theta: bool = False,
+    fluxfilterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
+    nprocs_read_dfpackets: tuple[int, pl.DataFrame | pl.LazyFrame] | None = None,
+    directionbins_are_vpkt_observers: bool = False,
+    directionbins: Sequence[int] | None = None,
+    gamma: bool = False,
+    relnoise: bool = False,
+) -> dict[int, pl.LazyFrame]:
+    """Return the result of scan_spectra_from_packets, the new name of this function."""
+    return scan_spectra_from_packets(
+        modelpath,
+        timelowdays,
+        timehighdays,
+        lambda_bin_edges=lambda_bin_edges,
+        use_time=use_time,
+        maxpacketfiles=maxpacketfiles,
+        average_over_phi=average_over_phi,
+        average_over_theta=average_over_theta,
+        fluxfilterfunc=fluxfilterfunc,
+        nprocs_read_dfpackets=nprocs_read_dfpackets,
+        directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
+        directionbins=directionbins,
+        gamma=gamma,
+        relnoise=relnoise,
+    )
+
+
+@warnings.deprecated("read_spec is deprecated. Use scan_spec.")
+def read_spec(modelpath: Path | str, gamma: bool = False) -> pl.LazyFrame:
+    """Return the result of scan_spec, the new name of this function."""
+    return scan_spec(Path(modelpath), gamma=gamma)
+
+
+@warnings.deprecated("read_spec_res is deprecated. Use scan_spec_res.")
+def read_spec_res(modelpath: Path | str, gamma: bool = False) -> dict[int, pl.LazyFrame]:
+    """Return the result of scan_spec_res, the new name of this function."""
+    return scan_spec_res(Path(modelpath), gamma=gamma)
+
+
+@warnings.deprecated("read_specpol_res is deprecated. Use scan_specpol_res.")
+def read_specpol_res(modelpath: Path | str) -> dict[int, pl.LazyFrame]:
+    """Return the result of scan_specpol_res, the new name of this function."""
+    return scan_specpol_res(Path(modelpath))
+
+
+@warnings.deprecated("get_specpol_data is deprecated. Use scan_specpol_data.")
+def get_specpol_data(dirbin: int = -1, modelpath: Path | None = None) -> dict[str, pl.LazyFrame]:
+    """Return the result of scan_specpol_data, the new name of this function."""
+    return scan_specpol_data(Path() if modelpath is None else modelpath, dirbin=dirbin)
+
+
+@warnings.deprecated("get_vspecpol_data is deprecated. Use scan_vspecpol_data.")
+def get_vspecpol_data(vspecindex: int, modelpath: Path | str) -> dict[str, pl.LazyFrame]:
+    """Return the result of scan_vspecpol_data, the new name of this function."""
+    return scan_vspecpol_data(Path(modelpath), vspecindex)
+
+
+@warnings.deprecated("get_vspecpol_spectrum is deprecated. Use scan_vspecpol_spectrum.")
+def get_vspecpol_spectrum(
+    modelpath: Path | str,
+    timeavg: float,
+    angle: int,
+    args: "argparse.Namespace",
+    fluxfilterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
+    timemin: float | None = None,
+    timemax: float | None = None,
+) -> pl.LazyFrame:
+    """Return the result of scan_vspecpol_spectrum, the new name of this function."""
+    return scan_vspecpol_spectrum(
+        modelpath,
+        timeavg,
+        angle,
+        stokesparam=getattr(args, "stokesparam", "I"),
+        fluxfilterfunc=fluxfilterfunc,
+        timemin=timemin,
+        timemax=timemax,
+    )
+
+
+@warnings.deprecated("get_spectrum_at_time is deprecated. Use scan_spectrum_at_time.")
+def get_spectrum_at_time(
+    modelpath: Path,
+    timestep: int,
+    time: float,
+    args: "argparse.Namespace | None",
+    dirbin: int = -1,
+    average_over_phi: bool | None = None,
+    average_over_theta: bool | None = None,
+) -> pl.LazyFrame:
+    """Return the result of scan_spectrum_at_time, the new name of this function."""
+    if dirbin >= 0 and args is not None and args.plotvspecpol and (modelpath / "vpkt.txt").is_file():
+        return scan_vspecpol_spectrum(modelpath, time, dirbin, stokesparam=getattr(args, "stokesparam", "I"))
+    return scan_spectrum_at_time(
+        modelpath,
+        timestep,
+        time,
+        dirbin=dirbin,
+        average_over_phi=average_over_phi,
+        average_over_theta=average_over_theta,
+    )

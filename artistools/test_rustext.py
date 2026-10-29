@@ -1,6 +1,11 @@
 """Tests of the Rust extension artistools.rustext."""
 
+import ast
+import inspect
+import math
 import re
+from collections.abc import Callable
+from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
@@ -9,12 +14,13 @@ import polars.testing as pltest
 import pytest
 
 import artistools as at
-from artistools.estimators.test_estimators import get_cell_texts
 
 modelpath = at.get_path("testdata") / "testmodel"
 
 
-def test_estimparse_drops_a_cell_that_a_cut_file_ends_inside(tmp_path: Path) -> None:
+def test_estimparse_drops_a_cell_that_a_cut_file_ends_inside(
+    tmp_path: Path, get_cell_texts: Callable[[str], list[str]]
+) -> None:
     """The file of a rank can end inside a cell when a job stops during the write.
 
     The reader of the file of a rank kept such a cell, with a zero for each value after the cut. The cache thus held
@@ -41,14 +47,14 @@ def test_estimparse_drops_a_cell_that_a_cut_file_ends_inside(tmp_path: Path) -> 
         pltest.assert_frame_equal(dfrank, dfcomplete.head(99).select(dfrank.columns))
 
 
-def test_parallel_zstd_reader_gives_the_text_in_the_order_of_the_file(tmp_path: Path) -> None:
+def test_parallel_zstd_reader_gives_the_text_in_the_order_of_the_file(
+    tmp_path: Path, write_zstd_frames: Callable[[Path, Sequence[str]], None]
+) -> None:
     """The reader of a zstd file decompresses groups of frames in parallel, and it must keep the order of the file.
 
     A group holds at least 4 MiB of compressed frames, thus this file has several groups. Each frame holds different
     cells. The same text in a plain file goes through the reader of a file that is not zstd.
     """
-    from artistools.estimators.test_estimators import write_zstd_frames
-
     ranktext = (modelpath / "estimators_0000.out").read_text(encoding="utf-8")
     frametexts = [
         re.sub(
@@ -174,7 +180,7 @@ def test_sum_binned_line_opacities_gives_no_opacity_for_a_temperature_of_zero_or
     dfsums = sum_binned_line_opacities(
         dflevels, dflines, dfcells, ["nnion_0"], [("linebinned_cap1", 1.0)], 1, at.constants.K_B_ev_per_K
     )
-    for column in at.ejectaopacity.get_opacity_columns([1.0]):
+    for column in at.lines.core.get_opacity_columns([1.0]):
         sums = dfsums[column].to_numpy()
         assert np.all(np.isfinite(sums))
         assert sums[0] == pytest.approx(0.0)
@@ -182,30 +188,9 @@ def test_sum_binned_line_opacities_gives_no_opacity_for_a_temperature_of_zero_or
         assert sums[2] > 0.0
 
 
-def test_expansion_opacities_give_zero_for_a_cell_with_no_temperature() -> None:
-    """A null T_exc and a T_exc of zero give a zero expansion opacity, and a positive T_exc gives a finite value."""
-    timestep = 40
-    time_days = at.get_timestep_times(modelpath)[timestep]
-    dfcell = at.ejectaopacity.get_cell_estimators(modelpath, timestep, None, "Te")
-    assert dfcell.height == 1
-    edges = at.ejectaopacity.get_lambda_bin_edges(3000.0, 4000.0, 20.0)
-    lines = at.ejectaopacity.get_opacity_lines(
-        at.ejectaopacity.get_opacity_atomic_data(modelpath), dfcell.columns, edges, time_days
-    )
-    dfcells = pl.concat([dfcell, dfcell, dfcell]).with_columns(
-        modelgridindex=pl.Series([0, 1, 2], dtype=dfcell["modelgridindex"].dtype),
-        T_exc=pl.Series([None, 0.0, dfcell["T_exc"].item()], dtype=pl.Float64),
-    )
-    dfbins = at.ejectaopacity.get_expansion_opacities(lines, dfcells, edges, time_days)
-    for column in at.ejectaopacity.get_opacity_columns(at.ejectaopacity.DEFAULT_TAUCAPS):
-        values = dfbins.group_by("modelgridindex", maintain_order=True).agg(pl.col(column).abs().sum())[column]
-        assert values[0] == pytest.approx(0.0)
-        assert values[1] == pytest.approx(0.0)
-        assert np.isfinite(values[2])
-        assert values[2] > 0.0
-
-
-def test_estimtimesteps_ignores_a_header_line_that_a_cut_file_ends_inside(tmp_path: Path) -> None:
+def test_estimtimesteps_ignores_a_header_line_that_a_cut_file_ends_inside(
+    tmp_path: Path, get_cell_texts: Callable[[str], list[str]]
+) -> None:
     """The scan of the timesteps takes a cell header only when a newline ends its line.
 
     A text cut right after "timestep " raised an error, and a cut of "timestep 11" to "timestep 1" named timestep 1,
@@ -316,34 +301,126 @@ def test_sum_weights_in_bins_with_more_bins_than_values_in_a_part() -> None:
     assert np.allclose(dfsums["sumsquares"].to_numpy(), np.bincount(flatindex, weights**2, minlength=ngroups * nbins))
 
 
-def test_opacity_levels_are_the_levels_that_artis_keeps() -> None:
-    """The opacities take only the first nlevelsmax levels of each ion from compositiondata.txt, as ARTIS does.
+def test_expansion_opacity_keeps_a_weak_line() -> None:
+    """A line of a very small optical depth adds to the expansion opacity of its bin.
 
-    The partition function summed all 1792 levels of Fe I in adata.txt. ARTIS keeps 500 of them in the classic test
-    model, and the sum of all the levels is 1.97 times the sum of the kept levels at 20000 K.
+    1 - exp(-tau) is exactly zero below tau = 5.6e-17, thus a bin of weak lines had no expansion opacity.
     """
-    classicmodelpath = at.get_path("testdata") / "test-classicmode_3d"
-    adata = at.ejectaopacity.get_opacity_atomic_data(classicmodelpath)
-    keptlevelcount_of_element = at.atomic.get_kept_level_counts(classicmodelpath)
-    alllevels = at.atomic.get_levels(classicmodelpath)
-    for Z, ion_stage, dflevels in adata.select("Z", "ion_stage", "levels").iter_rows():
-        levelcount = alllevels.filter(pl.col("Z") == Z, pl.col("ion_stage") == ion_stage)["levels"].item().height
-        keptlevelcount = keptlevelcount_of_element[Z]
-        assert dflevels.height == (levelcount if keptlevelcount is None else min(keptlevelcount, levelcount))
-    assert adata.filter(pl.col("Z") == 26, pl.col("ion_stage") == 1)["levels"].item().height == 500
+    from artistools.rustext import sum_binned_line_opacities
 
-    # the test model keeps all the levels, because its compositiondata.txt gives -1
-    assert at.get_composition_data(modelpath)["nlevelsmax_readin"].to_list() == [-1, -1]
-    testmodeladata = at.ejectaopacity.get_opacity_atomic_data(modelpath)
-    pltest.assert_series_equal(
-        testmodeladata.select(pl.col("levels").map_elements(len, return_dtype=pl.Int64)).to_series(),
-        at.atomic.get_levels(modelpath).select(pl.col("levels").map_elements(len, return_dtype=pl.Int64)).to_series(),
+    taus = [1e-18, 1e-6, 0.5]
+    dflevels = pl.DataFrame({"ionindex": [0], "g": [1.0], "energy_ev": [0.0]}, schema_overrides={"ionindex": pl.UInt32})
+    dflines = pl.DataFrame(
+        {
+            "lambda_angstroms_binindex": [0, 1, 2],
+            "lower": [0, 0, 0],
+            "upper": [0, 0, 0],
+            "sobolev_lower": taus,
+            "sobolev_upper": [0.0, 0.0, 0.0],
+            "lambda_angstroms": [1.0, 1.0, 1.0],
+        },
+        schema_overrides={"lambda_angstroms_binindex": pl.UInt32, "lower": pl.UInt32, "upper": pl.UInt32},
     )
+    dfcells = pl.DataFrame({"T_exc": [5000.0], "nnion_0": [1.0]})
+    exopac = sum_binned_line_opacities(dflevels, dflines, dfcells, ["nnion_0"], [], 3, at.constants.K_B_ev_per_K)[
+        "exopac"
+    ]
+    assert np.allclose(exopac.to_numpy(), -np.expm1(-np.array(taus)), rtol=1e-12, atol=0.0)
 
 
-def test_opacity_lines_name_an_ion_with_no_transition_table() -> None:
-    """An ion with no table in transitiondata.txt gives a clear error and not ColumnNotFoundError."""
-    adata = at.ejectaopacity.get_opacity_atomic_data(modelpath)
-    adata = adata.with_columns(pl.Series("transitions", [pl.LazyFrame() for _ in range(adata.height)], dtype=pl.Object))
-    with pytest.raises(ValueError, match=r"transitiondata\.txt holds no table for Fe_II"):
-        at.ejectaopacity.get_opacity_lines(adata, ["nnion_Fe_II"], [3000.0, 4000.0], 10.0)
+@pytest.mark.parametrize("edges", [[0.0, 1.0, 2.0, 3.0], [0.0, 0.5, 2.0, 3.0]])
+def test_rust_bin_sums_match_numpy_histogram(edges: list[float]) -> None:
+    """The Rust kernel gives the bins of np.histogram, for uniform and for other edges.
+
+    A bin is [lower, upper), the last bin also holds its upper edge, and a value outside the edges or NaN is in no
+    bin. The uniform edges take a guess that the exact edges correct, thus a value on an inner edge tests it.
+    """
+    from artistools.rustext import sum_weights_in_bins
+
+    values = [-0.1, 0.0, 0.5, 0.9999999, 1.0, 2.0, 2.5, 3.0, 3.0000001, math.nan]
+    df = pl.DataFrame({"x": values, "e": [float(2**index) for index in range(len(values))]})
+    # 3.0000001 is 3.0 in 32 bits, thus each type of value has its own reference
+    for dtype in (pl.Float64, pl.Float32):
+        dftyped = df.with_columns(pl.col("x").cast(dtype))
+        typedvalues = dftyped["x"].to_numpy()
+        isnumber = ~np.isnan(typedvalues)
+        refcounts, _ = np.histogram(typedvalues[isnumber], bins=edges)
+        refsums, _ = np.histogram(typedvalues[isnumber], bins=edges, weights=df["e"].to_numpy()[isnumber])
+        refsquaresums, _ = np.histogram(typedvalues[isnumber], bins=edges, weights=df["e"].to_numpy()[isnumber] ** 2)
+        sums = sum_weights_in_bins(dftyped, "x", "e", edges, sumsquares=True)
+        assert np.allclose(sums["sum"].to_numpy(), refsums, rtol=1e-12, atol=0.0), dtype
+        assert np.allclose(sums["sumsquares"].to_numpy(), refsquaresums, rtol=1e-12, atol=0.0), dtype
+        assert sums["count"].to_list() == refcounts.tolist(), dtype
+
+    # each group has its own bins, in the order [group][bin]
+    rng = np.random.default_rng(seed=1)
+    dfgroups = pl.DataFrame({
+        "x": rng.uniform(-0.5, 3.5, 100_000),
+        "e": rng.uniform(0.0, 1.0, 100_000),
+        "group": rng.integers(0, 3, 100_000, dtype=np.int32),
+    })
+    grouped = sum_weights_in_bins(dfgroups, "x", "e", edges, "group", 3)
+    for group in range(3):
+        dfgroup = dfgroups.filter(pl.col("group") == group)
+        expectedcounts, _ = np.histogram(dfgroup["x"].to_numpy(), bins=edges)
+        expectedsums, _ = np.histogram(dfgroup["x"].to_numpy(), bins=edges, weights=dfgroup["e"].to_numpy())
+        rows = slice(group * (len(edges) - 1), (group + 1) * (len(edges) - 1))
+        assert np.allclose(grouped["sum"].to_numpy()[rows], expectedsums, rtol=1e-12, atol=0.0)
+        assert grouped["count"].to_numpy()[rows].tolist() == expectedcounts.tolist()
+    # pyo3-polars raises its own ComputeError, which is not the class of the polars package
+    with pytest.raises(Exception, match="a group is outside"):
+        sum_weights_in_bins(dfgroups, "x", "e", edges, "group", 2)
+
+
+def test_rust_bin_indices_match_the_bins_of_the_sums() -> None:
+    """get_bin_indices gives the bin of each value with the rules of sum_weights_in_bins, and -1 outside the edges."""
+    from artistools.rustext import get_bin_indices
+    from artistools.rustext import sum_weights_in_bins
+
+    rng = np.random.default_rng(seed=2)
+    edges = [0.0, 0.5, 2.0, 3.0]
+    values = np.concatenate([rng.uniform(-0.5, 3.5, 10_000), edges, [math.nan]])
+    df = pl.DataFrame({"x": values, "e": np.ones(len(values))})
+    bins = get_bin_indices(df, "x", edges)["binindex"].to_numpy()
+    counts = sum_weights_in_bins(df, "x", "e", edges)["count"].to_numpy()
+    assert np.array_equal(np.bincount(bins[bins >= 0], minlength=len(edges) - 1), counts)
+    # each edge starts its bin, the last edge is in the last bin, and NaN is in no bin
+    assert bins[-5:].tolist() == [0, 1, 2, 2, -1]
+
+
+def test_rustext_stub_gives_the_parameters_of_each_function() -> None:
+    """The stub rustext.pyi gives the type checkers the same functions, parameters, and defaults as the extension.
+
+    No other tool compares the stub with the Rust code, thus a change of a Rust signature can make the stub incorrect.
+    """
+    stubtree = ast.parse((Path(at.__file__).parent / "rustext.pyi").read_text(encoding="utf-8"))
+    stubfunctions = {node.name: node.args for node in stubtree.body if isinstance(node, ast.FunctionDef)}
+    assert set(stubfunctions) == {name for name in dir(at.rustext) if not name.startswith("_")}
+
+    for name, stubargs in stubfunctions.items():
+        positionalargs = [*stubargs.posonlyargs, *stubargs.args]
+        positionaldefaults = [inspect.Parameter.empty] * (len(positionalargs) - len(stubargs.defaults)) + [
+            ast.literal_eval(default) for default in stubargs.defaults
+        ]
+        stubparameters = [
+            (
+                arg.arg,
+                inspect.Parameter.POSITIONAL_ONLY
+                if arg in stubargs.posonlyargs
+                else inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                default,
+            )
+            for arg, default in zip(positionalargs, positionaldefaults, strict=True)
+        ] + [
+            (
+                arg.arg,
+                inspect.Parameter.KEYWORD_ONLY,
+                inspect.Parameter.empty if default is None else ast.literal_eval(default),
+            )
+            for arg, default in zip(stubargs.kwonlyargs, stubargs.kw_defaults, strict=True)
+        ]
+        extensionparameters = [
+            (parameter.name, parameter.kind, parameter.default)
+            for parameter in inspect.signature(getattr(at.rustext, name)).parameters.values()
+        ]
+        assert stubparameters == extensionparameters, name

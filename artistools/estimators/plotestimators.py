@@ -4,7 +4,6 @@ Examples are temperatures, populations, heating/cooling rates.
 """
 
 import argparse
-import contextlib
 import math
 import re
 import string
@@ -28,7 +27,6 @@ from artistools.atomic import decode_roman_numeral
 from artistools.atomic import get_atomic_number
 from artistools.atomic import get_composition_data
 from artistools.atomic import get_elsymbol
-from artistools.atomic import get_elsymbolset
 from artistools.atomic import get_elsymbolslist
 from artistools.atomic import get_ion_levels
 from artistools.atomic import get_ion_tuple
@@ -38,6 +36,9 @@ from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g
 from artistools.estimators.core import get_averageexcitation
+from artistools.estimators.core import get_cell_selection_description
+from artistools.estimators.core import get_cells_along_axis
+from artistools.estimators.core import get_cells_of_slice
 from artistools.estimators.core import get_levelpop_modeldata
 from artistools.estimators.core import get_prefix_group
 from artistools.estimators.core import get_temperature_limits
@@ -47,15 +48,26 @@ from artistools.estimators.core import get_variable
 from artistools.estimators.core import get_variablelongunits
 from artistools.estimators.core import get_varname_formatted
 from artistools.estimators.core import join_cell_modeldata
+from artistools.estimators.core import parse_slice_argument
 from artistools.estimators.core import PREFIX_GROUPS
 from artistools.estimators.core import scan_estimators
 from artistools.estimators.core import summarise_columns
 from artistools.estimators.core import VARIABLES
-from artistools.inputmodel import add_derived_cols_to_modeldata
+from artistools.estimators.plotitems import DIRECTIVES
+from artistools.estimators.plotitems import get_column_name
+from artistools.estimators.plotitems import get_directive_name
+from artistools.estimators.plotitems import get_iontuple
+from artistools.estimators.plotitems import get_iontuple_sortkey
+from artistools.estimators.plotitems import get_series_name
+from artistools.estimators.plotitems import get_styles_of_subplots
+from artistools.estimators.plotitems import is_ionseriestype
+from artistools.estimators.plotitems import normalise_plotitems
+from artistools.estimators.plotitems import SERIES_LINESTYLES
+from artistools.estimators.plotitems import SERIES_STYLE_MARK
+from artistools.estimators.plotitems import SERIESTYPES
+from artistools.estimators.plotitems import split_plotitem_styles
+from artistools.estimators.plotitems import VARIABLE_ALIASES
 from artistools.inputmodel import get_costheta_selection
-from artistools.inputmodel import get_modeldata
-from artistools.inputmodel.slice1dfromconein3dmodel import get_profile_along_axis
-from artistools.inputmodel.slice1dfromconein3dmodel import make_cone
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_costhetarange
 from artistools.misc import addarg_darkmode
@@ -77,11 +89,13 @@ from artistools.misc import addarg_timeminmax
 from artistools.misc import addarg_timestep
 from artistools.misc import addarg_verbose
 from artistools.misc import artis_subfolders
+from artistools.misc import dashes_arg
 from artistools.misc import exit_with_error
 from artistools.misc import flatten_list
 from artistools.misc import folder_is_artis_model
 from artistools.misc import format_costheta_range
 from artistools.misc import format_frame_path
+from artistools.misc import get_bin_index_expr
 from artistools.misc import get_costheta_range
 from artistools.misc import get_filterfunc
 from artistools.misc import get_model_name
@@ -89,11 +103,13 @@ from artistools.misc import get_time_range
 from artistools.misc import get_time_range_text
 from artistools.misc import get_timestep_time
 from artistools.misc import get_timestep_times
-from artistools.misc import get_timesteps
+from artistools.misc import is_plain_value
 from artistools.misc import item_names_a_folder
+from artistools.misc import on_model_host
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_codecomparison
+from artistools.misc import positive_float_arg
 from artistools.misc import print_detail
 from artistools.misc import print_modelpath
 from artistools.misc import print_product
@@ -102,25 +118,19 @@ from artistools.misc import resolve_frameset_paths
 from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_positional_modelpath
 from artistools.misc import resolve_slice_axis
+from artistools.misc import scan_timesteps
+from artistools.misc import SERIES_STYLE_KEYS
 from artistools.misc import suggest_names
-from artistools.misc.cliutils import color_arg
-from artistools.misc.cliutils import dashes_arg
-from artistools.misc.cliutils import LINESTYLE_ALIASES
-from artistools.misc.cliutils import LINESTYLE_NAMES
-from artistools.misc.cliutils import positive_float_arg
-from artistools.misc.cliutils import SERIES_STYLE_KEYS
-from artistools.misc.general import get_bin_index_expr
-from artistools.misc.remote import on_model_host
 from artistools.nltepops import has_nlte_populations
 from artistools.nltepops import read_nltepops
 from artistools.nltepops import texifyconfiguration
 from artistools.plottools import get_drawn_values
 from artistools.plottools import get_next_color
 from artistools.plottools import get_summary_table
-from artistools.plottools import get_velocity_label
+from artistools.plottools import get_unused_colors
+from artistools.plottools import glasbey_category20_nogreys
 from artistools.plottools import log_axis_limit
 from artistools.plottools import make_frame_figure
-from artistools.plottools import parse_velocity_argument
 from artistools.plottools import plain_label
 from artistools.plottools import print_series_summary
 from artistools.plottools import prune_log_ticks
@@ -141,7 +151,7 @@ if t.TYPE_CHECKING:
     from artistools.misc import FrameSet
 
 
-colors_tab10 = [
+colors_tab10: t.Final = (
     (0.12156862745098039, 0.4666666666666667, 0.7058823529411765, 1.0),
     (1.0, 0.4980392156862745, 0.054901960784313725, 1.0),
     (0.17254901960784313, 0.6274509803921569, 0.17254901960784313, 1.0),
@@ -152,7 +162,7 @@ colors_tab10 = [
     (0.4980392156862745, 0.4980392156862745, 0.4980392156862745, 1.0),
     (0.7372549019607844, 0.7411764705882353, 0.13333333333333333, 1.0),
     (0.09019607843137255, 0.7450980392156863, 0.8117647058823529, 1.0),
-]
+)
 
 # reserve colours for these elements. Immutable, because get_unreserved_elemcolors() derives the rest of the
 # palette from it once and caches the result, so a later mutation would silently hand a reserved colour out twice
@@ -162,7 +172,6 @@ elementcolors: t.Final[Mapping[str, tuple[float, float, float, float]]] = Mappin
     "Co": colors_tab10[2],
 })
 
-VARIABLE_ALIASES = {"T_e": "Te", "n_e": "nne", "T_R": "TR", "T_J": "TJ"}
 
 POPTYPE_YLABELS: t.Final[Mapping[str, str]] = MappingProxyType({
     "absolute": r"Number density $\left[\rm{cm}^{-3}\right]$",
@@ -199,9 +208,6 @@ def get_unreserved_elemcolors() -> tuple["mplt.ColorType", ...]:
     comparison of the tuples let the rounded glasbey copies of the tab10 colours through, which gave
     nitrogen the blue of iron and oxygen the orange of nickel in one figure.
     """
-    from artistools.plottools import get_unused_colors
-    from artistools.plottools import glasbey_category20_nogreys
-
     palette = [*colors_tab10, *glasbey_category20_nogreys]
 
     return tuple(get_unused_colors(palette, [mc.to_hex(rgba) for rgba in elementcolors.values()]))
@@ -610,7 +616,7 @@ def draw_subplot(
     finish_subplot(ax, args, settings)
 
 
-def plot_init_abundances(
+def get_init_abundance_plans(
     settings: SubplotSettings, specieslist: list[str], estimators: pl.LazyFrame, seriestype: str, **plotkwargs: t.Any
 ) -> list[SeriesPlan]:
     """Return the series of the initial abundance or mass of each species in specieslist."""
@@ -699,7 +705,7 @@ def get_average_charge_expr(element: str, colnames: Collection[str]) -> tuple[pl
     return expr_charge_per_nuc, max(ioncharges)
 
 
-def plot_average_ionisation(
+def get_average_ionisation_plans(
     settings: SubplotSettings, params: Sequence[str], estimators: pl.LazyFrame, **plotkwargs: t.Any
 ) -> list[SeriesPlan]:
     """Return the series of the mean ion charge of each element in params."""
@@ -749,7 +755,7 @@ def read_nltepops_of_estimators(modelpath: str | Path, timesteps: Sequence[int],
     return dfnltepops.filter(pl.col("timestep").is_in(timesteps))
 
 
-def plot_average_excitation(
+def get_average_excitation_plans(
     settings: SubplotSettings,
     params: Sequence[str],
     timestepslist: Sequence[int],
@@ -783,7 +789,7 @@ def plot_average_excitation(
             modelpath, atomic_number, ion_stage, dftexc, dfnltepops=dfnltepops_allions.lazy()
         )
 
-        # weight the average by the ion population where it is available, as plot_average_ionisation
+        # weight the average by the ion population where it is available, as get_average_ionisation_plans
         # weights by the element population
         nnioncol = f"nnion_{get_ionstring(atomic_number, ion_stage, sep='_', style='spectral')}"
         weightcol = pl.col(nnioncol) if nnioncol in estimatorcolumns else pl.lit(1.0)
@@ -813,7 +819,7 @@ def plot_average_excitation(
     return plans
 
 
-def plot_levelpop(
+def get_levelpop_plans(
     settings: SubplotSettings,
     seriestype: str,
     params: Sequence[str],
@@ -905,7 +911,7 @@ def plot_levelpop(
             f" {texifyconfiguration(levelname)}"
         )
 
-        print(f"plot_levelpop {label}")
+        print(f"get_levelpop_plans {label}")
 
         # a cell that holds no matter has no NLTE row at a timestep, thus the mean of a cell takes the durations of the
         # timesteps that hold a row of the cell. A cell with no row at all gives no point
@@ -942,220 +948,6 @@ def plot_levelpop(
         )
 
     return plans
-
-
-# The plot directives that a plot item can carry, e.g. "-p rho yscale=log". The underscore of a name
-# is optional.
-DIRECTIVES = ("ionpoptype", "ymin", "ymax", "yscale")
-
-# a series type groups the names that follow it, e.g. -plot averageionisation Fe Ni. Each one has its
-# own plot function in plot_subplot. An ion series needs no entry here, because the estimator columns
-# name it, e.g. gamma_NT_Fe_II gives the series type gamma_NT
-SERIESTYPES = (
-    "averageexcitation",
-    "averageionisation",
-    "initabundances",
-    "initmasses",
-    "levelpopulation",
-    "populations",
-)
-
-
-def is_seriestype(name: t.Any, estimatorcolumns: Collection[str]) -> bool:
-    """Return True when a name has its own plot function, e.g. "populations" in "populations Fe II"."""
-    if not isinstance(name, str) or name in estimatorcolumns:
-        return False
-
-    return name in SERIESTYPES or name.startswith("levelpopulation_")
-
-
-def is_ionseriestype(name: t.Any, estimatorcolumns: Collection[str], params: Sequence[t.Any]) -> bool:
-    """Return True when a name plus the ions after it give the columns of an ion series.
-
-    An estimator that names an ion, e.g. gamma_NT_Fe_II, gives the series type gamma_NT. Every name
-    after it must be an ion, because a name such as "heating" is also the prefix of heating_coll, and
-    "heating coll" must keep the message that names the column.
-
-    A type of series can also be a variable of its own. cooling_coll holds the cooling rate of the
-    whole cell, and cooling_coll_Fe_II holds the part of one ion. A column of one of the named ions
-    then proves the reading. A subplot of the total alone takes its own --plot, e.g.
-    --plot cooling_coll --plot cooling_coll "Fe II".
-    """
-    if not isinstance(name, str) or not params:
-        return False
-
-    if not all(isinstance(param, str) and is_valid_ion(param) for param in params):
-        return False
-
-    # A column of one of the ions proves the reading, also for a name that is a variable of its own.
-    # The test takes one column and not every column. An element can lose its top ion here, e.g. a
-    # model that holds Fe I to Fe V has no gamma_NT_Fe_V.
-    if any(get_column_name(name, *get_iontuple(param))[0] in estimatorcolumns for param in params):
-        return True
-
-    # A name that gives no variable of its own keeps the older and looser test, which asks only that
-    # the model holds the family. Such a name has no other reading, thus it needs no column here.
-    return name not in estimatorcolumns and any(col.startswith(f"{name}_") for col in estimatorcolumns)
-
-
-# The subplots share one horizontal axis, thus no directive can set it for one subplot alone. The
-# arguments -xmin and -xmax set it for the figure, and they also drop the data outside that range.
-FIGURE_ARGUMENTS = ("xmin", "xmax")
-
-
-def get_directive_name(seriestype: str) -> str | None:
-    """Return the name of the directive that a plot item gives, e.g. "ymin", or None for a series.
-
-    A figure argument and an unknown directive stop the command.
-    """
-    # normalise_plotitems adds the underscore, thus report the name as the user wrote it
-    given = seriestype.removeprefix("_")
-    # a figure argument stops the command whichever way the caller spells it, because a plot item
-    # of that name reaches the ion branch and gives an error that names no argument
-    if given.lower() in FIGURE_ARGUMENTS:
-        exit_with_error(
-            f"'{given}' belongs to the whole figure and not to one subplot, because the subplots "
-            f"share one horizontal axis. Give -{given.lower()} instead, which also drops the data outside"
-        )
-
-    if seriestype.startswith("_") and given.lower() not in DIRECTIVES:
-        suggestion = suggest_names(given, DIRECTIVES)
-        exit_with_error(
-            f"'{given}' is not a plot directive",
-            f"{suggestion + ' ' if suggestion else ''}The directives are "
-            f"{', '.join(f'{name}=' for name in DIRECTIVES)}",
-        )
-
-    return given.lower() if given.lower() in DIRECTIVES else None
-
-
-# A series name can have its style after this mark, e.g. "Fe II@color=C3,linewidth=2". The mark needs no quotes
-# in a shell, and zsh reads square brackets as a file pattern
-SERIES_STYLE_MARK: t.Final = "@"
-
-# the line styles that a series style accepts, by each name and short form, e.g. "--" gives "dashed"
-SERIES_LINESTYLES: t.Final = MappingProxyType({name: name for name in LINESTYLE_NAMES} | LINESTYLE_ALIASES)
-
-
-def get_series_style_problem(key: str, value: str) -> str | None:
-    """Return the reason that a value of a series style is not valid, or None for a valid value.
-
-    The colour, the dash pattern, and the width take the argparse types of the options of the other commands, e.g.
-    color_arg of --color. An opacity of 0 is valid, because matplotlib then draws a clear line.
-    """
-    if key == "linestyle":
-        return (
-            None
-            if value in SERIES_LINESTYLES
-            else f"is not a line style. The line styles are {', '.join(SERIES_LINESTYLES)}"
-        )
-    if key == "linealpha":
-        alpha = float(value) if is_float(value) else math.nan
-        return None if 0.0 <= alpha <= 1.0 else "is not an opacity from 0 (clear) to 1 (opaque)"
-    convert = {"color": color_arg, "dashes": dashes_arg, "linewidth": positive_float_arg}.get(key)
-    try:
-        if convert is not None:
-            convert(value)
-    except argparse.ArgumentTypeError as exc:
-        return f"is not valid: {exc}"
-    return None
-
-
-def is_float(text: str) -> bool:
-    """Return True if float() reads the text."""
-    try:
-        float(text)
-    except ValueError:
-        return False
-    return True
-
-
-def read_series_style(item: str) -> tuple[str, dict[str, str]]:
-    """Return the name of a plot item and the style after its @, e.g. ("Fe II", {"color": "C3"}) for "Fe II@color=C3".
-
-    The parts of the style have a comma between them. A part with no known key continues the value before it, thus a
-    dash pattern can hold commas, e.g. "Te@dashes=5,2,linewidth=2". The label takes all the text after "label=", thus
-    a label can hold a comma and an "=", e.g. "Te@color=C3,label=T, electrons". An item with no @ gives an empty style.
-    A style that is not valid gives ValueError, and the message of the error names the problem.
-    """
-    name, mark, styletext = item.partition(SERIES_STYLE_MARK)
-    style: dict[str, str] = {}
-    if not mark:
-        return item, style
-    key: str | None = None
-    parts = styletext.split(",")
-    for index, part in enumerate(parts):
-        partkey, equals, value = part.partition("=")
-        if equals and partkey.strip() in SERIES_STYLE_KEYS:
-            key = partkey.strip()
-            if key == "label":
-                style[key] = ",".join([value, *parts[index + 1 :]])
-                break
-            style[key] = value
-        elif key is not None:
-            style[key] += f",{part}"
-        else:
-            msg = (
-                f"'{part}' in the plot item '{item}' is not a series style. Give key=value after the"
-                f" {SERIES_STYLE_MARK}, e.g. '{name}{SERIES_STYLE_MARK}color=C3'. The keys are"
-                f" {', '.join(SERIES_STYLE_KEYS)}"
-            )
-            raise ValueError(msg)
-    for key, value in style.items():
-        if key != "label" and (problem := get_series_style_problem(key, value)) is not None:
-            msg = f"The {key} '{value}' of the plot item '{item}' {problem}"
-            raise ValueError(msg)
-    return name, style
-
-
-def split_series_style(item: str) -> tuple[str, dict[str, str]]:
-    """Return the name and the style of a plot item, or stop the command if the style is not valid."""
-    try:
-        return read_series_style(item)
-    except ValueError as exc:
-        exit_with_error(str(exc))
-
-
-def join_series_style(name: str, style: Mapping[str, str | None]) -> str:
-    """Return the plot item of a series name with a style, e.g. "Fe II@color=C3". A value of None gives no key."""
-    parts = [f"{key}={value}" for key in SERIES_STYLE_KEYS if (value := style.get(key)) is not None]
-    return f"{name}{SERIES_STYLE_MARK}{','.join(parts)}" if parts else name
-
-
-def split_plotitem_styles(plotitems: t.Any) -> tuple[list[t.Any], dict[str, dict[str, str]]]:
-    """Return the plot items of a subplot without their series styles, and the style of each series name.
-
-    A name that is an alias changes to its variable, e.g. n_e to nne, because the series of the plot use the variable.
-    The items can be a plain list of words, or the nested form of main, e.g. [["populations", ["Fe II@color=C3"]]].
-    """
-    styles: dict[str, dict[str, str]] = {}
-
-    def strip_style(item: t.Any) -> t.Any:
-        if not isinstance(item, str):
-            return item
-        name, style = split_series_style(item)
-        if style:
-            styles[VARIABLE_ALIASES.get(name, name)] = style
-        return name
-
-    if isinstance(plotitems, str):
-        plotitems = [plotitems]
-    stripped = [
-        [item[0], [strip_style(name) for name in item[1]]]
-        if isinstance(item, (list, tuple)) and len(item) == 2 and isinstance(item[1], (list, tuple))
-        else strip_style(item)
-        for item in plotitems
-    ]
-    return stripped, styles
-
-
-def get_styles_of_subplots(args: argparse.Namespace, count: int) -> list[dict[str, dict[str, str]]]:
-    """Return the style of each series name for each of count subplots, see split_plotitem_styles.
-
-    The default plot list gives no style, thus a subplot with no plot item of the user has an empty style.
-    """
-    styles = [split_plotitem_styles(plotitems)[1] for plotitems in (args.plotlist or [])[:count]]
-    return [*styles, *({} for _ in range(count - len(styles)))]
 
 
 def get_default_colours(series: Sequence[SeriesData]) -> list[t.Any]:
@@ -1220,73 +1012,6 @@ def get_gid_series_name(gid: str) -> str:
     return re.sub(r"\.([0-9a-f]+)\.", lambda match: chr(int(match[1], 16)), escapedname)
 
 
-def get_iontuple(ionstr: str) -> tuple[int, str | int]:
-    """Decode into atomic number and parameter, e.g., [(26, 1), (26, 2), (26, 'ALL'), (26, 'Fe56')].
-
-    An element gives "ALL". An isotope or a family of nuclides keeps its name, e.g. Fe56, Ni_56, or
-    Ni_stable, because the column name of the estimators holds that name. Every other name goes to
-    get_ion_tuple.
-    """
-    elsymbols = get_elsymbolset()
-    if ionstr not in elsymbols and not ionstr.isdigit():
-        stem = ionstr.rstrip("-0123456789")
-        if stem in elsymbols:
-            return (get_atomic_number(stem), ionstr)
-
-        elsymbol, _, suffix = ionstr.partition("_")
-        if suffix and elsymbol in elsymbols and decode_roman_numeral(suffix) < 0:
-            return (get_atomic_number(elsymbol), ionstr)
-
-    # get_ion_tuple strips an X_, nnelement_, or nnion_ prefix. Such a prefix names a column and not
-    # an ion, thus a name that holds one goes to the fallback below and the caller then rejects it
-    if not ionstr.startswith(("X_", "nnelement_", "nnion_")):
-        with contextlib.suppress(ValueError):
-            return get_element_or_ion_tuple(ionstr)
-
-    # a name that is no ion at all, e.g. a mistyped variable. The caller tests the atomic number
-    return (get_atomic_number(ionstr.split("_", maxsplit=1)[0]), ionstr)
-
-
-def get_element_or_ion_tuple(ionstr: str) -> tuple[int, str | int]:
-    """Return the atomic number and the ion stage of a name that get_ion_tuple reads, or "ALL" for an element."""
-    iontuple = get_ion_tuple(ionstr)
-    return (iontuple, "ALL") if isinstance(iontuple, int) else iontuple
-
-
-def is_valid_ion(ionstr: str) -> bool:
-    """Return True when the string names an element, an ion, or an isotope that get_iontuple can read.
-
-    could_be_ion is deliberately permissive, thus it accepts a name such as "te" that get_atomic_number
-    reads as tellurium. This test rejects that name, so that the caller can suggest the variable "Te".
-    """
-    atomic_number, param = get_iontuple(ionstr)
-    if atomic_number < 1:
-        return False
-
-    if isinstance(param, int):
-        return param >= 1
-
-    elsymbols = get_elsymbolset()
-
-    # get_column_name reads a suffix that joins the symbol, e.g. Fe_otherstable gives
-    # nniso_Fe_otherstable, thus the first part of the name decides
-    return param == "ALL" or param.rstrip("-0123456789") in elsymbols or param.split("_", maxsplit=1)[0] in elsymbols
-
-
-def could_be_ion(plotvar: t.Any) -> bool:
-    """Return True when plotvar can name part of an ion population plot: an ion, an element, or an atomic number."""
-    # lists are plot directives and bare integers are atomic numbers
-    if isinstance(plotvar, (list, int)):
-        return True
-
-    if not isinstance(plotvar, str):
-        return False
-
-    # get_iontuple reads a digit string as an atomic number, and normalise_plotitems has already taken
-    # every "key=value" directive out of the list that reaches here
-    return get_iontuple(plotvar)[0] >= 1
-
-
 def get_default_plotitem_skip_reason(
     plotitems: t.Any, estimatorcolumns: Collection[str], modelpath: str | Path | None = None
 ) -> str | None:
@@ -1346,104 +1071,9 @@ def get_model_default_plotlist(
     return plotlist, skippedplotlist
 
 
-def normalise_plotitems(plotitems: t.Any, estimatorcolumns: Collection[str]) -> list[t.Any]:
-    """Resolve variable aliases and move any 'key=value' plot directives to the end of the plot item list.
-
-    A list of ions such as ["Sr I", "Sr II"] is rewritten as a populations plot [["populations", ["Sr I", "Sr II"]]].
-    """
-    # the client draws the series styles, see draw_line_figure, thus the data needs the names alone
-    plotitems, _ = split_plotitem_styles(plotitems)
-
-    # the underscore of a directive is optional, thus "-p rho yscale=log" and "_yscale=log" are the same.
-    # One shape here lets plot_subplot find an unknown directive whichever spelling the user gave
-    plot_directives = [
-        ["_" + key.removeprefix("_"), value]
-        for key, value in (
-            plotvar.split("=", maxsplit=1) for plotvar in plotitems if isinstance(plotvar, str) and "=" in plotvar
-        )
-    ]
-    plotvars = [
-        VARIABLE_ALIASES.get(plotvar, plotvar) if isinstance(plotvar, str) else plotvar
-        for plotvar in plotitems
-        if not isinstance(plotvar, str) or "=" not in plotvar
-    ]
-
-    # a subplot with no series draws an empty frame, e.g. in the viewer after the user removed its last series
-    if not plotvars:
-        return plot_directives
-
-    # the grouped form names the type of series first, e.g. -plot populations "Fe II" "Fe III"
-    if is_seriestype(plotvars[0], estimatorcolumns):
-        if len(plotvars) == 1:
-            exit_with_error(
-                f"'{plotvars[0]}' names a type of series and takes at least one name after it",
-                f'e.g. --plot {plotvars[0]} Fe. Quote an ion that holds a space, e.g. --plot {plotvars[0]} "Fe II"',
-            )
-        if all(isinstance(plotvar, str) for plotvar in plotvars[1:]):
-            plotvars = [[plotvars[0], plotvars[1:]]]
-    elif is_ionseriestype(plotvars[0], estimatorcolumns, plotvars[1:]):
-        plotvars = [[plotvars[0], plotvars[1:]]]
-
-    if isinstance(plotvars[0], str) and plotvars[0] not in estimatorcolumns and all(map(could_be_ion, plotvars)):
-        # an ion population plot is the reading of last resort, thus reject a name that is no ion at all
-        if notions := [var for var in plotvars if isinstance(var, str) and not is_valid_ion(var)]:
-            exit_with_error(
-                f"'{notions[0]}' is neither an estimator variable nor an ion",
-                suggest_names(notions[0], estimatorcolumns) or "Run with --listvariables to see the variables",
-            )
-
-        # Te and W name an estimator variable and also an element. A model with no estimator files has no such column,
-        # and the plot then read tellurium in place of the temperature and drew an empty subplot
-        if absentvariables := [
-            var for var in plotvars if isinstance(var, str) and var in VARIABLES and var not in estimatorcolumns
-        ]:
-            exit_with_error(
-                f"'{absentvariables[0]}' is an estimator variable, and the estimators of this model hold no such"
-                " column",
-                "Run with --listvariables to see the variables of this model",
-            )
-
-        # plotting this as a variable would cause an error, so interpret it as ion populations instead
-        new_plotvars = [["populations", plotvars]]
-        print(f"Rewriting plotlist {plotvars} to {new_plotvars}")
-        plotvars = new_plotvars
-
-    return plotvars + plot_directives
-
-
-def get_column_name(seriestype: str, atomic_number: int, ion_stage: str | int) -> tuple[str, str]:
-    """Return the estimator column name for one ion, element, or isotope, along with its plot label."""
-    ionstr = get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
-    if seriestype == "populations":
-        if ion_stage == "ALL":
-            elsymbol = get_elsymbol(atomic_number)
-            return f"nnelement_{elsymbol}", ionstr
-        if isinstance(ion_stage, str) and ion_stage.startswith(get_elsymbol(atomic_number)):
-            # not really an ion_stage but an isotope name
-            return f"nniso_{ion_stage}", ionstr
-        return f"nnion_{ionstr}", ionstr
-    return f"{seriestype}_{ionstr}", ionstr
-
-
 def get_ionentry_sortkey(entry: tuple[tuple[int, str | int], str]) -> tuple[int, int, int, str]:
     """Return the sort key of a pair of an ion tuple and its name in a plot item, see get_iontuple_sortkey."""
     return get_iontuple_sortkey(entry[0])
-
-
-def get_iontuple_sortkey(iontuple: tuple[int, str | int]) -> tuple[int, int, int, str]:
-    """Return a sort key that puts an element first, then its ion stages, then its isotopes.
-
-    A plain sort of the tuples compares an ion stage with the name of an isotope, which raises a
-    TypeError, e.g. for the pair of names "Fe" and "Fe II".
-    """
-    atomic_number, ion_stage = iontuple
-    if ion_stage == "ALL":
-        return (atomic_number, 0, 0, "")
-
-    if isinstance(ion_stage, int):
-        return (atomic_number, 1, ion_stage, "")
-
-    return (atomic_number, 2, 0, ion_stage)
 
 
 def get_population_normfactor(seriestype: str, poptype: str, atomic_number: int) -> pl.Expr:
@@ -1492,7 +1122,7 @@ def get_ion_series_weight(
     return pl.lit(1.0), "cell volume times time step duration"
 
 
-def plot_multi_ion_series(
+def get_multi_ion_series_plans(
     settings: SubplotSettings,
     seriestype: str,
     ionlist: Sequence[str],
@@ -1652,7 +1282,7 @@ def plot_multi_ion_series(
     return plans
 
 
-def plot_series(
+def get_series_plans(
     settings: SubplotSettings,
     variable: str | pl.Expr,
     showlegend: bool,
@@ -2019,7 +1649,7 @@ def get_subplot_plans(
             assert isinstance(variablename, str)
             showlegend = seriescount > 1 or len(variablename) > 35 or not sameylabel
             settings["showlegend"] = showlegend
-            plans += plot_series(
+            plans += get_series_plans(
                 settings=settings,
                 variable=plotitem,
                 showlegend=showlegend,
@@ -2035,18 +1665,18 @@ def get_subplot_plans(
 
             if seriestype in {"initabundances", "initmasses"}:
                 assert isinstance(params, list)
-                plans += plot_init_abundances(
+                plans += get_init_abundance_plans(
                     settings=settings, specieslist=params, estimators=estimators, seriestype=seriestype, **plotkwargs
                 )
 
             elif seriestype == "levelpopulation" or seriestype.startswith("levelpopulation_"):
-                plans += plot_levelpop(settings, seriestype, params, timestepslist, mgilist, modelpath, estimators)
+                plans += get_levelpop_plans(settings, seriestype, params, timestepslist, mgilist, modelpath, estimators)
 
             elif seriestype == "averageionisation":
-                plans += plot_average_ionisation(settings, params, estimators, **plotkwargs)
+                plans += get_average_ionisation_plans(settings, params, estimators, **plotkwargs)
 
             elif seriestype == "averageexcitation":
-                plans += plot_average_excitation(
+                plans += get_average_excitation_plans(
                     settings, params, timestepslist, mgilist, estimators, modelpath, **plotkwargs
                 )
 
@@ -2058,7 +1688,7 @@ def get_subplot_plans(
                 if seriestype == "populations" and len(ionlist) > 2 and yscale == "log":
                     settings["legendncols"] = 2
 
-                plans += plot_multi_ion_series(
+                plans += get_multi_ion_series_plans(
                     settings=settings,
                     seriestype=seriestype,
                     ionlist=ionlist,
@@ -2126,7 +1756,7 @@ def get_snapshot_timestrings(
 
     strtimestep = f"ts{timestepmin:03d}-ts{timestepmax:03d}" if timestepmax != timestepmin else f"ts{timestepmin:03d}"
     timelow_days, timehigh_days = (
-        get_timesteps(Path(modelpath))
+        scan_timesteps(Path(modelpath))
         .select(
             pl.col("tstart_days").filter(pl.col("timestep") == timestepmin).first(),
             pl.col("tend_days").filter(pl.col("timestep") == timestepmax).first(),
@@ -2969,8 +2599,6 @@ def complete_plotitem(prefix: str, **kwargs: t.Any) -> list[str]:
     """
     from argcomplete.completers import DirectoriesCompleter
 
-    from artistools.estimators.core import PREFIX_GROUPS
-
     names = [
         *(key for key, info in VARIABLES.items() if not info.group),
         *PREFIX_GROUPS,
@@ -3391,52 +3019,8 @@ def set_x_and_timesteps(args: argparse.Namespace, modelpath: Path) -> tuple[int,
     return timestepmin, timestepmax
 
 
-def parse_slice_argument(slicetext: str) -> list[tuple[str, float, str]]:
-    """Return the axis, its velocity [cm/s], and the label of each condition of --slice.
-
-    "xy" and "z=-0.2c" give one condition, which is a plane. "z=0,y=0" gives two, which is a line.
-    """
-    text = slicetext.strip().lower()
-    helptext = (
-        "Give a plane through the origin, e.g. --slice xy. As an alternative, give an axis and its velocity,"
-        " e.g. --slice z=-0.2c. Two axes give a line, e.g. --slice z=0,y=0"
-    )
-    if len(text) == 2 and text[0] != text[1] and set(text) <= set("xyz"):
-        normalaxis = next(axisname for axisname in "xyz" if axisname not in text)
-        return [(normalaxis, 0.0, f"{normalaxis} = 0")]
-
-    conditions: list[tuple[str, float, str]] = []
-    for conditiontext in text.split(","):
-        axisname, separator, velocitytext = (part.strip() for part in conditiontext.partition("="))
-        if axisname not in {"x", "y", "z"} or not separator:
-            exit_with_error(f"'{slicetext}' is not a plane or a line of the model", helptext)
-        try:
-            velocity_kmps, unit = parse_velocity_argument(velocitytext)
-        except argparse.ArgumentTypeError as err:
-            exit_with_error(str(err), helptext)
-
-        label = get_velocity_label(velocity_kmps, unit)
-        if velocity_kmps == 0.0:
-            label = "0"
-        conditions.append((axisname, velocity_kmps * km_to_cm, f"{axisname} = {label}"))
-
-    if len(conditions) > 2 or len({axisname for axisname, _, _ in conditions}) < len(conditions):
-        exit_with_error(f"'{slicetext}' must give one axis for a plane, or two different axes for a line", helptext)
-    return conditions
-
-
-def get_layer_index(velocity_cmps: float, vmax_cmps: float, ncells: int) -> int:
-    """Return the index of the layer of cells that holds a velocity on one axis of a 3D model.
-
-    A velocity between two layers takes the layer above it. The quotient of such a velocity can lie one
-    rounding step below the whole number, e.g. 24.999999999999996 for vmax = 6724085530.798534 cm/s and 50
-    cells, thus a small part of a cell goes on before the floor.
-    """
-    return min(math.floor((velocity_cmps + vmax_cmps) / (2.0 * vmax_cmps / ncells) + 1e-6), ncells - 1)
-
-
-def resolve_snapshot_arguments(args: argparse.Namespace) -> list[tuple[str, float, str]]:
-    """Apply --slice and --dimensionreduce to the arguments, and return the conditions of --slice.
+def resolve_snapshot_arguments(args: argparse.Namespace) -> None:
+    """Apply --slice and --dimensionreduce to the arguments.
 
     A plane of --slice gives a colour image, and a line of --slice gives a plot against the velocity on
     its axis. An argument that disagrees with the selection stops the command.
@@ -3467,7 +3051,7 @@ def resolve_snapshot_arguments(args: argparse.Namespace) -> list[tuple[str, floa
     args.sliceaxis = projection or (conditions[0][0] if isimage and conditions else None)
     args.slicelabel = ", ".join(label for _, _, label in conditions)
     if not isimage and not conditions:
-        return conditions
+        return
 
     selection = "-projection" if projection else "-slice" if conditions else "--dimensionreduce 2"
     if args.readonlymgi or args.modelgridindex is not None:
@@ -3501,8 +3085,6 @@ def resolve_snapshot_arguments(args: argparse.Namespace) -> list[tuple[str, floa
         lineaxis = next(axisname for axisname in "xyz" if axisname not in {axisname for axisname, _, _ in conditions})
         args.x = f"vel_{lineaxis}_mid_on_c"
 
-    return conditions
-
 
 def select_cells_of_slice(
     args: argparse.Namespace, modelpath: Path, conditions: Sequence[tuple[str, float, str]]
@@ -3510,32 +3092,6 @@ def select_cells_of_slice(
     """Select the cells of a 3D model that hold the plane or the line of --slice."""
     args.modelgridindex = get_cells_of_slice(modelpath, list(conditions))
     print(f"Getting the {len(args.modelgridindex)} cells that hold {args.slicelabel}")
-
-
-@on_model_host
-def get_cells_of_slice(modelpath: Path, conditions: Sequence[tuple[str, float, str]]) -> list[int]:
-    """Return the cells of a 3D model that hold the plane or the line of --slice.
-
-    The host of a remote model reads it.
-    """
-    lzmodel, modelmeta = get_modeldata(modelpath)
-    if modelmeta["dimensions"] != 3:
-        exit_with_error(
-            f"--slice needs a 3D model, and this model has {modelmeta['dimensions']} dimension(s)",
-            "Remove --slice to plot the variables against the velocity",
-        )
-    vmax_cmps = float(modelmeta["vmax_cmps"])
-    for axisname, velocity_cmps, label in conditions:
-        if abs(velocity_cmps) >= vmax_cmps:
-            exit_with_error(
-                f"{label} lies outside the model, which ends at {vmax_cmps / C_cm_per_s:.3g}c",
-                "Give a velocity inside the model",
-            )
-        layerindex = get_layer_index(velocity_cmps, vmax_cmps, int(modelmeta[f"ncoordgrid{axisname}"]))
-        poscolumn = pl.col(f"pos_{axisname}_min")
-        lzmodel = lzmodel.filter(poscolumn == poscolumn.unique().sort().get(layerindex))
-
-    return lzmodel.select("modelgridindex").collect()["modelgridindex"].to_list()
 
 
 def select_cells(args: argparse.Namespace, modelpath: Path) -> None:
@@ -3556,34 +3112,6 @@ def select_cells_along_axis(args: argparse.Namespace, modelpath: Path) -> None:
     args.other_axis1, args.other_axis2 = otheraxes[0], otheraxes[1]
 
     args.modelgridindex = get_cells_along_axis(modelpath, args)
-
-
-@on_model_host
-def get_cells_along_axis(modelpath: Path, args: argparse.Namespace) -> list[int]:
-    """Return the cells with matter on an axis or in a cone of a 3D model. The host of a remote model reads it."""
-    lzmodel, modelmeta = get_modeldata(modelpath)
-    # the selection reads the positions of the cells on three axes, which only a 3D model gives
-    if modelmeta["dimensions"] != 3:
-        exit_with_error(
-            f"--readonlymgi {args.readonlymgi} needs a 3D model, and this model has {modelmeta['dimensions']}"
-            " dimension(s)",
-            "Remove --readonlymgi to plot every cell against the velocity",
-        )
-    if args.readonlymgi == "alongaxis":
-        print(f"Getting mgi along {args.axis} axis")
-        dfmodel = lzmodel.select("modelgridindex", "rho", "pos_x_min", "pos_y_min", "pos_z_min").collect()
-        dfselectedcells = get_profile_along_axis(dfmodel, args)
-    elif args.readonlymgi == "cone":
-        print(f"Getting mgi lying within a cone around the {args.axis} half-axis")
-        # the cone selection reads the mid-point positions, which are derived columns
-        lzmodel = add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
-        dfselectedcells = make_cone(args, lzmodel, logprint=print)
-    else:
-        msg = f"Invalid args.readonlymgi: {args.readonlymgi}"
-        raise ValueError(msg)
-
-    # the estimators hold the zero-based modelgridindex, not the one-based inputcellid
-    return list(dfselectedcells.filter(pl.col("rho") > 0)["modelgridindex"])
 
 
 @on_model_host
@@ -3836,15 +3364,10 @@ def add_plot_columns(
     args: argparse.Namespace, estimators: pl.LazyFrame, modelmeta: dict[str, t.Any]
 ) -> tuple[pl.LazyFrame, list[str]]:
     """Return the estimators with the columns that the plot reads, and the names of all the columns."""
-    # the average around the z axis reads all the cells, and it applies the limit of the cylindrical radius itself
+    # the average around the z axis applies the limit of the cylindrical radius itself. The corners of a cube hold
+    # matter, thus get_cell_selection_description gives the limit in the log
     if args.modelgridindex is None and args.dimensionreduce == 1:
         estimators = estimators.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
-        if modelmeta["dimensions"] == 3:
-            # the corners of the cube hold matter, thus a mean of the plot differs from a mean of all the cells
-            print_detail(
-                f"The plot leaves out each cell with vel_r_mid above vmax = {modelmeta['vmax_cmps'] / km_to_cm:.5g}"
-                " km/s. These cells are the corners of the 3D grid, and the velocity of the model ends at vmax"
-            )
 
     if (costhetarange := get_costheta_range(args, quiet=True)) is not None:
         estimators = estimators.filter(get_costheta_selection(costhetarange, estimators.collect_schema().names()))
@@ -3864,6 +3387,47 @@ def get_plot_columns(modelpath: Path, args: argparse.Namespace, timesteps_includ
 type FiguresData = tuple[list[LineFigureData | ImageFigureData], dict[str, t.Any]]
 
 
+# the arguments that only the functions that draw a figure read, e.g. draw_line_figure and draw_image_figure.
+# get_figures_data reads none of them, thus a change of get_figures_data can change this set
+DRAW_DESTS: t.Final = frozenset({
+    "darkmode",
+    "dpi",
+    "figscale",
+    "figwidthscale",
+    "format",
+    "hidexlabel",
+    "labelfontsize",
+    "legend_above",
+    "legendcols",
+    "legendframe",
+    "linewidthscale",
+    "nolegend",
+    "notitle",
+    "outputfile",
+    "show",
+    "subplotsperrow",
+})
+
+
+def get_data_key(args: argparse.Namespace) -> str:
+    """Return a key of the arguments that select the data of a plot, without the series styles and DRAW_DESTS.
+
+    The data has no style, thus two commands with the same key read the same data. The window then draws the new style
+    with the data of the last plot. A new width of the figure, e.g. --figwidthscale, also reads no data.
+    """
+
+    # the positional items also hold the folder, which can contain the mark, e.g. user@host:path. The window has one
+    # folder, thus the cut at the mark cannot make the keys of two different data sets equal
+    def get_names(items: Sequence[t.Any]) -> list[t.Any]:
+        return [get_series_name(item) if isinstance(item, str) else item for item in items]
+
+    keyargs = {key: value for key, value in vars(args).items() if key not in DRAW_DESTS} | {
+        "plotitems": get_names(args.plotitems or []),
+        "plotlist": [get_names(plotitems) for plotitems in args.plotlist or []],
+    }
+    return repr(sorted(keyargs.items()))
+
+
 @on_model_host
 def get_figures_data(
     modelpath: Path,
@@ -3880,8 +3444,6 @@ def get_figures_data(
     """
     import copy
 
-    from artistools.misc.remote import is_plain_value
-
     # a path of the arguments comes back with the name of the host, thus only the changed values come back. The copy
     # keeps each list as it was, e.g. for a change of one item
     plainargs = copy.deepcopy({key: value for key, value in vars(args).items() if is_plain_value(value)})
@@ -3891,6 +3453,8 @@ def get_figures_data(
 
     estimators, modelmeta = get_plot_estimators(args, modelpath, timesteps_included, batchcaches)
     estimators, estimatorcolumns = add_plot_columns(args, estimators, modelmeta)
+    if description := get_cell_selection_description(args, modelmeta):
+        print_detail(description)
     plotlist = resolve_plotlist(args, estimatorcolumns, modelpath)
 
     assert args.x is not None
@@ -3993,10 +3557,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     if args.interactive:
-        from artistools.estimators.interactive import run_viewer
-        from artistools.viewertools.core import get_command_tokens
+        from artistools.estimators import interactive
+        from artistools.viewertools.application import run_viewer
 
-        run_viewer(get_command_tokens(args, argsraw, kwargs, fromdispatcher=fromdispatcher))
+        run_viewer(interactive, args, argsraw, kwargs, fromdispatcher=fromdispatcher)
         return
 
     modelpath, timesteps_included = resolve_plot_args(args)

@@ -1,9 +1,12 @@
 """ARTIS model folder information: input parameters, run folders, and MPI rank mappings."""
 
 import contextlib
+import dataclasses as dc
 import math
 import re
 import typing as t
+import warnings
+from collections.abc import Callable
 from collections.abc import Iterable
 from collections.abc import Sequence
 from functools import lru_cache
@@ -16,33 +19,31 @@ import polars as pl
 
 from artistools.constants import day_to_s
 from artistools.constants import h_ev_s
-from artistools.misc.cliutils import print_detail
-from artistools.misc.cliutils import print_warning
+from artistools.misc.console import print_detail
+from artistools.misc.console import print_warning
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import firstexisting_or_none
-from artistools.misc.fileio import modelpath_cache
 from artistools.misc.fileio import natural_sort_key
-from artistools.misc.fileio import path_is_codecomparison
 from artistools.misc.fileio import polars_source_open
 from artistools.misc.fileio import read_wsv
 from artistools.misc.fileio import readnoncommentline
-from artistools.misc.fileio import resolve_modelpath
 from artistools.misc.fileio import zopen
+from artistools.misc.modelpaths import clear_at_reload
+from artistools.misc.modelpaths import modelpath_cache
+from artistools.misc.modelpaths import path_is_codecomparison
+from artistools.misc.modelpaths import resolve_modelpath
 from artistools.misc.remote import check_local_path
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import on_model_host
 
 if t.TYPE_CHECKING:
-    from collections.abc import Callable
     from collections.abc import Mapping
 
 
 @on_model_host
 def get_vpkt_config(modelpath: Path) -> dict[str, t.Any]:
     """Return the virtual packet settings from a model's vpkt.txt."""
-    from artistools.make_vpkt_input import parse_vpkt_input
-
     config = parse_vpkt_input(Path(modelpath, "vpkt.txt").read_text(encoding="utf-8"))
 
     # ARTIS runs one full-opacity spectrum per observer when the file gives no exclusion list
@@ -108,9 +109,10 @@ def get_wid_init_at_tmodel(
     if ngridpoints is None or t_model_days is None or xmax is None:
         # Luke: ngridpoint only equals the number of model cells if the model is 3D
         assert modelpath is not None
-        from artistools.inputmodel import get_modeldata
+        # artistools.inputmodel imports artistools.misc, thus this import runs at call time
+        from artistools.inputmodel import scan_modeldata
 
-        _, modelmeta = get_modeldata(modelpath)
+        _, modelmeta = scan_modeldata(modelpath)
         assert modelmeta["dimensions"] == 3
         ngridpoints = modelmeta["npts_model"]
         xmax = modelmeta["vmax_cmps"] * modelmeta["t_model_init_days"] * day_to_s
@@ -121,15 +123,11 @@ def get_wid_init_at_tmodel(
     return 2.0 * xmax / ncoordgridx
 
 
-def get_nu_grid(modelpath: Path | str) -> npt.NDArray[np.floating]:
-    """Return an array of frequencies at which the ARTIS spectra are binned by exspec."""
-    return get_nu_grid_cached(resolve_modelpath(modelpath))
-
-
-@lru_cache(maxsize=16)
+@clear_at_reload("output")
+@modelpath_cache(maxsize=16)
 @on_model_host
-def get_nu_grid_cached(modelpath: Path) -> npt.NDArray[np.floating]:
-    """Return the frequency grid of the model at an absolute path."""
+def get_nu_grid(modelpath: Path) -> npt.NDArray[np.floating]:
+    """Return an array of frequencies at which the ARTIS spectra are binned by exspec."""
     specfile = firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True)
     with polars_source_open(specfile) as source:
         specdata = pl.read_csv(
@@ -435,19 +433,15 @@ def get_inputparams(modelpath: Path) -> dict[str, t.Any]:
     return params
 
 
-def get_runfolder_timesteps(folderpath: Path | str) -> tuple[int, ...]:
+# a window checks every run folder for each plot, and a model with many restarts has more than 16 of them
+@clear_at_reload("estimators")
+@modelpath_cache(maxsize=1024)
+def get_runfolder_timesteps(folderpath: Path) -> tuple[int, ...]:
     """Return the sorted timesteps of the estimator files in an ARTIS run folder.
 
     A restarted run repeats the last timestep of the folder before it, and the result holds that timestep. Only
     get_runfolders knows the order of the folders, thus it gives such a timestep to the earlier folder.
     """
-    return get_runfolder_timesteps_cached(resolve_modelpath(folderpath))
-
-
-# a window checks every run folder for each plot, and a model with many restarts has more than 16 of them
-@lru_cache(maxsize=1024)
-def get_runfolder_timesteps_cached(folderpath: Path) -> tuple[int, ...]:
-    """Return the timesteps of the run folder at an absolute path."""
     return tuple(read_runfolder_timesteps(folderpath))
 
 
@@ -773,7 +767,7 @@ def get_cellsofmpirank(mpirank: int, modelpath: Path | str) -> Iterable[int]:
 
 
 @modelpath_cache(maxsize=16)
-def get_dfrankassignments(modelpath: Path) -> pl.LazyFrame | None:
+def scan_rankassignments(modelpath: Path) -> pl.LazyFrame | None:
     """Return the cell-to-MPI-rank assignments, or None when modelgridrankassignments.out is absent."""
     filerankassignments = firstexisting_or_none(
         "modelgridrankassignments.out", folder=modelpath, tryzipped=True, search_subfolders=False
@@ -804,7 +798,7 @@ def get_rankassignments_cached(modelpath: Path) -> pl.DataFrame | None:
     get_mpirankofcell asks for one cell at a time, thus a scan that each call collects reads the file
     again for each cell. Do not change the frame that this function returns.
     """
-    lzrankassignments = get_dfrankassignments(modelpath)
+    lzrankassignments = scan_rankassignments(modelpath)
 
     return lzrankassignments.collect() if lzrankassignments is not None else None
 
@@ -878,3 +872,129 @@ def get_mpirankofcell(modelgridindex: int, modelpath: Path | str) -> int:
     # get_cellsofmpirank knows the blocks of the formula alone, and not modelgridrankassignments.out
     assert get_rankassignments(modelpath) is not None or modelgridindex in get_cellsofmpirank(mpirank, modelpath)
     return mpirank
+
+
+@dc.dataclass
+class VpktConfig:
+    """The settings held in a vpkt.txt file, in the order they appear."""
+
+    directions_costheta_phi: list[tuple[float, float]] = dc.field(
+        default_factory=lambda: [(1.0, 0.0), (0.0, 0.0), (-1.0, 0.0)]
+    )
+    opacityexclusions: list[int] = dc.field(default_factory=list)
+    override_tminmax: bool = False
+    vspec_tmin_in_days: float = 0.2
+    vspec_tmax_in_days: float = 1.5
+    custom_lambda_ranges: list[tuple[float, float]] = dc.field(default_factory=list)
+    override_thickcell_tau: bool = True
+    cell_is_optically_thick_vpkt: float = 100.0
+    tau_max_vpkt: float = 10.0
+    vgrid_on: bool = False
+    tmin_vgrid_in_days: float = 0.2
+    tmax_vgrid_in_days: float = 1.5
+    vgrid_lambda_ranges: list[tuple[float, float]] = dc.field(default_factory=lambda: [(3500.0, 6000.0)])
+
+
+class VpktTokenReader:
+    """Hand out whitespace-separated tokens, so that any file ARTIS reads with fscanf is accepted."""
+
+    def __init__(self, contents: str) -> None:
+        """Split the file contents into tokens, ready to be consumed in order."""
+        self.tokens = contents.split()
+        self.pos = 0
+
+    def next_value[T](self, converter: Callable[[str], T], typename: str, description: str) -> T:
+        """Return the next token converted by converter, naming what was expected on failure."""
+        if self.pos >= len(self.tokens):
+            msg = f"vpkt.txt ended while reading {description}"
+            raise ValueError(msg)
+
+        token = self.tokens[self.pos]
+        self.pos += 1
+        try:
+            return converter(token)
+        except ValueError as exc:
+            msg = f"vpkt.txt has {token!r} where {description} should be a {typename}"
+            raise ValueError(msg) from exc
+
+    def next_int(self, description: str) -> int:
+        """Return the next token as an integer."""
+        return self.next_value(int, "integer", description)
+
+    def next_float(self, description: str) -> float:
+        """Return the next token as a float."""
+        return self.next_value(float, "number", description)
+
+    def next_lambda_ranges(self, count: int, description: str) -> list[tuple[float, float]]:
+        """Return count consecutive lambdamin/lambdamax pairs."""
+        return [
+            (self.next_float(f"{description} lambdamin"), self.next_float(f"{description} lambdamax"))
+            for _ in range(count)
+        ]
+
+    @property
+    def exhausted(self) -> bool:
+        """Whether every token has been consumed."""
+        return self.pos >= len(self.tokens)
+
+
+def parse_vpkt_input(contents: str) -> VpktConfig:
+    """Parse the contents of a vpkt.txt file, following the same order as the ARTIS reader."""
+    reader = VpktTokenReader(contents)
+
+    ndirections = reader.next_int("the number of observer directions")
+    if ndirections < 1:
+        msg = f"vpkt.txt must have at least one observer direction, but declares {ndirections}"
+        raise ValueError(msg)
+    costhetas = [reader.next_float(f"costheta of direction {i}") for i in range(ndirections)]
+    phis = [reader.next_float(f"phi of direction {i}") for i in range(ndirections)]
+
+    # any flag other than 1 means one full-opacity spectrum, which an empty list stands for here
+    opacityexclusions: list[int] = []
+    if reader.next_int("the custom opacity list flag") == 1:
+        nspectraperobsdir = reader.next_int("the number of opacity choices")
+        opacityexclusions = [reader.next_int(f"opacity choice {i}") for i in range(nspectraperobsdir)]
+
+    override_tminmax = reader.next_int("the time window override flag")
+    vspec_tmin_in_days = reader.next_float("the time window start")
+    vspec_tmax_in_days = reader.next_float("the time window end")
+
+    custom_lambda_ranges: list[tuple[float, float]] = []
+    if reader.next_int("the custom wavelength range flag") == 1:
+        nwavelengthranges = reader.next_int("the number of wavelength ranges")
+        custom_lambda_ranges = reader.next_lambda_ranges(nwavelengthranges, "wavelength range")
+
+    override_thickcell_tau = reader.next_int("the thick cell override flag")
+    cell_is_optically_thick_vpkt = reader.next_float("the thick cell optical depth")
+    tau_max_vpkt = reader.next_float("tau_max_vpkt")
+    vgrid_on = bool(reader.next_int("the velocity grid map flag"))
+
+    config = VpktConfig(
+        directions_costheta_phi=list(zip(costhetas, phis, strict=True)),
+        opacityexclusions=opacityexclusions,
+        override_tminmax=bool(override_tminmax),
+        vspec_tmin_in_days=vspec_tmin_in_days,
+        vspec_tmax_in_days=vspec_tmax_in_days,
+        custom_lambda_ranges=custom_lambda_ranges,
+        override_thickcell_tau=bool(override_thickcell_tau),
+        cell_is_optically_thick_vpkt=cell_is_optically_thick_vpkt,
+        tau_max_vpkt=tau_max_vpkt,
+        vgrid_on=vgrid_on,
+    )
+
+    # ARTIS stops reading here when the map is off, so the block may legitimately be absent
+    if vgrid_on or not reader.exhausted:
+        config.tmin_vgrid_in_days = reader.next_float("the velocity grid map start time")
+        config.tmax_vgrid_in_days = reader.next_float("the velocity grid map end time")
+        ngridranges = reader.next_int("the number of velocity grid wavelength ranges")
+        config.vgrid_lambda_ranges = reader.next_lambda_ranges(ngridranges, "velocity grid wavelength range")
+
+    return config
+
+
+# the names before the readers took the prefix scan_ or read_. Each alias keeps the old signature, thus a script
+# of a user still runs, and it gives a DeprecationWarning that names the new function
+@warnings.deprecated("get_dfrankassignments is deprecated. Use scan_rankassignments.")
+def get_dfrankassignments(modelpath: Path) -> pl.LazyFrame | None:
+    """Return the result of scan_rankassignments, the new name of this function."""
+    return scan_rankassignments(modelpath)

@@ -9,17 +9,17 @@ import matplotlib.colors as mplcolors
 import numpy as np
 import polars as pl
 
-from artistools.ejectaopacity import addarg_excitationtemperature
-from artistools.inputmodel import get_modeldata
-from artistools.linecontributions import addarg_lineselection
-from artistools.linecontributions import addarg_taumin
-from artistools.linecontributions import get_cell_line_inputs
-from artistools.linecontributions import get_line_velocity_profiles
-from artistools.linecontributions import get_ranked_line_summary
-from artistools.linecontributions import get_sobolev_trough
-from artistools.linecontributions import LINEKEYS
-from artistools.linecontributions import parse_ions
-from artistools.linecontributions import TROUGHSAMPLESPERCELL
+from artistools.inputmodel import scan_modeldata
+from artistools.lines.core import addarg_excitationtemperature
+from artistools.lines.linecontributions import addarg_lineselection
+from artistools.lines.linecontributions import addarg_taumin
+from artistools.lines.linecontributions import get_cell_line_inputs
+from artistools.lines.linecontributions import get_line_velocity_profiles
+from artistools.lines.linecontributions import get_ranked_line_summary
+from artistools.lines.linecontributions import get_sobolev_trough
+from artistools.lines.linecontributions import LINEKEYS
+from artistools.lines.linecontributions import parse_ions
+from artistools.lines.linecontributions import TROUGHSAMPLESPERCELL
 from artistools.misc import addarg_averageoverphi
 from artistools.misc import addarg_costhetarange
 from artistools.misc import addarg_darkmode
@@ -27,10 +27,12 @@ from artistools.misc import addarg_data_output
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_output
 from artistools.misc import addarg_show
+from artistools.misc import check_dirbin
 from artistools.misc import exit_with_error
 from artistools.misc import format_costheta_range
 from artistools.misc import get_artis_option
 from artistools.misc import get_costheta_range
+from artistools.misc import get_dirbin_labels
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_selected_timestep
@@ -39,12 +41,11 @@ from artistools.misc import get_timestep_times
 from artistools.misc import get_weighted_quantile_expr
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
+from artistools.misc import positive_int_arg
+from artistools.misc import positive_velocity_kmps_arg
 from artistools.misc import print_detail
 from artistools.misc import print_modelpath
 from artistools.misc import print_warning
-from artistools.misc.cliutils import positive_int_arg
-from artistools.misc.dirbins import check_dirbin
-from artistools.misc.dirbins import get_dirbin_labels
 from artistools.plottools import addarg_velocitybins
 from artistools.plottools import convert_velocity_columns
 from artistools.plottools import format_velocity
@@ -55,7 +56,6 @@ from artistools.plottools import get_velocity_unit
 from artistools.plottools import INVERSE_VELOCITYUNIT_AXISLABELS
 from artistools.plottools import KMPS_PER_VELOCITYUNIT
 from artistools.plottools import make_frame_figure
-from artistools.plottools import positive_velocity_kmps_arg
 from artistools.plottools import save_figure
 from artistools.plottools import set_axis_properties
 from artistools.plottools import set_legend
@@ -66,8 +66,8 @@ if t.TYPE_CHECKING:
     import matplotlib.axes as mplax
     import numpy.typing as npt
 
-    from artistools.linecontributions import CellLineInputs
-    from artistools.linecontributions import LineVelocityProfiles
+    from artistools.lines.linecontributions import CellLineInputs
+    from artistools.lines.linecontributions import LineVelocityProfiles
 
 DEFAULTOUTPUTNAME = "plotlinecontributions.pdf"
 
@@ -225,7 +225,7 @@ def plot_trough_estimate(
     dirbin, photospherevelocity_kmps = troughsettings
     dopplershift = get_artis_option(modelpath, "USE_RELATIVISTIC_DOPPLER_SHIFT")
     relativisticdoppler = dopplershift == "true"
-    _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
+    _, modelmeta = scan_modeldata(modelpath, printwarningsonly=True)
     dfdepths, dfblend = get_sobolev_trough(
         profiles,
         inputs,
@@ -347,7 +347,7 @@ def get_trough_settings(args: argparse.Namespace, unit: t.Literal["kmps", "c"]) 
             exit_with_error("--photospherevelocity applies only to the trough estimate", "Give --troughdirbin too")
         return None
     check_dirbin(args.troughdirbin, "-troughdirbin", averageoverphi=args.average_over_phi_angle, allowall=False)
-    _, modelmeta = get_modeldata(args.modelpath, printwarningsonly=True)
+    _, modelmeta = scan_modeldata(args.modelpath, printwarningsonly=True)
     if modelmeta["dimensions"] != 3:
         # a cell of a 2D model is a ring, and a cell of a 1D model is a shell
         exit_with_error(

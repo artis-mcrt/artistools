@@ -9,11 +9,11 @@ import polars as pl
 
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
-from artistools.inputmodel.core import get_initelemabundances
-from artistools.inputmodel.core import get_modeldata
 from artistools.inputmodel.core import LOGRHO_FROM_RHO
 from artistools.inputmodel.core import save_initelemabundances
 from artistools.inputmodel.core import save_modeldata
+from artistools.inputmodel.core import scan_initelemabundances
+from artistools.inputmodel.core import scan_modeldata
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_force
 from artistools.misc import addarg_legend
@@ -21,8 +21,8 @@ from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_show
 from artistools.misc import confirm_overwrite
+from artistools.misc import model_path_from_text
 from artistools.misc import parse_cli_args
-from artistools.misc.remote import model_path_from_text
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
@@ -68,7 +68,7 @@ def slice_3dmodel(
     inputfolder: Path | str, outputfolder: Path | str, chosenaxis: str
 ) -> tuple[dict[int, int], list[float], list[list[float]]]:
     """Write a 1D model.txt from the cells along chosenaxis, and return the 3D-to-1D cell id map and plot data."""
-    dfmodel3d, modelmeta3d = get_modeldata(inputfolder)
+    dfmodel3d, modelmeta3d = scan_modeldata(inputfolder)
     if modelmeta3d["dimensions"] != 3:
         msg = f"The model in {inputfolder} has {modelmeta3d['dimensions']} dimensions, but the slice needs a 3D model"
         raise ValueError(msg)
@@ -121,7 +121,7 @@ def slice_abundance_file(
 ) -> None:
     """Write an abundances.txt holding only the cells kept by slice_3dmodel, renumbered to the 1D cell ids."""
     dfelabundances = (
-        get_initelemabundances(inputfolder)
+        scan_initelemabundances(inputfolder)
         .filter(pl.col("inputcellid").is_in(list(dict3dcellidto1dcellid)))
         .with_columns(pl.col("inputcellid").replace_strict(dict3dcellidto1dcellid, return_dtype=pl.Int32))
         .collect()

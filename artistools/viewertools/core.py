@@ -10,18 +10,21 @@ import sys
 import threading
 import traceback
 import typing as t
-from functools import lru_cache
 from pathlib import Path
 
 from artistools.misc import addarg_quiet
+from artistools.misc import clear_at_reload
 from artistools.misc import exit_with_error
+from artistools.misc import firstexisting_or_none
 from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_dirbins
+from artistools.misc import modelpath_cache
+from artistools.misc import parse_cli_args
 from artistools.misc import path_is_file
 from artistools.misc import print_error
 from artistools.misc import separate_trailing_folders
-from artistools.misc.cliutils import SERIES_DEFAULT
-from artistools.misc.cliutils import SERIES_STYLE_KEYS
+from artistools.misc import SERIES_DEFAULT
+from artistools.misc import SERIES_STYLE_KEYS
 from artistools.plottools import ExponentLabelFormatter
 from artistools.plottools import get_series_colors
 
@@ -34,7 +37,7 @@ if t.TYPE_CHECKING:
 
     import matplotlib.axes as mplax
 
-    from artistools.commands import SuggestingArgumentParser
+    from artistools.misc import SuggestingArgumentParser
 
 
 # each option of the table with its values, in the order of the command
@@ -116,7 +119,7 @@ def make_parser(addargs: "Callable[[argparse.ArgumentParser], None]") -> "Sugges
 
     The parser also takes the standard spelling of each flag, e.g. --timedays, as the command does.
     """
-    from artistools.commands import SuggestingArgumentParser
+    from artistools.misc import SuggestingArgumentParser
 
     parser = SuggestingArgumentParser()
     addargs(parser)
@@ -140,7 +143,7 @@ class ViewerTokens(t.NamedTuple):
 
 def get_path_option_flags(parser: "SuggestingArgumentParser") -> set[str]:
     """Return the first flag of each option that gives the paths of the positional argument, e.g. --modelpath."""
-    from artistools.misc.cliutils import KeepGivenPaths
+    from artistools.misc import KeepGivenPaths
 
     actions = parser._actions  # ruff:ignore[private-member-access]
     pathdests = {action.dest for action in actions if isinstance(action, KeepGivenPaths)}
@@ -157,8 +160,6 @@ def parse_viewer_tokens(
     parse_cli_args puts "--" in front of the ARTIS folders at the end, thus an option that reads a list does not take
     a folder. The tokens that no option takes are the paths, e.g. the path of "--notitle mymodel".
     """
-    from artistools.misc import parse_cli_args
-
     parser = make_parser(addargs)
     usertokens = remove_options(parser, standardise_flags(parser, tokens), {"interactive"})
     basetokens = remove_options(parser, separate_trailing_folders(usertokens), {*controlleddests, *WINDOW_DESTS})
@@ -186,7 +187,7 @@ def take_back_folders(
     "--label 'My model' mymodel -t 300". The list of the series must then hold the folders, and the row of the option
     must not hold them. A command with no such folders gives no paths and the same rows.
     """
-    from artistools.misc.cliutils import KeepGivenPaths
+    from artistools.misc import KeepGivenPaths
 
     actions = parser._actions  # ruff:ignore[private-member-access]
     pathaction = next((action for action in actions if isinstance(action, KeepGivenPaths)), None)
@@ -239,7 +240,8 @@ def get_direction_kinds(modelfolder: Path) -> list[str]:
     return ["", "bin", "phi", "theta", *(["vpkt"] if path_is_file(modelfolder / "vpkt.txt") else [])]
 
 
-@lru_cache(maxsize=64)
+@clear_at_reload("output")
+@modelpath_cache(maxsize=64)
 def model_has_direction_data(
     modelfolder: Path, kind: str, resfilenames: tuple[str, ...], vpktpattern: str, *, frompackets: bool
 ) -> bool:
@@ -250,8 +252,7 @@ def model_has_direction_data(
     vpkt.txt and a file of vpktpattern, e.g. vspecpol_total-0.out, or the virtual packets with --frompackets. An empty
     vpktpattern gives the observers only from the virtual packets. Reload Data clears the cache.
     """
-    from artistools.misc import firstexisting_or_none
-    from artistools.misc.fileio import folder_holds_match
+    from artistools.misc import folder_holds_match
     from artistools.packets.core import get_packets_textfilename
     from artistools.packets.core import has_packets_files
 
@@ -772,17 +773,95 @@ def get_first_line(errortext: str) -> str:
     return errorline.removeprefix("error: ") if errorline is not None else REJECTED_MESSAGE
 
 
-def get_nearest_range_start(tmids: "Sequence[float]", centre: float, count: int) -> int:
-    """Return the first index of the range of count timesteps that has its centre nearest to the given time.
+def get_nearest_range_start(tmids: "Sequence[float]", centre: float, width: int) -> int:
+    """Return the first index of the range of width timesteps that has its centre nearest to the given time.
 
     The time field shows the centre of the range, thus a Return with no edit gives the same range. The centre of a
-    range of an even count is near the boundary of two timesteps. Thus either timestep can hold the time.
+    range of an even width is near the boundary of two timesteps. Thus either timestep can hold the time.
     """
 
     def get_centre_offset(start: int) -> float:
-        return abs((tmids[start] + tmids[start + count - 1]) / 2.0 - centre)
+        return abs((tmids[start] + tmids[start + width - 1]) / 2.0 - centre)
 
-    return min(range(len(tmids) - count + 1), key=get_centre_offset)
+    return min(range(len(tmids) - width + 1), key=get_centre_offset)
+
+
+def get_nearest_range(tmids: "Sequence[float]", centre: float, width: int) -> tuple[int, int]:
+    """Return the first and the last position of the range of width timesteps with its centre nearest to centre.
+
+    tmids holds the middle time of each valid timestep. The function changes a width below 1 to 1, and a width above
+    the number of valid timesteps to that number.
+    """
+    width = min(max(width, 1), len(tmids))
+    start = get_nearest_range_start(tmids, centre, width)
+    return start, start + width - 1
+
+
+def get_clamped_range(firstpos: int, width: int, count: int) -> tuple[int, int]:
+    """Return the first and the last position of a range of width positions from firstpos, inside count positions.
+
+    A range that goes past the last position moves back and keeps its width. Thus a wider range at the last timestep
+    takes the timesteps before it.
+    """
+    width = min(max(width, 1), count)
+    firstpos = min(max(firstpos, 0), count - width)
+    return firstpos, firstpos + width - 1
+
+
+def get_stepped_range(positions: tuple[int, int], step: int, count: int) -> tuple[int, int] | None:
+    """Return the range of positions that is step positions later, or None if it goes outside count positions."""
+    firstpos, lastpos = positions
+    if firstpos + step < 0 or lastpos + step >= count:
+        return None
+    return firstpos + step, lastpos + step
+
+
+def get_frame_ranges(positions: tuple[int, int], count: int) -> list[tuple[int, int]]:
+    """Return the range of positions of each frame of an animation, with the same width as positions.
+
+    The first frame starts at position 0, and the last frame ends at the last of count positions.
+    """
+    width = positions[1] - positions[0] + 1
+    return [(start, start + width - 1) for start in range(count - width + 1)]
+
+
+def get_resized_range(positions: tuple[int, int], step: int, count: int) -> tuple[int, int]:
+    """Return the range of positions with step more positions, e.g. for the Up key and the Down key."""
+    firstpos, lastpos = positions
+    return get_clamped_range(firstpos, lastpos - firstpos + 1 + step, count)
+
+
+def get_end_range(positions: tuple[int, int], count: int, *, last: bool) -> tuple[int, int]:
+    """Return the range of positions with the same width at the first or at the last of count positions."""
+    width = positions[1] - positions[0] + 1
+    return get_clamped_range(count - width if last else 0, width, count)
+
+
+def get_centred_range(positions: tuple[int, int], centre: int, count: int) -> tuple[int, int]:
+    """Return the range of positions with the same width and its middle at a position, e.g. of the time slider."""
+    width = positions[1] - positions[0] + 1
+    return get_clamped_range(centre - (width - 1) // 2, width, count)
+
+
+def get_slider_handle_position(positions: tuple[int, int], handle: int, position: int, steps: int) -> int:
+    """Return the position of a handle of a range slider after a press or a drag at a position from 0 to steps.
+
+    The handles of a range of two positions or more stay at least one position apart. The handles of a range of one
+    position can stay together, thus a press on them does not change the range.
+    """
+    gap = 1 if positions[0] < positions[1] else 0
+    position = min(position, positions[1] - gap) if handle == 0 else max(position, positions[0] + gap)
+    return min(max(position, 0), steps)
+
+
+def get_dragged_range(positions: tuple[int, int], handle: int, position: int, count: int) -> tuple[int, int]:
+    """Return the range of positions after a move of one handle of a range slider to a position.
+
+    A slider for one valid timestep has two positions, thus a handle can give a position outside the count positions.
+    The function keeps the range inside them, with a width of one position at least.
+    """
+    firstpos, lastpos = (position, positions[1]) if handle == 0 else (positions[0], position)
+    return get_clamped_range(firstpos, lastpos - firstpos + 1, count)
 
 
 class PlotValues(t.Protocol):
@@ -797,6 +876,37 @@ class PlotValues(t.Protocol):
     @property
     def dpi(self) -> int | None:
         """The --dpi of the values, or None for the default of the command."""
+
+
+class YAxisValues(PlotValues, t.Protocol):
+    """The values of a viewer with the --yscale, the --ymin, and the --ymax of one frame, e.g. of the spectra."""
+
+    @property
+    def yscale(self) -> str:
+        """The --yscale of the values."""
+
+    @property
+    def ymin(self) -> str:
+        """The text of --ymin, or "" for the automatic limit."""
+
+    @property
+    def ymax(self) -> str:
+        """The text of --ymax, or "" for the automatic limit."""
+
+
+def get_given_dpi(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int | None:
+    """Return the --dpi of the arguments, or None for the default of the command."""
+    return None if args.dpi == parser.get_default("dpi") else args.dpi
+
+
+def get_figure_option_tokens(values: PlotValues) -> list[str]:
+    """Return the tokens of the --figwidthscale and the --dpi of the values. A default gives no tokens."""
+    tokens: list[str] = []
+    if values.figwidthscale != 1.0:
+        tokens += ["--figwidthscale", format(values.figwidthscale, "g")]
+    if values.dpi is not None:
+        tokens += ["--dpi", str(values.dpi)]
+    return tokens
 
 
 def keep_figwidthscale[ValuesT: PlotValues](restored: ValuesT, current: ValuesT) -> ValuesT:

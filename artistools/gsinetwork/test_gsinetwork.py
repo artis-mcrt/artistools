@@ -1,5 +1,6 @@
 import math
 import typing as t
+from collections.abc import Callable
 from pathlib import Path
 from unittest import mock
 
@@ -77,13 +78,13 @@ def test_decayproducts_parquet_output(tmp_path: Path, trajectory_copy: Path, mon
     assert not (cwd / "parquet").exists(), "parquet files must not be written relative to the working directory"
 
 
-def test_decayproducts_process_trajectory_reads_the_row_of_the_timestep(tmp_path: Path) -> None:
+def test_decayproducts_process_trajectory_reads_the_row_of_the_timestep(
+    tmp_path: Path, write_trajectory_archive: Callable[[Path, int, dict[str, str], str], Path]
+) -> None:
     """A gap in the timesteps must not move the heating values, because the row index is not the timestep minus one.
 
     The old code read row nstep - 1, which an archive with a gap or a left-out timestep does not have.
     """
-    from artistools.inputmodel.test_inputmodel import write_trajectory_archive
-
     # the reader asserts more than 100 nuclides in a file
     nuclidelines = "".join(f"{nneutrons:4d}{1:4d}{-20.0:13.5E}  0.00000E+00  0.00000E+00\n" for nneutrons in range(120))
     steps = {1: 1.0e4, 2: 2.0e4, 4: 4.0e4}
@@ -98,7 +99,7 @@ def test_decayproducts_process_trajectory_reads_the_row_of_the_timestep(tmp_path
         f"nz-plane{nstep:05d}": f"  {nstep}  {time_s:.6E}   1.0E-06   2.0E-12   0.0E+00   6.3E-06\n" + nuclidelines
         for nstep, time_s in steps.items()
     }
-    write_trajectory_archive(tmp_path, 9, members)
+    write_trajectory_archive(tmp_path, 9, members, ".tar.xz")
 
     decay_powers = at.gsinetwork.decayproducts.process_trajectory(
         nuc_data=at.gsinetwork.decayproducts.get_nuc_data("Hotokezaka"),
@@ -117,7 +118,7 @@ def test_decayproducts_process_trajectory_reads_the_row_of_the_timestep(tmp_path
     assert decay_powers["Qdot"].tolist() == pytest.approx([4.0])
 
     # a heating.dat with a header alone gives no heating row, and the sums leave out the trajectory
-    write_trajectory_archive(tmp_path, 10, members | {"heating.dat": "#count time/s hbeta htot\n"})
+    write_trajectory_archive(tmp_path, 10, members | {"heating.dat": "#count time/s hbeta htot\n"}, ".tar.xz")
     assert (
         at.gsinetwork.decayproducts.process_trajectory(
             nuc_data=at.gsinetwork.decayproducts.get_nuc_data("Hotokezaka"),
@@ -182,12 +183,14 @@ def test_comparetogsinetwork_plots_the_global_qdot_with_no_cell(mockplot: mock.M
     assert (tmp_path / "gsiout" / "gsinetwork_global-qdot.pdf").is_file()
     labels = [callargs.kwargs.get("label") for callargs in mockplot.call_args_list]
     assert labels == [r"$\dot{Q}_\beta$ ARTIS", r"$\dot{Q}_\alpha$ ARTIS"]
-    depdata = at.misc.get_deposition(modelpath_classic_3d).collect()
+    depdata = at.misc.scan_deposition(modelpath_classic_3d).collect()
     assert np.allclose(np.asarray(mockplot.call_args_list[0][0][2]), depdata["Qdot_betaminus_ana_erg/s/g"].to_numpy())
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_comparetogsinetwork_write_data_gives_the_drawn_series(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+def test_comparetogsinetwork_write_data_gives_the_drawn_series(
+    mockplot: mock.MagicMock, tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """--write_data gives one row for each drawn point of the Qdot figure and of the abundance figure of a cell.
 
     The command had no data flags, and the rule of AGENTS.md gives them to each plot command.
@@ -203,12 +206,9 @@ def test_comparetogsinetwork_write_data_gives_the_drawn_series(mockplot: mock.Ma
         write_data=True,
     )
 
-    def read_table(path: Path) -> pl.DataFrame:
-        return pl.read_csv(path, separator=" ", null_values="nan", comment_prefix="#")
-
     # each heating rate of the test model is zero
-    assert (read_table(tmp_path / "gsinetwork_global-qdot.txt")["qdot_erg_per_s_per_g"] == 0.0).all()
-    dfabund = read_table(tmp_path / f"gsinetwork_mgi{cell}-abundance.txt")
+    assert (read_data_file(tmp_path / "gsinetwork_global-qdot.txt")["qdot_erg_per_s_per_g"] == 0).all()
+    dfabund = read_data_file(tmp_path / f"gsinetwork_mgi{cell}-abundance.txt")
     drawncount = 0
     for callargs in mockplot.call_args_list:
         _, drawnx, drawny = callargs.args
@@ -495,7 +495,7 @@ def test_abundance_correction_factors_need_the_grid_file_of_a_1d_model(
     """
     get_abundance_correction_factors = at.gsinetwork.comparetogsinetwork.get_abundance_correction_factors
     modelpath_1d = at.get_path("testdata") / "test-classicmode_1d"
-    lzdfmodel, modelmeta = at.get_modeldata(modelpath_1d)
+    lzdfmodel, modelmeta = at.scan_modeldata(modelpath_1d)
     with pytest.raises(SystemExit):
         get_abundance_correction_factors(lzdfmodel, [0], ["Fe"], modelpath_1d, modelmeta)
     assert "grid.out does not exist" in capsys.readouterr().err
@@ -503,5 +503,5 @@ def test_abundance_correction_factors_need_the_grid_file_of_a_1d_model(
     for filepath in modelpath_classic_3d.iterdir():
         if filepath.name != "grid.out":
             (tmp_path / filepath.name).symlink_to(filepath)
-    lzdfmodel, modelmeta = at.get_modeldata(tmp_path)
+    lzdfmodel, modelmeta = at.scan_modeldata(tmp_path)
     assert get_abundance_correction_factors(lzdfmodel, [211], ["Fe"], tmp_path, modelmeta) == {}

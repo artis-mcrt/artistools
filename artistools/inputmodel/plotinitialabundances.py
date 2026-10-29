@@ -12,8 +12,8 @@ import polars.selectors as cs
 from artistools.atomic import get_elsymbols_df
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import get_cell_selection
-from artistools.inputmodel.core import get_modeldata
 from artistools.inputmodel.core import get_selection_labels
+from artistools.inputmodel.core import scan_modeldata
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
 from artistools.misc import addarg_figscale
@@ -40,7 +40,7 @@ def get_nuclide_massfractions(
     thetamax: float | None = None,
 ) -> pl.DataFrame:
     """Return the mass-weighted mass fraction and number abundance of each nuclide in the selected cells."""
-    dfmodel, modelmeta = get_modeldata(modelpath=modelpath)
+    dfmodel, modelmeta = scan_modeldata(modelpath=modelpath)
     if modelmeta["dimensions"] == 1 and (thetamin is not None or thetamax is not None):
         msg = f"A polar angle range needs a 2D or 3D model, but {modelpath} is 1D"
         raise ValueError(msg)

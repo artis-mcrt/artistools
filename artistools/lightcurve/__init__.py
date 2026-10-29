@@ -17,6 +17,7 @@ from artistools.lightcurve.core import path_is_reference_lightcurve as path_is_r
 from artistools.lightcurve.core import read_bol_reflightcurve_data as read_bol_reflightcurve_data
 from artistools.lightcurve.core import read_hesma_lightcurve_file as read_hesma_lightcurve_file
 from artistools.lightcurve.core import scan_lightcurve as scan_lightcurve
+from artistools.lightcurve.core import scan_lightcurve_from_packets as scan_lightcurve_from_packets
 
 # isort: split
 from artistools.lightcurve import plotlightcurve

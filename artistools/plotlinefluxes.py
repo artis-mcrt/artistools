@@ -19,18 +19,17 @@ from matplotlib.typing import MarkerType
 
 from artistools.atomic import get_ionstring
 from artistools.atomic import get_levels
-from artistools.atomic import get_linelist_pldf
+from artistools.atomic import scan_linelist
 from artistools.constants import day_to_s
 from artistools.constants import EV_to_erg
 from artistools.estimators import scan_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
-from artistools.inputmodel import get_modeldata
+from artistools.inputmodel import scan_modeldata
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_legend
-from artistools.misc import addarg_maxpacketfiles
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_seriesstyle
@@ -38,27 +37,29 @@ from artistools.misc import addarg_show
 from artistools.misc import addarg_verbose
 from artistools.misc import exit_with_error
 from artistools.misc import find_reference_data_file
+from artistools.misc import get_bin_index_expr
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_series_label
+from artistools.misc import get_series_plotkwargs
 from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_times
 from artistools.misc import is_in_range
+from artistools.misc import modelpath_cache
 from artistools.misc import normalize_path_list
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import print_heading
 from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
-from artistools.misc import trim_or_pad
-from artistools.misc.fileio import modelpath_cache
-from artistools.misc.general import get_bin_index_expr
 from artistools.nltepops import read_nltepops
 from artistools.packets import add_derived_columns_lazy
-from artistools.packets import get_packets
+from artistools.packets import addarg_maxpacketfiles
+from artistools.packets import scan_packets
 from artistools.packets.core import get_relative_error_expr
 from artistools.packets.core import NOISY_RELATIVE_ERROR
 from artistools.plottools import make_frame_figure
+from artistools.plottools import resolve_series_styles
 from artistools.plottools import save_figure
 from artistools.plottools import set_axis_properties
 from artistools.plottools import set_legend
@@ -190,7 +191,7 @@ def get_line_luminosities_from_packets(
 
     linelistindices_allfeatures = tuple(lineindex for feature in emfeatures for lineindex in feature.linelistindices)
 
-    nprocs_read, dfpackets = get_packets(
+    nprocs_read, dfpackets = scan_packets(
         modelpath=modelpath, maxpacketfiles=maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
 
@@ -242,7 +243,7 @@ def get_line_luminosities_from_pops(
 
     # the volume column holds the volume of each cell at the model time for a model of any dimension. A 1D model
     # also has shell velocities, but a 2D or 3D model has none
-    lzmodel, modelmeta = get_modeldata(modelpath)
+    lzmodel, modelmeta = scan_modeldata(modelpath)
     modeldata = (
         add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
         .select("modelgridindex", "volume")
@@ -414,7 +415,7 @@ def get_closelines(
     applies no limit.
     """
     lzdflinelistclosematches = (
-        get_linelist_pldf(modelpath)
+        scan_linelist(modelpath)
         .with_columns(upper_level=pl.col("upperlevelindex") + 1, lower_level=pl.col("lowerlevelindex") + 1)
         .filter(pl.col("atomic_number") == atomic_number, pl.col("ion_stage") == ion_stage)
     )
@@ -595,9 +596,7 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
     dfcomparisons: list[pl.DataFrame] = []
     tablemodelnames: set[str] = set()
 
-    for modelindex, (modelpath, modellabel, modelcolor) in enumerate(
-        zip(args.modelpath, args.label, args.color, strict=False)
-    ):
+    for modelindex, (modelpath, modellabel) in enumerate(zip(args.modelpath, args.label, strict=True)):
         print_heading(get_model_logname(modelpath, modellabel))
 
         emfeatures = get_labelandlineindices(modelpath, tuple(args.emfeaturesearch))
@@ -628,22 +627,19 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
         # \mathrm{\AA}
         print(dflcdata)
 
+        seriesplotkwargs = get_series_plotkwargs(args, modelindex)
+        # the legend takes the label of main, which names a series with no -label after its model
+        seriesplotkwargs.pop("label", None)
         plotkwargs: dict[str, t.Any] = {
             "marker": "x",
-            "lw": 0,
+            # the markers have no line between them unless -linestyle gives one
+            "linewidth": 1.0 if "linestyle" in seriesplotkwargs else 0,
             "markersize": 10,
             "markeredgewidth": 2,
-            "color": modelcolor,
             "alpha": 0.8,
             "fillstyle": "none",
+            **seriesplotkwargs,
         }
-        if args.linestyle[modelindex]:
-            plotkwargs["linestyle"] = args.linestyle[modelindex]
-            plotkwargs["lw"] = 1.0
-        if args.linewidth[modelindex]:
-            plotkwargs["lw"] = args.linewidth[modelindex]
-        if args.dashes[modelindex]:
-            plotkwargs["dashes"] = args.dashes[modelindex]
 
         if "fratio_relnoise" in dflcdata.columns:
             # check_ratio_features_share_no_line makes the packets of the two features differ, thus their noises add
@@ -823,7 +819,7 @@ def get_emitting_regions_data(
 
     linelistindices_allfeatures = tuple(lineindex for feature in emfeatures for lineindex in feature.linelistindices)
 
-    _nprocs_read, dfpackets = get_packets(
+    _nprocs_read, dfpackets = scan_packets(
         modelpath=modelpath, maxpacketfiles=args.maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
 
@@ -1162,14 +1158,20 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
-    """Plot line flux ratios for comparisons to Floers."""
-    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+def resolve_plot_args(args: argparse.Namespace) -> None:
+    """Give args the values that the plot reads.
 
+    The values are:
+
+    - the paths;
+    - the styles;
+    - the emission features;
+    - the time bins.
+    """
     args.modelpath = normalize_path_list(args.modelpath)
 
-    args.label, args.modeltag, args.color, args.linestyle, args.linewidth, args.dashes = trim_or_pad(
-        len(args.modelpath), args.label, args.modeltag, args.color, args.linestyle, args.linewidth, args.dashes
+    args.color = resolve_series_styles(
+        args, [False] * len(args.modelpath), args.color, "label", "modeltag", "linestyle", "linewidth", "dashes"
     )
 
     args.emtypecolumn = "emissiontype" if args.use_lastemissiontype else "trueemissiontype"
@@ -1190,16 +1192,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
         raise ValueError(msg)
 
-    if args.plotemittingregions and any(color is None for color in args.color):
-        # the emitting region markers shade their colour, so every series needs a real one. The default palette
-        # runs out past 10 models, and trim_or_pad fills the rest with None
-        ncolors = sum(color is not None for color in args.color)
-        msg = (
-            f"--plotemittingregions needs a colour for each of the {len(args.modelpath)} models,"
-            f" but only {ncolors} are set. Pass --color with one value per model"
-        )
-        raise ValueError(msg)
-
     if args.plotemittingregions and args.timebins_tstart is None:
         # this plot needs concrete time bins, so fall back to the first model's timesteps. The flux ratio plot
         # leaves them as None, which makes each model use its own timesteps
@@ -1210,6 +1202,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args.label = [
         get_series_label(args.label, index, get_model_name(modelpath)) for index, modelpath in enumerate(args.modelpath)
     ]
+
+
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
+    """Plot line flux ratios for comparisons to Floers."""
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    resolve_plot_args(args)
 
     if args.plotemittingregions:
         make_emitting_regions_plot(args)

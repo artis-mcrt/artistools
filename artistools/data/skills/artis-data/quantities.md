@@ -38,7 +38,7 @@ cells. Do this for each process at the same time step.
 
 ## Radiation field: `radfield_*.out` (rank files)
 
-`at.plotradfield.read_radfield(modelpath, modelgridindex=...)` gives a DataFrame with these columns:
+`at.radfield.read_radfield(modelpath, modelgridindex=...)` gives a DataFrame with these columns:
 
 - `timestep`, `modelgridindex`, and `bin_num`;
 - `nu_lower` and `nu_upper` (Hz), the limits of the frequency bin;
@@ -73,14 +73,14 @@ command `artistools plotradfield` plots the field of a cell.
 - `at.atomic.get_levels(modelpath, get_transitions=True)` reads `adata.txt` and `transitiondata.txt`. It gives one row
   for each ion, with a DataFrame of the levels (`energy_ev`, `g`) and a LazyFrame of the transitions (`A` in s^-1).
 - `at.get_composition_data(modelpath)` reads `compositiondata.txt`: the ions of each element.
-- `at.atomic.get_linelist_pldf(modelpath)` reads `linelist.out`, the list of the lines. The row number of a line is the
+- `at.atomic.scan_linelist(modelpath)` reads `linelist.out`, the list of the lines. The row number of a line is the
   code of that line in the packets.
-- `at.atomic.get_bflist(modelpath)` reads `bflist.out`, the list of the bound-free continua.
-- `at.atomic.get_nuclides(modelpath)` reads `nuclides.out`, the radioactive nuclides of the pellets.
+- `at.atomic.scan_bflist(modelpath)` reads `bflist.out`, the list of the bound-free continua.
+- `at.atomic.scan_nuclides(modelpath)` reads `nuclides.out`, the radioactive nuclides of the pellets.
 
 ## Packets: the last interaction of each packet
 
-`at.packets.get_packets(modelpath, escape_type="TYPE_RPKT")` gives `(number of ranks that it read, LazyFrame)`. The
+`at.packets.scan_packets(modelpath, escape_type="TYPE_RPKT")` gives `(number of ranks that it read, LazyFrame)`. The
 main columns of an escaped packet are:
 
 - `e_rf` (erg), `nu_rf` (Hz), and `t_arrive_d` (days), the energy, the frequency, and the arrival time at the observer;
@@ -94,7 +94,7 @@ main columns of an escaped packet are:
 - `em_posx`, `em_posy`, `em_posz` (cm), and `em_time` (s), the place and the time of the last emission or scattering.
 
 `artistools plotspectra --frompackets --groupby ion` and `artistools plotlastpacketinteraction` use these columns.
-`at.packets.get_virtual_packets(modelpath)` reads the virtual packets of `vpackets/`.
+`at.packets.scan_virtual_packets(modelpath)` reads the virtual packets of `vpackets/`.
 
 ## Spectra by the ion that emits or absorbs
 
@@ -108,7 +108,7 @@ main columns of an escaped packet are:
 - `artistools linecontributions -t <days> --lambdamin <Å> --lambdamax <Å> <modelpath>` gives each line in the range
   with its maximum Sobolev optical depth in the cells and its emission n_u A h nu beta, summed over the cells. `--percell` gives
   one row for each cell and line, with the level populations and the method of each one.
-  `at.linecontributions.get_line_contributions(modelpath, timestep, lambdamin, lambdamax)` gives the same table.
+  `at.lines.linecontributions.get_line_contributions(modelpath, timestep, lambdamin, lambdamax)` gives the same table.
   `artistools plotlinecontributions` plots the emission and the tau_sobolev of each line against velocity.
   `--costhetamin` and `--costhetamax` select the cells of one direction, and `--troughdirbin` adds a Sobolev estimate of
   the absorption trough for one viewing direction.
@@ -120,12 +120,12 @@ main columns of an escaped packet are:
 
 SKILL.md gives the light curves and `deposition.out`. Other readers:
 
-- `at.misc.get_timesteps(modelpath)` gives the start, the mid time, the end, and the width of each time step.
-- `at.lightcurve.get_from_packets(modelpath, pellet_nucname=...)` gives the light curve of the energy of one nuclide.
+- `at.misc.scan_timesteps(modelpath)` gives the start, the mid time, the end, and the width of each time step.
+- `at.lightcurve.scan_lightcurve_from_packets(modelpath, pellet_nucname=...)` gives the light curve of the energy of one nuclide.
 
 ## Model input
 
-- `at.get_modeldata(modelpath)` reads `model.txt`. Give `get_elemabundances=True` to also read `abundances.txt`, which
+- `at.scan_modeldata(modelpath)` reads `model.txt`. Give `get_elemabundances=True` to also read `abundances.txt`, which
   gives the mass fraction of each element, e.g. `X_Fe`. `at.add_derived_cols_to_modeldata(...)` adds derived columns,
   e.g. the mass of each cell.
 - `at.get_inputparams(modelpath)` reads `input.txt`: e.g. `tmin`, `tmax` (days), and `ntstep`.
@@ -145,7 +145,7 @@ These options and commands describe a run:
   does not exist, it reads `artis/artisoptions.h`. ARTIS renamed some options on 2026-10-16, e.g.
   `MULTIBIN_RADFIELD_FIRST_TIMESTEP` was `FIRST_BINNED_RADFIELD_TIMESTEP` and, before that,
   `FIRST_NLTE_RADFIELD_TIMESTEP`. For an older model, also try each older name.
-- `at.plotlogfiles.read_time_taken(at.plotlogfiles.get_model_logfiles(modelpath))` gives the time of each part of
+- `at.logs.read_time_taken(at.logs.get_logfiles(Path(modelpath), None))` gives the time of each part of
   each time step, from the logs `output_*.txt`.
 - `artistools logsummary <modelpath>` counts the warnings and the errors of the logs by kind, with their time steps and
   the number of cells. Each rank logs the cells that it updates, thus `--ranks all` or `--modelgridindex <cell>` reads

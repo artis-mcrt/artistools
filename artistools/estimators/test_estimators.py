@@ -1,21 +1,15 @@
 import argparse
-import copy
-import dataclasses as dc
 import io
-import json
 import os
 import re
-import shlex
 import shutil
-import subprocess  # ruff:ignore[suspicious-subprocess-import]
-import sys
 import typing as t
+from collections.abc import Callable
 from collections.abc import Sequence
 from pathlib import Path
 from unittest import mock
 
 import matplotlib.axes as mplax
-import matplotlib.colors as mplcolors
 import matplotlib.figure as mplfig
 import matplotlib.pyplot as plt
 import numpy as np
@@ -23,13 +17,10 @@ import numpy.typing as npt
 import polars as pl
 import polars.testing as pltest
 import pytest
-from matplotlib.backend_bases import MouseEvent
-from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 import artistools as at
-from artistools.estimators import interactive
 from artistools.estimators import plotestimators
-from artistools.viewertools import core as viewercore
+from artistools.estimators import plotitems
 
 if t.TYPE_CHECKING:
     from artistools.estimators.core import TimestepParts
@@ -129,55 +120,97 @@ def test_estimator_ymin_does_not_hide_the_whole_series(
     assert ydata.max() <= yhi, f"the highest point {ydata.max():.2e} is above the axis at {yhi:.2e}"
 
 
+# the order of the keys is the order of the plot calls
+@pytest.mark.parametrize(
+    ("timeselection", "expectedvals"),
+    [
+        pytest.param(
+            {"timedays": 300},
+            {
+                "init_fe": 0.10000000149011612,
+                "init_nistable": 0.0,
+                "init_ni56": 0.8999999761581421,
+                "nne": 794211.0,
+                "TR": 6932.45,
+                "Te": 5776.620000000001,
+                "averageionisation_Fe": 1.9453616269532485,
+                "averageionisation_Ni": 1.970637712188408,
+                "populations_FeI": 4.801001667392128e-05,
+                "populations_FeII": 0.350781150587666,
+                "populations_FeIII": 0.3951266859004141,
+                "populations_FeIV": 0.21184950941623004,
+                "populations_FeV": 0.042194644079016,
+                # the Co subplot takes the default ionpoptype of absolute, thus it gives a number density
+                "populations_CoII": 2792.0,
+                "populations_CoIII": 12700.0,
+                "populations_CoIV": 11170.0,
+                "gamma_NT_FeI": 7.571e-06,
+                "gamma_NT_FeII": 3.711e-06,
+                "gamma_NT_FeIII": 2.762e-06,
+                "gamma_NT_FeIV": 1.702e-06,
+                "heating_dep": 6.56117e-10,
+                "heating_coll": 2.37823e-09,
+                "heating_bf": 1.27067e-13,
+                "heating_ff": 1.86474e-16,
+                "cooling_adiabatic": 9.72392e-13,
+                "cooling_coll": 3.02786e-09,
+                "cooling_fb": 4.82714e-12,
+                "cooling_ff": 1.62999e-13,
+                "collisional heating - cooling": -6.4962990e-10,
+            },
+            id="timedays_300",
+        ),
+        # each value is the mean with the weight of the cell volume times the timestep duration
+        pytest.param(
+            {"timestep": "50-54"},
+            {
+                "init_fe": 0.10000000149011612,
+                "init_nistable": 0.0,
+                "init_ni56": 0.8999999761581421,
+                "nne": 810901.0995481587,
+                "TR": 6932.335907807973,
+                "Te": 5784.328531336313,
+                "averageionisation_Fe": 1.9466081771665944,
+                "averageionisation_Ni": 1.967397635974239,
+                "populations_FeI": 4.6736117137644576e-05,
+                "populations_FeII": 0.35028115839743507,
+                "populations_FeIII": 0.39508757474300094,
+                "populations_FeIV": 0.2122008455814273,
+                "populations_FeV": 0.0423836836337351,
+                # the Co subplot takes the default ionpoptype of absolute, thus it gives a number density
+                "populations_CoII": 2891.245944314228,
+                "populations_CoIII": 13177.379472537568,
+                "populations_CoIV": 11617.863948679813,
+                "gamma_NT_FeI": 7.739288324723703e-06,
+                "gamma_NT_FeII": 3.7938615704223145e-06,
+                "gamma_NT_FeIII": 2.823952204401649e-06,
+                "gamma_NT_FeIV": 1.7402778791153345e-06,
+                "heating_dep": 6.845760482077562e-10,
+                "heating_coll": 2.476640488323009e-09,
+                "heating_bf": 1.290929935905223e-13,
+                "heating_ff": 2.1215573636698912e-16,
+                "cooling_adiabatic": 1.0000753320736445e-12,
+                "cooling_coll": 3.154455767453852e-09,
+                "cooling_fb": 5.03282598302689e-12,
+                "cooling_ff": 1.701755526024579e-13,
+                "collisional heating - cooling": -6.77815279130843e-10,
+            },
+            id="timesteps_50_54_averaged",
+        ),
+    ],
+)
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
-def test_estimator_snapshot(mockplot: mock.MagicMock) -> None:
+def test_estimator_snapshot(
+    mockplot: mock.MagicMock, tmp_path: Path, timeselection: dict[str, t.Any], expectedvals: dict[str, float]
+) -> None:
     plotlist = PLOTLIST_FULL
 
-    at.estimators.plot(
-        argsraw=[],
-        modelpath=modelpath,
-        plotlist=plotlist,
-        outputfile=outputpath / "test_estimator_snapshot",
-        timedays=300,
-    )
+    at.estimators.plot(argsraw=[], modelpath=modelpath, plotlist=plotlist, outputfile=tmp_path, **timeselection)
     xarr = [0.0, 4000.0]
     for x in mockplot.call_args_list:
         assert np.allclose(xarr, x[0][1], rtol=1e-3, atol=1e-3)
 
-    # order of keys is important
-    expectedvals = {
-        "init_fe": 0.10000000149011612,
-        "init_nistable": 0.0,
-        "init_ni56": 0.8999999761581421,
-        "nne": 794211.0,
-        "TR": 6932.45,
-        "Te": 5776.620000000001,
-        "averageionisation_Fe": 1.9453616269532485,
-        "averageionisation_Ni": 1.970637712188408,
-        "populations_FeI": 4.801001667392128e-05,
-        "populations_FeII": 0.350781150587666,
-        "populations_FeIII": 0.3951266859004141,
-        "populations_FeIV": 0.21184950941623004,
-        "populations_FeV": 0.042194644079016,
-        # the Co subplot takes the default ionpoptype of absolute, thus it gives a number density
-        "populations_CoII": 2792.0,
-        "populations_CoIII": 12700.0,
-        "populations_CoIV": 11170.0,
-        "gamma_NT_FeI": 7.571e-06,
-        "gamma_NT_FeII": 3.711e-06,
-        "gamma_NT_FeIII": 2.762e-06,
-        "gamma_NT_FeIV": 1.702e-06,
-        "heating_dep": 6.56117e-10,
-        "heating_coll": 2.37823e-09,
-        "heating_bf": 1.27067e-13,
-        "heating_ff": 1.86474e-16,
-        "cooling_adiabatic": 9.72392e-13,
-        "cooling_coll": 3.02786e-09,
-        "cooling_fb": 4.82714e-12,
-        "cooling_ff": 1.62999e-13,
-        "collisional heating - cooling": -6.4962990e-10,
-    }
     assert len(expectedvals) == len(mockplot.call_args_list)
     yvals = {
         varname: callargs[0][2] for varname, callargs in zip(expectedvals.keys(), mockplot.call_args_list, strict=False)
@@ -191,68 +224,6 @@ def test_estimator_snapshot(mockplot: mock.MagicMock) -> None:
             expectedval,
             yvals[varname][1],
         )
-
-
-@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-@pytest.mark.benchmark
-def test_estimator_averaging(mockplot: mock.MagicMock) -> None:
-    plotlist = PLOTLIST_FULL
-
-    at.estimators.plot(
-        argsraw=[],
-        modelpath=modelpath,
-        plotlist=plotlist,
-        outputfile=outputpath / "test_estimator_averaging",
-        timestep="50-54",
-    )
-
-    xarr = [0.0, 4000.0]
-    for x in mockplot.call_args_list:
-        assert np.allclose(xarr, x[0][1], rtol=1e-3, atol=1e-3)
-
-    # order of keys is important. Each value is the mean with the weight of the cell volume times the
-    # timestep duration
-    expectedvals = {
-        "init_fe": 0.10000000149011612,
-        "init_nistable": 0.0,
-        "init_ni56": 0.8999999761581421,
-        "nne": 810901.0995481587,
-        "TR": 6932.335907807973,
-        "Te": 5784.328531336313,
-        "averageionisation_Fe": 1.9466081771665944,
-        "averageionisation_Ni": 1.967397635974239,
-        "populations_FeI": 4.6736117137644576e-05,
-        "populations_FeII": 0.35028115839743507,
-        "populations_FeIII": 0.39508757474300094,
-        "populations_FeIV": 0.2122008455814273,
-        "populations_FeV": 0.0423836836337351,
-        # the Co subplot takes the default ionpoptype of absolute, thus it gives a number density
-        "populations_CoII": 2891.245944314228,
-        "populations_CoIII": 13177.379472537568,
-        "populations_CoIV": 11617.863948679813,
-        "gamma_NT_FeI": 7.739288324723703e-06,
-        "gamma_NT_FeII": 3.7938615704223145e-06,
-        "gamma_NT_FeIII": 2.823952204401649e-06,
-        "gamma_NT_FeIV": 1.7402778791153345e-06,
-        "heating_dep": 6.845760482077562e-10,
-        "heating_coll": 2.476640488323009e-09,
-        "heating_bf": 1.290929935905223e-13,
-        "heating_ff": 2.1215573636698912e-16,
-        "cooling_adiabatic": 1.0000753320736445e-12,
-        "cooling_coll": 3.154455767453852e-09,
-        "cooling_fb": 5.03282598302689e-12,
-        "cooling_ff": 1.701755526024579e-13,
-        "collisional heating - cooling": -6.77815279130843e-10,
-    }
-    assert len(expectedvals) == len(mockplot.call_args_list)
-    yvals = {
-        varname: callargs[0][2] for varname, callargs in zip(expectedvals.keys(), mockplot.call_args_list, strict=False)
-    }
-
-    print({key: yarr[1] for key, yarr in yvals.items()})
-
-    for varname, expectedval in expectedvals.items():
-        assert np.allclose([expectedval, expectedval], yvals[varname], rtol=0.001, atol=0.0, equal_nan=True)
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
@@ -474,7 +445,7 @@ def test_a_binned_line_reaches_the_edge_of_the_data(mockplot: mock.MagicMock) ->
     assert xvalues.size > 2
 
     # the velocity of the x axis starts the line at zero, thus the low end reaches past the data
-    assert xvalues[0] == 0.0
+    assert xvalues[0] == 0
 
     # the bins divide the range of the axis, thus the line ends at the upper limit of the axis
     ax = mockplot.call_args_list[0].args[0]
@@ -647,13 +618,31 @@ def test_histogram_shows_the_velocity_range_of_each_shell(
     dftable = pl.read_csv(io.StringIO(output[headerstart:].split("\n\n", 1)[0]), separator=" ")
     lower = dftable["velocity_kmps_lower"].to_numpy()
     upper = dftable["velocity_kmps_upper"].to_numpy()
-    assert lower[0] == 0.0
+    assert lower[0] == 0
     assert np.allclose(lower[1:], upper[:-1], rtol=1e-6, atol=0.0)
     assert ((lower < dftable["velocity_kmps"].to_numpy()) & (dftable["velocity_kmps"].to_numpy() < upper)).all()
 
     ax = mockplot.call_args_list[0].args[0]
     assert np.allclose(ax.get_xlim(), (0.0, upper[-1]), rtol=1e-6, atol=0.0)
     assert np.allclose(mockplot.call_args_list[0].args[1], np.column_stack([lower, upper]).ravel(), rtol=1e-6, atol=0)
+
+
+def test_half_axis_description_holds_the_centre_cell_of_an_odd_grid() -> None:
+    """The text of a half line of cells on an odd grid gives the centre cell, which the selection holds.
+
+    The centre cell of an odd grid lies from -Δ/2 to Δ/2, where Δ is the width of a cell. get_profile_along_axis
+    selects it for both half-axes. The text of the + half-axis started at Δ/2.
+    """
+    modelmeta = {
+        "dimensions": 3,
+        "vmax_cmps": 0.1 * at.constants.C_cm_per_s,
+        "ncoordgridx": 11,
+        "ncoordgridy": 11,
+        "ncoordgridz": 11,
+    }
+    for axis, axisrange in (("+z", "-0.009091c ≤ z < 0.1c"), ("-z", "-0.1c ≤ z < 0.009091c")):
+        args = argparse.Namespace(slice=None, projection=None, dimensionreduce=1, axis=axis, readonlymgi="alongaxis")
+        assert axisrange in at.estimators.core.get_cell_selection_description(args, modelmeta), axis
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
@@ -797,43 +786,14 @@ def test_estimparse_missing_file() -> None:
         at.rustext.estimparse(modelpath, 999, 999)
 
 
-def write_zstd_frames(filepath: Path, texts: Sequence[str]) -> None:
-    """Write each text as one zstd frame, one frame after the other, as ARTIS writes the estimator file of all ranks."""
-    from artistools.misc.fileio import get_decompress_open
-
-    frames: list[bytes] = []
-    for index, text in enumerate(texts):
-        framepath = filepath.with_name(f"{filepath.name}.frame{index}")
-        with get_decompress_open(".zst")(framepath, "wt", encoding="utf-8") as framefile:
-            framefile.write(text)
-        frames.append(framepath.read_bytes())
-        framepath.unlink()
-    filepath.write_bytes(b"".join(frames))
-
-
-def copy_model_inputs(folder: Path, *extranames: str, source: Path = modelpath) -> None:
-    """Copy the input files of a model to a folder, and each extra file of the model, e.g. estimators_0000.out."""
-    for name in ("model.txt", "abundances.txt", "input.txt", "compositiondata.txt", *extranames):
-        shutil.copy(source / name, folder / name)
-
-
 def relabel_cell(celltext: str, modelgridindex: int) -> str:
     """Return the text of a cell of cell 0 with a different cell index."""
     return celltext.replace("modelgridindex 0 ", f"modelgridindex {modelgridindex} ", 1)
 
 
-def get_cell_texts(estimatortext: str) -> list[str]:
-    """Return the text of each cell of an estimator file. The line of a timestep starts the text of a cell."""
-    celltexts: list[str] = []
-    for line in estimatortext.splitlines(keepends=True):
-        if line.startswith("timestep ") or not celltexts:
-            celltexts.append(line)
-        else:
-            celltexts[-1] += line
-    return celltexts
-
-
-def test_estimparse_allranks_keeps_the_order_over_frames_and_parts(tmp_path: Path) -> None:
+def test_estimparse_allranks_keeps_the_order_over_frames_and_parts(
+    tmp_path: Path, get_cell_texts: Callable[[str], list[str]], write_zstd_frames: Callable[[Path, Sequence[str]], None]
+) -> None:
     """The reader of the file of all ranks gives the rows in the order of the file.
 
     The text is larger than one part of the parallel parse (16 MB), thus the threads parse more than one part. The
@@ -868,13 +828,18 @@ def test_estimparse_allranks_keeps_the_order_over_frames_and_parts(tmp_path: Pat
         at.rustext.estimparse_allranks(allranksfile)
 
 
-def test_newer_rank_files_win_over_a_stale_file_of_all_ranks(tmp_path: Path) -> None:
+def test_newer_rank_files_win_over_a_stale_file_of_all_ranks(
+    tmp_path: Path,
+    get_cell_texts: Callable[[str], list[str]],
+    write_zstd_frames: Callable[[Path, Sequence[str]], None],
+    copy_model_inputs: Callable[[Path, Path, Sequence[str]], None],
+) -> None:
     """A file of all ranks that is older than a file of a rank is stale.
 
     A run of the ARTIS script on the folder of a job that still runs gives such a file, because sn3d then adds
     timesteps to the files of the ranks. The reader must take the files of the ranks, or it silently loses timesteps.
     """
-    copy_model_inputs(tmp_path)
+    copy_model_inputs(modelpath, tmp_path, [])
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
     allranksfile = tmp_path / "estimators_allranks.out.zst"
     write_zstd_frames(allranksfile, celltexts[:40])
@@ -891,14 +856,19 @@ def test_newer_rank_files_win_over_a_stale_file_of_all_ranks(tmp_path: Path) -> 
     # a file of all ranks that is newer than the files of the ranks wins
     os.utime(rankfile, (1000.0, 1000.0))
     os.utime(allranksfile, (2000.0, 2000.0))
-    from artistools.misc.modelinfo import get_runfolder_timesteps_cached
+    from artistools.misc import get_runfolder_timesteps
 
-    get_runfolder_timesteps_cached.cache_clear()
+    get_runfolder_timesteps.cache_clear()
     assert at.estimators.scan_estimators(tmp_path).collect()["timestep"].n_unique() == 40
     assert pl.read_parquet_metadata(tmp_path / "estimators_allranks.out.parquet")["textsource"] == "allranks file"
 
 
-def test_conversion_reads_again_a_text_that_changed_during_the_read(tmp_path: Path) -> None:
+def test_conversion_reads_again_a_text_that_changed_during_the_read(
+    tmp_path: Path,
+    get_cell_texts: Callable[[str], list[str]],
+    write_zstd_frames: Callable[[Path, Sequence[str]], None],
+    copy_model_inputs: Callable[[Path, Path, Sequence[str]], None],
+) -> None:
     """sn3d can add a timestep to the file of all ranks during the conversion.
 
     The time of the file then moves by less than the tolerance of the cache stamp. The conversion must read the text
@@ -906,7 +876,7 @@ def test_conversion_reads_again_a_text_that_changed_during_the_read(tmp_path: Pa
     """
     import artistools.estimators.core
 
-    copy_model_inputs(tmp_path)
+    copy_model_inputs(modelpath, tmp_path, [])
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
     allranksfile = tmp_path / "estimators_allranks.out.zst"
     write_zstd_frames(allranksfile, celltexts[:40])
@@ -933,7 +903,9 @@ def test_conversion_reads_again_a_text_that_changed_during_the_read(tmp_path: Pa
     assert pl.read_parquet_metadata(tmp_path / "estimators_allranks.out.parquet")["textsource_mtime"] == "1005.0"
 
 
-def test_readers_give_zero_for_a_quantity_that_a_rank_or_a_part_lacks(tmp_path: Path) -> None:
+def test_readers_give_zero_for_a_quantity_that_a_rank_or_a_part_lacks(
+    tmp_path: Path, get_cell_texts: Callable[[str], list[str]], write_zstd_frames: Callable[[Path, Sequence[str]], None]
+) -> None:
     """A cell that writes no line of a quantity gets zero, also when a whole file of a rank or a part lacks the line.
 
     Within one file, the reader gives zero to such a cell. The boundaries of the files of the ranks and of the parts
@@ -977,7 +949,9 @@ def test_readers_give_zero_for_a_quantity_that_a_rank_or_a_part_lacks(tmp_path: 
     assert dfallranks.filter(pl.col("modelgridindex") >= 20)["gamma_R_Fe_II"].unique().to_list() == [0.0]
 
 
-def test_conversion_in_batches_gives_the_table_of_one_read(tmp_path: Path) -> None:
+def test_conversion_in_batches_gives_the_table_of_one_read(
+    tmp_path: Path, get_cell_texts: Callable[[str], list[str]], write_zstd_frames: Callable[[Path, Sequence[str]], None]
+) -> None:
     """A conversion writes each text batch to parts, thus the memory never holds the full table of a large model.
 
     The scan of the parts must give the table of one read of the whole text in the order of the timesteps and the
@@ -1040,15 +1014,19 @@ def test_conversion_in_batches_gives_the_table_of_one_read(tmp_path: Path) -> No
     )
 
 
-def test_an_older_text_does_not_replace_a_newer_cache(tmp_path: Path) -> None:
+def test_an_older_text_does_not_replace_a_newer_cache(
+    tmp_path: Path,
+    get_cell_texts: Callable[[str], list[str]],
+    write_zstd_frames: Callable[[Path, Sequence[str]], None],
+    copy_model_inputs: Callable[[Path, Path, Sequence[str]], None],
+) -> None:
     """The script of ARTIS combined the files of the ranks while the job still ran, and the user later removed them.
 
     The file of all ranks is then older than the text of the cache, and it holds fewer timesteps. The cache stays.
     """
-    from artistools.misc.modelinfo import get_runfolder_timesteps
-    from artistools.misc.modelinfo import get_runfolder_timesteps_cached
+    from artistools.misc import get_runfolder_timesteps
 
-    copy_model_inputs(tmp_path, "estimators_0000.out")
+    copy_model_inputs(modelpath, tmp_path, ["estimators_0000.out"])
     rankfile = tmp_path / "estimators_0000.out"
     os.utime(rankfile, (2000.0, 2000.0))
     ntimesteps = at.estimators.scan_estimators(tmp_path).collect()["timestep"].n_unique()
@@ -1057,14 +1035,16 @@ def test_an_older_text_does_not_replace_a_newer_cache(tmp_path: Path) -> None:
     write_zstd_frames(allranksfile, get_cell_texts(rankfile.read_text(encoding="utf-8"))[:40])
     os.utime(allranksfile, (1000.0, 1000.0))
     rankfile.unlink()
-    get_runfolder_timesteps_cached.cache_clear()
+    get_runfolder_timesteps.cache_clear()
 
     assert at.estimators.scan_estimators(tmp_path).collect()["timestep"].n_unique() == ntimesteps
     assert pl.read_parquet_metadata(tmp_path / "estimators_allranks.out.parquet")["textsource"] == "rank files"
     assert len(get_runfolder_timesteps(tmp_path)) == ntimesteps
 
 
-def test_an_older_text_replaces_a_cache_of_a_different_version(tmp_path: Path) -> None:
+def test_an_older_text_replaces_a_cache_of_a_different_version(
+    tmp_path: Path, copy_model_inputs: Callable[[Path, Path, Sequence[str]], None]
+) -> None:
     """A cache of a different format version cannot stay, also when the text is older than the text of the cache.
 
     The check of the age kept such a cache, and the reader then read the columns of an earlier format.
@@ -1073,7 +1053,7 @@ def test_an_older_text_replaces_a_cache_of_a_different_version(tmp_path: Path) -
     from artistools.estimators.core import CACHEVERSION
     from artistools.misc import write_parquet_atomic
 
-    copy_model_inputs(tmp_path, "estimators_0000.out")
+    copy_model_inputs(modelpath, tmp_path, ["estimators_0000.out"])
     os.utime(tmp_path / "estimators_0000.out", (2000.0, 2000.0))
     at.estimators.scan_estimators(tmp_path).collect()
 
@@ -1090,16 +1070,18 @@ def test_an_older_text_replaces_a_cache_of_a_different_version(tmp_path: Path) -
     assert allranks_parquet_is_current(tmp_path)
 
 
-def test_a_compression_of_the_text_keeps_the_cache(tmp_path: Path) -> None:
+def test_a_compression_of_the_text_keeps_the_cache(
+    tmp_path: Path, copy_model_inputs: Callable[[Path, Path, Sequence[str]], None]
+) -> None:
     """A compression with zstd keeps the time of the file and changes the size of the text. The data stays the same.
 
     The size of the text made the cache stale. Thus the caches of a model folder converted again after a user compressed
     its text files.
     """
     from artistools.estimators.core import get_estimator_batch_states
-    from artistools.misc.fileio import get_decompress_open
+    from artistools.misc import get_decompress_open
 
-    copy_model_inputs(tmp_path, "estimators_0000.out")
+    copy_model_inputs(modelpath, tmp_path, ["estimators_0000.out"])
     rankfile = tmp_path / "estimators_0000.out"
     os.utime(rankfile, (2000.0, 2000.0))
     dfexpected = at.estimators.scan_estimators(tmp_path).collect()
@@ -1126,7 +1108,9 @@ def test_a_compression_of_the_text_keeps_the_cache(tmp_path: Path) -> None:
     assert cachefile.stat().st_mtime_ns == cachemtime
 
 
-def test_a_partly_archived_model_rebuilds_only_its_stale_batches(tmp_path: Path) -> None:
+def test_a_partly_archived_model_rebuilds_only_its_stale_batches(
+    tmp_path: Path, copy_model_inputs: Callable[[Path, Path, Sequence[str]], None]
+) -> None:
     """An earlier artistools version made a cache for each batch of ranks, and some files of ranks are gone.
 
     The conversion into one cache of all the ranks needs every file of a rank. The reader thus rebuilds only the stale
@@ -1142,7 +1126,7 @@ def test_a_partly_archived_model_rebuilds_only_its_stale_batches(tmp_path: Path)
     def batched_by_one(ranks: Iterable[int], _batchsize: int, strict: bool = False) -> Iterable[tuple[int, ...]]:
         return itertools.batched(ranks, 1, strict=strict)
 
-    copy_model_inputs(tmp_path, "estimators_0000.out")
+    copy_model_inputs(modelpath, tmp_path, ["estimators_0000.out"])
     dfrank0 = at.rustext.estimparse(tmp_path, 0, 0).with_columns(pl.col("timestep", "modelgridindex").cast(pl.Int32))
     # the text of rank 0 is newer than its cache. The text of rank 1 is archived, but its cache is current
     os.utime(tmp_path / "estimators_0000.out", (5000.0, 5000.0))
@@ -1164,17 +1148,19 @@ def test_a_partly_archived_model_rebuilds_only_its_stale_batches(tmp_path: Path)
     assert (tmp_path / "estimbatch01_0001_0001.out.parquet.tmp").is_file()
 
 
-def test_current_batch_caches_stay_and_a_stale_one_makes_the_cache_of_all_ranks(tmp_path: Path) -> None:
+def test_current_batch_caches_stay_and_a_stale_one_makes_the_cache_of_all_ranks(
+    tmp_path: Path, copy_model_inputs: Callable[[Path, Path, Sequence[str]], None]
+) -> None:
     """An earlier artistools version made one cache for each batch of ranks.
 
     The reader takes these caches while all of them are current. A stale batch cache makes the conversion into the one
     cache of all the ranks, and the conversion removes the batch caches.
     """
     from artistools.estimators.core import CACHEVERSION
+    from artistools.misc import get_runfolder_timesteps
     from artistools.misc import write_parquet_atomic
-    from artistools.misc.modelinfo import get_runfolder_timesteps_cached
 
-    copy_model_inputs(tmp_path, "estimators_0000.out")
+    copy_model_inputs(modelpath, tmp_path, ["estimators_0000.out"])
     rankfile = tmp_path / "estimators_0000.out"
     os.utime(rankfile, (1000.0, 1000.0))
     batchcache = tmp_path / "estimbatch00_0000_0000.out.parquet.tmp"
@@ -1189,21 +1175,26 @@ def test_current_batch_caches_stay_and_a_stale_one_makes_the_cache_of_all_ranks(
     assert not allrankscache.exists()
 
     os.utime(rankfile, (5000.0, 5000.0))
-    get_runfolder_timesteps_cached.cache_clear()
+    get_runfolder_timesteps.cache_clear()
     dfconverted = at.estimators.scan_estimators(tmp_path).collect().sort("timestep", "modelgridindex")
     assert not batchcache.exists()
     assert pl.read_parquet_metadata(allrankscache)["textsource"] == "rank files"
     pltest.assert_frame_equal(dfconverted, dfexpected, check_column_order=False)
 
 
-def test_conversion_drops_an_incomplete_last_timestep(tmp_path: Path) -> None:
+def test_conversion_drops_an_incomplete_last_timestep(
+    tmp_path: Path,
+    get_cell_texts: Callable[[str], list[str]],
+    write_zstd_frames: Callable[[Path, Sequence[str]], None],
+    copy_model_inputs: Callable[[Path, Path, Sequence[str]], None],
+) -> None:
     """A job that stopped during the write of a timestep leaves that timestep with some cells only.
 
     Each timestep of a job holds the same cells, thus the conversion drops a last timestep with fewer cells.
     """
-    from artistools.misc.modelinfo import get_runfolder_timesteps
+    from artistools.misc import get_runfolder_timesteps
 
-    copy_model_inputs(tmp_path)
+    copy_model_inputs(modelpath, tmp_path, [])
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
 
     # two cells in each timestep, and the last timestep holds the first cell only
@@ -1226,7 +1217,11 @@ def test_conversion_drops_an_incomplete_last_timestep(tmp_path: Path) -> None:
     assert lasttimestep not in get_runfolder_timesteps(tmp_path)
 
 
-def test_a_column_of_a_dropped_timestep_stays_in_the_cache(tmp_path: Path) -> None:
+def test_a_column_of_a_dropped_timestep_stays_in_the_cache(
+    tmp_path: Path,
+    get_cell_texts: Callable[[str], list[str]],
+    copy_model_inputs: Callable[[Path, Path, Sequence[str]], None],
+) -> None:
     """A column that only the incomplete last timestep writes stays in the cache with zeros.
 
     The reader gives each column of a text batch to each row of that text batch. One timestep of a large model is a
@@ -1235,7 +1230,7 @@ def test_a_column_of_a_dropped_timestep_stays_in_the_cache(tmp_path: Path) -> No
     """
     import artistools.estimators.core
 
-    copy_model_inputs(tmp_path)
+    copy_model_inputs(modelpath, tmp_path, [])
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
     lasttimestep = len(celltexts) - 1
     (tmp_path / "estimators_allranks.out").write_text("".join(celltexts), encoding="utf-8")
@@ -1267,15 +1262,20 @@ def test_a_column_of_a_dropped_timestep_stays_in_the_cache(tmp_path: Path) -> No
     assert dfestim["cooling_onlylasttimestep"].to_list() == [0.0] * dfestim.height
 
 
-def test_a_dropped_timestep_that_the_job_completes_makes_the_cache_stale(tmp_path: Path) -> None:
+def test_a_dropped_timestep_that_the_job_completes_makes_the_cache_stale(
+    tmp_path: Path,
+    get_cell_texts: Callable[[str], list[str]],
+    write_zstd_frames: Callable[[Path, Sequence[str]], None],
+    copy_model_inputs: Callable[[Path, Path, Sequence[str]], None],
+) -> None:
     """sn3d can write the rest of a timestep that a conversion dropped, within the tolerance of the cache stamp.
 
     The cache then keeps the size of its text, and a new size makes the cache stale. The text of a job that stopped
     keeps its size, thus the next scan converts nothing.
     """
-    from artistools.misc.modelinfo import get_runfolder_timesteps
+    from artistools.misc import get_runfolder_timesteps
 
-    copy_model_inputs(tmp_path)
+    copy_model_inputs(modelpath, tmp_path, [])
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
 
     # rank 0 wrote its frame of the last timestep, and the frame of rank 1 comes 10 s later
@@ -1307,13 +1307,18 @@ def test_a_dropped_timestep_that_the_job_completes_makes_the_cache_stale(tmp_pat
     assert lasttimestep in get_runfolder_timesteps(tmp_path)
 
 
-def test_a_write_after_the_read_makes_the_cache_stale(tmp_path: Path) -> None:
+def test_a_write_after_the_read_makes_the_cache_stale(
+    tmp_path: Path,
+    get_cell_texts: Callable[[str], list[str]],
+    write_zstd_frames: Callable[[Path, Sequence[str]], None],
+    copy_model_inputs: Callable[[Path, Path, Sequence[str]], None],
+) -> None:
     """sn3d can add a timestep after the read of the conversion, e.g. during the write of the cache.
 
     The time of the text then moves by less than the tolerance of the cache stamp. The size of the text shows the
     change, thus the next scan converts the text again.
     """
-    copy_model_inputs(tmp_path)
+    copy_model_inputs(modelpath, tmp_path, [])
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
     allranksfile = tmp_path / "estimators_allranks.out.zst"
     write_zstd_frames(allranksfile, celltexts[:40])
@@ -1325,7 +1330,9 @@ def test_a_write_after_the_read_makes_the_cache_stale(tmp_path: Path) -> None:
     assert at.estimators.scan_estimators(tmp_path).collect()["timestep"].n_unique() == len(celltexts)
 
 
-def test_estimparse_allranks_drops_a_cell_that_a_cut_frame_ends_inside(tmp_path: Path) -> None:
+def test_estimparse_allranks_drops_a_cell_that_a_cut_frame_ends_inside(
+    tmp_path: Path, get_cell_texts: Callable[[str], list[str]], write_zstd_frames: Callable[[Path, Sequence[str]], None]
+) -> None:
     """A job that stops during the write of the file of all ranks can leave a text that ends inside a cell.
 
     The zstd decoder gives the complete blocks of a cut frame and no error. The reader must drop the cut cell, thus each
@@ -1361,13 +1368,18 @@ def test_estimparse_allranks_drops_a_cell_that_a_cut_frame_ends_inside(tmp_path:
     pltest.assert_frame_equal(dfplain, dfcomplete.head(599).select(dfplain.columns))
 
 
-def test_scan_takes_a_text_with_no_complete_cell(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_scan_takes_a_text_with_no_complete_cell(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    get_cell_texts: Callable[[str], list[str]],
+    copy_model_inputs: Callable[[Path, Path, Sequence[str]], None],
+) -> None:
     """A job that stops during the write of the first cell leaves a text that holds no complete cell.
 
     The reader gives a frame with no column for such a text, and the sort of the conversion then stopped with
     ColumnNotFoundError. The scan must give a warning and no row.
     """
-    copy_model_inputs(tmp_path)
+    copy_model_inputs(modelpath, tmp_path, [])
     celltext = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))[0]
     cuttext = celltext[: celltext.index("populations")] + "populations    Z=26  1: 6.2"
     (tmp_path / "estimators_allranks.out").write_text(cuttext, encoding="utf-8")
@@ -1378,14 +1390,14 @@ def test_scan_takes_a_text_with_no_complete_cell(tmp_path: Path, capsys: pytest.
 
 
 def test_scan_gives_no_warning_of_a_cut_text_for_a_text_of_empty_cells(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], copy_model_inputs: Callable[[Path, Path, Sequence[str]], None]
 ) -> None:
     """A text whose cells are all empty is complete, thus the scan gives no row and no warning of a cut text.
 
     The reader gave a frame with no column for such a text, as for a cut text. The scan then said that the text holds
     no complete cell.
     """
-    copy_model_inputs(tmp_path)
+    copy_model_inputs(modelpath, tmp_path, [])
     (tmp_path / "estimators_allranks.out").write_text("timestep 0 modelgridindex 0 EMPTYCELL\n\n", encoding="utf-8")
 
     dfestim = at.estimators.scan_estimators(tmp_path).collect()
@@ -1393,7 +1405,9 @@ def test_scan_gives_no_warning_of_a_cut_text_for_a_text_of_empty_cells(
     assert "holds no complete cell" not in capsys.readouterr().err
 
 
-def test_scan_of_kept_batch_caches_reads_the_new_cache_after_their_removal(tmp_path: Path) -> None:
+def test_scan_of_kept_batch_caches_reads_the_new_cache_after_their_removal(
+    tmp_path: Path, copy_model_inputs: Callable[[Path, Path, Sequence[str]], None]
+) -> None:
     """A window keeps the batch caches of an earlier artistools version, and a different process can remove them.
 
     The conversion of that process writes the cache of all ranks and removes the batch caches. The next scan of the
@@ -1402,10 +1416,10 @@ def test_scan_of_kept_batch_caches_reads_the_new_cache_after_their_removal(tmp_p
     from artistools.estimators.core import CACHEVERSION
     from artistools.estimators.core import convert_estimator_batch_caches
     from artistools.estimators.core import get_estimator_batch_states
+    from artistools.misc import get_runfolder_timesteps
     from artistools.misc import write_parquet_atomic
-    from artistools.misc.modelinfo import get_runfolder_timesteps_cached
 
-    copy_model_inputs(tmp_path, "estimators_0000.out")
+    copy_model_inputs(modelpath, tmp_path, ["estimators_0000.out"])
     rankfile = tmp_path / "estimators_0000.out"
     os.utime(rankfile, (1000.0, 1000.0))
     batchcachefile = tmp_path / "estimbatch00_0000_0000.out.parquet.tmp"
@@ -1420,7 +1434,7 @@ def test_scan_of_kept_batch_caches_reads_the_new_cache_after_their_removal(tmp_p
 
     # sn3d writes the file of rank 0 again, and the conversion of a different process removes the batch cache
     os.utime(rankfile, (5000.0, 5000.0))
-    get_runfolder_timesteps_cached.cache_clear()
+    get_runfolder_timesteps.cache_clear()
     at.estimators.scan_estimators(tmp_path).collect()
     assert not batchcachefile.exists()
 
@@ -1447,7 +1461,9 @@ def write_model_of_two_cells(folder: Path, nprocs: int) -> None:
     (folder / "modelgridrankassignments.out").write_text("#rank nstart ndo ndo_nonempty\n0 0 1 1\n1 1 1 1\n")
 
 
-def test_incomplete_newer_rank_files_leave_the_file_of_all_ranks_in_use(tmp_path: Path) -> None:
+def test_incomplete_newer_rank_files_leave_the_file_of_all_ranks_in_use(
+    tmp_path: Path, get_cell_texts: Callable[[str], list[str]], write_zstd_frames: Callable[[Path, Sequence[str]], None]
+) -> None:
     """A user can keep only the file of rank 0, and a copy can make it newer than the file of all ranks.
 
     The files of the ranks are then incomplete, thus they cannot give a cache. With no cache, the file of all ranks
@@ -1485,7 +1501,9 @@ def test_incomplete_newer_rank_files_leave_the_file_of_all_ranks_in_use(tmp_path
     assert pl.read_parquet_metadata(cachefile)["textsource"] == "rank files"
 
 
-def test_conversion_keeps_a_complete_last_timestep_of_the_ranks_that_it_reads(tmp_path: Path) -> None:
+def test_conversion_keeps_a_complete_last_timestep_of_the_ranks_that_it_reads(
+    tmp_path: Path, get_cell_texts: Callable[[str], list[str]]
+) -> None:
     """The conversion reads the files of the ranks that input.txt gives, and each timestep holds only their cells.
 
     A last timestep with all the cells of these ranks is complete, also when modelgridrankassignments.out names more
@@ -1502,7 +1520,12 @@ def test_conversion_keeps_a_complete_last_timestep_of_the_ranks_that_it_reads(tm
     assert dfestim["timestep"].n_unique() == len(celltexts)
 
 
-def test_conversion_reads_once_a_text_that_changed_before_the_read(tmp_path: Path) -> None:
+def test_conversion_reads_once_a_text_that_changed_before_the_read(
+    tmp_path: Path,
+    get_cell_texts: Callable[[str], list[str]],
+    write_zstd_frames: Callable[[Path, Sequence[str]], None],
+    copy_model_inputs: Callable[[Path, Path, Sequence[str]], None],
+) -> None:
     """The text can change after the check of the caches and before the read, e.g. during an earlier conversion.
 
     Such a text needs one read, and the cache gets the time that the text had at that read.
@@ -1511,7 +1534,7 @@ def test_conversion_reads_once_a_text_that_changed_before_the_read(tmp_path: Pat
     from artistools.estimators.core import convert_estimator_batch_caches
     from artistools.estimators.core import get_estimator_batch_states
 
-    copy_model_inputs(tmp_path)
+    copy_model_inputs(modelpath, tmp_path, [])
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
     allranksfile = tmp_path / "estimators_allranks.out.zst"
     write_zstd_frames(allranksfile, celltexts[:40])
@@ -1531,13 +1554,15 @@ def test_conversion_reads_once_a_text_that_changed_before_the_read(tmp_path: Pat
     assert pl.read_parquet(cachefile)["timestep"].n_unique() == len(celltexts)
 
 
-def test_runfolder_timesteps_of_a_compressed_rank_file_that_a_job_cut(tmp_path: Path) -> None:
+def test_runfolder_timesteps_of_a_compressed_rank_file_that_a_job_cut(
+    tmp_path: Path, get_cell_texts: Callable[[str], list[str]], write_zstd_frames: Callable[[Path, Sequence[str]], None]
+) -> None:
     """A job that stops during a write can leave a file of a rank that ends inside a zstd frame.
 
     The timesteps of the run folder then come from the complete frames, as the parser reads them. The cut file must
     not stop the commands that look for the run folders.
     """
-    from artistools.misc.modelinfo import get_runfolder_timesteps
+    from artistools.misc import get_runfolder_timesteps
 
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
     rankfile = tmp_path / "estimators_0000.out.zst"
@@ -1547,13 +1572,18 @@ def test_runfolder_timesteps_of_a_compressed_rank_file_that_a_job_cut(tmp_path: 
     assert get_runfolder_timesteps(tmp_path) == tuple(range(len(celltexts) - 1))
 
 
-def test_conversion_drops_an_incomplete_timestep_of_a_job_of_one_timestep(tmp_path: Path) -> None:
+def test_conversion_drops_an_incomplete_timestep_of_a_job_of_one_timestep(
+    tmp_path: Path,
+    get_cell_texts: Callable[[str], list[str]],
+    write_zstd_frames: Callable[[Path, Sequence[str]], None],
+    copy_model_inputs: Callable[[Path, Path, Sequence[str]], None],
+) -> None:
     """modelgridrankassignments.out gives the count of cells in a complete timestep.
 
     A job of one timestep has no other timestep to give this count. The restart writes the timestep again, but the
     reader keeps the timestep of the earlier job, thus the conversion must drop the incomplete timestep.
     """
-    copy_model_inputs(tmp_path)
+    copy_model_inputs(modelpath, tmp_path, [])
     (tmp_path / "modelgridrankassignments.out").write_text("#rank nstart ndo ndo_nonempty\n0 0 1 1\n1 1 1 1\n")
     celltext = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))[0]
     write_zstd_frames(tmp_path / "estimators_allranks.out.zst", [celltext])
@@ -1562,7 +1592,9 @@ def test_conversion_drops_an_incomplete_timestep_of_a_job_of_one_timestep(tmp_pa
     assert pl.read_parquet(tmp_path / "estimators_allranks.out.parquet").is_empty()
 
 
-def test_scan_gives_zero_only_for_a_null_that_means_zero(tmp_path: Path) -> None:
+def test_scan_gives_zero_only_for_a_null_that_means_zero(
+    tmp_path: Path, copy_model_inputs: Callable[[Path, Path, Sequence[str]], None]
+) -> None:
     """A batch cache of an earlier artistools version can hold a null for a quantity that a whole rank lacks.
 
     ARTIS omits a species with no abundance, thus a null of a quantity of an ion, an element, or an isotope means
@@ -1572,7 +1604,7 @@ def test_scan_gives_zero_only_for_a_null_that_means_zero(tmp_path: Path) -> None
     from artistools.estimators.core import CACHEVERSION
     from artistools.misc import write_parquet_atomic
 
-    copy_model_inputs(tmp_path, "estimators_0000.out")
+    copy_model_inputs(modelpath, tmp_path, ["estimators_0000.out"])
     os.utime(tmp_path / "estimators_0000.out", (1000.0, 1000.0))
     nullcolumns = ("nnion_Fe_II", "gamma_R_Fe_II", "nnelement_Fe", "nniso_Ni56", "Te")
     dfbatch = (
@@ -1596,20 +1628,24 @@ def test_scan_gives_zero_only_for_a_null_that_means_zero(tmp_path: Path) -> None
     assert dfestim["Te"].null_count() == 1
 
 
-def test_scan_estimators_reads_the_file_of_all_ranks(tmp_path: Path) -> None:
+def test_scan_estimators_reads_the_file_of_all_ranks(
+    tmp_path: Path,
+    get_cell_texts: Callable[[str], list[str]],
+    write_zstd_frames: Callable[[Path, Sequence[str]], None],
+    copy_model_inputs: Callable[[Path, Path, Sequence[str]], None],
+) -> None:
     """A run folder with the estimator file of all ranks gives the same rows as the files of the ranks.
 
     Each folder gets one parquet cache and no batch caches, from either form of text. An archived run folder keeps the
     cache and drops the text file, and the cache then stays in use.
     """
-    from artistools.misc.modelinfo import get_runfolder_timesteps
-    from artistools.misc.modelinfo import get_runfolder_timesteps_cached
+    from artistools.misc import get_runfolder_timesteps
 
     perrankfolder = tmp_path / "perrank"
     allranksfolder = tmp_path / "allranks"
     for folder in (perrankfolder, allranksfolder):
         folder.mkdir()
-        copy_model_inputs(folder)
+        copy_model_inputs(modelpath, folder, [])
     shutil.copy(modelpath / "estimators_0000.out", perrankfolder / "estimators_0000.out")
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
     write_zstd_frames(allranksfolder / "estimators_allranks.out.zst", celltexts)
@@ -1626,7 +1662,7 @@ def test_scan_estimators_reads_the_file_of_all_ranks(tmp_path: Path) -> None:
 
     cachemtime = cachefile.stat().st_mtime_ns
     (allranksfolder / "estimators_allranks.out.zst").unlink()
-    get_runfolder_timesteps_cached.cache_clear()
+    get_runfolder_timesteps.cache_clear()
     assert get_runfolder_timesteps(allranksfolder) == get_runfolder_timesteps(perrankfolder)
     dfarchived = at.estimators.scan_estimators(allranksfolder).collect().sort("timestep", "modelgridindex")
     pltest.assert_frame_equal(dfarchived, dfexpected, check_column_order=False)
@@ -1634,7 +1670,7 @@ def test_scan_estimators_reads_the_file_of_all_ranks(tmp_path: Path) -> None:
 
     # the files of the ranks win over a cache of all ranks without its text file
     (allranksfolder / "estimators_0000.out").write_text("".join(celltexts[:10]), encoding="utf-8")
-    get_runfolder_timesteps_cached.cache_clear()
+    get_runfolder_timesteps.cache_clear()
     assert get_runfolder_timesteps(allranksfolder) == tuple(range(10))
     dfnewcache = at.estimators.scan_estimators(allranksfolder).collect().sort("timestep", "modelgridindex")
     pltest.assert_frame_equal(dfnewcache, dfexpected.head(10), check_column_order=False)
@@ -1915,8 +1951,8 @@ def test_the_stamp_of_a_batch_cache_decides_the_conversion(tmp_path: Path) -> No
     from artistools.estimators.core import CACHEVERSION
     from artistools.estimators.core import get_rankbatch_parquetpath
     from artistools.estimators.core import rankbatch_parquet_is_current
-    from artistools.misc.fileio import MTIME_TOLERANCE_S
-    from artistools.misc.fileio import rankbatch_parquet_staleness
+    from artistools.misc import MTIME_TOLERANCE_S
+    from artistools.misc import rankbatch_parquet_staleness
 
     parquetfilepath = get_rankbatch_parquetpath(tmp_path, [0, 1, 2], 0)
     assert parquetfilepath.name == "estimbatch00_0000_0002.out.parquet"
@@ -2077,51 +2113,9 @@ def test_scan_estimators_filters_codecomparison(tmp_path: Path, monkeypatch: pyt
     assert np.isclose(dfone["Te"].item(), 6200.0)
 
 
-def make_toy_codecomparison_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
-    """Write a code comparison model of one epoch and three shells, and return its virtual path."""
-    physdir = tmp_path / "ccdata" / "toymodel"
-    physdir.mkdir(parents=True)
-    (physdir / "phys_toymodel_toycode.txt").write_text(
-        "#NTIMES: 1\n"
-        "#TIMES[d]: 10.0\n"
-        "#TIME: 10.0\n"
-        "#NVEL: 3\n"
-        "#vel_mid Te rho nne nntot\n"
-        "1000.0 5000.0 1e-13 1e6 1e6\n"
-        "2000.0 5100.0 2e-13 2e6 2e6\n"
-        "3000.0 5200.0 3e-13 3e6 3e6\n"
-    )
-
-    artismodeldir = tmp_path / "ccmodel" / "toymodel"
-    artismodeldir.mkdir(parents=True)
-    (artismodeldir / "model.txt").write_text(
-        "3\n10.0\n1 1000.0 -13.0 0.5 0.3 0.1 0.0 0.0\n2 2000.0 -13.0 0.5 0.3 0.1 0.0 0.0\n"
-        "3 3000.0 -13.0 0.5 0.3 0.1 0.0 0.0\n"
-    )
-    abundrow = " ".join(["0.0"] * 25 + ["0.1", "0.0", "0.9", "0.0", "0.0"])
-    (artismodeldir / "abundances.txt").write_text("".join(f"{cellid} {abundrow}\n" for cellid in (1, 2, 3)))
-
-    realgetpath = at.get_path
-
-    def fake_get_path(key: str) -> Path:
-        if key == "codecomparisondata1path":
-            return tmp_path / "ccdata"
-        if key == "codecomparisonmodelartismodelpath":
-            return tmp_path / "ccmodel"
-        return realgetpath(key)
-
-    import artistools.inputmodel.core
-
-    # codecomparison.py and inputmodel/core.py each hold their own import of the name
-    monkeypatch.setattr(at.codecomparison, "get_path", fake_get_path)
-    monkeypatch.setattr(artistools.inputmodel.core, "get_path", fake_get_path)
-
-    return "codecomparison/toymodel/toycode"
-
-
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_plot_codecomparison_single_epoch(
-    mockplot: mock.MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    mockplot: mock.MagicMock, tmp_path: Path, toy_codecomparison_model: str
 ) -> None:
     """A code comparison file of one epoch still plots its cells.
 
@@ -2130,7 +2124,7 @@ def test_plot_codecomparison_single_epoch(
     """
     at.estimators.plot(
         argsraw=[],
-        modelpath=make_toy_codecomparison_model(tmp_path, monkeypatch),
+        modelpath=toy_codecomparison_model,
         plotlist=[["Te"]],
         x="velocity",
         timestep="0",
@@ -2145,18 +2139,14 @@ def test_plot_codecomparison_single_epoch(
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_plot_codecomparison_single_epoch_weights_the_cells_by_volume(
-    mockplot: mock.MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    mockplot: mock.MagicMock, tmp_path: Path, toy_codecomparison_model: str
 ) -> None:
     """The average over the shells of one epoch weights each shell by its volume.
 
     One epoch had a timestep width of zero, thus every weight was zero and the average became the plain mean.
     """
     at.estimators.plot(
-        argsraw=[],
-        modelpath=make_toy_codecomparison_model(tmp_path, monkeypatch),
-        plotlist=[["Te"]],
-        x="time",
-        outputfile=tmp_path / "est.pdf",
+        argsraw=[], modelpath=toy_codecomparison_model, plotlist=[["Te"]], x="time", outputfile=tmp_path / "est.pdf"
     )
 
     arr_yvalue = mockplot.call_args_list[0].args[2]
@@ -2236,10 +2226,10 @@ def test_estimator_unknown_directive_names_the_valid_ones(
 def test_estimator_valid_ion_accepts_an_ion_and_rejects_a_variable_typo() -> None:
     """The ion test must accept the ion spellings that get_iontuple reads, and reject a variable typo."""
     for good in ("Fe", "Fe II", "FeII", "26", "Fe56"):
-        assert at.estimators.plotestimators.is_valid_ion(good), good
+        assert plotitems.is_valid_ion(good), good
 
     for bad in ("te", "notanion", "zz"):
-        assert not at.estimators.plotestimators.is_valid_ion(bad), bad
+        assert not plotitems.is_valid_ion(bad), bad
 
 
 def test_estimator_listvariables_collapses_the_species_families(capsys: pytest.CaptureFixture[str]) -> None:
@@ -2639,7 +2629,7 @@ def test_classic_estimator_files_follow_zopen_precedence(tmp_path: Path) -> None
     import gzip
 
     from artistools.estimators.estimators_classic import get_classic_estimator_files
-    from artistools.misc.fileio import get_decompress_open
+    from artistools.misc import get_decompress_open
 
     with gzip.open(tmp_path / "estimators_0000.out.gz", "wt") as gzfile:
         gzfile.write("stale\n")
@@ -2671,10 +2661,15 @@ def test_estimator_x_variable_names_the_choices(capsys: pytest.CaptureFixture[st
     assert "--listvariables" in message
 
 
-def build_classic_restart_model(tmp_path: Path, *, secondfolderfirsttimestep: int | None) -> Path:
+def build_classic_restart_model(
+    tmp_path: Path,
+    copy_model_inputs: Callable[[Path, Path, Sequence[str]], None],
+    *,
+    secondfolderfirsttimestep: int | None,
+) -> Path:
     """Write a classic model of two run folders, as a restarted run leaves behind."""
     source = at.get_path("testdata") / "test-classicmode_3d"
-    copy_model_inputs(tmp_path, source=source)
+    copy_model_inputs(source, tmp_path, [])
     # a classic log of one element and no ion, thus a row of the estimators holds no ion population
     (tmp_path / "output_0-0.txt").write_text("[input.c]   element Z = 26\n", encoding="utf-8")
 
@@ -2692,7 +2687,9 @@ def build_classic_restart_model(tmp_path: Path, *, secondfolderfirsttimestep: in
     return tmp_path
 
 
-def test_classic_restart_without_an_offset_is_refused(tmp_path: Path) -> None:
+def test_classic_restart_without_an_offset_is_refused(
+    tmp_path: Path, copy_model_inputs: Callable[[Path, Path, Sequence[str]], None]
+) -> None:
     """Two run folders that both start at timestep zero write the same keys.
 
     The later folder took the place of the earlier one in the dictionary, thus a plot showed the wrong
@@ -2700,17 +2697,19 @@ def test_classic_restart_without_an_offset_is_refused(tmp_path: Path) -> None:
     """
     from artistools.estimators.estimators_classic import read_classic_estimators
 
-    modelpath = build_classic_restart_model(tmp_path, secondfolderfirsttimestep=None)
+    modelpath = build_classic_restart_model(tmp_path, copy_model_inputs, secondfolderfirsttimestep=None)
 
     with pytest.raises(ValueError, match="both give timestep 0 of cell 0"):
         read_classic_estimators(modelpath)
 
 
-def test_classic_restart_with_an_offset_reads_both_folders(tmp_path: Path) -> None:
+def test_classic_restart_with_an_offset_reads_both_folders(
+    tmp_path: Path, copy_model_inputs: Callable[[Path, Path, Sequence[str]], None]
+) -> None:
     """A folder whose log gives its first timestep keeps its own keys, thus the read succeeds."""
     from artistools.estimators.estimators_classic import read_classic_estimators
 
-    modelpath = build_classic_restart_model(tmp_path, secondfolderfirsttimestep=2)
+    modelpath = build_classic_restart_model(tmp_path, copy_model_inputs, secondfolderfirsttimestep=2)
 
     estimators = read_classic_estimators(modelpath)
     assert estimators is not None
@@ -2850,7 +2849,9 @@ def test_makegif_takes_the_gif_name_from_o(tmp_path: Path) -> None:
     assert dottedgif.is_file(), f"no gif in {list((tmp_path / 'results.v1').iterdir())}"
 
 
-def test_frames_of_a_gif_print_one_table(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_frames_of_a_gif_print_one_table(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """Each frame printed its own table with its own header, thus the output of a gif was not one table."""
     gifpath = tmp_path / "movie.gif"
     at.estimators.plotestimators.main(
@@ -2865,7 +2866,7 @@ def test_frames_of_a_gif_print_one_table(tmp_path: Path, capsys: pytest.CaptureF
     )
     output = capsys.readouterr().out
     assert output.count(" velocity_kmps ") == 1
-    dftable = pl.read_csv(tmp_path / "movie.txt", separator=" ", null_values="nan", comment_prefix="#")
+    dftable = read_data_file(tmp_path / "movie.txt")
     assert sorted(dftable["timestep"].unique().to_list()) == ["ts040", "ts041", "ts042"]
 
 
@@ -2876,8 +2877,8 @@ def test_a_compact_ion_name_reads_the_ion_stage_in_upper_case() -> None:
     from a set, which holds no order, thus "SiII" took S and read "iII" as the ion stage 3. The order
     of a set of strings also changes with the hash seed, thus one run gave Ni II and another N III.
     """
-    from artistools.estimators.plotestimators import get_iontuple
-    from artistools.estimators.plotestimators import is_valid_ion
+    from artistools.estimators.plotitems import get_iontuple
+    from artistools.estimators.plotitems import is_valid_ion
 
     for ionstr, elsymbol, ion_stage in (
         # the lower case letter of a symbol never reads as a roman numeral
@@ -2942,7 +2943,7 @@ def test_estimator_snapshot_classic_3d_cone(mockplot: mock.MagicMock) -> None:
     assert len(xvalues) > 0
 
     # a cone that takes every cell, or one cell, shows nothing about the angle
-    ncells_model = at.inputmodel.get_modeldata(modelpath_classic_3d)[1]["npts_model"]
+    ncells_model = at.inputmodel.scan_modeldata(modelpath_classic_3d)[1]["npts_model"]
     ncells_wide = get_cone_cellcount(60.0)
     assert 1 < ncells_wide < ncells_model
 
@@ -3019,7 +3020,9 @@ def test_estimator_image_table_holds_only_the_drawn_cells() -> None:
     assert dfcut.filter(pl.col("panel") == 1)["vel_x_on_c"].to_list() == pytest.approx([-0.05], rel=1e-9)
 
 
-def test_estimator_plot_of_2_dimensions_gives_the_average_around_the_z_axis(tmp_path: Path) -> None:
+def test_estimator_plot_of_2_dimensions_gives_the_average_around_the_z_axis(
+    tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """-dimensionreduce 2 gives the mean of the cells in each ring of cylindrical radius and z."""
     ((_, edges1, edges2, tegrid),) = get_image_panel_calls(
         {"plotlist": [["Te"]], "dimensionreduce": 2, "write_data": True}, tmp_path
@@ -3027,7 +3030,7 @@ def test_estimator_plot_of_2_dimensions_gives_the_average_around_the_z_axis(tmp_
     assert len(list(tmp_path.glob("plotestimators_cylindrical_rz_ts008_*.pdf"))) == 1
     # --write_data gave only a warning for a colour image, and no table of its cells
     (tablepath,) = tmp_path.glob("plotestimators_cylindrical_rz_ts008_*.txt")
-    dftable = pl.read_csv(tablepath, separator=" ", null_values="nan", comment_prefix="#")
+    dftable = read_data_file(tablepath)
     assert dftable.height == int(np.isfinite(tegrid.filled(np.nan)).sum())
     assert np.isclose(dftable["vel_rcyl_on_c"].to_numpy().min(), (edges1[0] + edges1[1]) / 2)
     assert np.allclose(np.sort(dftable["value"].to_numpy()), np.sort(tegrid.compressed()), rtol=1e-6, atol=0)
@@ -3037,7 +3040,7 @@ def test_estimator_plot_of_2_dimensions_gives_the_average_around_the_z_axis(tmp_
     assert np.isclose(edges2[0], -edges2[-1])
 
     # each cell of the test model has the same volume, thus the weighted mean is the plain mean of the ring
-    lzmodel, modelmeta = at.get_modeldata(modelpath_classic_3d)
+    lzmodel, modelmeta = at.scan_modeldata(modelpath_classic_3d)
     lzmodel = at.inputmodel.add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
     ringwidth = modelmeta["vmax_cmps"] / 5
     dfexpected = (
@@ -3117,7 +3120,7 @@ def test_image_values_leave_out_a_nan_and_take_an_empty_frame() -> None:
 
 def test_layer_index_of_a_plane_between_two_layers() -> None:
     """A plane between two layers takes the layer above it, also when the quotient lies below the whole number."""
-    get_layer_index = at.estimators.plotestimators.get_layer_index
+    get_layer_index = at.estimators.core.get_layer_index
     # (0 + vmax) / (2 vmax / 50) gives 24.999999999999996 for this vmax
     assert get_layer_index(0.0, 6724085530.798534, 50) == 25
     assert get_layer_index(0.0, 2892020000.0, 10) == 5
@@ -3141,7 +3144,7 @@ def test_estimator_plot_of_2_dimensions_gives_each_point_the_shell_of_a_1d_model
     tegrid = tegrid.filled(np.nan)
     assert tegrid.shape == (len(edges2) - 1, len(edges1) - 1)
 
-    lzmodel, modelmeta = at.get_modeldata(CLASSIC1DPATH)
+    lzmodel, modelmeta = at.scan_modeldata(CLASSIC1DPATH)
     dfshells = (
         at
         .scan_estimators(CLASSIC1DPATH, timestep=24, classicartis=True)
@@ -3242,7 +3245,11 @@ def test_estimator_listing_needs_no_time_with_an_image(capsys: pytest.CaptureFix
 DEPOSITIONLINE = "deposition: gamma 2.0e-10 positron 1.0e-10 electron 5.0e-11 alpha 2.5e-11"
 
 
-def make_model_with_deposition(tmp_path: Path, cellye: Sequence[float] | None = None) -> Path:
+def make_model_with_deposition(
+    tmp_path: Path,
+    copy_model_inputs: Callable[[Path, Path, Sequence[str]], None],
+    cellye: Sequence[float] | None = None,
+) -> Path:
     """Return a copy of the test model whose estimators give the deposition rate of each channel.
 
     The copy holds the four small input files that the reader needs, thus it costs no time and no
@@ -3254,11 +3261,11 @@ def make_model_with_deposition(tmp_path: Path, cellye: Sequence[float] | None = 
     """
     modeldir = tmp_path / "modelwithdeposition"
     modeldir.mkdir()
-    copy_model_inputs(modeldir)
+    copy_model_inputs(modelpath, modeldir, [])
 
     ncells = 1 if cellye is None else len(cellye)
     if cellye is not None:
-        dfmodel, modelmeta = at.inputmodel.get_modeldata(modelpath, printwarningsonly=True)
+        dfmodel, modelmeta = at.inputmodel.scan_modeldata(modelpath, printwarningsonly=True)
         cellnumber = pl.int_range(1, ncells + 1, dtype=pl.Int32)
         dfcells = pl.concat([dfmodel.collect()] * ncells).with_columns(
             inputcellid=cellnumber,
@@ -3480,13 +3487,15 @@ def test_analytic_deposition_channels_come_from_the_options_of_the_run(tmp_path:
     assert np.isclose(dfgammaalpha["dep_per_volume"].item(), rate_erg_per_s / at.constants.EV_to_erg / 2.0, rtol=1e-12)
 
 
-def test_deposition_rates_from_the_estimator_files(tmp_path: Path) -> None:
+def test_deposition_rates_from_the_estimator_files(
+    tmp_path: Path, copy_model_inputs: Callable[[Path, Path, Sequence[str]], None]
+) -> None:
     """The rates of a model must match a calculation that reads the estimators on its own.
 
     The volume of timestep 55 is 1.01 times the volume of 54, and the ion count of 55 is 0.99 times
     the count of 54. Thus this test fails if the code reads a quantity at the wrong timestep.
     """
-    modeldir = make_model_with_deposition(tmp_path)
+    modeldir = make_model_with_deposition(tmp_path, copy_model_inputs)
     dfestim = at.estimators.scan_estimators(modeldir, timestep=(54, 55), join_modeldata=True).collect()
     row54 = dfestim.filter(pl.col("timestep") == 54)
     # the four values of DEPOSITIONLINE, in erg/s/cm3
@@ -3560,12 +3569,14 @@ def test_deposition_selects_the_cells_of_a_ye_range() -> None:
         at.estimators.deposition.aggregate_deposition_rates(dfestim.drop("init_Ye"), yerange=(0.0, 0.2))
 
 
-def test_deposition_ye_range_needs_a_model_with_ye(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_deposition_ye_range_needs_a_model_with_ye(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], copy_model_inputs: Callable[[Path, Path, Sequence[str]], None]
+) -> None:
     """An init_Ye range that no cell holds must stop the command. The message must name the range of the model."""
     with pytest.raises(ValueError, match="gives no init_Ye of a cell"):
         at.estimators.deposition.check_ye_range(modelpath, (0.0, 0.2))
 
-    modeldir = make_model_with_deposition(tmp_path, cellye=[0.3])
+    modeldir = make_model_with_deposition(tmp_path, copy_model_inputs, cellye=[0.3])
     outfile = tmp_path / "deposition.txt"
     at.estimators.deposition.main(argsraw=[], modelpath=modeldir, timestep="54", ye="0.25-0.35", outputfile=outfile)
 
@@ -3586,13 +3597,15 @@ def test_deposition_ye_range_needs_a_model_with_ye(tmp_path: Path, capsys: pytes
         at.estimators.deposition.main(argsraw=[], modelpath=modeldir, timestep="54", ye="0-0.2")
 
 
-def test_deposition_ye_range_drops_a_cell_of_a_model(tmp_path: Path) -> None:
+def test_deposition_ye_range_drops_a_cell_of_a_model(
+    tmp_path: Path, copy_model_inputs: Callable[[Path, Path, Sequence[str]], None]
+) -> None:
     """An init_Ye range must divide the cells of a model that the reader of the estimators gives.
 
     The model holds two cells of a different init_Ye. Thus a range that takes one of them must give
     a rate that is different from the rate of both cells.
     """
-    modeldir = make_model_with_deposition(tmp_path, cellye=[0.15, 0.35])
+    modeldir = make_model_with_deposition(tmp_path, copy_model_inputs, cellye=[0.15, 0.35])
 
     dfbothcells = at.estimators.deposition.get_deposition_rates(modeldir, [54])
     dflowye = at.estimators.deposition.get_deposition_rates(modeldir, [54], yerange=(0.1, 0.2))
@@ -3667,9 +3680,11 @@ def test_deposition_timeselection_takes_a_list_and_a_range() -> None:
         at.estimators.deposition.get_selected_timesteps(modelpath, "303-300,260", None)
 
 
-def test_deposition_writes_a_table(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_deposition_writes_a_table(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], copy_model_inputs: Callable[[Path, Path, Sequence[str]], None]
+) -> None:
     """The command writes the table that it prints. It also reports each timestep with no rate."""
-    modeldir = make_model_with_deposition(tmp_path)
+    modeldir = make_model_with_deposition(tmp_path, copy_model_inputs)
     outfile = tmp_path / "deposition.txt"
     at.estimators.deposition.main(argsraw=[], modelpath=modeldir, timestep="54,last", outputfile=outfile)
 
@@ -3695,9 +3710,11 @@ def test_deposition_writes_a_table(tmp_path: Path, capsys: pytest.CaptureFixture
     assert "no deposition rate for" not in capsys.readouterr().err
 
 
-def test_deposition_lists_the_channels(tmp_path: Path) -> None:
+def test_deposition_lists_the_channels(
+    tmp_path: Path, copy_model_inputs: Callable[[Path, Path, Sequence[str]], None]
+) -> None:
     """--listchannels must name the channels of the model, and write them when -o asks."""
-    modeldir = make_model_with_deposition(tmp_path)
+    modeldir = make_model_with_deposition(tmp_path, copy_model_inputs)
     outfile = tmp_path / "channels.txt"
     at.estimators.deposition.main(argsraw=[], modelpath=modeldir, listchannels=True, outputfile=outfile)
 
@@ -3782,7 +3799,7 @@ def test_average_ionisation_ylim_covers_every_element() -> None:
 
     settings: plotestimators.SubplotSettings = {}
     # Ni comes last and reaches charge 0, but the Fe curve reaches charge 5
-    plotestimators.plot_average_ionisation(settings, ["Fe", "Ni"], estimators)
+    plotestimators.get_average_ionisation_plans(settings, ["Fe", "Ni"], estimators)
     assert "ylim" in settings
     assert settings["ylim"][1] > 5.0
 
@@ -3796,7 +3813,7 @@ def test_an_archived_run_folder_keeps_a_cache_of_an_old_version(tmp_path: Path) 
     from artistools.estimators.core import CACHEVERSION
     from artistools.estimators.core import rankbatch_cache_cannot_be_rebuilt
     from artistools.estimators.core import rankbatch_parquet_is_current
-    from artistools.misc.fileio import rankbatch_parquet_staleness
+    from artistools.misc import rankbatch_parquet_staleness
 
     oldversion = tmp_path / "estimbatch00_0000_0002.out.parquet.tmp"
     at.misc.write_parquet_atomic(
@@ -3828,7 +3845,7 @@ def test_an_archived_run_folder_keeps_its_timesteps(tmp_path: Path) -> None:
     A batch of three ranks keeps the file of rank 0 alone, thus no conversion can replace the cache.
     A rejection made get_runfolder_timesteps() find no timesteps, and the folder then held no data.
     """
-    from artistools.misc.modelinfo import get_runfolder_timesteps
+    from artistools.misc import get_runfolder_timesteps
 
     runfolder = tmp_path / "job1.slurm"
     runfolder.mkdir()
@@ -3887,7 +3904,7 @@ def test_a_batch_that_keeps_only_rank_zero_keeps_its_cache(tmp_path: Path) -> No
     os.utime(tmp_path / "estimators_0000.out", (1400.0, 1400.0))
     mtime_rewritten, complete_rewritten = get_batch_textsource_state(get_textsource_mtimes(tmp_path), 0, 2)
     from artistools.estimators.core import CACHEVERSION
-    from artistools.misc.fileio import rankbatch_parquet_staleness
+    from artistools.misc import rankbatch_parquet_staleness
 
     assert "after the cache stamp" in str(
         rankbatch_parquet_staleness(
@@ -3902,11 +3919,11 @@ def test_plot_argument_takes_a_grouped_series_type() -> None:
     Only the keyword API took the grouped form. Thus "-plot populations Fe II" gave the error that
     'populations' is not an estimator variable, and the CLI reached no such plot.
     """
-    from artistools.estimators.plotestimators import normalise_plotitems
+    from artistools.estimators.plotitems import normalise_plotitems
 
     estimatorcolumns = ["Te", "TR", "nne", "nnion_Fe_II", "nnelement_Fe", "gammaestimator_Fe_II"]
 
-    # a type with its own plot function
+    # a type with its own function of series plans
     assert normalise_plotitems(["populations", "Fe I", "Fe II"], estimatorcolumns) == [
         ["populations", ["Fe I", "Fe II"]]
     ]
@@ -3937,7 +3954,7 @@ def test_plot_argument_takes_ions_of_a_variable_that_is_also_a_total() -> None:
     "-plot cooling_coll 'Fe II'" gave the error that 'Fe II' is not an estimator variable, because
     the test for an ion series rejected every name that is a column.
     """
-    from artistools.estimators.plotestimators import normalise_plotitems
+    from artistools.estimators.plotitems import normalise_plotitems
 
     estimatorcolumns = [
         "Te",
@@ -3968,10 +3985,29 @@ def test_plot_argument_takes_ions_of_a_variable_that_is_also_a_total() -> None:
 
 def test_plot_argument_rejects_a_series_type_with_no_names() -> None:
     """A type of series covers the names after it, thus it must not stand alone."""
-    from artistools.estimators.plotestimators import normalise_plotitems
+    from artistools.estimators.plotitems import normalise_plotitems
 
     with pytest.raises(SystemExit):
         normalise_plotitems(["populations"], ["Te", "nnion_Fe_II"])
+
+
+def test_viewer_reads_the_type_of_a_subplot_as_the_command_does(capsys: pytest.CaptureFixture[str]) -> None:
+    """The viewer must give a subplot the type that the command reads.
+
+    The viewer read the type of a subplot with its own copy of the code. It tested a list of ions with is_valid_ion,
+    and the command tested could_be_ion. Thus the card of ("Fe II", "te") became a subplot of variables. The
+    command read a plot of populations and gave the message for that plot. The copy also read an alias as an ion,
+    e.g. n_e as nitrogen.
+    """
+    estimatorcolumns = ["Te", "nne", "nnion_Fe_II"]
+
+    assert plotitems.get_subplot_seriestype(("Fe II", "te"), estimatorcolumns) == "populations"
+    with pytest.raises(SystemExit):
+        plotitems.normalise_plotitems(["Fe II", "te"], estimatorcolumns)
+    assert "'te' is neither an estimator variable nor an ion" in capsys.readouterr().err
+
+    assert plotitems.get_subplot_seriestype(("n_e",), estimatorcolumns) is None
+    assert plotitems.normalise_plotitems(["n_e"], estimatorcolumns) == ["nne"]
 
 
 def test_a_partial_batch_keeps_a_cache_of_an_old_version(tmp_path: Path) -> None:
@@ -3983,8 +4019,8 @@ def test_a_partial_batch_keeps_a_cache_of_an_old_version(tmp_path: Path) -> None
     """
     from artistools.estimators.core import CACHEVERSION
     from artistools.estimators.core import rankbatch_parquet_is_current
-    from artistools.misc.fileio import rankbatch_parquet_staleness
-    from artistools.misc.modelinfo import get_runfolder_timesteps
+    from artistools.misc import get_runfolder_timesteps
+    from artistools.misc import rankbatch_parquet_staleness
 
     runfolder = tmp_path / "job1.slurm"
     runfolder.mkdir()
@@ -4317,73 +4353,13 @@ def test_restart_duplicates_keep_the_row_of_the_first_folder(tmp_path: Path) -> 
     assert dfout["Te"].to_list() == [10.0, 11.0, 20.0, 21.0, 30.0, 31.0, 22.0]
 
 
-def make_headless_viewer(tokens: list[str]) -> interactive.EstimatorViewer:
-    """Return a viewer that draws on a canvas with no window, after its first plot."""
-    fig = mplfig.Figure()
-    FigureCanvasAgg(fig)
-    viewer = interactive.EstimatorViewer(tokens, fig)
-    assert viewer.draw() is None
-    return viewer
-
-
-def get_drawn_lines(fig: mplfig.Figure) -> list[list[tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]]]:
-    """Return the x values and the y values of each line of each subplot of a figure."""
-    return [
-        [
-            (np.asarray(line.get_xdata(), dtype=float), np.asarray(line.get_ydata(), dtype=float))
-            for line in axis.get_lines()
-        ]
-        for axis in fig.axes
-    ]
-
-
-def assert_same_lines(fig: mplfig.Figure, otherfig: mplfig.Figure) -> None:
-    """Assert that two figures draw the same lines in the same subplots."""
-    lines, otherlines = get_drawn_lines(fig), get_drawn_lines(otherfig)
-    assert [len(axislines) for axislines in lines] == [len(axislines) for axislines in otherlines]
-    assert any(lines)
-    for axislines, otheraxislines in zip(lines, otherlines, strict=True):
-        for (xvalues, yvalues), (otherx, othery) in zip(axislines, otheraxislines, strict=True):
-            assert np.allclose(xvalues, otherx, rtol=1e-12, atol=0.0, equal_nan=True)
-            assert np.allclose(yvalues, othery, rtol=1e-12, atol=0.0, equal_nan=True)
-
-
-def get_command_figure(tokens: Sequence[str], outputfile: Path) -> mplfig.Figure:
-    """Run plotestimators for the tokens, and return the figure that it saves."""
-    savedfigures: list[mplfig.Figure] = []
-
-    def keep_figure(fig: mplfig.Figure, *_: t.Any, **__: t.Any) -> None:
-        savedfigures.append(fig)
-
-    with mock.patch.object(plotestimators, "save_figure", side_effect=keep_figure):
-        at.estimators.plot(argsraw=[*tokens, "-o", str(outputfile)])
-    [savedfigure] = savedfigures
-    return savedfigure
-
-
-def test_interactive_command_reproduces_plot(tmp_path: Path) -> None:
-    """The command that the viewer shows must draw the same data as the viewer.
-
-    The first subplot goes before the folder and each other subplot follows --plot, thus a quoted ion and a directive
-    must reach plotestimators unchanged.
-    """
-    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "5", "--interactive"])
-    subplots = (("Te", "TR", "yscale=linear"), ("populations", "Fe II", "Fe III", "Ni II"), ("nne",))
-    newvalues = dc.replace(viewer.select_timesteps(viewer.values, 10, 3), subplots=subplots, xbins="8")
-    assert viewer.change(newvalues) is None
-    command = viewer.get_command()
-    assert command.endswith("--timestep 10-12 --xbins 8 --plot populations 'Fe II' 'Fe III' 'Ni II' --plot nne")
-
-    assert_same_lines(viewer.fig, get_command_figure(shlex.split(command)[2:], tmp_path / "estimators.pdf"))
-
-
 def test_series_style_reads_commas_in_its_values() -> None:
     """A part of a series style with no known key continues the value before it, e.g. a dash pattern or a label."""
-    assert plotestimators.read_series_style("Te@dashes=5,2,linewidth=2,label=T, electrons") == (
+    assert plotitems.read_series_style("Te@dashes=5,2,linewidth=2,label=T, electrons") == (
         "Te",
         {"dashes": "5,2", "linewidth": "2", "label": "T, electrons"},
     )
-    assert plotestimators.read_series_style("Fe II") == ("Fe II", {})
+    assert plotitems.read_series_style("Fe II") == ("Fe II", {})
     # matplotlib refuses a negative dash and a pattern with no length above 0 only at the time of the plot
     for item in (
         "Te@colour=red",
@@ -4395,13 +4371,15 @@ def test_series_style_reads_commas_in_its_values() -> None:
         "Te@linealpha=2",
     ):
         with pytest.raises(ValueError, match="Te"):
-            plotestimators.read_series_style(item)
+            plotitems.read_series_style(item)
     for scale in ("-1", "0", "nan", "inf"):
         with pytest.raises(SystemExit):
             at.misc.parse_cli_args(plotestimators.addargs, None, None, ["Te", f"-linewidthscale={scale}"])
 
 
-def test_series_style_applies_to_its_series(tmp_path: Path) -> None:
+def test_series_style_applies_to_its_series(
+    tmp_path: Path, get_plotestimators_figure: Callable[[Sequence[str], Path], mplfig.Figure]
+) -> None:
     """The style of a plot item changes its own series alone, and -linewidthscale multiplies each width.
 
     A label from the user needs a legend, also in a subplot of one variable, which shows its name on the y axis.
@@ -4418,7 +4396,7 @@ def test_series_style_applies_to_its_series(tmp_path: Path) -> None:
         "Fe II",
         "Fe III@color=#d55e00,linestyle=dotted",
     ]
-    fig = get_command_figure(tokens, tmp_path / "estimators.pdf")
+    fig = get_plotestimators_figure(tokens, tmp_path / "estimators.pdf")
     linesbyname = [
         {plotestimators.get_gid_series_name(str(line.get_gid())): line for line in axis.get_lines()}
         for axis in fig.axes
@@ -4438,7 +4416,9 @@ def test_series_style_applies_to_its_series(tmp_path: Path) -> None:
     assert defaultion.get_linewidth() == pytest.approx(3.0)
 
 
-def test_colorbyion_keeps_the_element_colours_of_several_elements(tmp_path: Path) -> None:
+def test_colorbyion_keeps_the_element_colours_of_several_elements(
+    tmp_path: Path, get_plotestimators_figure: Callable[[Sequence[str], Path], mplfig.Figure]
+) -> None:
     """A subplot of more than one element keeps the colours of the elements with --colorbyion.
 
     --colorbyion takes the colour of an ion from its stage, thus Fe II and Co II had the same colour.
@@ -4448,7 +4428,7 @@ def test_colorbyion_keeps_the_element_colours_of_several_elements(tmp_path: Path
     severalelements, oneelement = (
         {
             plotestimators.get_gid_series_name(str(line.get_gid())): line.get_color()
-            for line in get_command_figure([*tokens, *plotlist], tmp_path / f"{index}.pdf").axes[0].get_lines()
+            for line in get_plotestimators_figure([*tokens, *plotlist], tmp_path / f"{index}.pdf").axes[0].get_lines()
         }
         for index, plotlist in enumerate(plotlists)
     )
@@ -4456,313 +4436,9 @@ def test_colorbyion_keeps_the_element_colours_of_several_elements(tmp_path: Path
     assert oneelement["Fe II"] != oneelement["Fe III"]
 
 
-def test_interactive_swatches_give_the_colours_of_the_lines() -> None:
-    """A chip shows the colour of the line of its series, and the popup shows the colour with no style of its own.
-
-    --markers draws the points after the line with a lighter colour. A series with a colour does not move the axes
-    cycle, thus TR after the red Te takes the first colour of the cycle.
-    """
-    viewer = make_headless_viewer([str(modelpath_classic_3d), "-timestep", "10", "--markers", "--interactive"])
-    assert (
-        viewer.change(dc.replace(viewer.values, subplots=(("Te", "TR@linewidth=3"), ("Te", "TR@color=#d55e00"))))
-        is None
-    )
-    # the line of TR comes first, and its points come after it
-    trline, trpoints = (
-        line
-        for line in interactive.get_plot_frames(viewer.fig)[0].get_lines()
-        if plotestimators.get_gid_series_name(str(line.get_gid())) == "TR"
-    )
-    assert viewer.swatches[0, "TR"].colour == mplcolors.to_hex(trline.get_color()) == mplcolors.to_hex("C0")
-    assert mplcolors.to_hex(trpoints.get_color()) != mplcolors.to_hex("C0")
-    assert viewer.swatches[1, "TR"].colour == "#d55e00"
-    assert viewer.swatches[1, "TR"].defaultcolour == mplcolors.to_hex("C0")
-
-
-def test_move_series_item_keeps_the_type_and_the_directives() -> None:
-    """A dragged chip goes in front of the chip at the drop place, and the item keeps its style.
-
-    The chips of a subplot do not show its type and its directives, thus the index of a chip is not the position of its
-    item. In the same subplot, the chips on the screen still show the moved chip, and a later index moves to the front.
-    """
-    columns = ("Te", "TR", "nne", "nnion_Fe_II", "nnion_Fe_III", "nnion_Co_II", "nnelement_Fe", "nnelement_Co")
-    subplots = (("Te", "TR@color=C3", "yscale=log"), ("populations", "Fe II", "Fe III", "ymin=1e-5"))
-    assert interactive.move_series_item(subplots, (0, 1), 0, 0, columns) == (
-        ("TR@color=C3", "Te", "yscale=log"),
-        subplots[1],
-    )
-    # the place after the last chip of the same subplot
-    assert interactive.move_series_item(subplots, (0, 0), 0, 2, columns) == (
-        ("TR@color=C3", "Te", "yscale=log"),
-        subplots[1],
-    )
-    assert interactive.move_series_item(subplots, (1, 1), 1, 2, columns) == (
-        subplots[0],
-        ("populations", "Fe III", "Fe II", "ymin=1e-5"),
-    )
-    # a subplot with no chip takes the item after its type and in front of its directives
-    emptied = (("Te",), ("populations", "ymin=1e-5"))
-    assert interactive.move_series_item((("Te",), ("populations", "Fe II", "ymin=1e-5")), (1, 1), 0, 0, columns) == (
-        ("Fe II", "Te"),
-        emptied[1],
-    )
-    assert interactive.move_series_item(((("Te", "TR"), ("TR",))), (0, 1), 1, 0, columns) is None
-
-
-# the code that drives the keys, the mouse, and the line properties popup of an estimator window on the offscreen
-# platform of Qt, and prints the results
-ESTIMATOR_WINDOW_CHECK_CODE: t.Final = """
-import json
-import sys
-import time
-
-from PySide6 import QtCore
-from PySide6 import QtGui
-from PySide6 import QtTest
-from PySide6 import QtWidgets
-
-QtCore.QSettings.setDefaultFormat(QtCore.QSettings.Format.IniFormat)
-QtCore.QSettings.setPath(QtCore.QSettings.Format.IniFormat, QtCore.QSettings.Scope.UserScope, sys.argv[2])
-from artistools.estimators import interactive
-from artistools.viewertools.application import start_application
-
-app = start_application(interactive.APPLICATION_NAME, interactive.get_icon_curve())
-windows = []
-tokens = [sys.argv[1], "-timestep", "50", "-plot", "Te", "TR@linealpha=0", "nne@linewidth=2,color=red"]
-assert interactive.open_window(tokens, windows) is None
-window = windows[-1]
-window.show()
-LEFT = QtCore.Qt.MouseButton.LeftButton
-NOMOD = QtCore.Qt.KeyboardModifier.NoModifier
-
-
-def settle(seconds=0.6):
-    end = time.monotonic() + seconds
-    while time.monotonic() < end:
-        app.processEvents()
-        time.sleep(0.01)
-
-
-def get_command():
-    return next(
-        box.toPlainText()
-        for box in window.findChildren(QtWidgets.QPlainTextEdit)
-        if box.toPlainText().startswith("artistools ")
-    )
-
-
-def get_chip(name):
-    return next(
-        chip
-        for chip in window.findChildren(QtWidgets.QWidget, "chip")
-        if chip.isVisible() and chip.findChild(QtWidgets.QLabel, "chiplabel").text().split()[0] == name
-    )
-
-
-def get_focus_text():
-    widget = QtWidgets.QApplication.focusWidget()
-    if widget is not None and (label := widget.findChild(QtWidgets.QLabel, "chiplabel")) is not None:
-        return label.text().split()[0]
-    return widget.objectName() if widget is not None else None
-
-
-def get_popup():
-    return next(
-        (widget for widget in QtWidgets.QApplication.topLevelWidgets() if widget.isVisible() and widget is not window),
-        None,
-    )
-
-
-def get_action(text):
-    return next(action for action in window.findChildren(QtGui.QAction) if action.text() == text)
-
-
-settle(2.0)
-results = {}
-# the window keeps the state of a section only after a click on its heading
-results["sectionsettings"] = [key for key in QtCore.QSettings().allKeys() if "section" in key]
-# Qt shows the pointer of a disabled widget from its parent
-grips = [label for label in window.findChildren(QtWidgets.QLabel) if label.property("symbol") == "line.3.horizontal"]
-results["gripcursor"] = bool(grips) and all(
-    grip.isEnabled() and grip.cursor().shape() == QtCore.Qt.CursorShape.OpenHandCursor for grip in grips
-)
-# Alt-Down twice moves the same chip to the end
-get_chip("Te").setFocus()
-settle(0.2)
-for _ in range(2):
-    QtTest.QTest.keyClick(
-        QtWidgets.QApplication.focusWidget(), QtCore.Qt.Key.Key_Down, QtCore.Qt.KeyboardModifier.AltModifier
-    )
-    settle()
-results["chipfocus"] = get_focus_text()
-results["chiporder"] = get_command()
-
-# a press on the remove button of a chip, a move off the button, and a release open no popup
-remove = next(
-    button for button in get_chip("Te").findChildren(QtWidgets.QToolButton) if button.objectName() != "swatch"
-)
-centre = remove.rect().center()
-QtTest.QTest.mousePress(remove, LEFT, NOMOD, centre)
-offbutton = QtCore.QPoint(remove.width() + 3, centre.y())
-QtTest.QTest.mouseMove(remove, offbutton)
-QtTest.QTest.mouseRelease(remove, LEFT, NOMOD, offbutton)
-settle()
-results["cancelledclickpopup"] = get_popup() is not None
-if (popup := get_popup()) is not None:
-    popup.close()
-    settle()
-
-# the popup shows an opacity of 0, and Reset then Return removes it
-get_chip("TR").findChild(QtWidgets.QToolButton, "swatch").click()
-settle()
-popup = get_popup()
-alphabox = popup.findChildren(QtWidgets.QDoubleSpinBox)[-1]
-results["alphatext"] = alphabox.text()
-next(button for button in popup.findChildren(QtWidgets.QPushButton) if button.text() == "Reset").click()
-settle()
-QtTest.QTest.keyClick(popup, QtCore.Qt.Key.Key_Return)
-settle()
-results["resetcommand"] = get_command()
-
-# Return in the empty colour field closes the popup
-get_chip("Te").findChild(QtWidgets.QToolButton, "swatch").click()
-settle()
-popup = get_popup()
-colouredit = next(
-    edit for edit in popup.findChildren(QtWidgets.QLineEdit) if edit.placeholderText().startswith("other")
-)
-colouredit.setFocus()
-QtTest.QTest.keyClick(colouredit, QtCore.Qt.Key.Key_Return)
-settle()
-results["emptycolourclosed"] = get_popup() is None
-
-# Escape gives the item its text from before the popup
-get_chip("nne").findChild(QtWidgets.QToolButton, "swatch").click()
-settle()
-popup = get_popup()
-next(
-    button for button in popup.findChildren(QtWidgets.QToolButton) if button.accessibleName().startswith("Colour ")
-).click()
-settle(1.0)
-results["previewcommand"] = get_command()
-QtTest.QTest.keyClick(popup, QtCore.Qt.Key.Key_Escape)
-settle()
-results["escapecommand"] = get_command()
-
-# a bad dash pattern keeps the preview of the width
-get_chip("nne").findChild(QtWidgets.QToolButton, "swatch").click()
-settle()
-popup = get_popup()
-next(edit for edit in popup.findChildren(QtWidgets.QLineEdit) if edit.placeholderText().startswith("none")).setText(
-    "5,"
-)
-popup.findChildren(QtWidgets.QDoubleSpinBox)[0].setValue(4.0)
-settle(1.0)
-results["badfieldpreview"] = get_command()
-QtTest.QTest.keyClick(popup, QtCore.Qt.Key.Key_Escape)
-settle()
-
-# Add Series on a collapsed card gives the keyboard to its field
-window.activateWindow()
-settle(0.3)
-next(
-    button
-    for button in window.findChildren(QtWidgets.QToolButton)
-    if button.isVisible() and button.accessibleName() == "Collapse"
-).click()
-settle()
-next(box for box in window.findChildren(QtWidgets.QComboBox, "type") if box.isVisible()).setFocus()
-get_action("Add Series").trigger()
-settle()
-results["addseriesfocus"] = get_focus_text()
-
-# Add Subplot adds a subplot below the card with the focus, and the y axis button takes the keyboard
-get_action("Add Subplot").trigger()
-settle()
-results["addsubplotcommand"] = get_command()
-results["addsubplotfocus"] = get_focus_text()
-results["yaxisfocus"] = all(
-    button.focusPolicy() == QtCore.Qt.FocusPolicy.StrongFocus
-    for button in window.findChildren(QtWidgets.QToolButton, "yaxis")
-)
-print(json.dumps(results))
-window.close()
-settle(0.3)
-"""
-
-
-def test_estimator_window_keeps_the_keyboard_and_the_popup_values(tmp_path: Path) -> None:
-    """The keys, a cancelled click, and the line properties popup give the series and the focus that the user expects.
-
-    The window had these faults:
-
-    - after Alt-Down, the first chip took the focus, thus the next key moved a different series;
-    - a press on the remove button of a chip and a release outside it opened the popup;
-    - the popup showed an opacity of 0 as "Default", and Reset kept it;
-    - Return in the empty colour field kept the popup open with an error;
-    - Escape wrote the style keys of the item in a different order;
-    - a bad dash pattern stopped the preview of each other field;
-    - the window wrote the state of each section when it opened, thus a new default of closed did not apply;
-    - a grip showed the arrow pointer, because it was a disabled button;
-    - Add Series on a collapsed card gave the focus back to the header;
-    - no menu item added a subplot, and Tab on macOS reaches no button that adds one.
-    """
-    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
-    environment = os.environ | {"QT_QPA_PLATFORM": "offscreen", viewercore.MACOS_BUNDLE_VARIABLE: "1"}
-    result = subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
-        [sys.executable, "-c", ESTIMATOR_WINDOW_CHECK_CODE, str(modelpath), str(tmp_path)],
-        capture_output=True,
-        text=True,
-        check=False,
-        env=environment,
-        timeout=300,
-    )
-    assert result.returncode == 0, result.stderr[-3000:]
-    # the window prints its command when it closes, thus the results are on the line of the JSON object
-    results = json.loads(next(line for line in result.stdout.splitlines() if line.startswith('{"sectionsettings"')))
-    assert results["chipfocus"] == "Te"
-    assert " TR@linealpha=0 nne@linewidth=2,color=red Te " in results["chiporder"]
-    assert not results["cancelledclickpopup"]
-    assert results["alphatext"] != "Default"
-    assert "linealpha" not in results["resetcommand"]
-    assert results["emptycolourclosed"]
-    assert "nne@color=" in results["previewcommand"]
-    assert " nne@linewidth=2,color=red " in results["escapecommand"]
-    assert " nne@color=red,linewidth=4 " in results["badfieldpreview"]
-    assert results["sectionsettings"] == []
-    assert results["gripcursor"]
-    assert results["addseriesfocus"] == "add"
-    assert results["addsubplotcommand"].count("--plot") == 1
-    assert results["addsubplotfocus"] == "add"
-    assert results["yaxisfocus"]
-
-
-def test_colour_note_follows_the_colours_of_the_plot() -> None:
-    """The note of the element colours shows only for a subplot whose plot gives its ions the element colours.
-
-    The note counted the names of the subplot, but the plot leaves out an ion that the model does not hold. Thus the
-    note showed for Fe II, Fe III, and Zn II, and the plot gave each ion its own colour.
-    """
-    viewer = make_headless_viewer([str(modelpath_classic_3d), "-timestep", "10", "--colorbyion", "--interactive"])
-    subplots = (("populations", "Fe II", "Fe III", "Zn II"), ("populations", "Fe II", "Co II"))
-    assert viewer.change(dc.replace(viewer.values, subplots=subplots)) is None
-    assert viewer.elementcolourrows == frozenset({1})
-
-
-def test_style_change_keeps_the_warning_of_the_data() -> None:
-    """A plot that draws the data of the last plot shows the warning of that data again.
-
-    The data cache read no data, thus the plot printed no warning, and the status bar removed a warning that applied.
-    """
-    viewer = make_headless_viewer([str(modelpath_classic_3d), "-timestep", "10", "--interactive"])
-    assert viewer.change(dc.replace(viewer.values, subplots=(("populations", "Fe II", "Fe VIII"),))) is None
-    warning = viewer.warning
-    assert "compositiondata.txt" in warning
-    assert viewer.change(dc.replace(viewer.values, subplots=(("populations", "Fe II@color=C3", "Fe VIII"),))) is None
-    assert viewer.warning == warning
-
-
-def test_svg_ids_of_the_lines_are_different(tmp_path: Path) -> None:
+def test_svg_ids_of_the_lines_are_different(
+    tmp_path: Path, get_plotestimators_figure: Callable[[Sequence[str], Path], mplfig.Figure]
+) -> None:
     """Each line of an SVG file has a different id with no space, and the gid of a line still gives its series.
 
     The gid of a line was the name of its series. Te in two subplots, the points of a series, and Fe II gave ids
@@ -4770,7 +4446,7 @@ def test_svg_ids_of_the_lines_are_different(tmp_path: Path) -> None:
     """
     tokens = [str(modelpath_classic_3d), "-timestep", "10", "--markers"]
     plotlists = ["-plot", "Te", "-plot", "Te", "-plot", "populations", "Fe II", "Fe III"]
-    fig = get_command_figure([*tokens, *plotlists], tmp_path / "estimators.pdf")
+    fig = get_plotestimators_figure([*tokens, *plotlists], tmp_path / "estimators.pdf")
     svgfile = tmp_path / "estimators.svg"
     fig.savefig(svgfile)
     ids = re.findall(r'\bid="([^"]*)"', svgfile.read_text(encoding="utf-8"))
@@ -4781,846 +4457,6 @@ def test_svg_ids_of_the_lines_are_different(tmp_path: Path) -> None:
         for axis in fig.axes
     ]
     assert seriesnames == [["Te", "Te"], ["Te", "Te"], ["Fe II", "Fe II", "Fe III", "Fe III"]]
-
-
-def test_style_colour_keeps_the_colours_of_the_other_series() -> None:
-    """A colour of a style changes only its own series, and each other series keeps its colour of the axes cycle.
-
-    A series with a style colour took no place in the cycle, thus each later series took the colour before its own.
-    """
-    viewer = make_headless_viewer([str(modelpath_classic_3d), "-timestep", "10", "--interactive"])
-
-    def get_line_colours(subplot: tuple[str, ...]) -> dict[str, str]:
-        assert viewer.change(dc.replace(viewer.values, subplots=(subplot,))) is None
-        lines = interactive.get_plot_frames(viewer.fig)[0].get_lines()
-        return {
-            plotestimators.get_gid_series_name(str(line.get_gid())): mplcolors.to_hex(line.get_color())
-            for line in lines
-        }
-
-    plain = get_line_colours(("TR", "TJ", "W"))
-    styled = get_line_colours(("TR@color=black", "TJ", "W"))
-    assert styled == plain | {"TR": "#000000"}
-    assert viewer.swatches[0, "TJ"].colour == plain["TJ"]
-    assert viewer.swatches[0, "TJ"].defaultcolour == plain["TJ"]
-
-
-def test_swatches_show_the_drawn_colours() -> None:
-    """The swatch of a chip shows the opacity of its colour and the colour of Dark Mode, as the plot draws the line."""
-    viewer = make_headless_viewer([str(modelpath_classic_3d), "-timestep", "10", "--interactive"])
-    subplot = ("TR@color=#ff000080", "TJ@color=none", "W@color=#000000")
-    assert viewer.change(dc.replace(viewer.values, subplots=(subplot,))) is None
-    assert np.isclose(viewer.swatches[0, "TR"].alpha, 128 / 255)
-    assert viewer.swatches[0, "TR"].colour == "#ff0000"
-    assert viewer.swatches[0, "TJ"].alpha == 0.0
-    viewer.darkcolours = at.plottools.DARKMODE_COLOURS
-    assert viewer.change(dc.replace(viewer.values, subplots=(subplot[::-1],))) is None
-    assert viewer.swatches[0, "W"].colour == "#ffffff"
-
-
-def test_host_receives_the_plot_items_without_styles(tmp_path: Path) -> None:
-    """The client draws the series styles and selects the cells, thus the host receives the names and the cells.
-
-    A host that runs an older release read a styled item as an unknown directive, e.g. "'Te@color' is not a plot
-    directive". That release also selected no cells, thus -readonlymgi plotted no rows. The data cache also selects
-    the cells only when it reads the data.
-    """
-    plotlists: list[t.Any] = []
-    selectedcells: list[t.Any] = []
-    getfiguresdata = plotestimators.get_figures_data
-
-    def record_plotlist(modelpath: Path, args: argparse.Namespace, *otherargs: t.Any) -> "plotestimators.FiguresData":
-        plotlists.append(copy.deepcopy(args.plotlist))
-        selectedcells.append(args.modelgridindex)
-        return getfiguresdata(modelpath, args, *otherargs)
-
-    with mock.patch.object(plotestimators, "get_figures_data", side_effect=record_plotlist):
-        at.estimators.plot(
-            argsraw=[],
-            modelpath=modelpath_classic_3d,
-            plotlist=[["Te@color=C3,label=T e", "TR"]],
-            timestep=10,
-            readonlymgi="alongaxis",
-            axis="+x",
-            outputfile=tmp_path / "styled.pdf",
-        )
-    assert plotlists == [[["Te", "TR"]]]
-    assert len(selectedcells) == 1
-    assert selectedcells[0]
-    assert (tmp_path / "styled.pdf").is_file()
-
-    viewer = make_headless_viewer([
-        str(modelpath_classic_3d),
-        "-timestep",
-        "10",
-        "-readonlymgi",
-        "alongaxis",
-        "-axis",
-        "+x",
-        "--interactive",
-    ])
-    assert viewer.change(dc.replace(viewer.values, subplots=(("Te",),))) is None
-    with mock.patch.object(plotestimators, "get_cells_along_axis", wraps=plotestimators.get_cells_along_axis) as cells:
-        assert viewer.change(dc.replace(viewer.values, subplots=(("Te@color=C3",),))) is None
-        assert cells.call_count == 0
-
-
-def test_interactive_style_change_reuses_the_data() -> None:
-    """A change of a series style or of -linewidthscale draws the data of the last plot again, and reads no data.
-
-    A change of the time reads the data again. A click on a legend entry finds its series, also after a new style.
-    """
-    viewer = make_headless_viewer([str(modelpath_classic_3d), "-timestep", "10", "--interactive"])
-    assert viewer.change(dc.replace(viewer.values, subplots=(("populations", "Fe II", "Fe III"),))) is None
-    styled = dc.replace(viewer.values, subplots=(("populations", "Fe II", "Fe III@color=#d55e00,label=Iron 2+"),))
-    with mock.patch.object(plotestimators, "get_figures_data", wraps=plotestimators.get_figures_data) as getdata:
-        assert viewer.change(styled) is None
-        widevalues = interactive.replace_option_rows(viewer, viewer.values, (("-linewidthscale", ("2",)),))
-        assert viewer.change(widevalues) is None
-        assert getdata.call_count == 0
-        assert viewer.change(viewer.select_timesteps(viewer.values, 11, 1)) is None
-        assert getdata.call_count == 1
-
-    assert viewer.swatches[0, "Fe III"].colour == "#d55e00"
-    axis = interactive.get_plot_frames(viewer.fig)[0]
-    viewer.fig.canvas.draw()
-    legend = axis.get_legend()
-    assert legend is not None
-    for text in legend.get_texts():
-        centre = text.get_window_extent().get_points().mean(axis=0)
-        event = MouseEvent("button_press_event", viewer.fig.canvas, *centre)
-        expected = "Fe III" if text.get_text() == "Iron 2+" else "Fe II"
-        assert interactive.get_series_at(axis, event, legendonly=True) == expected
-
-
-def test_interactive_python_code_reproduces_plot(tmp_path: Path) -> None:
-    """The Python code that the viewer shows must draw the same data as the viewer.
-
-    The code groups the names of a type of series, also for a list of ions with no type. A directive becomes a pair with
-    an underscore, and the value of ymin= becomes a number.
-    """
-    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "5", "--interactive"])
-    subplots = (("Te", "TR", "yscale=linear", "ymin=1000"), ("Fe II", "Fe III"), ("populations", "Ni II"))
-    newvalues = dc.replace(viewer.select_timesteps(viewer.values, 10, 3), subplots=subplots, xbins="8")
-    assert viewer.change(newvalues) is None
-    code = interactive.get_python_code(viewer.parser, viewer.get_plot_tokens(), viewer.modeldata.estimatorcolumns)
-    assert '["Te", "TR", ["_yscale", "linear"], ["_ymin", 1000]],' in code
-    assert '[["populations", ["Fe II", "Fe III"]]],' in code
-    assert 'timestep="10-12",' in code
-    onetimestepcode = interactive.get_python_code(
-        viewer.parser, ["Te", "-timestep", "11"], viewer.modeldata.estimatorcolumns
-    )
-    assert "timestep=11," in onetimestepcode
-
-    savedfigures: list[mplfig.Figure] = []
-
-    def keep_figure(fig: mplfig.Figure, *_: t.Any, **__: t.Any) -> None:
-        savedfigures.append(fig)
-
-    outputfile = tmp_path / "estimators.pdf"
-    with mock.patch.object(plotestimators, "save_figure", side_effect=keep_figure):
-        exec(code.replace("main(\n", f"main(\n    outputfile={str(outputfile)!r},\n", 1), {})  # ruff:ignore[exec-builtin]
-    [savedfigure] = savedfigures
-    assert_same_lines(viewer.fig, savedfigure)
-
-
-def test_interactive_subplot_with_no_series_stays_as_an_empty_frame(tmp_path: Path) -> None:
-    """A subplot whose last series the user removed stays, and its frame is empty until the user adds a series.
-
-    The viewer deleted such a subplot, thus the user lost its place and its type. A first subplot with no item follows
-    --plot, and a series type with no names gives only its directives to the command.
-    """
-    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "5", "--interactive"])
-    subplots = ((), ("TR", "yscale=linear"), ("populations", "yscale=log"))
-    assert viewer.change(dc.replace(viewer.values, subplots=subplots)) is None
-    assert viewer.values.subplots == subplots
-    assert len(interactive.get_plot_frames(viewer.fig)) == 3
-    tokens = viewer.get_plot_tokens()
-    assert tokens[-6:] == ["--plot", "--plot", "TR", "yscale=linear", "--plot", "yscale=log"]
-
-    assert_same_lines(viewer.fig, get_command_figure(tokens, tmp_path / "estimators.pdf"))
-
-
-def test_interactive_session_keeps_an_empty_last_subplot() -> None:
-    """The command of the next start keeps a last subplot with no item, also when the window read the working folder.
-
-    The session put the working folder after the last -plot. plotestimators then took the folder out of that -plot and
-    removed the -plot, which was empty, thus the next start lost the subplot.
-    """
-    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "5", "--interactive"])
-    subplots = (("TR",), ())
-    assert viewer.change(dc.replace(viewer.values, subplots=subplots)) is None
-    tokens = viewer.get_plot_tokens(modeltoken=str(modelpath_classic_3d.absolute()))
-    assert make_headless_viewer([*tokens, "--interactive"]).values.subplots == subplots
-
-
-def test_interactive_command_gives_the_default_subplots(tmp_path: Path) -> None:
-    """The command gives each subplot also for the default subplots, and it draws the figure of no --plot.
-
-    The command left out the default subplots, thus it depended on the default of the version of plotestimators. The
-    viewer writes a default item such as ["_ymin", 1e-16] as the directive "ymin=1e-16".
-    """
-    viewer = make_headless_viewer([str(modelpath), "--timestep", "50", "--interactive"])
-    assert viewer.values.subplots == viewer.modeldata.defaultsubplots
-    assert "averageexcitation" in viewer.modeldata.defaultsubplots[-1]
-    # the window hides the output of the command, thus the viewer keeps the reason for each left out subplot
-    assert viewer.modeldata.skippeddefaults == (
-        "averageionisation Sr: the estimators have no Sr",
-        "populations Sr I Sr II Sr III Sr IV: the estimators have no Sr",
-    )
-    first, *others = viewer.modeldata.defaultsubplots
-    assert viewer.get_plot_tokens()[: len(first)] == list(first)
-    assert viewer.get_plot_tokens().count("--plot") == len(others)
-
-    assert_same_lines(viewer.fig, get_command_figure([str(modelpath), "--timestep", "50"], tmp_path / "estimators.pdf"))
-
-
-def test_interactive_default_x_follows_a_slice_line_of_the_table() -> None:
-    """A -slice line in the option table changes the default x, and a command with no -x takes that default.
-
-    The viewer kept the old default as a fixed -x, thus the command plotted the line against the radial velocity.
-    """
-    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-timestep", "5", "--interactive"])
-    sliceline = interactive.replace_option_rows(viewer, viewer.values, (("-slice", ("z=0,y=0",)),))
-    assert "-x" not in viewer.get_plot_tokens(sliceline)
-    assert viewer.change(sliceline) is None
-    assert "-x" not in viewer.get_plot_tokens(interactive.replace_option_rows(viewer, viewer.values, ()))
-
-    # an x that the user chose stays
-    chosen = viewer.set_xvariable(viewer.values, "vel_r_mid")
-    assert interactive.replace_option_rows(viewer, chosen, (("-slice", ("z=0,y=0",)),)).x == "vel_r_mid"
-
-
-def test_interactive_snapshot_reads_all_the_cells() -> None:
-    """A change from a plot against time to a snapshot removes -cell.
-
-    The window hides the control of the cells for a snapshot, thus a -cell of the plot against time stayed hidden.
-    """
-    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "--interactive"])
-    evolution = dc.replace(viewer.values, x="time", cells=str(viewer.modeldata.cells[5]))
-    assert interactive.is_evolution(evolution)
-    viewer.values = evolution
-    snapshot = viewer.set_xvariable(evolution, "velocity")
-    assert not snapshot.cells
-    assert "-cell" not in viewer.get_plot_tokens(snapshot)
-
-
-def test_interactive_snapshot_and_time_evolution() -> None:
-    """A plot against time reads all the timesteps and names no time, and a snapshot reads one timestep.
-
-    The Play button of a plot against time moves through the cells, and it stops after the last cell.
-    """
-    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "--timestep", "20-22", "--interactive"])
-    evolution = viewer.set_xvariable(viewer.values, "time")
-    assert (evolution.first, evolution.last) == (
-        viewer.modeldata.validtimesteps[0],
-        viewer.modeldata.validtimesteps[-1],
-    )
-    assert viewer.change(evolution) is None
-    assert viewer.get_plot_tokens() == ["Te", str(modelpath_classic_3d)]
-
-    viewer.values = dc.replace(viewer.values, cells=str(viewer.modeldata.cells[-2]))
-    lastcell = viewer.step_cell(1)
-    assert lastcell is not None
-    assert viewer.change(lastcell) is None
-    assert viewer.get_plot_tokens() == ["Te", str(modelpath_classic_3d), "--cell", str(viewer.modeldata.cells[-1])]
-    assert viewer.step_cell(1) is None
-
-    # a part of the time range of the model needs -x time, because plotestimators plots a snapshot for a given time
-    shortrange = viewer.select_timesteps(viewer.values, 5, 4)
-    assert viewer.get_plot_tokens(shortrange)[2:6] == ["--timestep", "5-8", "-x", "time"]
-
-    snapshot = viewer.set_xvariable(viewer.values, "velocity")
-    # the middle of all the timesteps
-    assert (
-        snapshot.first
-        == snapshot.last
-        == viewer.modeldata.validtimesteps[(len(viewer.modeldata.validtimesteps) - 1) // 2]
-    )
-
-
-def test_interactive_command_of_a_dispatcher_call() -> None:
-    """A call of the dispatcher from Python code gives its own words to the viewer, and not the words of sys.argv."""
-    from artistools.__main__ import main as dispatcher_main
-
-    with (
-        mock.patch.object(interactive, "run_viewer") as mockrunviewer,
-        mock.patch.object(sys, "argv", ["myscript.py", "--flag", "x"]),
-    ):
-        dispatcher_main(argsraw=["plotestimators", "Te", str(modelpath), "--interactive"])
-    mockrunviewer.assert_called_once_with(["Te", str(modelpath), "--interactive"])
-
-
-def test_interactive_classicartis_row_reads_the_other_format() -> None:
-    """A --classicartis row in the table must read the classic format, as the command does, and not the old query.
-
-    The viewer read the model one time with the first --classicartis value. The window then drew the modern estimators
-    for a command that plotestimators rejects.
-    """
-    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
-    command = viewer.get_command()
-    message = viewer.change(dc.replace(viewer.values, otheroptions=(("--classicartis", ()),)))
-    assert message is not None
-    assert "modern ARTIS run" in message
-    assert viewer.get_command() == command
-
-
-def test_interactive_unexpected_error_keeps_the_old_plot() -> None:
-    """An error that is not a user error, e.g. of polars, gives a message, and the old plot draws again.
-
-    Such an error left draw and change, thus the figure stayed empty and the viewer kept the failed values.
-    """
-    viewer = make_headless_viewer(["rho", str(modelpath), "-ts", "5", "--interactive"])
-    command = viewer.get_command()
-    # a mock gives the unexpected error, thus the test does not depend on a fault of the code
-    with mock.patch.object(
-        plotestimators, "get_figures_data", side_effect=pl.exceptions.ColumnNotFoundError("mocked fault")
-    ):
-        message = viewer.change(dc.replace(viewer.values, xbins="5"))
-    assert message is not None
-    assert message.startswith("ColumnNotFoundError")
-    assert viewer.get_command() == command
-    assert viewer.fig.axes[0].get_lines()
-
-
-def test_interactive_codecomparison_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The viewer opens a codecomparison model, which has no run folders, as the command does."""
-    viewer = make_headless_viewer([
-        "Te",
-        make_toy_codecomparison_model(tmp_path, monkeypatch),
-        "-timestep",
-        "0",
-        "--interactive",
-    ])
-    assert viewer.modeldata.validtimesteps == [0]
-    assert viewer.fig.axes[0].get_lines()
-
-
-def test_interactive_time_field_keeps_the_range() -> None:
-    """A Return in the time field with no edit keeps the time range.
-
-    The field showed the mean of the start and the end of the range, and the viewer read it as the middle of a
-    timestep. A range of an even count then moved one timestep later.
-    """
-    viewer = make_headless_viewer(["Te", str(modelpath), "-timestep", "40", "--interactive"])
-    nvalid = len(viewer.modeldata.validtimesteps)
-    for count in range(1, 5):
-        for firstpos in range(nvalid - count + 1):
-            viewer.values = viewer.select_timesteps(viewer.values, firstpos, count)
-            text = interactive.get_time_text(viewer.tmids, viewer.values)
-            assert viewer.select_centre(float(text)) == viewer.values, (count, firstpos, text)
-
-
-def test_interactive_readout_names_each_series() -> None:
-    """The readout gives the value of each series, also the one line with no label of a subplot of one variable.
-
-    The readout skipped each line with a label that starts with "_", which is the only line of such a subplot. A
-    colour image gives an array of one value under the pointer, and NumPy 2.5 does not convert it with float().
-    """
-    viewer = make_headless_viewer(["Te", "TR", str(modelpath_classic_3d), "-t", "5", "-plot", "nne", "--interactive"])
-    firstaxis, nneaxis = viewer.fig.axes
-    xmid = float(np.mean(firstaxis.get_xlim()))
-    # the parts of a readout are the x value and then "value label" for each series
-    firstparts = interactive.get_readout(firstaxis, xmid).split("   ")
-    assert len(firstparts) == 3
-    assert any(part.endswith(" T_e") for part in firstparts[1:])
-    assert len(interactive.get_readout(nneaxis, xmid).split("   ")) == 2
-
-    assert interactive.get_image_value(np.ma.masked_array([5.0])) == pytest.approx(5.0, rel=1e-12, abs=0.0)
-    assert interactive.get_image_value(np.ma.masked_array([5.0], mask=[True])) is None
-
-
-def test_interactive_converts_stale_batches_in_a_child_process() -> None:
-    """The viewer process reads the caches of a model with no stale batch. A child process converts a stale batch."""
-    at.estimators.scan_estimators(modelpath).head(1).collect()
-    with mock.patch.object(interactive, "call_in_child_process") as mockchild:
-        assert interactive.get_batch_caches(modelpath)
-    mockchild.assert_not_called()
-
-    states = interactive.get_estimator_batch_states(modelpath, None, None)
-    stalestates = [states[0]._replace(rebuild=True), *states[1:]]
-    with (
-        mock.patch.object(interactive, "get_estimator_batch_states", return_value=stalestates),
-        mock.patch.object(interactive, "call_in_child_process", return_value=[]) as mockchild,
-    ):
-        assert interactive.get_batch_caches(modelpath) == []
-    mockchild.assert_called_once()
-
-
-def test_interactive_shows_the_bins_that_the_plot_chose() -> None:
-    """A snapshot of a 3D model has many cells at one velocity, thus the plot takes automatic bins and --colorbyion.
-
-    -xbins N also draws a shaded area for each bin, and the area has no dash to separate the ions of an element. It
-    turned --colorbyion on only for automatic bins. -xbins 0 draws the points alone, and it keeps the colours.
-    """
-    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
-    assert viewer.plotxbins is not None
-    assert viewer.plotxbins > 3
-    assert viewer.plotcolorbyion
-    assert not viewer.values.colorbyion
-    assert viewer.change(dc.replace(viewer.values, xbins="8")) is None
-    assert viewer.plotxbins == 8
-    assert viewer.plotcolorbyion
-    assert viewer.change(dc.replace(viewer.values, xbins="0")) is None
-    assert not viewer.plotcolorbyion
-    assert interactive.get_xunit_text(1.0, "velocity") == " [km/s]"
-    assert interactive.get_xunit_text(1.0, "Te") == " [K]"
-    assert not interactive.get_xunit_text(1.0, "timestep")
-    assert interactive.get_xunit_text(1e5 / 299792.458, "beta") == " [km/s]"
-
-
-def test_interactive_keeps_the_last_warning_of_a_plot() -> None:
-    """A limit outside the data gives a warning, which the status bar of the window shows after the plot."""
-    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
-    assert not viewer.warning
-    assert viewer.change(dc.replace(viewer.values, subplots=(("Te", "ymin=1e12"),))) is None
-    assert "requested minimum" in viewer.warning
-    assert viewer.change(dc.replace(viewer.values, subplots=(("Te",),))) is None
-    assert not viewer.warning
-
-
-def test_interactive_directives_of_a_subplot() -> None:
-    """A directive replaces its old value, None removes it, and an ion or a variable is not a directive."""
-    assert interactive.get_item_directive("ymin=1e-16") == "ymin"
-    assert interactive.get_item_directive("_yscale=log") == "yscale"
-    assert interactive.get_item_directive("Fe II") is None
-    assert interactive.get_item_directive("Te") is None
-    # plotestimators reads a directive in any case
-    assert interactive.get_item_directive("YMIN=100") == "ymin"
-    assert interactive.replace_directives(("TR", "YMIN=100"), {"ymin": None}) == ("TR",)
-    subplot = ("rho", "yscale=log", "ymin=1e-16")
-    assert interactive.replace_directives(subplot, {"ymin": "2", "ymax": "3"}) == (
-        "rho",
-        "yscale=log",
-        "ymin=2",
-        "ymax=3",
-    )
-    assert interactive.replace_directives(subplot, {"ymin": None, "ymax": None}) == ("rho", "yscale=log")
-    assert interactive.replace_directives(subplot, {"yscale": "linear"}) == ("rho", "ymin=1e-16", "yscale=linear")
-    assert interactive.get_short_limits(12345.678, 23456.7) == ("12300", "23500")
-    assert interactive.get_short_limits(1.23456e-5, 2.3456e-5) == ("1.23e-05", "2.35e-05")
-
-
-def test_interactive_menu_plots_a_cell_against_time_and_a_snapshot_at_a_time() -> None:
-    """The menu of a snapshot names the cell at the pointer, and the menu of a plot against time names the time."""
-    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
-    assert viewer.values.x == "velocity"
-    assert interactive.get_snapshot_values(viewer, 1.0) is None
-    cell = interactive.get_nearest_cell(viewer, 12000.0)
-    assert cell is not None
-    assert np.isclose(viewer.modeldata.cellvelocities[cell] / 1e5, 12000.0, rtol=0.2)
-    evolution = interactive.get_evolution_values(viewer, str(cell))
-    assert interactive.is_evolution(evolution)
-    assert evolution.cells == str(cell)
-    assert (evolution.first, evolution.last) == (
-        viewer.modeldata.validtimesteps[0],
-        viewer.modeldata.validtimesteps[-1],
-    )
-    assert viewer.change(evolution) is None
-    assert interactive.get_nearest_cell(viewer, 12000.0) is None
-    snapshot = interactive.get_snapshot_values(viewer, viewer.tmids[7])
-    assert snapshot is not None
-    assert not interactive.is_evolution(snapshot)
-    assert (snapshot.first, snapshot.last) == (7, 7)
-    assert not snapshot.cells
-
-
-def reread_model_data(viewer: interactive.EstimatorViewer) -> interactive.ModelData:
-    """Read the model of a viewer again, as Reload Data does in the worker thread."""
-    from artistools.viewertools.window import clear_output_caches_of_model
-
-    clear_output_caches_of_model(viewer.modelpath, estimatorsonly=True)
-    return interactive.read_model_data(viewer.modelpath, viewer.userargs, len(viewer.tmids))
-
-
-def test_interactive_reload_keeps_the_time_range_inside_the_valid_timesteps() -> None:
-    """A reload reads the valid timesteps again.
-
-    A range of all the timesteps grows when ARTIS writes more timesteps. A different range stays inside the valid
-    timesteps.
-    """
-    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
-    validtimesteps = viewer.modeldata.validtimesteps
-    assert len(validtimesteps) > 8
-    assert viewer.change(viewer.select_timesteps(viewer.values, len(validtimesteps) - 1, 1)) is None
-    with mock.patch.object(interactive, "get_estimator_timesteps", return_value=validtimesteps[:-5]):
-        interactive.reload_model_data(viewer, reread_model_data(viewer))
-    assert viewer.modeldata.validtimesteps == validtimesteps[:-5]
-    assert (viewer.values.first, viewer.values.last) == (validtimesteps[-6], validtimesteps[-6])
-    assert viewer.draw() is None
-
-    assert viewer.change(interactive.get_evolution_values(viewer, str(viewer.modeldata.cells[0]))) is None
-    assert (viewer.values.first, viewer.values.last) == (validtimesteps[0], validtimesteps[-6])
-    with mock.patch.object(interactive, "get_estimator_timesteps", return_value=validtimesteps):
-        interactive.reload_model_data(viewer, reread_model_data(viewer))
-    assert (viewer.values.first, viewer.values.last) == (validtimesteps[0], validtimesteps[-1])
-    assert viewer.draw() is None
-
-
-def test_interactive_empty_selection_with_bins_gives_the_message() -> None:
-    """An empty cell with -xbins gave a TypeError, because the bins read the minimum of no rows.
-
-    The message gives the size of a long selection of cells and not each cell.
-    """
-    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
-    emptycell = next(cell for cell in range(1000) if cell not in viewer.modeldata.cells)
-    for xbins in ("8", "-1"):
-        message = viewer.change(dc.replace(viewer.values, cells=str(emptycell), xbins=xbins))
-        assert message is not None
-        assert message.startswith("The estimators hold no row"), message
-        assert f"the cells {emptycell}" in message
-
-    manycells = ",".join(str(cell) for cell in range(1000) if cell not in viewer.modeldata.cells)
-    message = viewer.change(dc.replace(viewer.values, cells=manycells, xmin="1e9"))
-    assert message is not None
-    assert message.startswith("The estimators hold no row"), message
-    assert len(message) < 200
-
-
-def test_interactive_cells_apply_only_where_cell_selects_the_cells() -> None:
-    """-slice, -dimensionreduce 2, and -readonlymgi select the cells, thus the window offers no -cell with them.
-
-    With -readonlymgi, plotestimators replaced -cell with the cells along the axis. The menu then plotted other cells,
-    and Page Up, Page Down, and Play changed -cell with no effect on the plot.
-    """
-    viewer = make_headless_viewer([
-        "Te",
-        str(modelpath_classic_3d),
-        "-t",
-        "5",
-        "-dimensionreduce",
-        "2",
-        "--interactive",
-    ])
-    assert viewer.isimage
-    assert not interactive.cells_apply(viewer.values)
-    for mode in ("alongaxis", "cone", "plane", "line"):
-        viewer.values = interactive.set_geometry_mode(viewer, viewer.values, mode)
-        assert not interactive.cells_apply(viewer.values), mode
-        assert viewer.step_cell(1) is None, mode
-    viewer.values = interactive.set_geometry_mode(viewer, viewer.values, "all")
-    assert interactive.cells_apply(viewer.values)
-    assert viewer.step_cell(1) is not None
-
-
-def test_interactive_subplot_types_and_suggestions() -> None:
-    """The type of a subplot sets its choices and its suggestions, and each result draws with plotestimators."""
-    viewer = make_headless_viewer([str(modelpath), "-timestep", "50", "--interactive"])
-    columns = viewer.modeldata.estimatorcolumns
-    types = interactive.get_subplot_types(columns)
-    assert types[:2] == [interactive.VARIABLES_TYPE, "populations"]
-    assert "gamma_NT" in types
-    # the families of the populations and of the initial abundances are no type of their own
-    assert not {"nnion", "nnelement", "init_X"} & set(types)
-
-    assert interactive.get_subplot_seriestype(("Fe II", "Fe III"), columns) == "populations"
-    assert interactive.get_subplot_seriestype(("Te", "yscale=log"), columns) is None
-    assert interactive.get_series_suggestions(("Te",), columns) == ["TJ", "TR"]
-    # the other ions of the element come first, and the total of the element after its ions
-    assert interactive.get_series_suggestions(("populations", "Fe II", "Fe III"), columns)[:2] == ["Fe I", "Fe IV"]
-    # a control of the card sets each directive, thus only the names show as chips
-    assert interactive.get_chip_items(("populations", "Fe II", "yscale=log", "ymin=1"), columns) == [(1, "Fe II")]
-
-    newsubplots = interactive.get_new_subplot_suggestions(
-        viewer.values.subplots, viewer.modeldata.defaultsubplots, columns
-    )
-    assert ("populations", "Fe I", "Fe II") in newsubplots
-    # the + button of a card needs no text: it adds the first suggestion, or else a common variable
-    assert (
-        interactive.get_new_subplot(viewer.values.subplots, viewer.modeldata.defaultsubplots, columns) == newsubplots[0]
-    )
-    allsuggested = [*viewer.values.subplots, *newsubplots]
-    remaining = interactive.get_new_subplot_suggestions(allsuggested, viewer.modeldata.defaultsubplots, columns)
-    while remaining:
-        allsuggested += remaining
-        remaining = interactive.get_new_subplot_suggestions(allsuggested, viewer.modeldata.defaultsubplots, columns)
-    assert interactive.get_new_subplot(allsuggested, viewer.modeldata.defaultsubplots, columns) == ("Te",)
-    aliasviewer = make_headless_viewer(["n_e", str(modelpath), "-timestep", "50", "--interactive"])
-    assert aliasviewer.values.subplots == (("nne",),)
-    # a colour image gives the card the controls of a colour scale, thus the card of an image is a new card
-    assert interactive.get_card_key(0, (("Te",),), columns, isimage=True) != interactive.get_card_key(
-        0, (("Te",),), columns
-    )
-    # a directive changes only a control of the card, thus the card stays with the keyboard focus in it
-    assert interactive.get_card_key(0, (("Te", "ymin=1000"),), columns) == interactive.get_card_key(
-        0, (("Te",),), columns
-    )
-    # a chip removes the item at its position, thus a name at a new position needs a new card
-    assert interactive.get_card_key(0, (("Te", "ymin=1", "TR"),), columns) != interactive.get_card_key(
-        0, (("Te", "TR", "ymin=1"),), columns
-    )
-
-    populations = ("populations", "Fe II", "Fe III", "ionpoptype=elpop", "yscale=log", "ymin=1e-5")
-    # only a plot of the populations takes ionpoptype=, and the names that apply to the new type stay
-    assert interactive.change_subplot_type(populations, "gamma_NT", columns) == (
-        "gamma_NT",
-        "Fe II",
-        "Fe III",
-        "yscale=log",
-    )
-    assert interactive.change_subplot_type(populations, interactive.VARIABLES_TYPE, columns) == ("Te", "yscale=log")
-    # the type selector removed ymin= and ymax= when the user selected the type that the subplot already had
-    assert interactive.change_subplot_type(populations, "populations", columns) == populations
-    # a subplot with no series left stays, and the command gives it with no item, which draws an empty frame
-    assert interactive.remove_subplot_item((("Te",), ("gamma_NT", "Fe II")), 1, 1) == (("Te",), ("gamma_NT",))
-    assert interactive.remove_subplot_item((("Te", "TR"),), 0, 0) == (("TR",),)
-    assert interactive.get_command_items(("gamma_NT", "yscale=log"), columns) == ("yscale=log",)
-
-    for subplot in (
-        interactive.change_subplot_type(populations, "gamma_NT", columns),
-        interactive.change_subplot_type(("Te",), "averageionisation", columns),
-        *newsubplots,
-    ):
-        assert viewer.change(dc.replace(viewer.values, subplots=(subplot,))) is None, subplot
-
-
-def test_interactive_ionpoptype_belongs_to_each_populations_subplot() -> None:
-    """The window sets the quantity of the ions for each populations subplot, thus --ionpoptype goes to them."""
-    tokens = [
-        "Te",
-        str(modelpath),
-        "--timestep",
-        "50",
-        "--plot",
-        "populations",
-        "Fe II",
-        "Fe III",
-        "--ionpoptype",
-        "elpop",
-    ]
-    viewer = make_headless_viewer([*tokens, "--interactive"])
-    assert viewer.values.subplots == (("Te",), ("populations", "Fe II", "Fe III", "ionpoptype=elpop"))
-    assert "--ionpoptype" not in viewer.get_plot_tokens()
-    # the default quantity needs no directive, and each subplot keeps its own
-    assert viewer.parser.get_default("poptype") == interactive.DEFAULT_POPTYPE
-    subplots = (("populations", "Fe II"), ("populations", "Fe III", "ionpoptype=totalpop"))
-    assert interactive.move_poptype_to_subplots(
-        subplots, (("--ionpoptype", ("elpop",)),), viewer.modeldata.estimatorcolumns
-    ) == ((("populations", "Fe II", "ionpoptype=elpop"), ("populations", "Fe III", "ionpoptype=totalpop")), ())
-    # with no populations subplot the option stays, thus a populations subplot that the user adds later takes it
-    rows = (("--ionpoptype", ("elpop",)),)
-    assert interactive.move_poptype_to_subplots((("Te",),), rows, viewer.modeldata.estimatorcolumns) == (
-        (("Te",),),
-        rows,
-    )
-    teviewer = make_headless_viewer([
-        "Te",
-        str(modelpath),
-        "--timestep",
-        "50",
-        "--ionpoptype",
-        "elpop",
-        "--interactive",
-    ])
-    assert "--ionpoptype" in teviewer.get_plot_tokens()
-
-
-def test_interactive_geometry_modes_draw() -> None:
-    """Each way to select the cells of a 3D model gives a command that plotestimators draws."""
-    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
-    for mode in interactive.GEOMETRY_MODES:
-        values = interactive.set_geometry_mode(viewer, viewer.values, mode)
-        assert interactive.get_geometry_mode(values) == mode
-        assert viewer.change(values) is None, (mode, viewer.get_command())
-    # a colour image is a snapshot, thus a plot against time becomes one
-    assert viewer.change(interactive.set_geometry_mode(viewer, viewer.values, "cells")) is None
-    evolution = interactive.get_evolution_values(viewer, str(viewer.modeldata.cells[0]))
-    assert viewer.change(evolution) is None
-    image = interactive.set_geometry_mode(viewer, viewer.values, "plane")
-    assert not interactive.is_evolution(image)
-    assert not image.cells
-    assert viewer.change(image) is None
-
-    assert interactive.get_slice_parts("z=-0.2c") == ("xy", "-0.2c")
-    assert interactive.get_slice_parts("xz") == ("xz", "")
-    # plotestimators reads these forms, and the plane box showed xy for each of them
-    assert interactive.get_slice_parts("zx") == ("xz", "")
-    assert interactive.get_slice_parts("zy") == ("yz", "")
-    assert interactive.get_slice_parts(" z = 0.1c ") == ("xy", "0.1c")
-    assert interactive.get_slice_text("xz", "5000km/s") == "y=5000km/s"
-    assert interactive.get_line_axis("z=0,y=0") == "x"
-    assert interactive.get_line_label("x", "z=0,y=0") == "x (y=z=0)"
-    assert interactive.get_line_label("x", "z=0.1c,y=0") == "x (y=0, z=0.1c)"
-    assert interactive.get_line_label("z", "z=0.1c,y=0") == "z (x=y=0)"
-
-    # the text below the controls gives the range of each coordinate that the selected cells cover. The test model
-    # has 10 cells on each axis from -0.09647c to 0.09647c, thus each cell is 0.01929c wide
-    def describe(mode: str, slicetext: str | None = None, dimensions: int = 3) -> str:
-        values = interactive.set_geometry_mode(viewer, viewer.values, mode)
-        if slicetext is not None:
-            values = dc.replace(values, otheroptions=(("--slice", (slicetext,)),))
-        modelmeta = viewer.modelmeta | {"dimensions": dimensions}
-        return interactive.get_geometry_description(values, modelmeta, "-y", 30.0)
-
-    assert describe("alongaxis") == (
-        "The half line of cells from the centre along the -y axis, with 0 ≤ x < 0.01929c, 0 ≤ z < 0.01929c, and"
-        " -0.09647c ≤ y < 0."
-    )
-    assert describe("cone") == (
-        "The cells whose centre lies within 15° of the -y half-axis: -y_c ≥ √(x_c² + z_c²) / tan 15°."
-    )
-    # 1 / tan 90° is not 0 in floating point, thus the cone of 180° leaves out the central plane
-    values180 = interactive.set_geometry_mode(viewer, viewer.values, "cone")
-    assert interactive.get_geometry_description(values180, viewer.modelmeta, "+z", 180.0) == (
-        "The cells on the side of the +z half-axis: z_c > 0, and the cell at the centre."
-    )
-    assert describe("plane") == "The 2D plane slice of cells with 0 ≤ z < 0.01929c, as an image in x and y."
-    # a position between two edges selects the layer that holds it, in the unit of the position
-    assert describe("plane", "z=0.02c").startswith("The 2D plane slice of cells with 0.01929c ≤ z < 0.03859c")
-    assert describe("plane", "y=5000km/s").startswith("The 2D plane slice of cells with 0 ≤ y < 5784.04 km/s")
-    # plotestimators rejects a position outside the grid. The text gave a layer inside the grid, or an IndexError
-    for position in ("-0.2c", "0.2c", "-1e5km/s"):
-        assert "outside the grid of |z| <" in describe("plane", f"z={position}"), position
-    assert describe("line", "z=0.09c,y=-0.02c") == (
-        "The full line of cells through the grid along the x axis with -0.03859c ≤ y < -0.01929c and"
-        " 0.07717c ≤ z < 0.09647c, against v_x."
-    )
-    # a line keeps a -x of the user, e.g. time, and the text named v_x
-    linevalues = dc.replace(viewer.values, x="time", otheroptions=(("--slice", ("z=0,y=0",)),))
-    assert interactive.get_geometry_description(linevalues, viewer.modelmeta, "+z", 30.0).endswith("against -x time.")
-    assert "Δr = 0.01929c" in describe("average")
-    assert describe("projection").startswith(
-        "Pixel (i, j) is the mean of the line of cells along z in layer i of x and layer j of y. Each layer is"
-        " 0.01929c wide."
-    )
-    assert "n_element for an average ion charge" in describe("projection")
-    assert "√(r² + z²)" in describe("average", dimensions=1)
-    # plotestimators leaves out the corners of the grid, thus "all the cells" of a 3D model was wrong
-    assert describe("all").startswith("The cells whose centre has √(x_c² + y_c² + z_c²) ≤ v_max = 0.09647c.")
-    assert not describe("all", dimensions=1)
-    # an odd number of cells has its middle cell edge at -Δ/2, which plotestimators takes for a half line
-    oddgrid = {"ncoordgridx": 11, "ncoordgridy": 11, "ncoordgridz": 11, "vmax_cmps": 2297436514.4767036}
-    oddvalues = interactive.set_geometry_mode(viewer, viewer.values, "alongaxis")
-    oddtext = interactive.get_geometry_description(oddvalues, viewer.modelmeta | oddgrid, "+z", 30.0)
-    assert "-0.006967c ≤ x < 0.006967c" in oddtext
-    rows = (("--slice", ("xy",)), ("--coneangle", ("20",)))
-    assert viewercore.set_row_values(rows, {"--slice": None, "--axis": ("-x",), "--coneangle": ("40",)}) == (
-        ("--coneangle", ("40",)),
-        ("--axis", ("-x",)),
-    )
-    # the axes of a colour image are velocities, and plotestimators rejected an image of a snapshot against rho
-    rhovalues = viewer.set_xvariable(interactive.set_geometry_mode(viewer, viewer.values, "all"), "rho")
-    assert viewer.change(rhovalues) is None
-    for mode in ("plane", "average"):
-        assert viewer.change(interactive.set_geometry_mode(viewer, rhovalues, mode)) is None, mode
-
-    # a 1D model has the average around the z axis, and the selector of the window did not offer it
-    assert interactive.get_geometry_choices(1) == ["all", "cells", "average"]
-    viewer1d = make_headless_viewer(["Te", str(modelpath), "--timestep", "50", "--interactive"])
-    assert viewer1d.change(interactive.set_geometry_mode(viewer1d, viewer1d.values, "average")) is None
-
-    # a projection averages each line of cells along its axis, thus it needs a 3D model and no -slice
-    projection = dc.replace(viewer.values, otheroptions=(("--projection", ("y",)),))
-    assert viewer.change(projection) is None
-    assert interactive.get_geometry_mode(viewer.values) == "projection"
-    assert [frame.get_xlabel() for frame in interactive.get_plot_frames(viewer.fig)] == ["v$_x$ [$c$]"]
-    rejected = viewer.change(dc.replace(projection, otheroptions=(("--projection", ("y",)), ("--slice", ("xy",)))))
-    assert rejected is not None
-    assert "--slice" in rejected
-    onedprojection = dc.replace(viewer1d.values, otheroptions=(("--projection", ("z",)),))
-    message = viewer1d.change(onedprojection)
-    assert message is not None
-    assert "needs a 3D model" in message
-
-
-def test_interactive_smoothing_and_section_rows() -> None:
-    """A smoothing draws, and the rows of the sections and of the output stay in the command.
-
-    The window dropped --dpi, thus a PDF file lost the resolution of its raster parts. The table hid --verbose, thus
-    the user could not remove it.
-    """
-    viewer = make_headless_viewer([
-        "Te",
-        str(modelpath_classic_3d),
-        "-t",
-        "5",
-        "--dpi",
-        "300",
-        "--verbose",
-        "--interactive",
-    ])
-    assert {"--dpi", "--verbose"} <= set(viewer.get_plot_tokens())
-    assert "--verbose" not in viewer.modelformatflags
-    for mode, numbers in (("movingavg", (3,)), ("savgol", (5, 2)), ("none", ())):
-        rows = interactive.set_smoothing(viewer.values.otheroptions, mode, (*numbers, 2)[:2] if numbers else (5, 2))
-        assert interactive.get_smoothing(rows) == (mode, numbers)
-        assert viewer.change(dc.replace(viewer.values, otheroptions=(*rows, ("--notitle", ())))) is None
-    assert "--notitle" in viewer.get_plot_tokens()
-    # the option table shows the rows that a section sets too, and only the row of --classicartis stays out
-    assert "--notitle" not in viewer.modelformatflags
-    assert viewer.modelformatflags == {"--classicartis"}
-
-
-def test_interactive_level_populations() -> None:
-    """A model with NLTE populations offers the level populations, with the lowest NLTE levels of each ion.
-
-    The choices came from the atomic data, thus they gave levels with no NLTE population, e.g. Fe V 3 and each level
-    of Ni. A model with no NLTE populations offered averageexcitation, which reads them.
-    """
-    viewer = make_headless_viewer([str(modelpath), "-timestep", "50", "--interactive"])
-    assert viewer.nltetypes == ("averageexcitation", "levelpopulation", "levelpopulation_dn_on_dvel")
-    columns = viewer.modeldata.estimatorcolumns
-    assert "levelpopulation" in interactive.get_subplot_types(columns, viewer.nltetypes)
-    levelnames = interactive.get_level_names(viewer.modelpath, 50, viewer.modeldata.cells[0])
-    assert levelnames[:2] == ["Fe I 0", "Fe I 1"]
-    # the NLTE populations hold only the ground level of the top ion, and no level of Ni
-    assert "Fe V 0" in levelnames
-    assert "Fe V 1" not in levelnames
-    assert not any(name.startswith("Ni") for name in levelnames)
-    # timestep 0 comes before the first NLTE timestep, and the other timesteps of the cell then give the levels
-    assert interactive.get_level_names(viewer.modelpath, 0, viewer.modeldata.cells[0]) == levelnames
-    subplot = interactive.change_subplot_type(("Te",), "levelpopulation", columns, levelnames)
-    assert subplot == ("levelpopulation", "Fe I 0")
-    assert interactive.get_series_suggestions(subplot, columns, levelnames)[:2] == ["Fe I 1", "Fe I 2"]
-    for name in (subplot[1], "Fe V 0", levelnames[-1]):
-        assert viewer.change(dc.replace(viewer.values, subplots=(("levelpopulation", name),))) is None, name
-
-    classicviewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
-    assert not classicviewer.nltetypes
-    assert "averageexcitation" not in interactive.get_subplot_types(classicviewer.modeldata.estimatorcolumns)
-    # each series type of plotestimators has a family of columns, or it reads the NLTE populations
-    assert set(plotestimators.SERIESTYPES) <= {*interactive.SPECIES_FAMILIES, *interactive.NLTE_SERIESTYPES}
-
-
-def test_subplots_per_row_fill_each_row() -> None:
-    """-subplotsperrow puts the subplots in rows from the left, and the lowest subplot of each column has x labels.
-
-    A column whose last place is empty takes its x labels on the subplot above that place.
-    """
-    viewer = make_headless_viewer(["Te", str(modelpath), "-timestep", "50", "--interactive"])
-    subplots = (("Te",), ("TR",), ("nne",))
-    for count, expectedcolumns in ((None, 1), (2, 2), (5, 3)):
-        rows = () if count is None else (("-subplotsperrow", (str(count),)),)
-        assert viewer.change(dc.replace(viewer.values, subplots=subplots, otheroptions=rows)) is None, count
-        frames = interactive.get_plot_frames(viewer.fig)
-        assert len(frames) == 3
-        lefts = sorted({round(frame.get_position().x0, 6) for frame in frames})
-        assert len(lefts) == expectedcolumns, count
-        haslabel = [bool(frame.get_xlabel()) for frame in frames]
-        assert haslabel == [index + expectedcolumns >= 3 for index in range(3)], count
-
-
-def test_interactive_image_panels_name_their_subplot() -> None:
-    """Each panel of a colour image names its subplot, thus Set current range finds the colour scale of each subplot.
-
-    A subplot of two ions gives two panels, and a subplot that an image cannot show gives none.
-    """
-    viewer = make_headless_viewer([
-        "Te",
-        str(modelpath_classic_3d),
-        "-t",
-        "5",
-        "-slice",
-        "xy",
-        "-plot",
-        "populations",
-        "Fe II",
-        "Fe III",
-        "--interactive",
-    ])
-    assert viewer.isimage
-    labels = [ax.get_label() for ax in interactive.get_plot_frames(viewer.fig)]
-    assert labels == [plotestimators.get_panel_axes_label(index) for index in (0, 1, 1)]
 
 
 def test_projection_is_the_mean_of_each_line_of_cells() -> None:
@@ -5647,101 +4483,6 @@ def test_projection_is_the_mean_of_each_line_of_cells() -> None:
     assert np.isclose(grid[1, 0], (1000.0 * 1.0 + 5000.0 * 3.0) / 4.0, rtol=1e-12)
     assert np.isclose(grid[0, 1], 7000.0, rtol=1e-12)
     assert np.isnan(grid[0, 0])
-
-
-def test_image_shows_the_average_ionisation() -> None:
-    """A colour image shows the average ion charge of an element. The image left out a subplot of averageionisation.
-
-    The mean over the cells of a pixel takes the number density of the element as a weight, as the line does. Thus
-    the pixel gives the charge of each nucleus of the pixel.
-    """
-    viewer = make_headless_viewer([
-        "Te",
-        str(modelpath_classic_3d),
-        "-t",
-        "5",
-        "-slice",
-        "xy",
-        "-plot",
-        "averageionisation",
-        "Fe",
-        "--interactive",
-    ])
-    frames = interactive.get_plot_frames(viewer.fig)
-    assert [frame.get_label() for frame in frames] == [plotestimators.get_panel_axes_label(index) for index in (0, 1)]
-    chargearray = frames[1].collections[0].get_array()
-    assert chargearray is not None
-    charges = np.ma.compressed(chargearray)
-    assert charges.size
-    assert np.all((charges >= 0.0) & (charges <= 26.0))
-
-    # two cells in one pixel: 1e3 Fe nuclei at a charge of 1 and 1e5 Fe nuclei at a charge of 3
-    dfcells = pl.DataFrame({
-        "nnelement_Fe": [1e3, 1e5],
-        "nnion_Fe_II": [1e3, 0.0],
-        "nnion_Fe_IV": [0.0, 1e5],
-        "deltavol_deltat": [1.0, 1.0],
-    })
-    panels = plotestimators.get_image_panels([[["averageionisation", ["Fe"]]]], dfcells.columns, "absolute")
-    mean = dfcells.select(plotestimators.get_panel_means(panels)).item()
-    assert np.isclose(mean, (1e3 * 1 + 1e5 * 3) / (1e3 + 1e5), rtol=1e-12)
-
-
-def test_interactive_initial_abundance_of_an_isotope() -> None:
-    """An isotope such as Fe52 has its own column of initial abundances, and not the column of its element.
-
-    plotestimators removed the mass number and plotted the abundance of Fe with the label Fe52.
-    """
-    viewer = make_headless_viewer([str(modelpath), "-timestep", "50", "--interactive"])
-    assert {"Fe52", "Fe"} <= set(interactive.get_species_choices("initabundances", viewer.modeldata.estimatorcolumns))
-    assert viewer.change(dc.replace(viewer.values, subplots=(("initabundances", "Fe52", "Fe"),))) is None
-    ydata = {line.get_label(): np.asarray(line.get_ydata()) for ax in viewer.fig.axes for line in ax.get_lines()}
-    fe52 = at.inputmodel.get_modeldata(modelpath)[0].select("X_Fe52").collect().item()
-    assert np.allclose(ydata["Fe52"], fe52, rtol=1e-6, atol=1e-30)
-    assert not np.allclose(ydata["Fe52"], ydata["Fe"], rtol=1e-6, atol=1e-30)
-
-
-def test_interactive_x_variable_with_no_value_names_the_variable() -> None:
-    """A column with no value in the rows of the plot, e.g. tmid_days_prevtimestep at timestep 0, gives its name.
-
-    The message said that the estimators held no row, although the rows were there.
-    """
-    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
-    first = viewer.modeldata.validtimesteps[0]
-    message = viewer.change(dc.replace(viewer.values, x="tmid_days_prevtimestep", first=first, last=first))
-    assert message is not None
-    assert "tmid_days_prevtimestep has no value" in message
-
-
-def test_variable_menu_groups_the_columns() -> None:
-    """The menu of the variables gives the temperatures first, then the other variables, then a submenu per family.
-
-    A species column belongs to a subplot of its series type, and a column of the grid is not a variable.
-    """
-    columns = ("timestep", "modelgridindex", "Te", "TR", "nne", "rho", "heating_ff", "heating_bf", "nnion_Fe_II")
-    groups = interactive.get_variable_menu_groups(columns)
-    assert groups[:2] == (("", ("Te", "TR")), ("", ("nne", "rho")))
-    assert len(groups) == 3
-    assert groups[2][0].endswith("(heating_…)")
-    assert groups[2][1] == ("heating_bf", "heating_ff")
-
-
-def test_card_state_follows_its_subplot() -> None:
-    """A collapsed card and a card with an open y axis stay with their subplot after each change of the subplots.
-
-    The window moved the rows only for a move, an insert, or a delete of the window. After Undo of a delete, the
-    window collapsed a different card.
-    """
-    before = (("Te",), ("TR",), ("nne",))
-    # a delete of the first subplot, then Undo of the delete
-    assert interactive.get_moved_rows(before, before[1:], {2}) == {1}
-    assert interactive.get_moved_rows(before[1:], before, {1}) == {2}
-    # a move of the last subplot to the top
-    assert interactive.get_moved_rows(before, (("nne",), ("Te",), ("TR",)), {0, 2}) == {0, 1}
-    # a new y scale changes the items of the subplot, and the subplot keeps its row
-    assert interactive.get_moved_rows(before, (("Te",), ("TR", "yscale=log"), ("nne",)), {1}) == {1}
-    # the change removes the subplot of the row
-    assert not interactive.get_moved_rows(before, before[1:], {0})
 
 
 def test_time_axis_takes_no_automatic_bins() -> None:
@@ -5771,12 +4512,17 @@ def test_time_axis_takes_no_automatic_bins() -> None:
     assert snapshotargs.xbins == 25
 
 
-def test_multiplot_leaves_out_a_timestep_with_no_estimators(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_multiplot_leaves_out_a_timestep_with_no_estimators(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    get_cell_texts: Callable[[str], list[str]],
+    copy_model_inputs: Callable[[Path, Path, Sequence[str]], None],
+) -> None:
     """A run that stopped early has no estimators for its last timesteps, and the other frames still give a product.
 
     The first frame with no row stopped the command, thus --multiplot and --makegif wrote no frame.
     """
-    copy_model_inputs(tmp_path)
+    copy_model_inputs(modelpath, tmp_path, [])
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
     (tmp_path / "estimators_0000.out").write_text(
         "".join(celltext for celltext in celltexts if int(celltext.split()[1]) <= 10), encoding="utf-8"
@@ -5875,7 +4621,7 @@ def test_snapshot_of_a_model_of_one_cell_has_the_name_of_a_snapshot(tmp_path: Pa
 def get_bin_value(seriestype: str, poptype: str, columns: dict[str, list[float]]) -> float:
     """Return the value of the one x bin of an ion series of Fe II over two cells with equal volumes."""
     from artistools.estimators.plotestimators import get_line_points
-    from artistools.estimators.plotestimators import plot_multi_ion_series
+    from artistools.estimators.plotestimators import get_multi_ion_series_plans
 
     estimators = pl.LazyFrame({
         "timestep": [0, 0],
@@ -5887,7 +4633,7 @@ def get_bin_value(seriestype: str, poptype: str, columns: dict[str, list[float]]
         **columns,
     })
     args = argparse.Namespace(classicartis=True, colorbyion=False)
-    (plan,) = plot_multi_ion_series({}, seriestype, ["Fe II"], estimators, modelpath, poptype, args)
+    (plan,) = get_multi_ion_series_plans({}, seriestype, ["Fe II"], estimators, modelpath, poptype, args)
     return float(get_line_points(plan.dfseries, args).collect()["yvalue_binned"].item())
 
 
@@ -5945,12 +4691,14 @@ def test_exportmassfractions_leaves_out_an_empty_cell(tmp_path: Path, capsys: py
     assert np.isclose(sum(float(line.split()[2]) for line in lines[1:]), 1.0)
 
 
-def test_a_model_with_no_estimators_gives_a_message(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_a_model_with_no_estimators_gives_a_message(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], copy_model_inputs: Callable[[Path, Path, Sequence[str]], None]
+) -> None:
     """A model with no estimator files has no column Te, and the plot read Te as tellurium and drew an empty subplot.
 
     exportmassfractions stopped on an assert with no message, and --classicartis on such a folder did the same.
     """
-    copy_model_inputs(tmp_path)
+    copy_model_inputs(modelpath, tmp_path, [])
 
     with pytest.raises(SystemExit):
         at.estimators.plot(
@@ -6022,14 +4770,16 @@ def test_classic_ion_names_take_the_ion_stage_of_the_log(tmp_path: Path) -> None
     assert np.isclose(outdict["nnion_Co_II"], 20.0)
 
 
-def test_classic_restart_repeats_its_first_timestep(tmp_path: Path) -> None:
+def test_classic_restart_repeats_its_first_timestep(
+    tmp_path: Path, copy_model_inputs: Callable[[Path, Path, Sequence[str]], None]
+) -> None:
     """A restarted job writes its first timestep again, and the row of the earlier job stays.
 
     The reader refused the repeat as two folders with no offset, although both logs gave their first timestep.
     """
     from artistools.estimators.estimators_classic import read_classic_estimators
 
-    modelpath = build_classic_restart_model(tmp_path, secondfolderfirsttimestep=1)
+    modelpath = build_classic_restart_model(tmp_path, copy_model_inputs, secondfolderfirsttimestep=1)
     (tmp_path / "job0" / "output_0-0.txt").write_text("[debug] update_packets: updating packet 0 for timestep 0\n")
 
     def get_rows(temperature: str) -> str:
@@ -6051,7 +4801,10 @@ def test_classic_restart_repeats_its_first_timestep(tmp_path: Path) -> None:
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_estimator_print_data_gives_the_drawn_values(
-    mockplot: mock.MagicMock, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    mockplot: mock.MagicMock,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+    read_data_file: Callable[[Path | io.StringIO], pl.DataFrame],
 ) -> None:
     """--print_data must give the values of the drawn line, thus a script gets the plot as numbers."""
     at.estimators.plot(
@@ -6061,7 +4814,7 @@ def test_estimator_print_data_gives_the_drawn_values(
     headerstart = output.rindex("\n", 0, output.index(" velocity_kmps ")) + 1
     # an empty line separates the table of the points from the table _summary
     pointstext, summarytext = output[headerstart:].split("\n\n", 1)
-    dftable = pl.read_csv(io.StringIO(pointstext), separator=" ", null_values="nan", comment_prefix="#")
+    dftable = read_data_file(io.StringIO(pointstext))
     assert summarytext.startswith("timestep timedays series subplot point_count ")
 
     assert set(dftable["series"]) == {"Te"}
@@ -6092,9 +4845,7 @@ def test_estimator_print_data_gives_the_drawn_values(
     )
     output = capsys.readouterr().out
     headerstart = output.rindex("\n", 0, output.index(" velocity_kmps ")) + 1
-    dfmarkertable = pl.read_csv(
-        io.StringIO(output[headerstart:].split("\n\n", 1)[0]), separator=" ", null_values="nan", comment_prefix="#"
-    )
+    dfmarkertable = read_data_file(io.StringIO(output[headerstart:].split("\n\n", 1)[0]))
     dfline = dfmarkertable.filter(pl.col("points") == "line")
     assert dfline.height == dftable.height
     assert np.allclose(dfline["value"], dftable["value"], rtol=1e-6, atol=0)
@@ -6115,7 +4866,9 @@ def test_listvariables_print_data_gives_the_units_of_each_column(capsys: pytest.
     assert "fraction" in descriptions["heating_heating_dep/total_dep"]
 
 
-def test_summary_table_agrees_with_the_summary_lines(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_summary_table_agrees_with_the_summary_lines(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """The table _summary of --write_data gives the numbers of each summary line, thus an agent need not parse the line.
 
     The maximum must also agree with the bins of the table of the plotted points, which a different query makes.
@@ -6131,14 +4884,9 @@ def test_summary_table_agrees_with_the_summary_lines(tmp_path: Path, capsys: pyt
     captured = capsys.readouterr()
     output = captured.out + captured.err
     (summaryfile,) = tmp_path.glob("*_summary.txt")
-    dfsummary = pl.read_csv(summaryfile, separator=" ", null_values="nan", comment_prefix="#")
+    dfsummary = read_data_file(summaryfile)
     assert dfsummary["series"].to_list() == ["Te", "rho"]
-    dfpoints = pl.read_csv(
-        summaryfile.with_name(summaryfile.name.replace("_summary", "")),
-        separator=" ",
-        null_values="nan",
-        comment_prefix="#",
-    )
+    dfpoints = read_data_file(summaryfile.with_name(summaryfile.name.replace("_summary", "")))
     for row in dfsummary.iter_rows(named=True):
         match = re.search(
             rf"{row['series']}: subplot 0, (\d+) points, .*, max (\S+) {re.escape(row['units'])} at x = (\S+),"
@@ -6188,7 +4936,9 @@ def test_element_group_mass_fractions_take_only_the_elements_of_the_group() -> N
     assert "init_X_actinides" not in dfgroups.columns
 
 
-def test_dirbin_selects_the_cells_and_a_mass_fraction_takes_the_mass_weight(tmp_path: Path) -> None:
+def test_dirbin_selects_the_cells_and_a_mass_fraction_takes_the_mass_weight(
+    tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """-dirbin 50 keeps the cells with 0 ≤ cos θ ≤ 0.2 at the centre, and init_X_Fe uses the cell masses as weights.
 
     Te uses the volume as the weight. A mean of a mass fraction with that weight gave too much weight to the cells of
@@ -6204,9 +4954,9 @@ def test_dirbin_selects_the_cells_and_a_mass_fraction_takes_the_mass_weight(tmp_
         write_data=True,
     )
     (summaryfile,) = tmp_path.glob("*_summary.txt")
-    dfsummary = pl.read_csv(summaryfile, separator=" ", null_values="nan", comment_prefix="#")
+    dfsummary = read_data_file(summaryfile)
 
-    _, modelmeta = at.get_modeldata(modelpath_classic_3d)
+    _, modelmeta = at.scan_modeldata(modelpath_classic_3d)
     dfcells = (
         at.estimators
         .scan_estimators(modelpath_classic_3d, timestep=(timestep,), join_modeldata=True)
@@ -6234,3 +4984,23 @@ def test_dirbin_selects_the_cells_and_a_mass_fraction_takes_the_mass_weight(tmp_
     assert not np.isclose(massmean, volumemean, rtol=1e-2)
     assert np.isclose(rowfe["value_mean"], massmean, rtol=1e-6)
     assert np.isclose(rowte["value_mean"], temean, rtol=1e-6)
+
+
+def test_default_plotitem_keeps_estimator_columns_named_like_elements() -> None:
+    """Te and W are estimator names as well as element symbols, so a real column must win over the element reading."""
+    from artistools.estimators.plotestimators import get_default_plotitem_skip_reason
+
+    estimatorcolumns = ["timestep", "modelgridindex", "Te", "TR", "W", "nne", "rho", "nnelement_Fe"]
+
+    for plotitem in (["Te"], ["W"], ["TR"], ["rho"], ["nne"], [["averageionisation", ["Fe"]]]):
+        assert get_default_plotitem_skip_reason(plotitem, estimatorcolumns) is None, plotitem
+
+    # an element that the model does not contain is still dropped
+    assert get_default_plotitem_skip_reason([["averageionisation", ["Sr"]]], estimatorcolumns) == (
+        "the estimators have no Sr"
+    )
+    assert get_default_plotitem_skip_reason([["populations", ["Sr I", "Sr II"]]], estimatorcolumns) is not None
+
+    # initabundances/initmasses come from the input model file, so they must not be gated on estimator columns
+    assert get_default_plotitem_skip_reason([["initabundances", ["Sr", "Ni_stable"]]], estimatorcolumns) is None
+    assert get_default_plotitem_skip_reason([["initmasses", ["Sr", "Ni_56"]]], estimatorcolumns) is None

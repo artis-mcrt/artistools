@@ -9,17 +9,27 @@ from functools import cache
 from functools import partial
 from pathlib import Path
 
-from artistools.misc.cliutils import dashes_arg
-from artistools.misc.cliutils import LINESTYLE_ALIASES
-from artistools.misc.cliutils import LINESTYLE_NAMES
-from artistools.misc.cliutils import SERIES_DEFAULT
-from artistools.misc.fileio import without_compressed_extension
-from artistools.misc.remote import is_remote_path
-from artistools.misc.remote import split_remote_path
+from artistools.misc import dashes_arg
+from artistools.misc import get_artis_model_folders
+from artistools.misc import get_file_metadata
+from artistools.misc import get_metadata_label
+from artistools.misc import get_model_name
+from artistools.misc import is_remote_path
+from artistools.misc import LINESTYLE_ALIASES
+from artistools.misc import LINESTYLE_NAMES
+from artistools.misc import resolve_modelpath
+from artistools.misc import SERIES_DEFAULT
+from artistools.misc import split_remote_path
+from artistools.misc import without_compressed_extension
 from artistools.viewertools.application import add_recent_model
 from artistools.viewertools.application import get_recent_models
 from artistools.viewertools.application import set_drop_handler
+from artistools.viewertools.core import get_path_colours
+from artistools.viewertools.core import get_row_values
+from artistools.viewertools.core import get_series_style
+from artistools.viewertools.core import OptionRows
 from artistools.viewertools.core import SERIES_STYLE_FLAGS
+from artistools.viewertools.core import set_series_rows
 from artistools.viewertools.widgets import copy_text
 from artistools.viewertools.widgets import get_accent_colour
 from artistools.viewertools.widgets import get_message_colours
@@ -853,7 +863,7 @@ class SeriesRow(t.NamedTuple):
 
 
 class ReferenceData(t.NamedTuple):
-    """The reference data of the series of a viewer, e.g. the observed spectra."""
+    """The reference data of the series of a viewer, e.g. the reference spectra, and the rules of its command."""
 
     # the kind of one series, e.g. "reference spectrum"
     kind: str
@@ -861,7 +871,95 @@ class ReferenceData(t.NamedTuple):
     folder: Path
     # return the file of a name in the working folder or in the reference data, or None
     find: "Callable[[str], Path | None]"
+    # return True if a path names a file of reference data and not an ARTIS model
+    is_reference: "Callable[[str], bool]"
+    # the series style options of a series of reference data, e.g. a light curve of markers has no line style
+    styleflags: tuple[str, ...]
     example: str
+
+
+# the paths of a command that gives no path, which reads the model of the working folder
+DEFAULT_SERIES_PATHS: t.Final = (".",)
+
+
+def is_model_path(path: str) -> bool:
+    """Return True if the path of a series names an ARTIS model. A plot needs one model at least."""
+    return bool(get_artis_model_folders([path]))
+
+
+def get_series_full_path(reference: ReferenceData, path: str) -> Path:
+    """Return the full path of the folder or the file of a series, e.g. of "." or of a name of a reference file.
+
+    Two spellings of one series, e.g. "." and the full path of the working folder, then give the same path. A model
+    on a different host keeps its path.
+    """
+    if reference.is_reference(path):
+        return (reference.find(path) or Path(path)).resolve()
+    return resolve_modelpath(path)
+
+
+def get_series_item_text(reference: ReferenceData, path: str) -> str:
+    """Return the text of a path in the list of series: the kind and the full path.
+
+    The list shortens a long path in the middle, thus the text keeps the start and the end of the path.
+    """
+    if reference.is_reference(path):
+        return f"Reference: {(reference.find(path) or Path(path)).absolute()}"
+    return f"Model: {path if is_remote_path(path) else Path(path).absolute()}"
+
+
+def get_series_name(reference: ReferenceData, path: str) -> str:
+    """Return the legend label of a series with no --label, with no time in the label of a model.
+
+    A series of reference data takes the label of the command, thus the list and the legend show the same label.
+    """
+    if not reference.is_reference(path):
+        return get_model_name(path)
+    filepath = reference.find(path)
+    return get_metadata_label(get_file_metadata(filepath) if filepath is not None else {}, path)
+
+
+def get_series_colours(reference: ReferenceData, paths: "Sequence[str]", rows: OptionRows) -> dict[str, str]:
+    """Return the colour of each series, as the command gives it with the --color of the option rows."""
+    return get_path_colours(paths, [reference.is_reference(path) for path in paths], rows)
+
+
+def make_series_rows(reference: ReferenceData, paths: "Sequence[str]", rows: OptionRows) -> list[SeriesRow]:
+    """Return a row of the list for each series, with the style of the series in the option rows."""
+    import matplotlib.colors as mplcolors
+
+    # a command can give one model two times, and the copies of it are still one model
+    models = list(dict.fromkeys(path for path in paths if is_model_path(path)))
+    colours = get_series_colours(reference, paths, rows)
+    seriesrows: list[SeriesRow] = []
+    for path in paths:
+        style = get_series_style(rows, paths, path)
+        itemtext = get_series_item_text(reference, path)
+        seriesrows.append(
+            SeriesRow(
+                path=path,
+                name=style["--label"] or get_series_name(reference, path),
+                labelled=style["--label"] is not None,
+                itemtext=itemtext,
+                tooltip=itemtext,
+                swatch=make_series_swatch(mplcolors.to_hex(colours[path]), style),
+                removereason=(
+                    "The plot needs one ARTIS model at least. Add a different model first" if models == [path] else None
+                ),
+                mark=None,
+                extraactions=(),
+            )
+        )
+    return seriesrows
+
+
+def get_session_tokens(tokens: "Sequence[str]", paths: "Sequence[str]") -> list[str]:
+    """Return the command tokens that open a window again at the next start.
+
+    A command with no path reads the working folder, and the next start can be in a different folder. Thus the tokens
+    then start with the full path of the working folder.
+    """
+    return [str(Path.cwd()), *tokens] if tuple(paths) == DEFAULT_SERIES_PATHS else list(tokens)
 
 
 def get_reference_names(folder: Path) -> list[str]:
@@ -892,14 +990,18 @@ class SeriesListActions(t.NamedTuple):
     """The functions of a viewer that the list of series calls."""
 
     get_paths: "Callable[[], Sequence[str]]"
+    # return the rows of the option table, which hold the style of each series, e.g. --label
+    get_rows: "Callable[[], OptionRows]"
     # apply a new list of paths, e.g. a new order, an added path, or a removed path
     apply_paths: "Callable[[Sequence[str]], None]"
-    edit_properties: "Callable[[str], None]"
-    # return the full path of a series, e.g. of ".", thus two spellings of one series give one row
-    get_full_path: "Callable[[str], Path]"
-    # return True for a model folder. A plot needs one model at least
-    is_model: "Callable[[str], bool]"
+    # apply new rows of the option table, e.g. a new --label of a series. The flag is True for a change that makes a
+    # new step of Undo
+    apply_rows: "Callable[[OptionRows, bool], None]"
     show_error: "Callable[[str], None]"
+    # give a row the parts of one viewer, e.g. a mark
+    extend_row: "Callable[[SeriesRow], SeriesRow] | None" = None
+    # return the part of the values that extend_row shows, thus a change of that part makes the rows again
+    get_extrakey: "Callable[[], object] | None" = None
 
 
 def add_series_list(
@@ -909,7 +1011,7 @@ def add_series_list(
     listtooltip: str,
     reference: ReferenceData,
     actions: SeriesListActions,
-) -> "Callable[[object, Callable[[], Sequence[SeriesRow]]], None]":
+) -> "Callable[[], None]":
     """Add the list of the series of a viewer, with the row that adds a model or a file of reference data.
 
     Each row shows the number, the image of the line, the name, and the path of a series, and buttons that move it
@@ -917,9 +1019,11 @@ def add_series_list(
     action. A drag or Alt-Up and Alt-Down change the order. A folder or a file that the user drops on the window adds a
     series.
 
-    Return the function that shows the rows. It takes a key of the parts of the values that the rows show, and it
-    makes the rows again only for a new key, because each row reads the name of its series.
+    Return the function that shows the rows. It makes the rows again only for new paths, new styles, or a new key of
+    actions.get_extrakey. Each row reads the name of its series, thus a new row takes time.
     """
+    import matplotlib as mpl
+    import matplotlib.colors as mplcolors
     import shiboken6
     from PySide6 import QtCore
     from PySide6 import QtGui
@@ -973,10 +1077,10 @@ def add_series_list(
         if not paths:
             return
         current = list(actions.get_paths())
-        fullpaths = {actions.get_full_path(path) for path in current}
+        fullpaths = {get_series_full_path(reference, path) for path in current}
         newpaths: list[str] = []
         for path in paths:
-            if (fullpath := actions.get_full_path(path)) not in fullpaths:
+            if (fullpath := get_series_full_path(reference, path)) not in fullpaths:
                 fullpaths.add(fullpath)
                 newpaths.append(path)
         if not newpaths:
@@ -987,7 +1091,7 @@ def add_series_list(
     def remove_path(path: str) -> None:
         paths = [other for other in actions.get_paths() if other != path]
         # the time controls read the timesteps of a model, thus the plot needs an ARTIS model
-        if not any(actions.is_model(other) for other in paths):
+        if not any(is_model_path(other) for other in paths):
             actions.show_error(
                 "The plot needs one ARTIS model at least. Add a different model before you remove this one"
             )
@@ -995,14 +1099,40 @@ def add_series_list(
         actions.apply_paths(paths)
 
     def copy_path(path: str) -> None:
-        copy_text(str(actions.get_full_path(path)))
+        copy_text(str(get_series_full_path(reference, path)))
         show_note("Copied the path")
 
     def open_folder(path: str) -> None:
         """Open the folder of a model, or the folder that holds a reference file, in the file manager."""
-        fullpath = actions.get_full_path(path)
+        fullpath = get_series_full_path(reference, path)
         folder = fullpath if fullpath.is_dir() else fullpath.parent
         QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(folder)))
+
+    def edit_properties(path: str) -> None:
+        """Ask for the style of the line of a series, e.g. the label, the colour, and the width."""
+        paths, rows = actions.get_paths(), actions.get_rows()
+        if path not in paths:
+            return
+        # the colour of the popup for "Default" is the colour that the series has with no --color of its own
+        defaultrows = set_series_rows(rows, paths, path, {"--color": None})
+        defaultcolour = get_series_colours(reference, paths, defaultrows)[path]
+        style = get_series_style(rows, paths, path)
+
+        def show_changes(changes: "Mapping[str, str | None] | None", undoable: bool) -> None:
+            # a change applies to the current values, because the window can change them while the popup is open, e.g.
+            # Play. A value of None for changes gives the series its style from before the popup
+            newstyle = style if changes is None else changes
+            actions.apply_rows(set_series_rows(actions.get_rows(), actions.get_paths(), path, newstyle), undoable)
+
+        edit_series_properties(
+            window,
+            style["--label"] or get_series_name(reference, path),
+            style,
+            mplcolors.to_hex(defaultcolour),
+            float(mpl.rcParams["lines.linewidth"]),
+            show_changes,
+            flags=reference.styleflags if reference.is_reference(path) else SERIES_STYLE_FLAGS,
+        )
 
     def make_row(index: int, count: int, seriesrow: SeriesRow) -> QtWidgets.QWidget:
         path, name = seriesrow.path, seriesrow.name
@@ -1014,11 +1144,13 @@ def add_series_list(
         rowlayout.addWidget(QtWidgets.QLabel(f"<b>{index + 1}</b>"))
         # the new list replaces this row, thus each action of a button waits until the click ends
         swatch = make_swatch_button(
-            name, SWATCH_WIDTH, partial(QtCore.QTimer.singleShot, 0, window, partial(actions.edit_properties, path))
+            name, SWATCH_WIDTH, partial(QtCore.QTimer.singleShot, 0, window, partial(edit_properties, path))
         )
         swatch.setIcon(QtGui.QIcon(seriesrow.swatch))
         rowlayout.addWidget(swatch)
-        namelabel = QtWidgets.QLabel(name)
+        # a label of the legend can be a long path, thus the name keeps its full width only while the row has room
+        namelabel = make_elided_label(name)
+        namelabel.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Preferred)
         namelabel.setToolTip(
             f"The --label of the series: {name}. Double-click the row to change it in the line properties"
             if seriesrow.labelled
@@ -1057,7 +1189,7 @@ def add_series_list(
             ("Move to Top", index > 0, partial(move_row, index, -index)),
             ("Move to Bottom", index < count - 1, partial(move_row, index, count - 1 - index)),
             *seriesrow.extraactions,
-            ("Line Properties…", True, partial(actions.edit_properties, path)),
+            ("Line Properties…", True, partial(edit_properties, path)),
             ("Copy Path", True, partial(copy_path, path)),
             ("Open Folder", not is_remote_path(path), partial(open_folder, path)),
             ("Remove", seriesrow.removereason is None, partial(remove_path, path)),
@@ -1085,14 +1217,18 @@ def add_series_list(
         # the window is the parent of the menu, thus without this the window keeps each menu until it closes
         menu.deleteLater()
 
-    def show_rows(key: object, make_rows: "Callable[[], Sequence[SeriesRow]]") -> None:
-        paths = tuple(actions.get_paths())
+    def show_rows() -> None:
+        paths, optionrows = tuple(actions.get_paths()), actions.get_rows()
+        styles = tuple(get_row_values(optionrows, flag) for flag in SERIES_STYLE_FLAGS)
+        key = (styles, actions.get_extrakey() if actions.get_extrakey is not None else None)
         order = tuple(
             serieslist.item(index).data(QtCore.Qt.ItemDataRole.UserRole) for index in range(serieslist.count())
         )
         if shown[0] == (key, paths) and order == paths:
             return
-        rows = make_rows()
+        rows = make_series_rows(reference, paths, optionrows)
+        if actions.extend_row is not None:
+            rows = [actions.extend_row(row) for row in rows]
         serieslist.clear()
         rowheight = serieslist.fontMetrics().lineSpacing() + 4
         for index, seriesrow in enumerate(rows):
@@ -1130,13 +1266,13 @@ def add_series_list(
 
     def get_start_folder() -> Path:
         # the dialog shows only local folders, thus it opens in the working folder for a first model on a different host
-        modelpaths = [path for path in actions.get_paths() if actions.is_model(path)]
+        modelpaths = [path for path in actions.get_paths() if is_model_path(path)]
         if not modelpaths or is_remote_path(modelpaths[0]):
             return Path.cwd()
-        return actions.get_full_path(modelpaths[0]).parent
+        return get_series_full_path(reference, modelpaths[0]).parent
 
     def add_model_folder(folder: str) -> None:
-        if not actions.is_model(folder):
+        if not is_model_path(folder):
             actions.show_error(f"{folder} is not a model folder. A model folder holds input.txt")
             return
         add_recent_model(folder)
@@ -1150,13 +1286,14 @@ def add_series_list(
     def show_recent_models() -> None:
         """Fill the menu of Add Model with the recent models that the list does not hold."""
         recentmodelsmenu.clear()
-        fullpaths = {actions.get_full_path(path) for path in actions.get_paths()}
+        fullpaths = {get_series_full_path(reference, path) for path in actions.get_paths()}
         # a test of a remote folder starts ssh, thus the menu keeps each remote model and leaves out a missing local
         # folder
         folders = [
             folder
             for folder in get_recent_models()
-            if (is_remote_path(folder) or Path(folder).is_dir()) and actions.get_full_path(folder) not in fullpaths
+            if (is_remote_path(folder) or Path(folder).is_dir())
+            and get_series_full_path(reference, folder) not in fullpaths
         ]
         for folder in folders:
             action = make_path_menu_action(recentmodelsmenu, folder, serieslist.width())
@@ -1187,7 +1324,7 @@ def add_series_list(
     def on_drop(paths: list[str]) -> None:
         """Add each dropped model folder and each dropped file of reference data to the series of the plot."""
         folders = [path for path in paths if Path(path).is_dir()]
-        modelfolders = [folder for folder in folders if actions.is_model(folder)]
+        modelfolders = [folder for folder in folders if is_model_path(folder)]
         if len(modelfolders) < len(folders):
             actions.show_error("A dropped folder is not a model folder. A model folder holds input.txt")
         add_paths([
@@ -1199,7 +1336,7 @@ def add_series_list(
     recentmodelsmenu.aboutToShow.connect(show_recent_models)
 
     def on_double_click(item: QtWidgets.QListWidgetItem) -> None:
-        actions.edit_properties(item.data(QtCore.Qt.ItemDataRole.UserRole))
+        edit_properties(item.data(QtCore.Qt.ItemDataRole.UserRole))
 
     serieslist.itemDoubleClicked.connect(on_double_click)
 

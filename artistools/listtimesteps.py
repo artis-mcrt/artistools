@@ -11,13 +11,13 @@ from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output_format
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
+from artistools.misc import get_bad_timestep_message
 from artistools.misc import get_model_logname
 from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_times
 from artistools.misc import parse_cli_args
 from artistools.misc import parse_range_list
 from artistools.misc import print_product
-from artistools.misc.timesteps import get_bad_timestep_message
 
 
 def get_timesteps_dataframe(modelpath: Path | str) -> pl.DataFrame:

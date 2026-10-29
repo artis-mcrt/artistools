@@ -7,13 +7,14 @@ from pathlib import Path
 from artistools.atomic import get_elsymbol
 from artistools.atomic import get_ionstages_from_outputfile
 from artistools.atomic import get_ionstring
+from artistools.misc import clear_at_reload
+from artistools.misc import COMPRESSED_EXTENSIONS
+from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_run_subfolders
 from artistools.misc import print_warning
+from artistools.misc import resolve_modelpath
 from artistools.misc import zopen
-from artistools.misc.fileio import COMPRESSED_EXTENSIONS
-from artistools.misc.fileio import firstexisting
-from artistools.misc.fileio import resolve_modelpath
 
 
 def parse_ion_row_classic(row: list[str], outdict: dict[str, t.Any], atomic_composition: dict[int, list[int]]) -> None:
@@ -83,6 +84,7 @@ def read_classic_estimators(modelpath: Path) -> dict[tuple[int, int], t.Any] | N
     return None if estimators is None else {key: dict(estimcell) for key, estimcell in estimators.items()}
 
 
+@clear_at_reload("estimators")
 @lru_cache(maxsize=2)
 def read_classic_estimators_cached(modelpath: Path) -> dict[tuple[int, int], t.Any] | None:
     """Return the classic estimators of a model, and keep them for the next caller.

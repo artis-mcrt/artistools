@@ -31,7 +31,7 @@ jobs:
               with:
                   persist-credentials: false
 
-            - uses: astral-sh/setup-uv@v10.3.2
+            - uses: astral-sh/setup-uv@v10.3.3
               id: setup-uv
               with:
                   activate-environment: true
@@ -83,6 +83,10 @@ jobs:
               if: always()
               run: uv run -- pyrefly check --output-format github
 
+            - name: Run ty
+              if: always()
+              run: uv run -- ty check --output-format github
+
             # informational only: vulture reports possibly-unused code at 60% confidence, which
             # includes false positives, so it must not gate the build
             - name: Run vulture (informational)
@@ -90,13 +94,13 @@ jobs:
               continue-on-error: true
               run: uv run -- vulture
 
-            # the Ruff steps above run the version in uv.lock, and --no-fix makes them report each error.
-            # The hooks correct the errors and show only the files that they change, thus this step skips them
+            # the steps above run Ruff and ty from uv.lock, thus this step skips their hooks. The Ruff hooks show
+            # only the files that they change. The ty hook runs the version of its `rev`, which can differ from uv.lock
             - name: Run prek pre-commit checks
               if: always()
               uses: j178/prek-action@v3.1.0
               env:
-                  SKIP: ruff-check,ruff-format
+                  SKIP: ruff-check,ruff-format,ty
 
             - name: Run rust format check
               if: always()
@@ -118,11 +122,13 @@ jobs:
             fail-fast: false
             matrix:
                 python-version: ['3.13', '3.14', '3.15', 3.15t]
-                # one entry installs the optional packages, thus the pyvista and the plotly paths run.
-                # Every entry would take minutes more for the same coverage
+                # one entry installs the optional packages, thus the pyvista and the plotly paths run. If each entry
+                # installs them, each job takes minutes more for the same coverage. The upload uses only the report of
+                # this entry, thus only this entry measures the coverage
                 include:
                     - python-version: '3.14'
                       syncextras: --all-extras
+                      covargs: --cov --cov-report=xml
         runs-on: ubuntu-26.04-arm
         name: pytest python ${{ matrix.python-version }}
         steps:
@@ -133,7 +139,7 @@ jobs:
 
             - name: Setup uv
               id: setup-uv
-              uses: astral-sh/setup-uv@v10.3.2
+              uses: astral-sh/setup-uv@v10.3.3
               with:
                   activate-environment: true
                   python-version: ${{ matrix.python-version }}
@@ -166,9 +172,10 @@ jobs:
               run: uv sync --compile-bytecode ${{ matrix.syncextras }}
 
             - name: Test with pytest
-              run: uv run --no-sync -- python -m pytest --cov --cov-report=xml
+              run: uv run --no-sync -- python -m pytest ${{ matrix.covargs }}
 
             - name: Report coverage
+              if: matrix.covargs
               run: uv run -- python -m coverage report
 
             - name: Upload coverage artifact

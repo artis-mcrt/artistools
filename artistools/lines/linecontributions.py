@@ -15,41 +15,42 @@ import polars.selectors as cs
 
 from artistools.atomic import get_ion_tuple
 from artistools.atomic import get_ionstring
-from artistools.commands import get_standard_flag
 from artistools.constants import angstroms_per_cm
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import h_erg_s
 from artistools.constants import K_B_ev_per_K
 from artistools.constants import km_to_cm
-from artistools.ejectaopacity import addarg_excitationtemperature
-from artistools.ejectaopacity import get_excitation_temperature_column
-from artistools.ejectaopacity import get_opacity_atomic_data
 from artistools.estimators import scan_estimators
 from artistools.inputmodel import get_costheta_selection
+from artistools.lines.core import addarg_excitationtemperature
+from artistools.lines.core import get_excitation_temperature_column
+from artistools.lines.core import get_opacity_atomic_data
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_table_output
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import addarg_wavelengthrange
+from artistools.misc import CommaJoinAction
 from artistools.misc import exit_with_error
+from artistools.misc import get_average_group_dirbins
+from artistools.misc import get_column_description_lines
+from artistools.misc import get_dirbin_centre_direction
 from artistools.misc import get_model_logname
 from artistools.misc import get_selected_timestep
+from artistools.misc import get_standard_flag
 from artistools.misc import get_timestep_time
 from artistools.misc import get_timestep_times
 from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import get_weighted_quantile_expr
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_file
+from artistools.misc import positive_int_arg
 from artistools.misc import print_detail
 from artistools.misc import print_modelpath
 from artistools.misc import print_or_write_table
 from artistools.misc import print_warning
 from artistools.misc import resolve_table_outputfile
-from artistools.misc.cliutils import CommaJoinAction
-from artistools.misc.cliutils import positive_int_arg
-from artistools.misc.columns import get_column_description_lines
-from artistools.misc.dirbins import get_dirbin_centre_direction
 from artistools.nltepops import has_nlte_populations
 from artistools.nltepops import read_nltepops
 from artistools.plottools import get_velocity_bin_index_expr
@@ -960,11 +961,12 @@ def get_sobolev_trough(
     estimate does not take. Thus the blend is too blue by a fraction of about v_t^2 / (2 c^2).
     """
     nphibins = get_viewingdirection_phibincount()
-    firstdirbin = dirbin - dirbin % nphibins
-    directions = [
-        get_dirbin_centre_direction(observerdirbin)
-        for observerdirbin in (range(firstdirbin, firstdirbin + nphibins) if averageoverphi else [dirbin])
-    ]
+    observerdirbins = (
+        get_average_group_dirbins(dirbin - dirbin % nphibins, average_over_phi=True, average_over_theta=False)
+        if averageoverphi
+        else [dirbin]
+    )
+    directions = [get_dirbin_centre_direction(observerdirbin) for observerdirbin in observerdirbins]
     vph_kmps = photospherevelocity_kmps
     c_kmps = C_cm_per_s / km_to_cm
     widths_kmps = np.array(cellwidths_kmps)

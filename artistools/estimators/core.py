@@ -3,9 +3,11 @@
 Examples are temperatures, populations, and heating/cooling rates.
 """
 
+import argparse
 import contextlib
 import dataclasses as dc
 import datetime as dt
+import math
 import string
 import textwrap
 import time
@@ -20,43 +22,52 @@ from itertools import pairwise
 from pathlib import Path
 from types import MappingProxyType
 
+import numpy as np
 import polars as pl
 from polars import selectors as cs
 from polars.io.plugins import register_io_source
 
 from artistools.atomic import decode_roman_numeral
 from artistools.atomic import get_atomic_number
+from artistools.atomic import get_boltzmann_factor_expr
 from artistools.atomic import get_elsymbol
 from artistools.atomic import get_elsymbolset
 from artistools.atomic import get_ion_levels
 from artistools.atomic import roman_numerals
 from artistools.codecomparison import read_reference_estimators
-from artistools.constants import K_B_ev_per_K
+from artistools.constants import C_cm_per_s
+from artistools.constants import km_to_cm
 from artistools.inputmodel import add_derived_cols_to_modeldata
-from artistools.inputmodel import get_modeldata
+from artistools.inputmodel import scan_modeldata
+from artistools.inputmodel.slice1dfromconein3dmodel import get_profile_along_axis
+from artistools.inputmodel.slice1dfromconein3dmodel import make_cone
+from artistools.misc import clear_at_reload
+from artistools.misc import COMPRESSED_EXTENSIONS
+from artistools.misc import contiguous_runs
+from artistools.misc import exit_with_error
+from artistools.misc import firstexisting_or_none
 from artistools.misc import get_artis_option
 from artistools.misc import get_file_identity
 from artistools.misc import get_file_state
 from artistools.misc import get_mpiranklist
+from artistools.misc import get_nonempty_cellcounts
 from artistools.misc import get_parquet_cache_name
+from artistools.misc import get_rank_outputfiles
+from artistools.misc import get_runfolder_timesteps
 from artistools.misc import get_runfolders
-from artistools.misc import get_timesteps
+from artistools.misc import get_velocity_label
+from artistools.misc import is_remote_path
+from artistools.misc import mtime_matches_stamp
+from artistools.misc import MTIME_TOLERANCE_S
+from artistools.misc import on_model_host
+from artistools.misc import parquet_is_readable
+from artistools.misc import parse_velocity_argument
 from artistools.misc import path_is_codecomparison
 from artistools.misc import print_warning
+from artistools.misc import rankbatch_parquet_staleness
+from artistools.misc import scan_timesteps
+from artistools.misc import temporary_parts_folder
 from artistools.misc import write_parquet_atomic
-from artistools.misc.cliutils import contiguous_runs
-from artistools.misc.fileio import COMPRESSED_EXTENSIONS
-from artistools.misc.fileio import firstexisting_or_none
-from artistools.misc.fileio import mtime_matches_stamp
-from artistools.misc.fileio import MTIME_TOLERANCE_S
-from artistools.misc.fileio import parquet_is_readable
-from artistools.misc.fileio import rankbatch_parquet_staleness
-from artistools.misc.fileio import temporary_parts_folder
-from artistools.misc.modelinfo import get_nonempty_cellcounts
-from artistools.misc.modelinfo import get_rank_outputfiles
-from artistools.misc.modelinfo import get_runfolder_timesteps_cached
-from artistools.misc.remote import is_remote_path
-from artistools.misc.remote import on_model_host
 from artistools.rustext import estimparse_allranks_textbatches
 from artistools.rustext import estimparse_textbatches
 from artistools.rustext import estimtimesteps
@@ -64,6 +75,9 @@ from artistools.rustext import estimtimesteps
 if t.TYPE_CHECKING:
     from collections.abc import Iterator
     from concurrent.futures import Future
+
+    import numpy.typing as npt
+
 
 # Suffixes that give the units of a derived name, e.g. vel_r_min_kmps and init_kinetic_en_erg. A name
 # carries its quantity at its end more often than at its start, thus get_units tries these first.
@@ -1062,7 +1076,7 @@ def get_levelpop_modeldata(modelpath: Path) -> tuple[pl.DataFrame, float]:
     A level population plot reads only these columns of the model, thus the host of a remote model sends no other.
     Only a 1D model gives the shell velocities.
     """
-    lzmodel, modelmeta = get_modeldata(modelpath)
+    lzmodel, modelmeta = scan_modeldata(modelpath)
     modeldata = (
         add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
         .select(cs.by_name("vel_r_min_kmps", "vel_r_max_kmps", "volume", require_all=False))
@@ -1193,14 +1207,14 @@ def join_cell_modeldata(
     """Join the estimator data with data from model.txt and derived quantities, e.g. density, volume, etc."""
     assert estimators is not None
     estimators = estimators.join(
-        get_timesteps(Path(modelpath))
+        scan_timesteps(Path(modelpath))
         .select("timestep", "tstart_days", "tmid_days", "twidth_days")
         .with_columns(tmid_days_prevtimestep=pl.col("tmid_days").shift(1)),
         on="timestep",
         how="left",
         maintain_order="left",
     )
-    dfmodel, modelmeta = get_modeldata(modelpath, get_elemabundances=True, printwarningsonly=not verbose)
+    dfmodel, modelmeta = scan_modeldata(modelpath, get_elemabundances=True, printwarningsonly=not verbose)
     dfmodel = add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta)
 
     dfmodel = dfmodel.rename({
@@ -1279,7 +1293,9 @@ def add_derived_estimator_columns(pldflazy: pl.LazyFrame) -> pl.LazyFrame:
     return pldflazy
 
 
-# the cache uses filestate only as a part of its key
+# the key of the cache includes filestate, thus a new file gets a new entry. Reload Data still clears the cache,
+# because a kept scan also holds the metadata of its file, e.g. 8 MB for 5335 columns
+@clear_at_reload("estimators")
 @lru_cache(maxsize=1024)
 def scan_parquet_file(
     parquetfile: Path,
@@ -1637,7 +1653,7 @@ def convert_estimator_batch_caches(
     if conversioncount > 0:
         # get_runfolders() read the timesteps from the text before the conversion, which can drop an incomplete last
         # timestep. The next call of get_runfolder_timesteps() then reads the timesteps of the new caches
-        get_runfolder_timesteps_cached.cache_clear()
+        get_runfolder_timesteps.cache_clear()
     return batchcaches
 
 
@@ -1722,9 +1738,9 @@ def scan_artis_estimators(
             f"No run folders found in {modelpath}. Enabling fallback to cross join of all model data and timesteps."
         )
         pldflazy = (
-            get_timesteps(modelpath)
+            scan_timesteps(modelpath)
             .select("timestep", "tmid_days", "twidth_days")
-            .join(get_modeldata(modelpath)[0].select("modelgridindex"), how="cross", maintain_order="left")
+            .join(scan_modeldata(modelpath)[0].select("modelgridindex"), how="cross", maintain_order="left")
         )
 
     return pldflazy
@@ -1841,7 +1857,7 @@ def superlevel_energy(dfsuperlevel: pl.DataFrame, dflevels: pl.DataFrame, groupc
             dfsuperlevel_thislevel
             .slice(batchstart, batchheight)
             .join(dflevels_above, how="cross", maintain_order="left")
-            .with_columns(boltzfac=pl.col("g") * (-pl.col("energy_ev") / K_B_ev_per_K / pl.col("T_exc")).exp())
+            .with_columns(boltzfac=get_boltzmann_factor_expr(pl.col("g"), pl.col("energy_ev"), pl.col("T_exc")))
             .group_by(groupcols)
             .agg(
                 energypopsum_sl=pl.col("n_NLTE_sl").first()
@@ -1862,3 +1878,238 @@ def get_temperature_limits(modelpath: Path | str) -> dict[str, float]:
         with contextlib.suppress(TypeError, ValueError):
             limits[name] = float(str(value).rstrip("fF"))
     return limits
+
+
+def get_layer_index(velocity_cmps: float, vmax_cmps: float, ncells: int) -> int:
+    """Return the index of the layer of cells that holds a velocity on one axis of a 3D model.
+
+    A velocity between two layers takes the layer above it. The quotient of such a velocity can lie one
+    rounding step below the whole number, e.g. 24.999999999999996 for vmax = 6724085530.798534 cm/s and 50
+    cells, thus a small part of a cell goes on before the floor.
+    """
+    return min(math.floor((velocity_cmps + vmax_cmps) / (2.0 * vmax_cmps / ncells) + 1e-6), ncells - 1)
+
+
+@on_model_host
+def get_cells_of_slice(modelpath: Path, conditions: Sequence[tuple[str, float, str]]) -> list[int]:
+    """Return the cells of a 3D model that hold the plane or the line of --slice.
+
+    The host of a remote model reads it.
+    """
+    lzmodel, modelmeta = scan_modeldata(modelpath)
+    if modelmeta["dimensions"] != 3:
+        exit_with_error(
+            f"--slice needs a 3D model, and this model has {modelmeta['dimensions']} dimension(s)",
+            "Remove --slice to plot the variables against the velocity",
+        )
+    vmax_cmps = float(modelmeta["vmax_cmps"])
+    for axisname, velocity_cmps, label in conditions:
+        if abs(velocity_cmps) >= vmax_cmps:
+            exit_with_error(
+                f"{label} lies outside the model, which ends at {vmax_cmps / C_cm_per_s:.3g}c",
+                "Give a velocity inside the model",
+            )
+        layerindex = get_layer_index(velocity_cmps, vmax_cmps, int(modelmeta[f"ncoordgrid{axisname}"]))
+        poscolumn = pl.col(f"pos_{axisname}_min")
+        lzmodel = lzmodel.filter(poscolumn == poscolumn.unique().sort().get(layerindex))
+
+    return lzmodel.select("modelgridindex").collect()["modelgridindex"].to_list()
+
+
+@on_model_host
+def get_cells_along_axis(modelpath: Path, args: argparse.Namespace) -> list[int]:
+    """Return the cells with matter on an axis or in a cone of a 3D model. The host of a remote model reads it."""
+    lzmodel, modelmeta = scan_modeldata(modelpath)
+    # the selection reads the positions of the cells on three axes, which only a 3D model gives
+    if modelmeta["dimensions"] != 3:
+        exit_with_error(
+            f"--readonlymgi {args.readonlymgi} needs a 3D model, and this model has {modelmeta['dimensions']}"
+            " dimension(s)",
+            "Remove --readonlymgi to plot every cell against the velocity",
+        )
+    if args.readonlymgi == "alongaxis":
+        print(f"Getting mgi along {args.axis} axis")
+        dfmodel = lzmodel.select("modelgridindex", "rho", "pos_x_min", "pos_y_min", "pos_z_min").collect()
+        dfselectedcells = get_profile_along_axis(dfmodel, args)
+    elif args.readonlymgi == "cone":
+        print(f"Getting mgi lying within a cone around the {args.axis} half-axis")
+        # the cone selection reads the mid-point positions, which are derived columns
+        lzmodel = add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
+        dfselectedcells = make_cone(args, lzmodel, logprint=print)
+    else:
+        msg = f"Invalid args.readonlymgi: {args.readonlymgi}"
+        raise ValueError(msg)
+
+    # the estimators hold the zero-based modelgridindex, not the one-based inputcellid
+    return list(dfselectedcells.filter(pl.col("rho") > 0)["modelgridindex"])
+
+
+def format_cell_edge(velocity_cmps: float, unit: str) -> str:
+    """Return a velocity in the unit of the user, "c" or "kmps", with the digits that the edge of a cell needs."""
+    if velocity_cmps == 0.0:
+        return "0"
+    return f"{velocity_cmps / C_cm_per_s:.4g}c" if unit == "c" else f"{velocity_cmps / km_to_cm:.6g} km/s"
+
+
+def get_cell_edges(axisname: str, modelmeta: Mapping[str, t.Any]) -> "npt.NDArray[np.float64]":
+    """Return the edges of the cells of a 3D model on one axis [cm/s], from -vmax to vmax."""
+    vmax_cmps = float(modelmeta["vmax_cmps"])
+    edges = np.linspace(-vmax_cmps, vmax_cmps, int(modelmeta[f"ncoordgrid{axisname}"]) + 1)
+    # the middle edge of an even number of cells lies at zero, and the arithmetic leaves a rounding error there
+    return np.where(np.abs(edges) < 1e-9 * vmax_cmps, 0.0, edges)
+
+
+def get_layer_bounds(condition: tuple[str, float, str], modelmeta: Mapping[str, t.Any]) -> str:
+    """Return the edges of the layer of cells that holds a condition of --slice, e.g. "-0.01c ≤ z < 0.01c".
+
+    parse_slice_argument gives the condition with a label in the unit of the user, e.g. "z = 5000 km/s". The edges
+    take km/s for a position in km/s, and c for each other position. get_cells_of_slice rejects a position outside the
+    grid, thus the text then gives the range of the grid.
+    """
+    axisname, velocity_cmps, label = condition
+    unit = "kmps" if label.endswith("km/s") else "c"
+    edges = get_cell_edges(axisname, modelmeta)
+    vmax_cmps = float(edges[-1])
+    if abs(velocity_cmps) >= vmax_cmps:
+        return f"{label}, outside the grid of |{axisname}| < {format_cell_edge(vmax_cmps, unit)}"
+    index = get_layer_index(velocity_cmps, vmax_cmps, len(edges) - 1)
+    return f"{format_cell_edge(edges[index], unit)} ≤ {axisname} < {format_cell_edge(edges[index + 1], unit)}"
+
+
+# the weight of a cell in each mean over the cells and the timesteps of a colour image
+MEAN_WEIGHT_TEXT: t.Final = (
+    "The weight is the volume times the timestep duration, times n_element for an average ion charge."
+)
+
+
+def get_cell_selection_description(args: argparse.Namespace, modelmeta: Mapping[str, t.Any]) -> str:
+    """Return the cells that the plot reads in the terms of the model grid, or an empty text for listed cells.
+
+    args holds the arguments after resolve_snapshot_arguments of plotestimators. x, y, and z are the velocity
+    coordinates of the grid, and (x_c, y_c, z_c) is the centre of a cell. The edges of the cells come from the model
+    grid. Thus the text gives the range of each coordinate of the selected cells. plotestimators logs this text, and
+    its window shows it.
+    """
+    conditions = parse_slice_argument(args.slice) if args.slice is not None else []
+    dimensions = int(modelmeta["dimensions"])
+    vmaxtext = format_cell_edge(float(modelmeta["vmax_cmps"]), "c")
+    if len(conditions) == 1:
+        normal = conditions[0][0]
+        plane = [axisname for axisname in "xyz" if axisname != normal]
+        bounds = get_layer_bounds(conditions[0], modelmeta)
+        return f"The 2D plane slice of cells with {bounds}, as an image in {plane[0]} and {plane[1]}."
+    if conditions:
+        lineaxis = next(axisname for axisname in "xyz" if axisname not in {condition[0] for condition in conditions})
+        bounds = " and ".join(get_layer_bounds(condition, modelmeta) for condition in sorted(conditions))
+        xtext = f"v_{lineaxis}" if args.x == f"vel_{lineaxis}_mid_on_c" else f"-x {args.x}"
+        return f"The full line of cells through the grid along the {lineaxis} axis with {bounds}, against {xtext}."
+    if args.projection:
+        # prepare_snapshot of plotestimators rejects a projection of a model that is not 3D
+        if dimensions != 3:
+            return ""
+        first, second = (axisname for axisname in "xyz" if axisname != args.projection)
+        width = format_cell_edge(float(np.diff(get_cell_edges(first, modelmeta))[0]), "c")
+        return (
+            f"Pixel (i, j) is the mean of the line of cells along {args.projection} in layer i of {first} and layer j"
+            f" of {second}. Each layer is {width} wide. {MEAN_WEIGHT_TEXT}"
+        )
+    if args.dimensionreduce == 2:
+        if dimensions == 1:
+            return "At each cylindrical radius r and each z, the value of the shell at the radius √(r² + z²)."
+        if dimensions == 2:
+            return f"The cells of the model grid in the cylindrical radius r and z. {MEAN_WEIGHT_TEXT}"
+        ringwidth = format_cell_edge(float(modelmeta["vmax_cmps"]) / (int(modelmeta["ncoordgridx"]) // 2), "c")
+        return (
+            f"Pixel (i, j) is the mean of the cells in layer j of z whose centre has i Δr ≤ √(x_c² + y_c²) < (i + 1)"
+            f" Δr, with Δr = {ringwidth}. The image leaves out the cells with √(x_c² + y_c²) ≥ v_max = {vmaxtext}."
+            f" A cell or a timestep with no value does not count. {MEAN_WEIGHT_TEXT}"
+        )
+    ispositive = not args.axis.startswith("-")
+    axisname = args.axis.lstrip("+-")
+    first, second = (other for other in "xyz" if other != axisname)
+    if args.readonlymgi == "alongaxis":
+        # get_profile_along_axis takes the lower cell edge nearest to 0 on the second axis for both of the other
+        # axes. That edge is 0 for an even number of cells, and -Δ/2 for an odd number
+        secondedges = get_cell_edges(second, modelmeta)
+        middle = (len(secondedges) - 1) // 2
+        lowertext = format_cell_edge(float(secondedges[middle]), "c")
+        uppertext = format_cell_edge(float(secondedges[middle + 1]), "c")
+        axisedges = get_cell_edges(axisname, modelmeta)
+        if ispositive:
+            start = float(axisedges[:-1][axisedges[1:] > 0.0].min())
+            axisrange = f"{format_cell_edge(start, 'c')} ≤ {axisname} < {format_cell_edge(float(axisedges[-1]), 'c')}"
+        else:
+            end = float(axisedges[1:][axisedges[:-1] < 0.0].max())
+            axisrange = f"{format_cell_edge(float(axisedges[0]), 'c')} ≤ {axisname} < {format_cell_edge(end, 'c')}"
+        return (
+            f"The half line of cells from the centre along the {args.axis} axis, with {lowertext} ≤ {first} <"
+            f" {uppertext}, {lowertext} ≤ {second} < {uppertext}, and {axisrange}."
+        )
+    if args.readonlymgi == "cone":
+        halfangle = args.coneangle / 2.0
+        signedname = f"{axisname}_c" if ispositive else f"-{axisname}_c"
+        if math.isclose(halfangle, 90.0):
+            # 1 / tan 90° is not 0 in floating point, thus make_cone leaves out the other cells of the central plane
+            return f"The cells on the side of the {args.axis} half-axis: {signedname} > 0, and the cell at the centre."
+        return (
+            f"The cells whose centre lies within {halfangle:g}° of the {args.axis} half-axis:"
+            f" {signedname} ≥ √({first}_c² + {second}_c²) / tan {halfangle:g}°."
+        )
+    if args.modelgridindex is not None or dimensions == 1:
+        return ""
+    # add_plot_columns of plotestimators leaves out each cell with a centre beyond vmax
+    return (
+        f"The cells whose centre has √(x_c² + y_c² + z_c²) ≤ v_max = {vmaxtext}. The plot leaves out the cells in"
+        " the corners of the grid."
+    )
+
+
+def get_estimator_timesteps(modelpath: Path, estimators: pl.LazyFrame | None = None) -> list[int]:
+    """Return the timesteps that the estimators of the model hold.
+
+    The first parquet cache of each run folder gives its timesteps, thus a large model needs no scan of all its rows. A
+    model with no such cache, e.g. a model of classic ARTIS, reads the timestep column of estimators. With no
+    estimators, the function scans the estimators of the model.
+    """
+    # a codecomparison path names a reference file and not a folder, thus it has no run folders
+    runfolders: Sequence[Path] = () if path_is_codecomparison(modelpath) else get_runfolders(modelpath)
+    timesteps = {timestep for runfolder in runfolders for timestep in get_runfolder_timesteps(runfolder)}
+    if not timesteps:
+        if estimators is None:
+            estimators = scan_estimators(modelpath=modelpath)
+        timesteps = set(estimators.select(pl.col("timestep").unique()).collect().to_series().to_list())
+    return sorted(timesteps)
+
+
+def parse_slice_argument(slicetext: str) -> list[tuple[str, float, str]]:
+    """Return the axis, its velocity [cm/s], and the label of each condition of --slice.
+
+    "xy" and "z=-0.2c" give one condition, which is a plane. "z=0,y=0" gives two, which is a line.
+    """
+    text = slicetext.strip().lower()
+    helptext = (
+        "Give a plane through the origin, e.g. --slice xy. As an alternative, give an axis and its velocity,"
+        " e.g. --slice z=-0.2c. Two axes give a line, e.g. --slice z=0,y=0"
+    )
+    if len(text) == 2 and text[0] != text[1] and set(text) <= set("xyz"):
+        normalaxis = next(axisname for axisname in "xyz" if axisname not in text)
+        return [(normalaxis, 0.0, f"{normalaxis} = 0")]
+
+    conditions: list[tuple[str, float, str]] = []
+    for conditiontext in text.split(","):
+        axisname, separator, velocitytext = (part.strip() for part in conditiontext.partition("="))
+        if axisname not in {"x", "y", "z"} or not separator:
+            exit_with_error(f"'{slicetext}' is not a plane or a line of the model", helptext)
+        try:
+            velocity_kmps, unit = parse_velocity_argument(velocitytext)
+        except argparse.ArgumentTypeError as err:
+            exit_with_error(str(err), helptext)
+
+        label = get_velocity_label(velocity_kmps, unit)
+        if velocity_kmps == 0.0:
+            label = "0"
+        conditions.append((axisname, velocity_kmps * km_to_cm, f"{axisname} = {label}"))
+
+    if len(conditions) > 2 or len({axisname for axisname, _, _ in conditions}) < len(conditions):
+        exit_with_error(f"'{slicetext}' must give one axis for a plane, or two different axes for a line", helptext)
+    return conditions

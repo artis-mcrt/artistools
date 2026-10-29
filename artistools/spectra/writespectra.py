@@ -19,8 +19,8 @@ from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import print_saved
 from artistools.misc import print_warning
-from artistools.misc.remote import split_remote_path
-from artistools.spectra.core import get_spectra
+from artistools.misc import split_remote_path
+from artistools.spectra.core import scan_spectra
 
 
 def write_spectrum(dfspectrum: pl.DataFrame, outfilepath: Path) -> None:
@@ -65,7 +65,7 @@ def write_flambda_spectra(modelpath: Path, outdirectory: Path) -> None:
     timesteps = [ts for ts in range(tslast + 1) if tmids[ts] >= tmin_d_valid and tmids[ts] <= tmax_d_valid]
 
     lzspectra_of_timestep = [
-        get_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep, directionbins=[-1])
+        scan_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep, directionbins=[-1])
         for timestep in timesteps
     ]
     if any(-1 not in lzspectra for lzspectra in lzspectra_of_timestep):
@@ -78,7 +78,7 @@ def write_flambda_spectra(modelpath: Path, outdirectory: Path) -> None:
         write_spectrum(dfspectrum, outfilepath=outdirectory / f"spectrum_ts{timestep:02.0f}_{tmids[timestep]:.2f}d.txt")
 
     lzspectra_polar = [
-        get_spectra(
+        scan_spectra(
             modelpath=modelpath, timestepmin=timestep, timestepmax=timestep, average_over_phi=True, directionbins=[0]
         )
         for timestep in timesteps

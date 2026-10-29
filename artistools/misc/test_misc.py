@@ -7,6 +7,7 @@ tests/data, e.g. testmodel and test-classicmode_3d.
 import argparse
 import contextlib
 import gzip
+import hashlib
 import importlib.metadata
 import io
 import lzma
@@ -29,14 +30,17 @@ import artistools as at
 from artistools.estimators import plotestimators
 from artistools.estimators.core import join_cell_modeldata
 from artistools.misc import dirbins
-from artistools.misc import fileio
 from artistools.misc import modelinfo
+from artistools.misc import parquetcache
 from artistools.misc import parse_cli_args
 from artistools.misc import remote
 from artistools.misc.columns import get_column_description_lines
 from artistools.misc.general import get_bin_index_expr
 from artistools.misc.general import get_weighted_quantile_expr
 from artistools.viewertools.core import run_command_step_with_warning
+
+modelpath = at.get_path("testdata") / "testmodel"
+modelpath_3d = at.get_path("testdata") / "testmodel_3d_10^3"
 
 
 def write_timesteps_out(modeldir: Path) -> None:
@@ -245,7 +249,7 @@ def test_a_rejected_parquet_cache_gives_the_reason(tmp_path: Path) -> None:
     The message said only that the cache was not current. Thus a user could not see whether a new
     cache format version, a rewritten text file, or a damaged file caused the conversion.
     """
-    from artistools.misc.fileio import MTIME_TOLERANCE_S
+    from artistools.misc.parquetcache import MTIME_TOLERANCE_S
 
     cacheversion = 3
     mtime = 1000.0
@@ -346,7 +350,7 @@ def test_add_cli_arg_helpers() -> None:
     at.misc.addarg_seriesstyle(parser, colordefault=["C0", "C1"], include_linealpha=True)
     at.misc.addarg_figscale(parser, include_figwidthscale=True)
     at.misc.addarg_filter(parser)
-    at.misc.addarg_maxpacketfiles(parser)
+    at.packets.core.addarg_maxpacketfiles(parser)
 
     args = parser.parse_args([
         "-modelpath",
@@ -405,7 +409,7 @@ def test_add_cli_arg_helper_variants() -> None:
     assert args.modelpath == [Path("model1")]
     # -timestep holds the text that the user wrote, and get_single_timestep reads one timestep
     assert args.timestep == "12"
-    assert args.timedays == 45.5
+    assert args.timedays == pytest.approx(45.5)
     # one helper serves both kinds, thus the folder of a command is a Path as the file of one is
     assert args.outputfile == Path()
     assert args.outputkind == "folder"
@@ -442,8 +446,8 @@ def test_the_cells_of_modelgridindex_are_a_list_from_every_source() -> None:
         at.misc.set_args_from_dict(keywordparser, {"cell": keywordvalue})
         assert keywordparser.parse_args([]).modelgridindex == expectedcells
 
-    assert at.misc.cliutils.format_range_list([9, 3, 4, 5, 7, 6, 12]) == "3-7,9,12"
-    assert at.misc.parse_range_list(at.misc.cliutils.format_range_list([-1, 0, 2])) == [-1, 0, 2]
+    assert at.misc.general.format_range_list([9, 3, 4, 5, 7, 6, 12]) == "3-7,9,12"
+    assert at.misc.parse_range_list(at.misc.general.format_range_list([-1, 0, 2])) == [-1, 0, 2]
 
 
 def test_get_cell_list_takes_a_numpy_integer_and_rejects_a_float() -> None:
@@ -502,7 +506,7 @@ def test_set_args_from_dict_does_not_mutate_caller() -> None:
         at.misc.set_args_from_dict(parser, {"badargname": 1})
 
 
-# --- fileio.py (print_saved) -------------------------------------------------------------------
+# --- commandoutput.py (print_saved) ------------------------------------------------------------
 
 
 def test_print_saved(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
@@ -531,7 +535,7 @@ def test_print_saved(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeyp
         ("win32", "start", 'start "" out.pdf'),
     ):
         monkeypatch.setattr(sys, "platform", platform)
-        assert at.misc.fileio.get_open_command() == verb
+        assert at.misc.commandoutput.get_open_command() == verb
         at.misc.print_saved("out.pdf")
         assert capsys.readouterr().out == f"{line}\n"
 
@@ -1104,13 +1108,13 @@ def test_replace_outdated_file_keeps_a_rivals_fresh_replacement(tmp_path: Path) 
     # the first writer replaces the out-of-date file, changing its identity
     first = tmp_path / "first"
     first.write_text("first replacement", encoding="utf-8")
-    fileio.replace_outdated_file(first, destpath, outdated)
+    parquetcache.replace_outdated_file(first, destpath, outdated)
     assert destpath.read_text(encoding="utf-8") == "first replacement"
 
     # the second writer still holds the identity of the file both of them found out of date
     second = tmp_path / "second"
     second.write_text("second replacement", encoding="utf-8")
-    fileio.replace_outdated_file(second, destpath, outdated)
+    parquetcache.replace_outdated_file(second, destpath, outdated)
     assert destpath.read_text(encoding="utf-8") == "first replacement"
 
 
@@ -1133,7 +1137,7 @@ def test_replace_outdated_file_waits_for_the_lock_holder(tmp_path: Path) -> None
     replacement = tmp_path / "replacement"
     replacement.write_text("replacement", encoding="utf-8")
     with mock.patch("fcntl.flock", side_effect=holder_finishes_first) as mockflock:
-        fileio.replace_outdated_file(replacement, destpath, outdated)
+        parquetcache.replace_outdated_file(replacement, destpath, outdated)
 
     assert mockflock.call_count == 1
     assert destpath.read_text(encoding="utf-8") == "holders replacement"
@@ -1145,14 +1149,14 @@ def test_replace_outdated_file_installs_at_an_empty_destination(tmp_path: Path) 
     replacement = tmp_path / "replacement"
     replacement.write_text("replacement", encoding="utf-8")
 
-    fileio.replace_outdated_file(replacement, destpath, None)
+    parquetcache.replace_outdated_file(replacement, destpath, None)
 
     assert destpath.read_text(encoding="utf-8") == "replacement"
 
     # a file that is already there is kept when this write does not claim to replace anything
     another = tmp_path / "another"
     another.write_text("another", encoding="utf-8")
-    fileio.replace_outdated_file(another, destpath, None)
+    parquetcache.replace_outdated_file(another, destpath, None)
     assert destpath.read_text(encoding="utf-8") == "replacement"
 
 
@@ -1168,7 +1172,7 @@ def test_write_parquet_atomic_applies_the_identity_rule_without_hard_links(tmp_p
         return result
 
     with (
-        mock.patch.object(fileio.os, "link", side_effect=OSError),
+        mock.patch.object(parquetcache.os, "link", side_effect=OSError),
         mock.patch.object(pl.LazyFrame, "sink_parquet", sink_parquet_after_another_process_finished),
     ):
         at.misc.write_parquet_atomic(pl.DataFrame({"a": [4, 5, 6]}), parquetpath)
@@ -1176,7 +1180,7 @@ def test_write_parquet_atomic_applies_the_identity_rule_without_hard_links(tmp_p
     assert pl.read_parquet(parquetpath)["a"].to_list() == [1, 2, 3], "the file a reader may hold was replaced"
 
     # the fallback still replaces the file the caller found out of date
-    with mock.patch.object(fileio.os, "link", side_effect=OSError):
+    with mock.patch.object(parquetcache.os, "link", side_effect=OSError):
         at.misc.write_parquet_atomic(
             pl.DataFrame({"a": [7, 8, 9]}), parquetpath, replaces=at.misc.get_file_identity(parquetpath)
         )
@@ -1198,7 +1202,7 @@ def test_replace_outdated_file_ignores_a_leftover_lock_file(tmp_path: Path) -> N
 
     replacement = tmp_path / "replacement"
     replacement.write_text("replacement", encoding="utf-8")
-    fileio.replace_outdated_file(replacement, destpath, outdated)
+    parquetcache.replace_outdated_file(replacement, destpath, outdated)
 
     assert destpath.read_text(encoding="utf-8") == "replacement"
     assert lockpath.exists()
@@ -1611,7 +1615,7 @@ def test_release_for_changed_code_gives_a_warning(capsys: pytest.CaptureFixture[
         assert (remote.get_git_command(gitsource) in stderr) == haswarning
 
 
-def test_server_protocol_changes_with_the_readers() -> None:
+def test_server_protocol_changes_with_the_readers(package_modules: list[Path]) -> None:
     """Increase SERVER_PROTOCOL when a reader on the server or the code of a message changes.
 
     A clone with the server protocol of the release uses the release on the host. Pickle rebuilds a NamedTuple by the
@@ -1623,13 +1627,10 @@ def test_server_protocol_changes_with_the_readers() -> None:
     import hashlib
     import re
 
-    packagefolder = Path(remote.__file__).resolve().parents[1]
+    packagefolder = Path(at.__file__).parent
     signatures: list[str] = []
     typedefinitions: dict[str, list[str]] = {}
-    for path in sorted(packagefolder.rglob("*.py")):
-        # a name with a space is an iCloud conflict copy
-        if path.name.startswith("test_") or " " in path.name:
-            continue
+    for path in package_modules:
         modulepath = path.relative_to(packagefolder).as_posix()
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
             if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and any(
@@ -1688,7 +1689,7 @@ def test_server_protocol_changes_with_the_readers() -> None:
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (9, "f30458288a268b78"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (10, "356340ccb796afa8"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )
@@ -1735,7 +1736,7 @@ def test_reader_of_a_remote_model_runs_on_the_server(tmp_path: Path) -> None:
         try:
             assert at.misc.path_is_dir(remotepath)
             assert not at.misc.path_is_file(remotepath)
-            remotespectra = at.spectra.get_spectra(remotepath, timestepmin=40, fluxfilterfunc=filterfunc)
+            remotespectra = at.spectra.scan_spectra(remotepath, timestepmin=40, fluxfilterfunc=filterfunc)
             remotelightcurve = at.lightcurve.scan_lightcurve(remotepath / "light_curve.out")
             # a caller skips a model on FileNotFoundError, thus the server must give back the same type
             with pytest.raises(FileNotFoundError, match="nosuchfile"):
@@ -1828,7 +1829,7 @@ def test_reader_of_a_remote_model_runs_on_the_server(tmp_path: Path) -> None:
     assert dflocalcell.height == 1
     pltest.assert_frame_equal(dfremotecell, dflocalcell, abs_tol=0.0)
     assert (tmp_path / "plotBlightcurves.pdf").is_file()
-    localspectra = at.spectra.get_spectra(modelpath, timestepmin=40, fluxfilterfunc=filterfunc)
+    localspectra = at.spectra.scan_spectra(modelpath, timestepmin=40, fluxfilterfunc=filterfunc)
     # the fluxes are far below the default absolute tolerance, thus the comparison has none
     pltest.assert_frame_equal(remotespectra[-1].collect(), localspectra[-1].collect(), abs_tol=0.0)
     pltest.assert_frame_equal(
@@ -1845,10 +1846,10 @@ def test_model_readers_of_a_remote_model_run_on_the_server(tmp_path: Path) -> No
     modelgridindex.
     """
     from artistools.check import get_check_results
-    from artistools.corehours import read_model_core_hours
     from artistools.describemodel import get_model_summary
-    from artistools.logsummary import get_log_summary
-    from artistools.logsummary import get_logfiles
+    from artistools.logs.core import get_log_summary
+    from artistools.logs.core import get_logfiles
+    from artistools.logs.corehours import read_model_core_hours
 
     modelpath = at.get_path("testartismodel").resolve()
     modellink = tmp_path / "testmodel"
@@ -1871,11 +1872,11 @@ def test_model_readers_of_a_remote_model_run_on_the_server(tmp_path: Path) -> No
         process, _ = remote.get_server("testhost")
         try:
             # a str path stayed on this host, and check_local_path then stopped the read
-            dfremotemodel, remotemodelmeta = at.get_modeldata(str(remotepath))
+            dfremotemodel, remotemodelmeta = at.scan_modeldata(str(remotepath))
             dfremotemodel = dfremotemodel.collect()
             # the host collected the full frame, thus a select of one column sent each column through ssh
             with mock.patch.object(remote, "call_on_host", wraps=remote.call_on_host) as mockcall:
-                at.get_modeldata(remotepath)[0].select("inputcellid").collect()
+                at.scan_modeldata(remotepath)[0].select("inputcellid").collect()
             rowcalls = [call for call in mockcall.call_args_list if call.args[2] == "read_modeldata_rows_on_host"]
             assert [call.args[3][2] for call in rowcalls] == [["inputcellid"]]
             remoteinputparams = at.get_inputparams(remotepath)
@@ -1901,7 +1902,7 @@ def test_model_readers_of_a_remote_model_run_on_the_server(tmp_path: Path) -> No
             assert process.wait(timeout=30) == 0
             remote.forget_server("testhost")
 
-    dflocalmodel, localmodelmeta = at.get_modeldata(modelpath)
+    dflocalmodel, localmodelmeta = at.scan_modeldata(modelpath)
     pltest.assert_frame_equal(dfremotemodel, dflocalmodel.collect(), abs_tol=0.0)
     assert remotemodelmeta == localmodelmeta
     assert remoteinputparams == at.get_inputparams(modelpath)
@@ -1911,7 +1912,7 @@ def test_model_readers_of_a_remote_model_run_on_the_server(tmp_path: Path) -> No
     assert dfremotenltepops.height > 0
     assert remoteoptions == {"MINTEMP": "3500."}
     assert remotemintemp == "3500."
-    # get_modeldata stopped with an error for a remote path, thus the summary said only that the model was missing
+    # scan_modeldata stopped with an error for a remote path, thus the summary said only that the model was missing
     assert remotesummary == get_model_summary(modelpath)
     pltest.assert_frame_equal(dfremotechecks, get_check_results(modellink))
     assert remotelogfiles == [Path(f"testhost:{logfolder / 'output_0-0.txt'}")]
@@ -1981,7 +1982,7 @@ def test_write_data_table_replaces_a_link_and_leaves_its_target(tmp_path: Path) 
 
     The table went through the link into its target, thus a label of the model could reach a file of the user.
     """
-    from artistools.misc.cliutils import write_data_table
+    from artistools.misc.commandoutput import write_data_table
 
     target = tmp_path / "bashrc"
     target.write_text("export KEEP=1\n", encoding="utf-8")
@@ -2117,7 +2118,7 @@ def test_get_timestep_of_timedays(tmp_path: Path) -> None:
         at.get_timestep_of_timedays(tmp_path, 500)
 
 
-def test_get_deposition(tmp_path: Path) -> None:
+def test_scan_deposition(tmp_path: Path) -> None:
     write_timesteps_out(tmp_path)
     deplines = ["#tmid_days gammadep_Lsun positrondep_Lsun total_dep_Lsun"]
     for ts in range(5):
@@ -2125,7 +2126,7 @@ def test_get_deposition(tmp_path: Path) -> None:
         deplines.append(f"{tmid} {ts + 1.0} {(ts + 1) * 0.1} {(ts + 1) * 1.1}")
     (tmp_path / "deposition.out").write_text("\n".join(deplines) + "\n")
 
-    dep = at.get_deposition(tmp_path).collect()
+    dep = at.scan_deposition(tmp_path).collect()
 
     assert dep.height == 5
     assert {"timestep", "tmid_days", "gammadep_Lsun", "positrondep_Lsun", "total_dep_Lsun"} <= set(dep.columns)
@@ -2142,7 +2143,7 @@ def test_get_deposition(tmp_path: Path) -> None:
     (baddir / "deposition.out").write_text("\n".join(badlines) + "\n")
 
     with pytest.raises(ValueError, match="Deposition times do not match"):
-        at.get_deposition(baddir).collect()
+        at.scan_deposition(baddir).collect()
 
     # a file with more rows than the model has timesteps gets the same message, not a broadcast error
     longdir = tmp_path / "long"
@@ -2152,7 +2153,7 @@ def test_get_deposition(tmp_path: Path) -> None:
     (longdir / "deposition.out").write_text("\n".join(longlines) + "\n")
 
     with pytest.raises(ValueError, match="Deposition times do not match"):
-        at.get_deposition(longdir).collect()
+        at.scan_deposition(longdir).collect()
 
 
 def test_escaped_arrivalrange_takes_all_timesteps_for_a_deposition_file_of_a_different_model(
@@ -2163,7 +2164,6 @@ def test_escaped_arrivalrange_takes_all_timesteps_for_a_deposition_file_of_a_dif
     Only the energy rates need deposition.out, but the check of its times stopped every light curve plot of the model.
     """
     from artistools.misc import get_escaped_arrivalrange
-    from artistools.misc.timesteps import get_escaped_arrivalrange_cached
 
     modelcopy = tmp_path / "model"
     modelcopy.mkdir()
@@ -2174,7 +2174,7 @@ def test_escaped_arrivalrange_takes_all_timesteps_for_a_deposition_file_of_a_dif
     deplines.extend(f"{999 + ts} 1.0 0.1 1.1" for ts in range(ntimesteps))
     (modelcopy / "deposition.out").write_text("\n".join(deplines) + "\n")
 
-    get_escaped_arrivalrange_cached.cache_clear()
+    get_escaped_arrivalrange.cache_clear()
     nts_last, _, _ = get_escaped_arrivalrange(modelcopy)
     assert nts_last == ntimesteps - 1
     assert "Deposition times do not match the timesteps. The plot takes every timestep as complete" in (
@@ -2421,7 +2421,7 @@ def test_check_time_selection_refuses_two_ways_to_name_one_range() -> None:
     """
     import artistools.spectra.plotspectra
 
-    parser = at.commands.SuggestingArgumentParser()
+    parser = at.misc.argparser.SuggestingArgumentParser()
     artistools.spectra.plotspectra.addargs(parser)
 
     for argsraw in (
@@ -2439,9 +2439,9 @@ def test_check_time_selection_refuses_two_ways_to_name_one_range() -> None:
         at.misc.check_time_selection(parser, parser.parse_args(argsraw))
 
 
-def get_parser_with_a_default_timestep() -> "at.commands.SuggestingArgumentParser":
+def get_parser_with_a_default_timestep() -> "at.misc.argparser.SuggestingArgumentParser":
     """Return a parser of -timestep with the default last, and of -timedays."""
-    parser = at.commands.SuggestingArgumentParser()
+    parser = at.misc.argparser.SuggestingArgumentParser()
     at.misc.addarg_timestep(parser, default="last")
     at.misc.addarg_timedays(parser, kind="float")
     return parser
@@ -2576,10 +2576,10 @@ def test_read_rank_outputfiles_drops_the_repeated_timestep_of_a_restart(tmp_path
     dfout = read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out")
 
     assert dfout.filter(modelgridindex=0)["timestep"].to_list() == [0, 1, 2], "each timestep must appear one time"
-    assert dfout.filter(timestep=1, modelgridindex=0)["nnlevel"].item() == 2.0, "the rows of the earlier folder stay"
+    assert dfout.filter(timestep=1, modelgridindex=0)["nnlevel"].item() == 2, "the rows of the earlier folder stay"
 
     # the earlier folder holds no row for cell 4, thus the row of the later folder stays
-    assert dfout.filter(timestep=1, modelgridindex=4)["nnlevel"].item() == 8.0
+    assert dfout.filter(timestep=1, modelgridindex=4)["nnlevel"].item() == 8
 
 
 def write_allranks_nlte_file(modelpath: Path, mtime: float) -> Path:
@@ -2773,8 +2773,8 @@ def test_check_time_selection_reads_each_spelling_as_argparse_does() -> None:
     times and ran without a word, on a command whose -timestep holds that value as its default.
     """
 
-    def parse(argsraw: list[str]) -> tuple[at.commands.SuggestingArgumentParser, argparse.Namespace]:
-        parser = at.commands.SuggestingArgumentParser()
+    def parse(argsraw: list[str]) -> tuple[at.misc.argparser.SuggestingArgumentParser, argparse.Namespace]:
+        parser = at.misc.argparser.SuggestingArgumentParser()
         at.misc.addarg_timedays(parser, kind="str")
         at.misc.addarg_timestep(parser, default=70)
         return parser, parser.parse_args(argsraw)
@@ -2819,7 +2819,7 @@ def test_import_optional_names_the_install_command(monkeypatch: pytest.MonkeyPat
     monkeypatch.undo()
 
     # an installed module comes back as the import statement gives it
-    assert at.misc.import_optional("math").sqrt(4.0) == 2.0
+    assert at.misc.import_optional("math").sqrt(4.0) == 2
 
 
 def test_print_warning_reaches_stderr_and_survives_quiet(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
@@ -2851,9 +2851,9 @@ def test_print_warning_reaches_stderr_and_survives_quiet(capsys: pytest.CaptureF
     # deposition.out, thus get_escaped_arrivalrange gives a warning. That function caches its
     # answer, thus this test clears the cache. An earlier test in this process would otherwise
     # keep the warning
-    from artistools.misc.timesteps import get_escaped_arrivalrange_cached
+    from artistools.misc.timesteps import get_escaped_arrivalrange
 
-    get_escaped_arrivalrange_cached.cache_clear()
+    get_escaped_arrivalrange.cache_clear()
     artistools.__main__.main(
         argsraw=[
             "plotlightcurves",
@@ -2965,7 +2965,7 @@ def test_combine_frames_opens_the_product_alone(tmp_path: Path) -> None:
 
     # one frame alone is the product of the run, and it takes the name that -o gave that product
     named = tmp_path / "named.pdf"
-    with mock.patch("artistools.misc.fileio.open_file") as mockopen:
+    with mock.patch("artistools.misc.commandoutput.open_file") as mockopen:
         product = at.misc.combine_frames(framepaths[:1], named, openfile=True)
     assert product == named
     assert named.is_file(), "the one frame must carry the name of the product"
@@ -2974,14 +2974,14 @@ def test_combine_frames_opens_the_product_alone(tmp_path: Path) -> None:
 
     # without such a name, that frame is the product as it stands
     framepaths[0].write_bytes(b"")
-    with mock.patch("artistools.misc.fileio.open_file") as mockopen:
+    with mock.patch("artistools.misc.commandoutput.open_file") as mockopen:
         product = at.misc.combine_frames(framepaths[:1], None, openfile=True)
     assert product == framepaths[0]
     assert mockopen.call_args.args[0] == framepaths[0]
 
     # a gif of one frame is still the gif that the caller asked for
     gifpath = tmp_path / "movie.gif"
-    with mock.patch("artistools.misc.fileio.write_gif") as mockgif:
+    with mock.patch("artistools.misc.commandoutput.write_gif") as mockgif:
         product = at.misc.combine_frames(framepaths[:1], gifpath, openfile=False, gifduration=1000.0)
     assert product == gifpath
     assert mockgif.call_args.args[0] == gifpath, "one frame must still make the gif"
@@ -2990,7 +2990,7 @@ def test_combine_frames_opens_the_product_alone(tmp_path: Path) -> None:
     assert at.misc.combine_frames([], None, openfile=True) is None
 
     # --open takes nothing when the caller does not ask for it
-    with mock.patch("artistools.misc.fileio.open_file") as mockopen:
+    with mock.patch("artistools.misc.commandoutput.open_file") as mockopen:
         at.misc.combine_frames(framepaths[:1], None, openfile=False)
     assert not mockopen.called
 
@@ -3001,14 +3001,14 @@ def test_a_keyword_that_the_command_does_not_take_raises() -> None:
     A declared name that only stops the command gave argparse a dest. Thus the test for an unknown keyword
     took that name for an argument of the command, and a wrong keyword gave no error.
     """
-    import artistools.timesteps
+    import artistools.listtimesteps
 
     testmodel = at.get_path("testdata") / "testmodel"
     with pytest.raises(ValueError, match="Unknown argument names"):
-        artistools.timesteps.main(argsraw=[], modelpath=testmodel, timemin=5.0)
+        artistools.listtimesteps.main(argsraw=[], modelpath=testmodel, timemin=5.0)
 
     # a real argument of the command still reaches it
-    artistools.timesteps.main(argsraw=[], modelpath=testmodel, timedays=300)
+    artistools.listtimesteps.main(argsraw=[], modelpath=testmodel, timedays=300)
 
 
 def test_a_range_keeps_a_negative_number_whole() -> None:
@@ -3159,7 +3159,7 @@ def test_a_cache_from_before_the_stamps_stays_current(tmp_path: Path) -> None:
     no longer hold. A reader that does not give accept_unstamped keeps the strict rule, because a
     cache that a few seconds rebuild gives a wrong number for no gain.
     """
-    from artistools.misc.fileio import mtime_matches_stamp
+    from artistools.misc.parquetcache import mtime_matches_stamp
 
     # a cache that holds no stamp dates its text source in no way, thus the stamp matches no time
     assert not mtime_matches_stamp(None, 1000.0)
@@ -3216,7 +3216,7 @@ def test_remote_path_is_not_reference_data_and_needs_no_connection() -> None:
     The menu of the recent models tested each remote model in the window thread, and each ssh call stopped the window.
     """
     with mock.patch("artistools.misc.remote.call_on_host", side_effect=AssertionError("ssh started")):
-        assert not at.misc.fileio.path_is_reference_data("nohost.invalid:/models/model", "data/refspectra")
+        assert not at.misc.modelpaths.path_is_reference_data("nohost.invalid:/models/model", "data/refspectra")
 
 
 def test_a_windows_drive_letter_is_no_remote_host(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -3385,7 +3385,7 @@ def test_a_label_with_a_colon_is_no_remote_folder_and_starts_no_ssh() -> None:
             assert args.label == ["A", label]
 
     # an empty label at the end is a label, and not the working folder
-    assert at.misc.cliutils.trailing_folder_count(["A", ""]) == 0
+    assert at.misc.argparser.trailing_folder_count(["A", ""]) == 0
 
 
 def test_a_list_option_that_takes_a_file_or_a_folder_gives_a_warning(
@@ -3416,7 +3416,7 @@ def test_the_option_form_keeps_its_path_when_a_list_option_ends_with_a_folder() 
     The take-back compared the value with the default, thus "-modelpath ." counted as no path.
     """
     modelpath = at.get_path("testdata") / "testmodel"
-    parser = at.commands.SuggestingArgumentParser()
+    parser = at.misc.argparser.SuggestingArgumentParser()
     at.misc.addarg_modelpath(parser, positional=True, multiplepaths=True, default=[Path()])
     at.misc.addarg_seriesstyle(parser)
 
@@ -3437,7 +3437,7 @@ def test_the_remote_path_pattern_follows_this_system() -> None:
 
 def test_a_bad_cell_names_the_flag(capsys: pytest.CaptureFixture[str]) -> None:
     """A -cell value that names no cell must give an argparse error that names the flag, and no traceback."""
-    parser = at.commands.SuggestingArgumentParser(prog="demo")
+    parser = at.misc.argparser.SuggestingArgumentParser(prog="demo")
     at.misc.addarg_modelgridindex(parser)
     for value in ("abc", "3-x"):
         with pytest.raises(SystemExit) as exitinfo:
@@ -3547,15 +3547,15 @@ def test_the_dispatcher_shows_the_context_notes_of_an_error(
     import artistools.__main__
 
     monkeypatch.delenv("ARTISTOOLS_TRACEBACK", raising=False)
-    error = OSError("The artistools server on vae26 stopped during a call of get_spectra")
+    error = OSError("The artistools server on vae26 stopped during a call of scan_spectra")
     error.add_note("The traceback on the server:\nTraceback (most recent call last)")
-    error.add_note("The error came from get_spectra on the artistools server of vae26")
+    error.add_note("The error came from scan_spectra on the artistools server of vae26")
     with mock.patch("artistools.commands.show_version", side_effect=error), pytest.raises(SystemExit):
         artistools.__main__.main(argsraw=["version"])
 
     message = capsys.readouterr().err
-    assert "stopped during a call of get_spectra" in message
-    assert "The error came from get_spectra on the artistools server of vae26" in message
+    assert "stopped during a call of scan_spectra" in message
+    assert "The error came from scan_spectra on the artistools server of vae26" in message
     assert "Traceback" not in message
 
     # a panic of polars that has a different cause keeps its traceback
@@ -3614,7 +3614,7 @@ def test_a_window_time_is_not_the_time_of_the_command(capsys: pytest.CaptureFixt
     def run_nothing(args: argparse.Namespace) -> None:
         """Do nothing."""
 
-    with mock.patch("time.monotonic", side_effect=[0.0, 100.0, 0.0, 100.0, 0.0, 100.0]):
+    with mock.patch("artistools.__main__.monotonic", side_effect=[0.0, 100.0, 0.0, 100.0, 0.0, 100.0]):
         run_command(run_nothing, argparse.Namespace(show=True))
         run_command(run_nothing, argparse.Namespace(interactive=True))
         assert "took" not in capsys.readouterr().err
@@ -3630,8 +3630,8 @@ def test_the_server_answers_each_request_in_this_process(tmp_path: Path, monkeyp
     modelpath = at.get_path("testdata") / "testmodel"
     requests = io.BytesIO()
     for request in (
-        ("artistools.misc.fileio", "get_remote_path_kind", (modelpath,), dict[str, t.Any](), False),
-        ("artistools.misc.fileio", "nosuchfunction", (), dict[str, t.Any](), False),
+        ("artistools.misc.modelpaths", "get_remote_path_kind", (modelpath,), dict[str, t.Any](), False),
+        ("artistools.misc.modelpaths", "nosuchfunction", (), dict[str, t.Any](), False),
     ):
         remote.write_message(requests, remote.dump_message(request))
     requests.seek(0)
@@ -3694,6 +3694,21 @@ def test_a_cached_reader_takes_the_model_path_by_keyword(tmp_path: Path, monkeyp
     # the type checkers know only the keyword modelpath, because a ParamSpec cannot rename a parameter
     getcompositiondata: t.Any = at.get_composition_data
     assert getcompositiondata(filename=tmp_path)["Z"].to_list() == [26]
+
+
+def test_a_cached_reader_shares_one_entry_for_each_form_of_a_call() -> None:
+    """A call by position, a call by keyword, and a call with the default of an argument share one cache entry.
+
+    The cache took the arguments in the form of the call, thus a keyword or a default gave a new entry. For this
+    reason, writebollightcurvedata --fromspectra read spec_res.out two times.
+    """
+    modelpath = at.get_path("testdata") / "testmodel"
+    at.get_timestep_times.cache_clear()
+    times = at.get_timestep_times(modelpath)
+    assert at.get_timestep_times(modelpath, "mid") is times
+    assert at.get_timestep_times(modelpath, loc="mid") is times
+    assert at.get_timestep_times(modelpath=modelpath, loc="mid") is times
+    assert at.get_timestep_times.cache_info().misses == 1
 
 
 def test_a_cached_reader_goes_through_pickle_and_to_the_server(tmp_path: Path) -> None:
@@ -3782,14 +3797,14 @@ def test_replace_outdated_file_locks_a_descriptor_that_can_write(tmp_path: Path)
         destpath.write_text("outdated", encoding="utf-8")
         replacement = tmp_path / "replacement"
         replacement.write_text(text, encoding="utf-8")
-        fileio.replace_outdated_file(replacement, destpath, at.misc.get_file_identity(destpath))
+        parquetcache.replace_outdated_file(replacement, destpath, at.misc.get_file_identity(destpath))
         assert destpath.read_text(encoding="utf-8") == text
 
     destpath = tmp_path / "cache"
     with mock.patch("fcntl.flock", side_effect=record_access_mode):
         replace("first")
         # a test can run as root, and root can write a file of any mode, thus a mock refuses the write access
-        with mock.patch.object(fileio.os, "open", side_effect=open_without_write_access):
+        with mock.patch.object(parquetcache.os, "open", side_effect=open_without_write_access):
             replace("second")
 
     assert accessmodes == [os.O_RDWR, os.O_RDONLY]
@@ -3885,6 +3900,21 @@ def test_a_direction_bin_outside_the_bins_gives_a_message() -> None:
         dirbins.get_dirbin_labels([500])
 
 
+def test_dirbin_definitions_refuse_both_averages_for_the_virtual_packet_observers() -> None:
+    """Averages over both angles are an error, also for the virtual packet observers.
+
+    plotlightcurves stopped with this error, but plotspectra read the spectra of the observers and ignored the averages.
+    """
+    with pytest.raises(ValueError, match="both the phi and theta"):
+        dirbins.get_dirbin_definitions(
+            at.get_path("testdata") / "vspecpolmodel",
+            [0],
+            vpkt_observers=True,
+            average_over_phi=True,
+            average_over_theta=True,
+        )
+
+
 def test_dirbins_give_a_message_in_place_of_a_bare_assert() -> None:
     """A direct call with a cut table or a bin that no average holds stopped with an AssertionError and no message."""
     with pytest.raises(ValueError, match="tables have different lengths"):
@@ -3898,6 +3928,13 @@ def test_dirbins_give_a_message_in_place_of_a_bare_assert() -> None:
         dirbins.get_dirbin_labels([10], average_over_theta=True)
     with pytest.raises(ValueError, match="both the phi and theta"):
         dirbins.get_dirbin_labels([0], average_over_phi=True, average_over_theta=True)
+    with pytest.raises(ValueError, match=r"Direction bin 5 is not the first bin of an average group"):
+        dirbins.get_average_group_dirbins(5, average_over_phi=True, average_over_theta=False)
+    assert dirbins.get_average_group_dirbins(10, average_over_phi=True, average_over_theta=False) == list(range(10, 20))
+    assert dirbins.get_average_group_dirbins(3, average_over_phi=False, average_over_theta=True) == list(
+        range(3, 100, 10)
+    )
+    assert dirbins.get_average_group_dirbins(57, average_over_phi=False, average_over_theta=False) == [57]
 
     assert dirbins.get_dirbin_labels([10], average_over_phi=True) == {
         10: dirbins.get_costheta_bins(usedegrees=False)[2][1]
@@ -4146,15 +4183,15 @@ def test_time_days_range_arg_splits_at_the_range_hyphen_only(text: str, expected
 
     A hyphen of an exponent, e.g. 1e-2, is not the hyphen of the range. deposition reads a list such as 1,5,30.
     """
-    from artistools.misc.cliutils import time_days_range_arg
+    from artistools.misc.units import time_days_range_arg
 
     assert time_days_range_arg(text) == expected
 
 
 def test_wavelength_and_time_units_convert_to_the_unit_of_the_command() -> None:
     """Give a wavelength in Angstroms and a time in days, and refuse a unit of a different quantity."""
-    from artistools.misc.cliutils import time_days_arg
-    from artistools.misc.cliutils import wavelength_angstroms_arg
+    from artistools.misc.units import time_days_arg
+    from artistools.misc.units import wavelength_angstroms_arg
 
     assert [wavelength_angstroms_arg(text) for text in ("6000", "600nm", "0.6micron", "6000Å")] == [6000.0] * 4
     assert np.isclose(time_days_arg("2.592e6s"), 30.0, rtol=1e-12)
@@ -4194,7 +4231,7 @@ def test_write_data_table_takes_the_format_of_the_suffix(tmp_path: Path) -> None
     """Write JSON with null for NaN, because JSON has no NaN, and keep the comment lines in each format."""
     import json
 
-    from artistools.misc.cliutils import write_data_table
+    from artistools.misc.commandoutput import write_data_table
 
     dftable = pl.DataFrame({"name": ["a", "b"], "value": [1.5, math.nan]})
     write_data_table(dftable, tmp_path / "table.json", commentlines=["made by a test"])
@@ -4221,3 +4258,130 @@ def test_progress_on_the_standard_error_is_not_hidden_output() -> None:
         assert not output_is_hidden()
     with contextlib.redirect_stdout(io.StringIO()):
         assert output_is_hidden()
+
+
+def test_timestep_times() -> None:
+    timestartarray = at.get_timestep_times(modelpath, loc="start")
+    timedeltarray = at.get_timestep_times(modelpath, loc="delta")
+    timemidarray = at.get_timestep_times(modelpath, loc="mid")
+    assert len(timestartarray) == 100
+    assert math.isclose(timemidarray[0], 250.421, abs_tol=1e-3)
+    assert math.isclose(timemidarray[-1], 349.412, abs_tol=1e-3)
+
+    assert all(
+        tstart < tmid < (tstart + tdelta)
+        for tstart, tdelta, tmid in zip(timestartarray, timedeltarray, timemidarray, strict=False)
+    )
+
+
+def test_get_inputparams() -> None:
+    inputparams = at.get_inputparams(modelpath)
+    dicthash = hashlib.sha256(str(sorted(inputparams.items())).encode("utf-8")).hexdigest()
+    # nusyn_min and nusyn_max moved by 7.4e-10 in relative terms when the hardcoded MeV_in_Hz became
+    # 1e6 / h_ev_s, which is the same conversion expressed with the Planck constant of constants.py
+    assert dicthash == "477eb9a026a0d526499ab11b53f32ed256d48898479dde9d2109213b988c4456", dicthash
+
+
+def test_opacity_condition_labels_match_artis() -> None:
+    """The codes must match trace_vpkt_direction() in vpkt.cc: -2 bound-free, -3 free-free, -4 electron scattering."""
+    assert not at.misc.get_opacity_condition_label(0)
+    assert at.misc.get_opacity_condition_label(-1) == "no-bb"
+    assert at.misc.get_opacity_condition_label(-2) == "no-bf"
+    assert at.misc.get_opacity_condition_label(-3) == "no-ff"
+    assert at.misc.get_opacity_condition_label(-4) == "no-es"
+    assert at.misc.get_opacity_condition_label(26) == "no-Fe"
+
+
+def test_trim_or_pad() -> None:
+    result = at.misc.trim_or_pad(3, [1, 2, 3, 4], [10, 20])
+    assert list(result[0]) == [1, 2, 3]
+    assert list(result[1]) == [10, 20, None]
+
+    result2 = at.misc.trim_or_pad(2, "single_string")
+    assert list(result2[0]) == ["single_string", None]
+
+
+def test_get_npts_model(tmp_path: Path) -> None:
+    # The 3D test model has 10^3 = 1000 cells
+    assert at.misc.get_npts_model(modelpath_3d) == 1000
+
+    # Single-number format used by 1D models
+    (tmp_path / "model.txt").write_text("20\n")
+    assert at.misc.get_npts_model(tmp_path) == 20
+
+    # Two-number format (Nx Ny): total cells = Nx * Ny
+    two_num_dir = tmp_path / "twonum"
+    two_num_dir.mkdir()
+    (two_num_dir / "model.txt").write_text("10 10\n")
+    assert at.misc.get_npts_model(two_num_dir) == 100
+
+
+def test_get_nprocs(tmp_path: Path) -> None:
+    """The 22nd line that holds a value gives nprocs. ARTIS skips comment and blank lines, and keeps them."""
+    lines = ["# a comment of the user\n", "\n", *(["placeholder\n"] * 21), "4 #nprocs\n"]
+    (tmp_path / "input.txt").write_text("".join(lines))
+    assert at.get_nprocs(tmp_path) == 4
+
+
+def test_get_cellsofmpirank(tmp_path: Path) -> None:
+    def make_model(path: Path, npts: int, nprocs: int) -> None:
+        lines = ["placeholder\n"] * 21 + [f"{nprocs} #nprocs\n"]
+        (path / "input.txt").write_text("".join(lines))
+        (path / "model.txt").write_text(f"{npts}\n")
+
+    for npts, nprocs in ((20, 4), (21, 4), (7, 3)):
+        subdir = tmp_path / f"npts{npts}_nprocs{nprocs}"
+        subdir.mkdir()
+        make_model(subdir, npts=npts, nprocs=nprocs)
+
+        all_cells: list[int] = []
+        cells_per_rank = []
+        for rank in range(nprocs):
+            cells = list(at.misc.get_cellsofmpirank(rank, subdir))
+            cells_per_rank.append(cells)
+            all_cells.extend(cells)
+
+        # Every cell index appears exactly once and all cells are covered
+        assert sorted(all_cells) == list(range(npts))
+
+        # Load balancing: ranks differ by at most 1 cell
+        sizes = [len(c) for c in cells_per_rank]
+        assert max(sizes) - min(sizes) <= 1
+
+        # Cells within each rank are contiguous
+        for cells in cells_per_rank:
+            assert cells == list(range(cells[0], cells[0] + len(cells)))
+
+    # Verify specific assignments for evenly divisible case (npts=20, nprocs=4)
+    even_dir = tmp_path / "even"
+    even_dir.mkdir()
+    make_model(even_dir, npts=20, nprocs=4)
+    assert list(at.misc.get_cellsofmpirank(0, even_dir)) == list(range(5))
+    assert list(at.misc.get_cellsofmpirank(3, even_dir)) == list(range(15, 20))
+
+    # Verify specific assignments for uneven case (npts=21, nprocs=4):
+    # rank 0 gets one extra cell (leftover), ranks 1-3 get the base count
+    uneven_dir = tmp_path / "uneven"
+    uneven_dir.mkdir()
+    make_model(uneven_dir, npts=21, nprocs=4)
+    assert list(at.misc.get_cellsofmpirank(0, uneven_dir)) == list(range(6))
+    assert list(at.misc.get_cellsofmpirank(1, uneven_dir)) == list(range(6, 11))
+
+
+def test_path_is_artis_model_accepts_a_compressed_output_file() -> None:
+    """A compressed ARTIS output file is a model, and not a reference data file."""
+    assert all(at.misc.path_is_artis_model(f"light_curve.out{ext}") for ext in ("", ".zst", ".gz", ".xz"))
+    assert not at.misc.path_is_artis_model("AT2017gfo_smarttetal2017.txt")
+
+
+def test_firstexisting_gives_the_purpose_of_a_missing_file(tmp_path: Path) -> None:
+    """A list of file names alone does not tell a user what the file holds or which command reads it."""
+    with pytest.raises(FileNotFoundError, match=r"linestat\.out gives the wavelength"):
+        at.misc.firstexisting("linestat.out", folder=tmp_path, purpose="linestat.out gives the wavelength")
+
+    # a caller that gives no purpose keeps the plain message
+    with pytest.raises(FileNotFoundError) as noreason:
+        at.misc.firstexisting("linestat.out", folder=tmp_path)
+
+    assert "None of these files exist" in str(noreason.value)
+    assert "gives the wavelength" not in str(noreason.value)

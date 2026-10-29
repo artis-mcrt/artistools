@@ -23,6 +23,10 @@ from pathlib import Path
 
 import polars as pl
 
+from artistools.misc.console import exit_with_error
+from artistools.misc.console import print_detail
+from artistools.misc.console import print_warning
+
 if t.TYPE_CHECKING:
     import subprocess
 
@@ -117,7 +121,7 @@ MAX_MESSAGE_BYTES = 16 * 1024**3
 
 # increase the server protocol when a reader with the decorator on_model_host changes its arguments or its result.
 # Also increase it for a new format of a message. Then a clone with the protocol of the release needs no build on a host
-SERVER_PROTOCOL = 9
+SERVER_PROTOCOL = 10
 
 # the server writes this line before its first message. A startup file of the remote shell can write text to the
 # standard output first, thus the client ignores each line before this one
@@ -729,10 +733,6 @@ def start_server(host: str) -> "tuple[subprocess.Popen[bytes], threading.Lock]":
     import atexit
     import shlex
     from importlib.metadata import version
-
-    from artistools.misc.cliutils import exit_with_error
-    from artistools.misc.cliutils import print_detail
-    from artistools.misc.cliutils import print_warning
 
     localversion = version("artistools")
     givencommand = os.environ.get(SERVER_COMMAND_ENVVAR) or None

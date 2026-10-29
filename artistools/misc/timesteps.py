@@ -4,28 +4,29 @@ import argparse
 import contextlib
 import math
 import typing as t
+import warnings
 from collections.abc import Iterable
 from collections.abc import Sequence
-from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
 import polars as pl
 
 from artistools.constants import C_cm_per_s
-from artistools.misc.cliutils import exit_with_error
-from artistools.misc.cliutils import parse_float_range
-from artistools.misc.cliutils import parse_range_list
-from artistools.misc.cliutils import print_warning
+from artistools.misc.console import exit_with_error
+from artistools.misc.console import print_warning
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import firstexisting_or_none
-from artistools.misc.fileio import get_artis_model_folders
-from artistools.misc.fileio import path_is_codecomparison
 from artistools.misc.fileio import polars_source_open
 from artistools.misc.fileio import read_wsv
-from artistools.misc.fileio import resolve_modelpath
+from artistools.misc.general import parse_float_range
+from artistools.misc.general import parse_range_list
 from artistools.misc.modelinfo import get_inputparams
 from artistools.misc.modelinfo import get_model_logname
+from artistools.misc.modelpaths import clear_at_reload
+from artistools.misc.modelpaths import get_artis_model_folders
+from artistools.misc.modelpaths import modelpath_cache
+from artistools.misc.modelpaths import path_is_codecomparison
 from artistools.misc.remote import on_model_host
 
 
@@ -38,20 +39,16 @@ def match_closest_time(reftime: float, searchtimes: Iterable[t.Any]) -> float:
     return min((float(x) for x in searchtimes), key=offset_from_reftime)
 
 
-def get_deposition(modelpath: Path | str = ".") -> pl.LazyFrame:
+@clear_at_reload("output")
+@modelpath_cache(maxsize=16)
+@on_model_host
+def scan_deposition(modelpath: Path) -> pl.LazyFrame:
     """Return a polars LazyFrame containing the deposition data.
 
     The file is read and its times checked against the timesteps on every call, and a light curve plot asks
     for it once per model and again per escape type, so the parsed frame is cached. A LazyFrame has no
     in-place operations, so a caller cannot alter what the next one gets.
     """
-    return get_deposition_cached(resolve_modelpath(modelpath))
-
-
-@lru_cache(maxsize=16)
-@on_model_host
-def get_deposition_cached(modelpath: Path) -> pl.LazyFrame:
-    """Return the deposition data of the model at an absolute path."""
     if Path(modelpath).is_file():
         depfilepath = Path(modelpath)
         modelpath = Path(modelpath).parent
@@ -93,11 +90,12 @@ def get_deposition_cached(modelpath: Path) -> pl.LazyFrame:
 
 
 @on_model_host
-def get_timesteps(modelpath: Path) -> pl.LazyFrame:
+def scan_timesteps(modelpath: Path) -> pl.LazyFrame:
     """Return a LazyFrame containing the timestep indices, starts, mids, ends, deltas."""
     modelpath = Path(modelpath)
     # virtual path to code comparison workshop models
     if path_is_codecomparison(modelpath):
+        # artistools.codecomparison imports artistools.misc, thus this import runs at call time
         from artistools.codecomparison import get_timestep_times as cc_get_times
 
         return (
@@ -145,24 +143,20 @@ def get_timesteps(modelpath: Path) -> pl.LazyFrame:
     )
 
 
-def get_timestep_times(modelpath: Path | str, loc: t.Literal["mid", "start", "end", "delta"] = "mid") -> list[float]:
+# a list holds a few thousand floats at most, and a viewer reads 4 kinds of time for each model in turn. With 16
+# entries, 6 models evicted each entry before its next use, and a window read the timesteps more than 1000 times at
+# each change
+@clear_at_reload("output")
+@modelpath_cache(maxsize=256)
+def get_timestep_times(modelpath: Path, loc: t.Literal["mid", "start", "end", "delta"] = "mid") -> list[float]:
     """Return a list of the times in days of each timestep.
 
     Do not change the list that this function returns. The next caller gets the same object.
     """
-    return get_timestep_times_cached(resolve_modelpath(modelpath), loc)
-
-
-# a list holds a few thousand floats at most, and a viewer reads 4 kinds of time for each model in turn. With 16
-# entries, 6 models evicted each entry before its next use, and a window read the timesteps more than 1000 times at
-# each change
-@lru_cache(maxsize=256)
-def get_timestep_times_cached(modelpath: Path, loc: t.Literal["mid", "start", "end", "delta"] = "mid") -> list[float]:
-    """Return the times in days of each timestep of the model at an absolute path."""
     colname_of_loc = {"mid": "tmid_days", "start": "tstart_days", "end": "tend_days", "delta": "twidth_days"}
 
     if colname := colname_of_loc.get(loc):
-        return get_timesteps(modelpath).select(colname).collect().get_column(colname).to_list()
+        return scan_timesteps(modelpath).select(colname).collect().get_column(colname).to_list()
 
     msg = "loc must be one of 'mid', 'start', 'end', or 'delta'"
     raise ValueError(msg)
@@ -523,18 +517,15 @@ def get_timestep_time(modelpath: Path | str, timestep: int) -> float:
     return timearray[timestep]
 
 
-def get_escaped_arrivalrange(modelpath: Path | str) -> tuple[int, float | int | None, float | int | None]:
-    """Return the time range for which the entire model can send light signals the observer."""
-    return get_escaped_arrivalrange_cached(resolve_modelpath(modelpath))
-
-
-@lru_cache(maxsize=16)
+@clear_at_reload("output")
+@modelpath_cache(maxsize=16)
 @on_model_host
-def get_escaped_arrivalrange_cached(modelpath: Path) -> tuple[int, float | int | None, float | int | None]:
-    """Return the arrival time range of the model at an absolute path."""
-    from artistools.inputmodel import get_modeldata
+def get_escaped_arrivalrange(modelpath: Path) -> tuple[int, float | int | None, float | int | None]:
+    """Return the time range for which the entire model can send light signals the observer."""
+    # artistools.inputmodel imports artistools.misc, thus this import runs at call time
+    from artistools.inputmodel import scan_modeldata
 
-    _, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
+    _, modelmeta = scan_modeldata(modelpath, printwarningsonly=True)
     vmax = modelmeta["vmax_cmps"]  # max velocity component for a single axis [cm/s]
 
     # find the earliest possible escape time and add the largest possible travel time
@@ -555,8 +546,8 @@ def get_escaped_arrivalrange_cached(modelpath: Path) -> tuple[int, float | int |
     # find the last escape time, then subtract the longest travel time from the origin. This is the
     # correction of the observer time
     try:
-        depdata = get_deposition(modelpath=modelpath)  # use this file to find the last computed timestep
-        # get_deposition() always provides a timestep column, adding a row index if the file has no such column
+        depdata = scan_deposition(modelpath=modelpath)  # use this file to find the last computed timestep
+        # scan_deposition() always provides a timestep column, adding a row index if the file has no such column
         nts_last = depdata.select(pl.col("timestep").max()).collect().item()
     except (FileNotFoundError, ValueError) as exc:
         # only the energy rates need deposition.out, thus a missing file or a file of a different model stops no plot
@@ -576,3 +567,17 @@ def get_escaped_arrivalrange_cached(modelpath: Path) -> tuple[int, float | int |
         return nts_last, None, None
 
     return nts_last, validrange_start_days, validrange_end_days
+
+
+# the names before the readers took the prefix scan_ or read_. Each alias keeps the old signature, thus a script
+# of a user still runs, and it gives a DeprecationWarning that names the new function
+@warnings.deprecated("get_deposition is deprecated. Use scan_deposition.")
+def get_deposition(modelpath: Path | str = ".") -> pl.LazyFrame:
+    """Return the result of scan_deposition, the new name of this function."""
+    return scan_deposition(Path(modelpath))
+
+
+@warnings.deprecated("get_timesteps is deprecated. Use scan_timesteps.")
+def get_timesteps(modelpath: Path) -> pl.LazyFrame:
+    """Return the result of scan_timesteps, the new name of this function."""
+    return scan_timesteps(modelpath)

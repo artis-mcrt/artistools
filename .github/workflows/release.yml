@@ -40,7 +40,7 @@ jobs:
               with:
                   token: ${{ secrets.GH_TOKEN }}
 
-            - uses: astral-sh/setup-uv@v10.3.2
+            - uses: astral-sh/setup-uv@v10.3.3
 
             - name: Set the version
               id: setversion

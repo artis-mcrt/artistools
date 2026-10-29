@@ -20,7 +20,7 @@ from artistools.constants import day_to_s
 from artistools.constants import Msun_to_g
 from artistools.estimators import scan_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
-from artistools.inputmodel import get_modeldata
+from artistools.inputmodel import scan_modeldata
 from artistools.inputmodel.modelfromhydro import get_merger_time_geomunits
 from artistools.inputmodel.rprocess_from_trajectory import check_traj_time_matches
 from artistools.inputmodel.rprocess_from_trajectory import get_closest_network_timesteps
@@ -37,18 +37,18 @@ from artistools.misc import addarg_output
 from artistools.misc import addarg_show
 from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import exit_with_error
-from artistools.misc import get_deposition
 from artistools.misc import get_grid_mapping
 from artistools.misc import get_model_name
-from artistools.misc import get_timesteps
 from artistools.misc import get_wid_init_at_tmodel
 from artistools.misc import is_in_range
 from artistools.misc import output_data
 from artistools.misc import parallel_map
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
-from artistools.misc.cliutils import time_days_arg
-from artistools.misc.cliutils import TIME_UNIT_HELP
+from artistools.misc import scan_deposition
+from artistools.misc import scan_timesteps
+from artistools.misc import time_days_arg
+from artistools.misc import TIME_UNIT_HELP
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
@@ -328,7 +328,7 @@ def plot_qdot(
 ) -> None:
     """Plot the ARTIS radioactive heating rate against the rate from the nuclear network trajectories."""
     try:
-        depdata = df_filter_minmax_bracketed(get_deposition(modelpath=modelpath), "tmid_days", None, xmax).collect()
+        depdata = df_filter_minmax_bracketed(scan_deposition(modelpath=modelpath), "tmid_days", None, xmax).collect()
 
     except (FileNotFoundError, ValueError) as exc:
         # a mismatched deposition.out belongs to a different model, thus the heating rate gives no plot, as with no file
@@ -692,7 +692,7 @@ def plot_qdot_abund_modelcells(
     The plots go to outputfolder, or to the model folder if outputfolder is None.
     """
     outputfolder = modelpath if outputfolder is None else outputfolder
-    lzdfmodel, modelmeta = get_modeldata(modelpath, get_elemabundances=True)
+    lzdfmodel, modelmeta = scan_modeldata(modelpath, get_elemabundances=True)
     lzdfmodel = add_derived_cols_to_modeldata(lzdfmodel, modelmeta=modelmeta)
 
     # default values, because early model.txt didn't specify this
@@ -733,7 +733,7 @@ def plot_qdot_abund_modelcells(
     print(f"Model mass: {model_mass_grams / Msun_to_g:.3f} Msun")
 
     dftimesteps = df_filter_minmax_bracketed(
-        get_timesteps(modelpath).select("timestep", "tmid_days"), "tmid_days", None, timedaysmax
+        scan_timesteps(modelpath).select("timestep", "tmid_days"), "tmid_days", None, timedaysmax
     ).collect()
 
     arr_time_artis_days_alltimesteps = dftimesteps.select(pl.col("tmid_days")).to_series().to_numpy()

@@ -19,8 +19,8 @@ from artistools.lightcurve.core import get_band_lightcurve
 from artistools.lightcurve.core import get_filename_part
 from artistools.lightcurve.core import get_phillips_relation_data
 from artistools.lightcurve.core import scan_lightcurve
-from artistools.misc import check_averaging_angles
 from artistools.misc import exit_with_error
+from artistools.misc import folder_holds_match
 from artistools.misc import get_costhetabin_phibin_labels
 from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_dirbins
@@ -34,9 +34,8 @@ from artistools.misc import path_is_file
 from artistools.misc import print_saved
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
+from artistools.misc import resolve_modelpath
 from artistools.misc import resolve_outputfile
-from artistools.misc.fileio import folder_holds_match
-from artistools.misc.fileio import resolve_modelpath
 from artistools.plottools import get_viewinganglecolor_for_colorbar
 from artistools.plottools import invert_magnitude_yaxis
 from artistools.plottools import make_colorbar_viewingangles
@@ -48,11 +47,25 @@ from artistools.plottools import set_legend
 from artistools.plottools import set_plot_title
 
 
+def generate_band_lightcurve_data_for_args(
+    modelpath: Path | str, filternames: Sequence[str], dirbin: int, args: argparse.Namespace
+) -> dict[str, list[tuple[float, float]]]:
+    """Return the band magnitudes of generate_band_lightcurve_data, with the options that the command gives."""
+    return generate_band_lightcurve_data(
+        Path(modelpath),
+        filternames,
+        dirbin=dirbin,
+        vpkt_observers=bool(args.plotvspecpol),
+        timemin=args.timemin,
+        timemax=args.timemax,
+        average_over_phi=args.average_over_phi_angle,
+        average_over_theta=args.average_over_theta_angle,
+    )
+
+
 def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> tuple[Sequence[int], dict[int, str]]:
     """Return the direction bins selected by args, and a label for each of them."""
     modelpath = Path(modelpath)
-    check_averaging_angles(args.average_over_phi_angle, args.average_over_theta_angle)
-
     viewing_angle_data_exists = args.frompackets or folder_holds_match(modelpath, "*_res.out*")
     dirbins: list[int] = []
     if args.plotvspecpol and path_is_file(modelpath / "vpkt.txt"):
@@ -79,16 +92,6 @@ def parse_directionbin_args(modelpath: Path | str, args: argparse.Namespace) -> 
         average_over_theta=args.average_over_theta_angle,
         usedegrees=args.usedegrees,
     )
-
-    if not args.plotvspecpol:
-        if args.average_over_phi_angle:
-            for dirbin in dirbin_definition:
-                assert dirbin % get_viewingdirection_phibincount() == 0 or dirbin == -1
-
-        if args.average_over_theta_angle:
-            # averaging over theta leaves one bin per phi index
-            for dirbin in dirbin_definition:
-                assert dirbin < get_viewingdirection_phibincount() or dirbin == -1
 
     return dirbins, dirbin_definition
 
@@ -707,8 +710,10 @@ def second_band_brightness_at_peak_first_band(
     """Return the second band's magnitude at the time the first band peaks, for each direction bin."""
     second_band_brightness: list[float] = []
     for anglenumber, _ in enumerate(data[f"time_{bands[0]}max"]):
-        lightcurve_data = generate_band_lightcurve_data(modelpath, args, anglenumber)
-        time, brightness_in_mag = get_band_lightcurve(lightcurve_data, bands[1], args)
+        lightcurve_data = generate_band_lightcurve_data_for_args(modelpath, args.filter, anglenumber, args)
+        time, brightness_in_mag = get_band_lightcurve(
+            lightcurve_data, bands[1], timemin=args.timemin, timemax=args.timemax
+        )
 
         fxfit, xfit = lightcurve_polyfit(time, brightness_in_mag)
 
@@ -806,7 +811,7 @@ def peakmag_risetime_declinerate_init(
             print(f"Reading spectra: {get_model_logname(modelpath)}")
         # the spectra of a direction bin hold every band, thus read each direction bin one time before the band loop
         lightcurve_data_filters_of_dirbin = (
-            {dirbin: generate_band_lightcurve_data(Path(modelpath), args, dirbin) for dirbin in dirbins}
+            {dirbin: generate_band_lightcurve_data_for_args(modelpath, args.filter, dirbin, args) for dirbin in dirbins}
             if args.filter
             else {}
         )
@@ -815,7 +820,9 @@ def peakmag_risetime_declinerate_init(
         for band_name in plottinglist:
             for dirbin in dirbins:
                 if args.filter:
-                    time, brightness = get_band_lightcurve(lightcurve_data_filters_of_dirbin[dirbin], band_name, args)
+                    time, brightness = get_band_lightcurve(
+                        lightcurve_data_filters_of_dirbin[dirbin], band_name, timemin=args.timemin, timemax=args.timemax
+                    )
                 else:
                     lightcurve_data = dfbolo_of_dirbin[dirbin]
                     brightness = lightcurve_data["mag"].to_numpy()

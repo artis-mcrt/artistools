@@ -1,9 +1,9 @@
 """Read ARTIS light curves and reference observational light curves, and derive band magnitudes from spectra."""
 
-import argparse
 import io
 import math
 import typing as t
+import warnings
 from collections.abc import Collection
 from collections.abc import Iterable
 from collections.abc import Mapping
@@ -19,8 +19,7 @@ import polars.selectors as cs
 
 from artistools.atomic import get_atomic_number
 from artistools.atomic import get_elsymbol
-from artistools.atomic import get_nuclides
-from artistools.commands import get_path
+from artistools.atomic import scan_nuclides
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import H0_km_per_s_per_mpc
@@ -37,28 +36,31 @@ from artistools.misc import find_reference_data_file
 from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_file_metadata
-from artistools.misc import get_timesteps
+from artistools.misc import get_metadata_label
+from artistools.misc import get_metadata_path
 from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import get_vpkt_config
+from artistools.misc import on_model_host
+from artistools.misc import parse_metadata_redshift
 from artistools.misc import path_is_reference_data
+from artistools.misc import polars_error_note
 from artistools.misc import print_warning
+from artistools.misc import read_complete_lines
 from artistools.misc import read_wsv
 from artistools.misc import require_reference_data_file
+from artistools.misc import scan_timesteps
 from artistools.misc import split_multitable_dataframe
+from artistools.misc import warn_direction_bin_noise
 from artistools.misc import zopen
-from artistools.misc.fileio import get_metadata_path
-from artistools.misc.fileio import parse_metadata_redshift
-from artistools.misc.fileio import polars_error_note
-from artistools.misc.fileio import read_complete_lines
-from artistools.misc.remote import on_model_host
-from artistools.packets import get_packets
-from artistools.packets import get_virtual_packets
+from artistools.packets import scan_packets
+from artistools.packets import scan_virtual_packets
 from artistools.packets import sum_packets_by_dirbin
 from artistools.packets import sum_virtual_packets_by_observer
+from artistools.paths import get_path
 from artistools.spectra import get_escape_surface_gamma
-from artistools.spectra import get_spectra
-from artistools.spectra import get_spectrum_at_time
-from artistools.spectra import get_vspecpol_data
+from artistools.spectra import scan_spectra
+from artistools.spectra import scan_spectrum_at_time
+from artistools.spectra import scan_vspecpol_data
 
 # ARTIS writes the Sloan filters with a trailing "s"; map them back to the conventional single-letter names
 FILTERNAME_ALIASES: t.Final[Mapping[str, str]] = MappingProxyType({"rs": "r", "gs": "g", "is": "i", "zs": "z"})
@@ -207,7 +209,7 @@ def select_timesteps_inside_vpkt_window(dftimesteps: pl.DataFrame, vpkt_config: 
 
 
 @on_model_host
-def get_from_packets(
+def scan_lightcurve_from_packets(
     modelpath: str | Path,
     escape_type: str = "TYPE_RPKT",
     maxpacketfiles: int | None = None,
@@ -231,7 +233,7 @@ def get_from_packets(
         raise ValueError(msg)
 
     dftimesteps_selected = df_filter_minmax_bracketed(
-        get_timesteps(Path(modelpath)), "tmid_days", timedaysmin, timedaysmax
+        scan_timesteps(Path(modelpath)), "tmid_days", timedaysmin, timedaysmax
     ).collect()
 
     vpkt_config = get_vpkt_config(Path(modelpath)) if directionbins_are_vpkt_observers else None
@@ -244,9 +246,9 @@ def get_from_packets(
     ]
 
     if directionbins_are_vpkt_observers:
-        nprocs_read, dfpackets = get_virtual_packets(modelpath, maxpacketfiles=maxpacketfiles)
+        nprocs_read, dfpackets = scan_virtual_packets(modelpath, maxpacketfiles=maxpacketfiles)
     else:
-        nprocs_read, dfpackets = get_packets(
+        nprocs_read, dfpackets = scan_packets(
             modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type
         )
         # the comoving frame needs the velocity of the model surface. A copy of a model folder can leave out a large
@@ -268,7 +270,7 @@ def get_from_packets(
             expr = pl.col("nucname") == pellet_nucname
         dfpackets = dfpackets.filter(
             pl.col("pellet_nucindex").is_in(
-                get_nuclides(modelpath=Path(modelpath))
+                scan_nuclides(modelpath=Path(modelpath))
                 .filter(expr)
                 .select("pellet_nucindex")
                 .collect()
@@ -341,20 +343,6 @@ def get_from_packets(
     return lcdata
 
 
-def args_from_kwargs(
-    args: argparse.Namespace | None, kwargs: dict[str, t.Any], **defaults: t.Any
-) -> argparse.Namespace:
-    """Return args if it was given, otherwise build a Namespace from kwargs on top of the given defaults."""
-    if args is None:
-        return argparse.Namespace(**(defaults | kwargs))
-
-    if kwargs:
-        msg = "Specify either args or keyword options, not both"
-        raise TypeError(msg)
-
-    return args
-
-
 @on_model_host
 def get_top_nuclides(
     modelpath: Path,
@@ -370,8 +358,8 @@ def get_top_nuclides(
 
     The host of a remote model reads the packets, and only the table of the nuclides comes back.
     """
-    dfnuclides = get_nuclides(modelpath=modelpath)
-    _, dfpackets = get_packets(modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type)
+    dfnuclides = scan_nuclides(modelpath=modelpath)
+    _, dfpackets = scan_packets(modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type)
     return (
         df_filter_minmax_bracketed(
             dfpackets.with_columns(tdecay_d=pl.col("tdecay") / day_to_s),
@@ -392,41 +380,35 @@ def get_top_nuclides(
 @on_model_host
 def generate_band_lightcurve_data(
     modelpath: Path,
-    args: argparse.Namespace | None = None,
+    filternames: Sequence[str],
+    *,
     dirbin: int = -1,
-    filternames: Sequence[str] | None = None,
-    **kwargs: t.Any,
-) -> dict[str, t.Any]:
+    vpkt_observers: bool = False,
+    timemin: float | None = None,
+    timemax: float | None = None,
+    average_over_phi: bool = False,
+    average_over_theta: bool = False,
+) -> dict[str, list[tuple[float, float]]]:
     """Integrate the spectra to get the band magnitudes against time.
 
-    The method comes from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py.
+    The method comes from https://github.com/cinserra/S3/blob/master/src/s3/SMS.py. With vpkt_observers, a direction
+    bin names a virtual packet observer of vpkt.txt. The name "bol" gives the bolometric magnitude.
     """
-    args = args_from_kwargs(
-        args,
-        kwargs,
-        plotvspecpol=False,
-        plotviewingangle=False,
-        filter=None,
-        timemin=None,
-        timemax=None,
-        average_over_phi_angle=False,
-        average_over_theta_angle=False,
-    )
-    # get_spectrum_at_time reads the angle average of bin -1 from spec.out, thus its times come from there too.
+    # scan_spectrum_at_time reads the angle average of bin -1 from spec.out, thus its times come from there too.
     # A model with virtual packets can have no specpol.out
-    isvpktobserver = bool(args.plotvspecpol) and dirbin >= 0 and Path(modelpath, "vpkt.txt").is_file()
+    isvpktobserver = vpkt_observers and dirbin >= 0 and Path(modelpath, "vpkt.txt").is_file()
     if isvpktobserver:
         print("Found vpkt.txt, using virtual packets")
-        vspecdata = get_vspecpol_data(vspecindex=dirbin, modelpath=modelpath)["I"]
+        vspecdata = scan_vspecpol_data(vspecindex=dirbin, modelpath=modelpath)["I"]
         timearray = vspecdata.collect_schema().names()[1:]
     else:
         specfilename = (
             firstexisting_or_none(["specpol_res.out", "spec_res.out"], folder=modelpath, tryzipped=True)
-            if args.plotviewingangle
+            if dirbin >= 0
             else None
         )
         if specfilename is None:
-            if args.plotviewingangle:
+            if dirbin >= 0:
                 print_warning("No direction-resolved spectra available. Using angle-averaged spectra.")
             specfilename = firstexisting(["spec.out", "specpol.out"], folder=modelpath, tryzipped=True)
 
@@ -434,32 +416,22 @@ def generate_band_lightcurve_data(
             # pol and res files repeat the time columns for the Stokes Q and U blocks, so keep the first of each
             timearray = list(dict.fromkeys(fspec.readline().split()[1:]))
 
-    if filternames is None:
-        # the colour evolution plot integrates the bands of every filter pair at once, so it names them here
-        # rather than by assigning args.filter, which also selects the subplot layout and the plot type
-        if not args.filter:
-            args.filter = ["B"]
-        filternames = args.filter
-
-    # the caller gives the names, or args.filter holds them. Either way they are names from here on
-    bandnames: list[str] = list(filternames or [])
-
     selectedtimes = [
         (timestep, time)
         for timestep, time in enumerate(float(time) for time in timearray)
-        if (args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time)
+        if (timemin is None or timemin <= time) and (timemax is None or timemax >= time)
     ]
 
     # one collect_all call evaluates the spectra of all the times together, and every band reads them
     spectra = pl.collect_all([
-        get_spectrum_at_time(
+        scan_spectrum_at_time(
             Path(modelpath),
             timestep=timestep,
             time=time,
-            args=args,
             dirbin=dirbin,
-            average_over_phi=args.average_over_phi_angle,
-            average_over_theta=args.average_over_theta_angle,
+            vpkt_observers=vpkt_observers,
+            average_over_phi=average_over_phi,
+            average_over_theta=average_over_theta,
         )
         for timestep, time in selectedtimes
     ])
@@ -476,7 +448,7 @@ def generate_band_lightcurve_data(
         if spectrumwavelengths is not None and spectrumwavelengths.size
         else None
     )
-    for filter_name in bandnames:
+    for filter_name in filternames:
         if filter_name == "bol":
             if isvpktobserver and spectrumrange is not None:
                 print_warning(
@@ -554,11 +526,11 @@ def get_bolometric_luminosities(
     """Return the bolometric luminosity in erg/s of each direction bin at each given timestep.
 
     The luminosity comes from an integral of the emergent spectrum at a distance of 1 Mpc. One
-    get_spectra call builds the queries of every timestep, and one collect_all call then evaluates
+    scan_spectra call builds the queries of every timestep, and one collect_all call then evaluates
     the timesteps of one direction bin. Thus the frames of every bin do not stay in memory together.
     """
     lazyspectra = [
-        get_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep, directionbins=dirbins)
+        scan_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep, directionbins=dirbins)
         for timestep in timesteps
     ]
 
@@ -627,27 +599,23 @@ def bracket_spectrum_to_band(
 
 
 def get_band_lightcurve(
-    band_lightcurve_data: dict[str, Sequence[tuple[float, float]]],
+    band_lightcurve_data: Mapping[str, Sequence[tuple[float, float]]],
     band_name: str,
-    args: argparse.Namespace | None = None,
-    **kwargs: t.Any,
+    *,
+    timemin: float | None = None,
+    timemax: float | None = None,
 ) -> tuple[Sequence[float], npt.NDArray[np.floating]]:
-    """Return the times and magnitudes of one band's light curve, restricted to the args.timemin/timemax range.
+    """Return the times and magnitudes of one band's light curve, restricted to the range timemin to timemax.
 
     A time with no flux in the band has no magnitude, thus it gives no point. get_band_gap_times gives these times.
     """
-    args = args_from_kwargs(args, kwargs)
-
     selected = [
         (time, brightness)
         for time, brightness in band_lightcurve_data[band_name]
-        if math.isfinite(brightness)
-        and ((args.timemin is None or args.timemin <= time) and (args.timemax is None or args.timemax >= time))
+        if math.isfinite(brightness) and (timemin is None or timemin <= time) and (timemax is None or timemax >= time)
     ]
     if not selected:
-        msg = (
-            f"The {band_name} band has no light curve points between timemin {args.timemin} and timemax {args.timemax}"
-        )
+        msg = f"The {band_name} band has no light curve points between timemin {timemin} and timemax {timemax}"
         raise ValueError(msg)
 
     times, brightness_in_mag = zip(*selected, strict=True)
@@ -655,7 +623,9 @@ def get_band_lightcurve(
     return times, np.array(brightness_in_mag)
 
 
-def get_band_gap_times(band_lightcurve_data: dict[str, Sequence[tuple[float, float]]], band_name: str) -> list[float]:
+def get_band_gap_times(
+    band_lightcurve_data: Mapping[str, Sequence[tuple[float, float]]], band_name: str
+) -> list[float]:
     """Return the times at which a band has no flux and no magnitude, e.g. for a test of an interpolation."""
     return [time for time, brightness in band_lightcurve_data[band_name] if not math.isfinite(brightness)]
 
@@ -681,11 +651,9 @@ def read_hesma_lightcurve_file(hesma_modelpath: Path | str) -> pl.DataFrame:
     return read_wsv(hesma_modelpath, comment_prefix="#", header_from_comment=True)
 
 
-def read_hesma_lightcurve(args: argparse.Namespace) -> pl.DataFrame:
-    """Return the HESMA model light curve of --plot-hesma-model, from its path or from the data/hesma folder."""
-    return read_hesma_lightcurve_file(
-        require_reference_data_file(args.plot_hesma_model, "data/hesma", "HESMA model light curve")
-    )
+def read_hesma_lightcurve(hesmamodel: str) -> pl.DataFrame:
+    """Return the HESMA model light curve of a path or of a file name in the data/hesma folder."""
+    return read_hesma_lightcurve_file(require_reference_data_file(hesmamodel, "data/hesma", "HESMA model light curve"))
 
 
 def luminosity_distance(H0: float, Om0: float, z: float) -> float:
@@ -836,7 +804,8 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pl.Dat
             f"Write {get_metadata_path(data_path).name} in the folder of the data, with a timecorrection value and a"
             " label",
         )
-    metadata.setdefault("label", data_path.stem)
+    # a file with no label takes the name that the command gives, as the bolometric curves and the spectra do
+    metadata["label"] = get_metadata_label(metadata, lightcurvefilename)
 
     with zopen(data_path, encoding="utf-8") as datafile:
         lines = datafile.read().splitlines()
@@ -957,3 +926,153 @@ def get_phillips_relation_data() -> tuple[pl.DataFrame, str]:
     print(sn_data)
 
     return sn_data, "Observed (Hicken et al. 2009)"
+
+
+def read_artis_lightcurve(
+    modelpath: Path,
+    dirbins: Sequence[int],
+    *,
+    lcfilename: str | None,
+    escape_type: str,
+    frompackets: bool,
+    maxpacketfiles: int | None,
+    average_over_phi: bool,
+    average_over_theta: bool,
+    vpkt_observers: bool,
+    pellet_nucname: str | None,
+    use_pellet_decay_time: bool,
+    timemin: float | None,
+    timemax: float | None,
+) -> dict[int, pl.DataFrame] | None:
+    """Return the light curve of each direction bin between timemin and timemax, or None if the file does not exist.
+
+    Each frame keeps the nearest timestep beyond each end of the time range. With frompackets, the function reads the
+    packets files. Otherwise it reads lcfilename, or light_curve.out for bin -1 and light_curve_res.out for the other
+    bins. Only the packets give the nuclide and the decay time of a pellet.
+    """
+    # bin -1 is the angle average, which only light_curve.out holds
+    directionresolved = list(dirbins) != [-1]
+
+    if frompackets:
+        lcdataframes = scan_lightcurve_from_packets(
+            modelpath,
+            escape_type=escape_type,
+            maxpacketfiles=maxpacketfiles,
+            directionbins=dirbins,
+            average_over_phi=average_over_phi,
+            average_over_theta=average_over_theta,
+            directionbins_are_vpkt_observers=vpkt_observers,
+            pellet_nucname=pellet_nucname,
+            use_pellet_decay_time=use_pellet_decay_time,
+            timedaysmin=timemin,
+            timedaysmax=timemax,
+        )
+    else:
+        if pellet_nucname is not None or use_pellet_decay_time:
+            msg = "Only the packets give the nuclide and the decay time of a pellet, thus give frompackets=True"
+            raise ValueError(msg)
+        if vpkt_observers:
+            exit_with_error(
+                "--plotvspecpol names virtual packet observers, which light_curve_res.out does not hold",
+                "Give --frompackets to make the light curve of each virtual observer from the packets.",
+            )
+        try:
+            lcpath = (
+                firstexisting(lcfilename, folder=modelpath, tryzipped=True)
+                if lcfilename is not None
+                else find_lightcurve_file(
+                    modelpath, directionresolved=directionresolved, gamma=escape_type == "TYPE_GAMMA"
+                )
+            )
+        except FileNotFoundError as exc:
+            print_warning(f"Skipping {modelpath}: {exc}")
+            return None
+
+        try:
+            lcdataframes = scan_lightcurve(
+                lcpath,
+                directionresolved=directionresolved,
+                average_over_phi=average_over_phi,
+                average_over_theta=average_over_theta,
+            )
+        except ValueError as exc:
+            exit_with_error(
+                str(exc),
+                "Give --plotviewingangle with light_curve_res.out, give no --plotviewingangle with light_curve.out, and"
+                " give a file that ARTIS wrote in full",
+            )
+        if directionresolved:
+            warn_direction_bin_noise(
+                lcpath.name, average_over_phi=average_over_phi, average_over_theta=average_over_theta
+            )
+        # light_curve_res.out holds the bins 0 to 99, thus the angle average of bin -1 comes from light_curve.out
+        if -1 in dirbins and -1 not in lcdataframes:
+            lcdataframes[-1] = scan_lightcurve(
+                find_lightcurve_file(modelpath, directionresolved=False, gamma=escape_type == "TYPE_GAMMA")
+            )[-1]
+
+    return dict(
+        zip(
+            dirbins,
+            pl.collect_all(
+                df_filter_minmax_bracketed(lcdataframes[dirbin], colname="time_days", minval=timemin, maxval=timemax)
+                for dirbin in dirbins
+            ),
+            strict=True,
+        )
+    )
+
+
+def split_at_valid_range(
+    lcdata: pl.DataFrame, validrange_start_days: float | None, validrange_end_days: float | None
+) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
+    """Return the rows of a light curve before, inside, and after the valid range of the arrival times.
+
+    The part before and the part after each also hold the nearest row of the valid range, thus their lines join the
+    line of the valid range. A range of None, or a range that holds no row, gives all the rows to the part before.
+    """
+    emptylcdata = pl.DataFrame(schema=lcdata.schema)
+    if validrange_start_days is None or validrange_end_days is None:
+        return lcdata, emptylcdata, emptylcdata
+
+    lcdata_valid = lcdata.filter(pl.col("time_days").is_between(validrange_start_days, validrange_end_days))
+    if lcdata_valid.is_empty():
+        return lcdata, lcdata_valid, emptylcdata
+
+    return (
+        lcdata.filter(pl.col("time_days") <= lcdata_valid["time_days"].min()),
+        lcdata_valid,
+        lcdata.filter(pl.col("time_days") >= lcdata_valid["time_days"].max()),
+    )
+
+
+# the names before the readers took the prefix scan_ or read_. Each alias keeps the old signature, thus a script
+# of a user still runs, and it gives a DeprecationWarning that names the new function
+@warnings.deprecated("get_from_packets is deprecated. Use scan_lightcurve_from_packets.")
+def get_from_packets(
+    modelpath: str | Path,
+    escape_type: str = "TYPE_RPKT",
+    maxpacketfiles: int | None = None,
+    directionbins: Collection[int] | None = None,
+    average_over_phi: bool = False,
+    average_over_theta: bool = False,
+    directionbins_are_vpkt_observers: bool = False,
+    pellet_nucname: str | None = None,
+    use_pellet_decay_time: bool = False,
+    timedaysmin: float | None = None,
+    timedaysmax: float | None = None,
+) -> dict[int, pl.LazyFrame]:
+    """Return the result of scan_lightcurve_from_packets, the new name of this function."""
+    return scan_lightcurve_from_packets(
+        modelpath,
+        escape_type=escape_type,
+        maxpacketfiles=maxpacketfiles,
+        directionbins=directionbins,
+        average_over_phi=average_over_phi,
+        average_over_theta=average_over_theta,
+        directionbins_are_vpkt_observers=directionbins_are_vpkt_observers,
+        pellet_nucname=pellet_nucname,
+        use_pellet_decay_time=use_pellet_decay_time,
+        timedaysmin=timedaysmin,
+        timedaysmax=timedaysmax,
+    )

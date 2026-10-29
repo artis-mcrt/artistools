@@ -8,6 +8,7 @@ import math
 import os
 import time
 import typing as t
+import warnings
 from collections.abc import Callable
 from collections.abc import Sequence
 from pathlib import Path
@@ -19,35 +20,35 @@ import polars.selectors as cs
 from artistools.atomic import get_atomic_number
 from artistools.atomic import get_elsymbol
 from artistools.atomic import get_z_a_nucname
-from artistools.commands import get_path
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.misc import exit_with_error
 from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
+from artistools.misc import get_bin_index_expr
+from artistools.misc import get_file_copies
 from artistools.misc import get_file_identity
 from artistools.misc import get_parquet_cache_name
+from artistools.misc import is_remote_path
+from artistools.misc import modelpath_cache
+from artistools.misc import MTIME_TOLERANCE_S
+from artistools.misc import on_model_host
+from artistools.misc import parse_npts_line
 from artistools.misc import path_is_codecomparison
 from artistools.misc import polars_source
 from artistools.misc import print_detail
 from artistools.misc import print_saved
 from artistools.misc import read_parquet_cache_metadata
 from artistools.misc import read_wsv
+from artistools.misc import resolve_modelpath
 from artistools.misc import resolve_outputfile
+from artistools.misc import with_compressed_extension
+from artistools.misc import without_compressed_extension
 from artistools.misc import write_parquet_atomic
+from artistools.misc import write_zstd_lines
 from artistools.misc import zopen
-from artistools.misc.fileio import get_file_copies
-from artistools.misc.fileio import modelpath_cache
-from artistools.misc.fileio import MTIME_TOLERANCE_S
-from artistools.misc.fileio import resolve_modelpath
-from artistools.misc.fileio import with_compressed_extension
-from artistools.misc.fileio import without_compressed_extension
-from artistools.misc.fileio import write_zstd_lines
-from artistools.misc.general import get_bin_index_expr
-from artistools.misc.modelinfo import parse_npts_line
-from artistools.misc.remote import is_remote_path
-from artistools.misc.remote import on_model_host
+from artistools.paths import get_path
 
 if t.TYPE_CHECKING:
     from collections.abc import Iterator
@@ -111,7 +112,7 @@ def read_noncomment_line(fmodel: t.IO[str], headercommentlines: list[str]) -> tu
     return line, linecount
 
 
-def read_modelfile_text(
+def scan_modelfile_text(
     filename: Path | str, printwarningsonly: bool = False
 ) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
     """Read an artis model.txt file containing cell velocities, density, and abundances of radioactive nuclides."""
@@ -463,7 +464,7 @@ def read_modelfile_text(
 CACHEVERSION = 2
 
 
-def read_parquet_cache(
+def scan_parquet_cache(
     parquetfilepath: Path, textsource_mtime: float, metadatakeys: Sequence[str] = (), printwarningsonly: bool = False
 ) -> tuple[pl.LazyFrame, dict[str, str]] | None:
     """Return the cached table and its metadata, or None if the cache is absent, stale, or unreadable.
@@ -538,7 +539,7 @@ def get_text_source_cached(
     outdatedparquet = get_file_identity(parquetfilepath)
     hadcachefile = outdatedparquet is not None
 
-    cached = read_parquet_cache(
+    cached = scan_parquet_cache(
         parquetfilepath, textsource_mtime, metadatakeys=metadatakeys, printwarningsonly=printwarningsonly
     )
     if cached is not None:
@@ -620,7 +621,7 @@ def get_modelmeta(modelpath: Path) -> dict[str, t.Any]:
 
     The host of a remote model reads the model and sends back the metadata alone.
     """
-    return get_modeldata(modelpath, printwarningsonly=True)[1]
+    return scan_modeldata(modelpath, printwarningsonly=True)[1]
 
 
 # the viewer resolves -deltalogx smallestscale at each change, and the grid of a model does not change
@@ -633,7 +634,7 @@ def get_spatial_scales(modelpath: Path) -> tuple[float, float, str]:
     a 2D or 3D model, the smallest spatial scale is the smallest cell width along an axis. The largest spatial scale is
     the diagonal of a cell.
     """
-    dfmodel, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
+    dfmodel, modelmeta = scan_modeldata(modelpath, printwarningsonly=True)
     vmax_cmps = float(modelmeta["vmax_cmps"])
     # wid_init_* is the cell width at t_model. A width divided by t_model gives the width in velocity
     t_model_init_s = float(modelmeta["t_model_init_days"]) * day_to_s
@@ -693,7 +694,7 @@ def get_spatial_scales(modelpath: Path) -> tuple[float, float, str]:
     return smallest, largest, f"{gridtext}. {scaletext}"
 
 
-def get_modeldata(
+def scan_modeldata(
     modelpath: Path | str = ".", get_elemabundances: bool = False, printwarningsonly: bool = False
 ) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
     """Read the velocities, the densities, and the mass fractions of the radioactive nuclides of the cells in model.txt.
@@ -716,7 +717,7 @@ def get_modeldata(
     path = resolve_modelpath(modelpath)
     if is_remote_path(path):
         return scan_remote_modeldata(path, get_elemabundances=get_elemabundances, printwarningsonly=printwarningsonly)
-    return read_modeldata(path, get_elemabundances=get_elemabundances, printwarningsonly=printwarningsonly)
+    return scan_local_modeldata(path, get_elemabundances=get_elemabundances, printwarningsonly=printwarningsonly)
 
 
 @on_model_host
@@ -724,7 +725,7 @@ def get_remote_modeldata_schema(
     modelpath: Path, get_elemabundances: bool, printwarningsonly: bool
 ) -> tuple[pl.DataFrame, dict[t.Any, t.Any]]:
     """Return an empty frame with the columns of the model data of a remote model, and the metadata of the model."""
-    dfmodel, modelmeta = read_modeldata(
+    dfmodel, modelmeta = scan_local_modeldata(
         modelpath, get_elemabundances=get_elemabundances, printwarningsonly=printwarningsonly
     )
     return dfmodel.clear().collect(), modelmeta
@@ -744,7 +745,7 @@ def read_modeldata_rows_on_host(
     """
     import io
 
-    dfmodel, _ = read_modeldata(modelpath, get_elemabundances=get_elemabundances, printwarningsonly=True)
+    dfmodel, _ = scan_local_modeldata(modelpath, get_elemabundances=get_elemabundances, printwarningsonly=True)
     if predicate is not None:
         dfmodel = dfmodel.filter(pl.Expr.deserialize(io.BytesIO(predicate)))
     if with_columns is not None:
@@ -783,10 +784,10 @@ def scan_remote_modeldata(
     return register_io_source(reader, schema=template.schema, is_pure=True), modelmeta
 
 
-def read_modeldata(
+def scan_local_modeldata(
     modelpath: Path, get_elemabundances: bool = False, printwarningsonly: bool = False
 ) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
-    """Read model.txt, and abundances.txt with get_elemabundances, for a local path that get_modeldata resolved."""
+    """Read model.txt, and abundances.txt with get_elemabundances, for a local path that scan_modeldata resolved."""
     inputpath = modelpath
 
     if inputpath.is_dir():
@@ -805,7 +806,7 @@ def read_modeldata(
         raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), inputpath)
 
     def read_text() -> tuple[pl.LazyFrame, dict[str, str]]:
-        dfmodel, modelmeta = read_modelfile_text(filename=textfilepath, printwarningsonly=printwarningsonly)
+        dfmodel, modelmeta = scan_modelfile_text(filename=textfilepath, printwarningsonly=printwarningsonly)
         return dfmodel, {"modelmeta_json": json.dumps(modelmeta)}
 
     def check_modelmeta(metadata: dict[str, str]) -> None:
@@ -828,7 +829,7 @@ def read_modeldata(
     firstinputcellid = dfmodel.select(pl.col("inputcellid").first()).collect().item()
 
     if get_elemabundances:
-        abundancedata = get_initelemabundances(modelpath, printwarningsonly=printwarningsonly)
+        abundancedata = scan_initelemabundances(modelpath, printwarningsonly=printwarningsonly)
         dfmodel = dfmodel.join(abundancedata, how="inner", on="inputcellid", maintain_order="left")
 
     dfmodel = dfmodel.with_columns(pl.col("inputcellid").sub(firstinputcellid).alias("modelgridindex"))
@@ -1142,7 +1143,7 @@ def save_modeldata(
 
     For a 1D model or a 2D model, sn3d reads these column names from v2024.04.
 
-    The function deletes the parquet cache of the file that it writes. A LazyFrame from get_modeldata of the same
+    The function deletes the parquet cache of the file that it writes. A LazyFrame from scan_modeldata of the same
     file can scan that cache, thus collect such a LazyFrame before this call.
 
     model.txt gets the standard columns, each X_ column, and the custom columns that ARTIS reads (Ye, q, and
@@ -1308,7 +1309,7 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float) -> int:
     # a negative value was the default that gave no velocity, and searchsorted takes it as the first cell
     if velocity < 0.0:
         exit_with_error(f"--velocity {velocity:g} km/s is below zero", "Give a radial velocity of 0 or more")
-    dfmodel, modelmeta = get_modeldata(modelpath)
+    dfmodel, modelmeta = scan_modeldata(modelpath)
     if modelmeta["dimensions"] != 1:
         exit_with_error(
             f"--velocity selects a shell of a 1D model, and this model has {modelmeta['dimensions']} dimensions",
@@ -1351,7 +1352,7 @@ def read_onespace_abundances(textfilepath: Path, ncolumns: int) -> pl.DataFrame 
     return None if abundancedata.null_count().sum_horizontal().item() > 0 else abundancedata
 
 
-def get_initelemabundances(modelpath: Path | str = ".", printwarningsonly: bool = False) -> pl.LazyFrame:
+def scan_initelemabundances(modelpath: Path | str = ".", printwarningsonly: bool = False) -> pl.LazyFrame:
     """Return a table of elemental mass fractions by cell from abundances."""
     textfilepath = firstexisting("abundances.txt", folder=get_model_text_folder(modelpath), tryzipped=True)
 
@@ -1387,7 +1388,7 @@ def save_initelemabundances(
     outpath: Path | str | None = None,
     headercommentlines: Sequence[str] | None = None,
 ) -> None:
-    """Save a DataFrame in the format of get_initelemabundances to abundances.txt.zst.
+    """Save a DataFrame in the format of scan_initelemabundances to abundances.txt.zst.
 
     The file name gets the extension .zst, as in save_modeldata.
 
@@ -1419,7 +1420,7 @@ def save_initelemabundances(
     dfelabundances = dfelabundances.select(["inputcellid", *elcolnames])
 
     with abundancefilename.open("wb") as fabund:
-        # sn3d and get_initelemabundances skip each comment line, and both read the columns by position
+        # sn3d and scan_initelemabundances skip each comment line, and both read the columns by position
         write_zstd_lines(
             fabund,
             [
@@ -1829,3 +1830,35 @@ def get_costheta_selection(costhetarange: tuple[float, float], columns: Sequence
     return get_cell_selection(
         thetamin=math.degrees(math.acos(costhetarange[1])), thetamax=math.degrees(math.acos(costhetarange[0]))
     )
+
+
+# the names before the readers took the prefix scan_ or read_. Each alias keeps the old signature, thus a script
+# of a user still runs, and it gives a DeprecationWarning that names the new function
+@warnings.deprecated("get_modeldata is deprecated. Use scan_modeldata.")
+def get_modeldata(
+    modelpath: Path | str = ".", get_elemabundances: bool = False, printwarningsonly: bool = False
+) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
+    """Return the result of scan_modeldata, the new name of this function."""
+    return scan_modeldata(modelpath, get_elemabundances=get_elemabundances, printwarningsonly=printwarningsonly)
+
+
+@warnings.deprecated("read_modeldata is deprecated. Use scan_local_modeldata.")
+def read_modeldata(
+    modelpath: Path, get_elemabundances: bool = False, printwarningsonly: bool = False
+) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
+    """Return the result of scan_local_modeldata, the new name of this function."""
+    return scan_local_modeldata(modelpath, get_elemabundances=get_elemabundances, printwarningsonly=printwarningsonly)
+
+
+@warnings.deprecated("read_modelfile_text is deprecated. Use scan_modelfile_text.")
+def read_modelfile_text(
+    filename: Path | str, printwarningsonly: bool = False
+) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
+    """Return the result of scan_modelfile_text, the new name of this function."""
+    return scan_modelfile_text(filename, printwarningsonly=printwarningsonly)
+
+
+@warnings.deprecated("get_initelemabundances is deprecated. Use scan_initelemabundances.")
+def get_initelemabundances(modelpath: Path | str = ".", printwarningsonly: bool = False) -> pl.LazyFrame:
+    """Return the result of scan_initelemabundances, the new name of this function."""
+    return scan_initelemabundances(modelpath, printwarningsonly=printwarningsonly)

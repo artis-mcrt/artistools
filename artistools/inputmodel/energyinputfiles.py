@@ -14,7 +14,7 @@ import polars as pl
 
 from artistools.constants import day_to_s
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
-from artistools.inputmodel.core import get_modeldata
+from artistools.inputmodel.core import scan_modeldata
 from artistools.misc import addarg_action
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_figscale
@@ -188,7 +188,7 @@ def energy_from_rprocess_calculation(
 def plot_energy_rate(modelpath: str | Path, axis: mplax.Axes) -> None:
     """Plot the analytic nuclear heating power of the whole model against time."""
     times_and_rate, _ = rprocess_const_and_powerlaw()
-    lzmodel, modelmeta = get_modeldata(modelpath)
+    lzmodel, modelmeta = scan_modeldata(modelpath)
     Mtot_grams = (
         add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta).select(pl.col("mass_g").sum()).collect().item()
     )

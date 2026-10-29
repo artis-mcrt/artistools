@@ -13,11 +13,11 @@ from pathlib import Path
 import polars as pl
 
 from artistools.constants import km_to_cm
-from artistools.estimators import get_units
-from artistools.estimators import scan_estimators
+from artistools.estimators.core import get_units
+from artistools.estimators.core import scan_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_costheta_selection
-from artistools.inputmodel import get_modeldata
+from artistools.inputmodel import scan_modeldata
 from artistools.misc import addarg_costhetarange
 from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
@@ -31,6 +31,7 @@ from artistools.misc import artis_subfolders
 from artistools.misc import exit_with_error
 from artistools.misc import folder_is_artis_model
 from artistools.misc import format_costheta_range
+from artistools.misc import format_range_list
 from artistools.misc import get_costheta_range
 from artistools.misc import get_model_folder
 from artistools.misc import get_model_name
@@ -46,7 +47,6 @@ from artistools.misc import print_warning
 from artistools.misc import resolve_positional_modelpath
 from artistools.misc import resolve_table_outputfile
 from artistools.misc import suggest_names
-from artistools.misc.cliutils import format_range_list
 
 # the columns of each row before the variables. The variables cannot repeat them
 INDEXCOLUMNS = ("timestep", "time_days", "modelgridindex", "vel_r_mid_kmps")
@@ -233,7 +233,7 @@ def get_cells_in_costheta_range(modelpath: Path, cells: Sequence[int], costhetar
     A cell of the list outside the range has no row, and it can hold estimators. Thus warn_missing_rows must not
     name it.
     """
-    lzmodel, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
+    lzmodel, modelmeta = scan_modeldata(modelpath, printwarningsonly=True)
     dfcells = add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
     return (
         dfcells

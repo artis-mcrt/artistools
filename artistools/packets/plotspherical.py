@@ -23,7 +23,6 @@ from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
 from artistools.misc import addarg_dpi
 from artistools.misc import addarg_figscale
-from artistools.misc import addarg_maxpacketfiles
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_notitle
 from artistools.misc import addarg_output
@@ -35,6 +34,7 @@ from artistools.misc import exit_with_error
 from artistools.misc import format_frame_path
 from artistools.misc import gaussian_filter_wrap
 from artistools.misc import get_escaped_arrivalrange
+from artistools.misc import get_phi_bin_edges_ascending
 from artistools.misc import get_timestep_times
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
@@ -42,10 +42,10 @@ from artistools.misc import parse_range_list
 from artistools.misc import print_theta_phi_definitions
 from artistools.misc import print_warning
 from artistools.misc import resolve_frameset_paths
-from artistools.misc.dirbins import get_phi_bin_edges_ascending
-from artistools.packets import add_derived_columns_lazy
-from artistools.packets import bin_packet_directions_polars
-from artistools.packets import get_packets
+from artistools.packets.core import add_derived_columns_lazy
+from artistools.packets.core import addarg_maxpacketfiles
+from artistools.packets.core import bin_packet_directions_polars
+from artistools.packets.core import scan_packets
 from artistools.plottools import ExponentLabelFormatter
 from artistools.plottools import FIGWIDTH_INCHES
 from artistools.plottools import save_figure
@@ -592,7 +592,7 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         else None
     )
 
-    nprocs_read, dfpackets = get_packets(
+    nprocs_read, dfpackets = scan_packets(
         args.modelpath, args.maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
     dfpackets = add_derived_columns_lazy(dfpackets, modelpath=args.modelpath)

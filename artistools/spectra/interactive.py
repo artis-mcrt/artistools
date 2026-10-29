@@ -10,34 +10,30 @@ from functools import partial
 from pathlib import Path
 from types import MappingProxyType
 
-import matplotlib as mpl
-import matplotlib.colors as mplcolors
 import matplotlib.figure as mplfig
 import numpy as np
 import polars as pl
 
-from artistools.commands import get_standard_flag
 from artistools.misc import exit_with_error
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_artis_model_folders
 from artistools.misc import get_escaped_arrivalrange
-from artistools.misc import get_file_metadata
 from artistools.misc import get_model_name
+from artistools.misc import get_standard_flag
 from artistools.misc import get_time_range
 from artistools.misc import get_time_range_text
 from artistools.misc import get_timestep_times
+from artistools.misc import get_xunit
 from artistools.misc import parse_cli_args
-from artistools.misc.fileio import resolve_modelpath
-from artistools.misc.remote import is_remote_path
+from artistools.misc import resolve_modelpath
+from artistools.misc import XUNITS
 from artistools.packets.core import has_packets_files
-from artistools.plottools import LABELWIDTH_INCHES
-from artistools.plottools import RIGHTMARGIN_INCHES
+from artistools.paths import get_path
 from artistools.spectra.core import convert_angstroms_to_unit
 from artistools.spectra.core import convert_unit_to_angstroms
 from artistools.spectra.core import EmissionEvent
 from artistools.spectra.core import get_x_quantity_label
-from artistools.spectra.core import get_xunit
-from artistools.spectra.core import XUNITS
+from artistools.spectra.core import REFERENCE_SPECTRA_FOLDER
 from artistools.spectra.plotspectra import addargs
 from artistools.spectra.plotspectra import DEFAULT_MAXSERIESCOUNT
 from artistools.spectra.plotspectra import DELTALOGX_SCALES
@@ -49,18 +45,22 @@ from artistools.spectra.plotspectra import main as plotspectra_main
 from artistools.spectra.plotspectra import make_plot_figure
 from artistools.spectra.plotspectra import path_is_reference_spectrum
 from artistools.spectra.plotspectra import resolve_plot_args
-from artistools.viewertools.application import run_viewer_application
 from artistools.viewertools.core import exit_for_other_actions
 from artistools.viewertools.core import get_actions_by_flag
+from artistools.viewertools.core import get_centred_range
+from artistools.viewertools.core import get_clamped_range
 from artistools.viewertools.core import get_direction_kind
 from artistools.viewertools.core import get_direction_kinds
-from artistools.viewertools.core import get_fitted_figwidthscale
+from artistools.viewertools.core import get_end_range
+from artistools.viewertools.core import get_figure_option_tokens
+from artistools.viewertools.core import get_frame_ranges
+from artistools.viewertools.core import get_given_dpi
+from artistools.viewertools.core import get_nearest_range
 from artistools.viewertools.core import get_nearest_range_start
 from artistools.viewertools.core import get_option_row_tokens
 from artistools.viewertools.core import get_option_tokens
-from artistools.viewertools.core import get_path_colours
-from artistools.viewertools.core import get_row_values
-from artistools.viewertools.core import get_series_style
+from artistools.viewertools.core import get_resized_range
+from artistools.viewertools.core import get_stepped_range
 from artistools.viewertools.core import keep_figwidthscale
 from artistools.viewertools.core import make_command_tokens
 from artistools.viewertools.core import make_parser
@@ -70,54 +70,54 @@ from artistools.viewertools.core import OptionRows
 from artistools.viewertools.core import parse_viewer_tokens
 from artistools.viewertools.core import run_command_step
 from artistools.viewertools.core import SERIES_STYLE_FLAGS
-from artistools.viewertools.core import set_figscale_row
-from artistools.viewertools.core import set_series_rows
 from artistools.viewertools.core import SLIDER_STEPS
 from artistools.viewertools.menus import add_default_options
 from artistools.viewertools.menus import add_window_actions
 from artistools.viewertools.menus import export_animation
+from artistools.viewertools.menus import show_plot_menu
 from artistools.viewertools.menus import ViewerCommand
 from artistools.viewertools.sections import add_direction_section
 from artistools.viewertools.sections import add_time_controls
-from artistools.viewertools.sections import add_y_axis_actions
 from artistools.viewertools.sections import add_y_limits_row
+from artistools.viewertools.sections import connect_play
 from artistools.viewertools.sections import connect_time_keys
 from artistools.viewertools.sections import DirectionChoice
+from artistools.viewertools.sections import get_next_play_time
 from artistools.viewertools.sections import make_figscale_box
 from artistools.viewertools.sections import make_select_y_handler
 from artistools.viewertools.sections import make_xscale_box
 from artistools.viewertools.sections import make_yscale_box
 from artistools.viewertools.sections import read_selected_range
 from artistools.viewertools.sections import show_auto_yscale
+from artistools.viewertools.sections import TIME_KEY_HELP_ROWS
 from artistools.viewertools.sections import WAIT_FOR_PLOT_MESSAGE
 from artistools.viewertools.series import add_series_list
-from artistools.viewertools.series import edit_series_properties
-from artistools.viewertools.series import make_series_swatch
+from artistools.viewertools.series import DEFAULT_SERIES_PATHS
+from artistools.viewertools.series import get_session_tokens
 from artistools.viewertools.series import ReferenceData
 from artistools.viewertools.series import SeriesListActions
 from artistools.viewertools.series import SeriesRow
 from artistools.viewertools.widgets import add_row
 from artistools.viewertools.widgets import add_section
+from artistools.viewertools.widgets import blocked_signals
 from artistools.viewertools.widgets import fit_canvas
 from artistools.viewertools.widgets import get_python_code
 from artistools.viewertools.widgets import make_range_slider
 from artistools.viewertools.widgets import make_row_layout
 from artistools.viewertools.widgets import make_segmented_control
 from artistools.viewertools.widgets import ROW_SPACING
-from artistools.viewertools.widgets import set_command_text
 from artistools.viewertools.widgets import set_edit_text
-from artistools.viewertools.widgets import set_spin_value
 from artistools.viewertools.widgets import show_status_note
-from artistools.viewertools.widgets import start_play_timer
 from artistools.viewertools.window import add_command_sections
 from artistools.viewertools.window import connect_plot_mouse
 from artistools.viewertools.window import DrawQueue
 from artistools.viewertools.window import finish_viewer_window
 from artistools.viewertools.window import get_line_readouts
+from artistools.viewertools.window import get_plot_mouse_help_rows
 from artistools.viewertools.window import make_readout_tag
-from artistools.viewertools.window import make_timer
 from artistools.viewertools.window import reload_models
 from artistools.viewertools.window import render_command
+from artistools.viewertools.window import show_command_sections
 from artistools.viewertools.window import start_viewer_window
 
 if t.TYPE_CHECKING:
@@ -174,6 +174,10 @@ CONTROLLED_DESTS: t.Final = frozenset({
 })
 
 APPLICATION_NAME: t.Final = "artistools plotspectra"
+
+# the items that the Dock icon takes: a model folder, or a file, e.g. a reference spectrum, which the active window adds
+# to its spectra
+DOCUMENT_TYPES: t.Final = ("public.folder", "public.data")
 
 # the number of decimals of a time in days in the command
 DAYS_DECIMALS: t.Final = 6
@@ -392,6 +396,8 @@ class TimestepGrid(t.NamedTuple):
     # the times that are valid for all the models [d]
     timebounds: tuple[float, float]
     validtimesteps: tuple[int, ...]
+    # the middle time of each valid timestep [d]
+    validtmids: tuple[float, ...]
     hasgammaspectrum: bool
     directionkinds: tuple[str, ...]
     # the spectra and the time grid of the load
@@ -580,29 +586,15 @@ def convert_xunit(values: ControlValues, xunit: str, *, gamma: bool) -> ControlV
     return dc.replace(values, xunit=xunit, xmin=xmin, xmax=xmax, deltax="")
 
 
-# plotspectra reads the model in the working folder when the command gives no path
-DEFAULT_SPECTRA: t.Final = (".",)
-
-
-def get_spectrum_path(path: str) -> Path:
-    """Return the full path of the folder or the file of a spectrum, e.g. of "." or of a name of a reference spectrum.
-
-    Two spellings of one spectrum, e.g. "." and the full path of the working folder, then give the same path. A model
-    on a different host keeps its path.
-    """
-    if path_is_reference_spectrum(path):
-        return (find_reference_spectrum_file_or_none(path) or Path(path)).resolve()
-    return resolve_modelpath(path)
-
-
-def get_spectrum_item_text(path: str) -> str:
-    """Return the text of a path in the list of spectra: the kind and the full path.
-
-    The list shortens a long path in the middle, thus the text keeps the start and the end of the path.
-    """
-    if path_is_reference_spectrum(path):
-        return f"Reference: {(find_reference_spectrum_file_or_none(path) or Path(path)).absolute()}"
-    return f"Model: {path if is_remote_path(path) else Path(path).absolute()}"
+# the reference spectra of the list of spectra, and the rules of plotspectra for them
+REFERENCE_DATA: t.Final = ReferenceData(
+    kind="reference spectrum",
+    folder=get_path("artistools_dir") / REFERENCE_SPECTRA_FOLDER,
+    find=find_reference_spectrum_file_or_none,
+    is_reference=path_is_reference_spectrum,
+    styleflags=SERIES_STYLE_FLAGS,
+    example="AT2017gfo",
+)
 
 
 def get_plot_python_code(viewer: "SpectrumViewer") -> str:
@@ -681,6 +673,7 @@ def read_timestep_grid(spectra: "Sequence[str | Path]", timegrid: str, *, plotin
         dlogt=float(f"{math.log(tends[-1] / tstarts[0]) / len(tmids):.4g}"),
         timebounds=(timebounds[0], timebounds[1]),
         validtimesteps=tuple(validtimesteps),
+        validtmids=tuple(tmids[timestep] for timestep in validtimesteps),
         hasgammaspectrum=has_gamma_spectrum(modelfolders),
         # the direction controls read the first model, e.g. for the observers of -plotvspecpol
         directionkinds=tuple(get_direction_kinds(modelfolders[0])),
@@ -725,7 +718,7 @@ class SpectrumViewer:
         # the keys of the models are the tokens of the list of spectra. A normalised path, e.g. of "mymodel/", is a
         # different key, and the window then found no model for a row
         self.grid = read_timestep_grid(
-            tuple(startpaths) or DEFAULT_SPECTRA, "", plotinvalidpart=bool(args.plotinvalidpart)
+            tuple(startpaths) or DEFAULT_SERIES_PATHS, "", plotinvalidpart=bool(args.plotinvalidpart)
         )
 
         self.modelpathtokens = [path for path in startpaths if not path_is_reference_spectrum(path)]
@@ -790,10 +783,10 @@ class SpectrumViewer:
             directionbins=tuple(args.plotvspecpol or args.plotviewingangle or ()),
             usedegrees=bool(args.usedegrees),
             fixedionlist=tuple(args.fixedionlist or ()),
-            spectra=tuple(startpaths) or DEFAULT_SPECTRA,
+            spectra=tuple(startpaths) or DEFAULT_SERIES_PATHS,
             timegrid="",
             figwidthscale=args.figwidthscale,
-            dpi=None if args.dpi == parser.get_default("dpi") else args.dpi,
+            dpi=get_given_dpi(args, parser),
             otheroptions=otheroptions,
         )
         values = drop_hidden_emission_event(values)
@@ -836,6 +829,11 @@ class SpectrumViewer:
         return dc.replace(
             values, centre=(tmids[first] + tmids[last]) / 2.0, width=tmids[last] - tmids[first], notimeclamp=False
         )
+
+    def select_positions(self, values: ControlValues, positions: tuple[int, int]) -> ControlValues:
+        """Return the values snapped to the time range between two positions in the valid timesteps."""
+        validtimesteps = self.grid.validtimesteps
+        return self.snap(values, validtimesteps[positions[0]], validtimesteps[positions[1]])
 
     def get_plot_tokens(self, values: ControlValues | None = None) -> list[str]:
         """Return the plotspectra arguments of the values, or of the current values if the caller gives none."""
@@ -902,15 +900,12 @@ class SpectrumViewer:
         if values.directionkind:
             directionflag = "--plotvspecpol" if values.directionkind == "vpkt" else "--plotviewingangle"
             options += [directionflag, *(str(dirbin) for dirbin in values.directionbins)]
-        if values.figwidthscale != 1.0:
-            options += ["--figwidthscale", format(values.figwidthscale, "g")]
-        if values.dpi is not None:
-            options += ["--dpi", str(values.dpi)]
+        options += get_figure_option_tokens(values)
         # a list option takes each word that follows it, thus it comes after every other option
         if values.fixedionlist and (values.showemission or values.showabsorption):
             options += ["--fixedionlist", *values.fixedionlist]
         # a command with no path reads the model in the working folder, thus that model needs no path
-        paths = [] if values.spectra == DEFAULT_SPECTRA else list(values.spectra)
+        paths = [] if values.spectra == DEFAULT_SERIES_PATHS else list(values.spectra)
         return make_command_tokens([*paths, *get_option_row_tokens(values.otheroptions)], options)
 
     def get_command(self) -> str:
@@ -933,10 +928,7 @@ class SpectrumViewer:
 
     def get_nearest_position(self) -> int:
         """Return the position in the valid timesteps of the timestep with the middle nearest to the time."""
-        grid = self.grid
-        return get_nearest_range_start(
-            [grid.tmids[timestep] for timestep in grid.validtimesteps], self.values.centre, 1
-        )
+        return get_nearest_range_start(self.grid.validtmids, self.values.centre, 1)
 
     def get_selection_positions(self) -> tuple[int, int]:
         """Return the positions in the valid timesteps of the first and the last timestep of the time range."""
@@ -945,43 +937,41 @@ class SpectrumViewer:
         return grid.validtimesteps.index(first), grid.validtimesteps.index(last)
 
     def step_time(self, step: int) -> ControlValues | None:
-        """Return the values with the time one timestep later or earlier, or None at the end of the valid range."""
+        """Return the values with the time range step timesteps later, or None past the valid timesteps.
+
+        A continuous range takes the width of its width mode at the new time, as clamp_time gives it.
+        """
         grid = self.grid
-        validtimesteps, tmids = grid.validtimesteps, grid.tmids
+        validtimesteps = grid.validtimesteps
         if self.values.notimeclamp:
             # a continuous range keeps its width and moves its middle to the middle of the adjacent timestep
             position = self.get_nearest_position() + step
             if not 0 <= position < len(validtimesteps):
                 return None
-            return dc.replace(self.values, centre=float(f"{tmids[validtimesteps[position]]:.4g}"))
-        firstpos, lastpos = self.get_selection_positions()
-        if firstpos + step < 0 or lastpos + step >= len(validtimesteps):
-            return None
-        return self.snap(self.values, validtimesteps[firstpos + step], validtimesteps[lastpos + step])
+            return self.clamp_time(dc.replace(self.values, centre=float(f"{grid.tmids[validtimesteps[position]]:.4g}")))
+        positions = get_stepped_range(self.get_selection_positions(), step, len(validtimesteps))
+        return None if positions is None else self.select_positions(self.values, positions)
 
     def step_width(self, step: int) -> ControlValues:
-        """Return the values with the time range one timestep wider or narrower."""
+        """Return the values with step more timesteps in the time range."""
         grid = self.grid
         if self.values.notimeclamp:
             # a step gives a width in days, thus the width mode becomes "days". A width of 0 or less stays out
             width = self.values.width + step * grid.twidths[grid.validtimesteps[self.get_nearest_position()]]
             if not float(f"{width:.3g}") > 0.0:
                 return self.values
-            return dc.replace(self.values, widthmode="days", width=float(f"{width:.3g}"))
-        firstpos, lastpos = self.get_selection_positions()
-        lastpos = min(max(lastpos + step, firstpos), len(grid.validtimesteps) - 1)
-        return self.snap(self.values, grid.validtimesteps[firstpos], grid.validtimesteps[lastpos])
+            return self.clamp_time(dc.replace(self.values, widthmode="days", width=float(f"{width:.3g}")))
+        positions = get_resized_range(self.get_selection_positions(), step, len(grid.validtimesteps))
+        return self.select_positions(self.values, positions)
 
     def move_to_end(self, *, last: bool) -> ControlValues:
-        """Return the values with the time at the first or at the last valid timestep, and the same width."""
+        """Return the values with the time range at the first or the last valid timestep, and the same width."""
         grid = self.grid
         if self.values.notimeclamp:
             timestep = grid.validtimesteps[-1 if last else 0]
-            return dc.replace(self.values, centre=float(f"{grid.tmids[timestep]:.4g}"))
-        firstpos, lastpos = self.get_selection_positions()
-        count = lastpos - firstpos
-        start = len(grid.validtimesteps) - 1 - count if last else 0
-        return self.snap(self.values, grid.validtimesteps[start], grid.validtimesteps[start + count])
+            return self.clamp_time(dc.replace(self.values, centre=float(f"{grid.tmids[timestep]:.4g}")))
+        positions = get_end_range(self.get_selection_positions(), len(grid.validtimesteps), last=last)
+        return self.select_positions(self.values, positions)
 
     def get_rejection(self, values: ControlValues) -> str | None:
         """Return why plotspectra rejects the arguments of the values, or None if it accepts them.
@@ -999,13 +989,6 @@ class SpectrumViewer:
             return get_text_source_conflict(values, plotargs)
 
         return run_command_step(check, echo=False)
-
-    def draw(self, *, quiet: bool = True) -> str | None:
-        """Draw the plot of the values, and return the reason for the status line if plotspectra rejects it.
-
-        The terminal shows the whole error, and the status line shows its first line.
-        """
-        return self.render(self.values, quiet=quiet)()
 
     def render(self, values: ControlValues, *, quiet: bool = True) -> "Callable[[], str | None]":
         """Draw the plot of the values on a new figure, and return the function that shows it in the canvas.
@@ -1038,11 +1021,6 @@ class SpectrumViewer:
 
         return render_command(self, values, draw, keep, quiet=quiet)
 
-    def get_fitted_figwidthscale(self, areawidth: float, areaheight: float) -> float:
-        """Return the --figwidthscale that gives the figure the shape of the plot area."""
-        marginwidth = LABELWIDTH_INCHES + RIGHTMARGIN_INCHES
-        return get_fitted_figwidthscale(self.figsize, self.values.figwidthscale, marginwidth, areawidth, areaheight)
-
     def clamp_time(self, values: ControlValues) -> ControlValues:
         """Return the values with a continuous time inside the valid times, and the width that its width mode gives.
 
@@ -1063,14 +1041,6 @@ class SpectrumViewer:
         if (centre, width, widthmode) == (values.centre, values.width, values.widthmode):
             return values
         return dc.replace(values, centre=centre, width=width, widthmode=widthmode)
-
-    def change(self, values: ControlValues) -> str | None:
-        """Draw the plot of the new values, and keep the old values and the old plot if plotspectra rejects them."""
-        values = self.clamp_time(values)
-        message = self.render(values)()
-        if message is None:
-            self.values = values
-        return message
 
     def get_drawn_series(self) -> tuple[str, ...]:
         """Return the contribution series of the emission plot in the order of the plot, without "Other"."""
@@ -1208,11 +1178,9 @@ def get_animation_frames(viewer: "SpectrumViewer") -> "tuple[int, Callable[[int]
             for timestep in validtimesteps
         ]
     else:
-        firstpos, lastpos = viewer.get_selection_positions()
-        count = lastpos - firstpos
         frames = [
-            viewer.get_plot_tokens(viewer.snap(values, validtimesteps[index], validtimesteps[index + count]))
-            for index in range(len(validtimesteps) - count)
+            viewer.get_plot_tokens(viewer.select_positions(values, positions))
+            for positions in get_frame_ranges(viewer.get_selection_positions(), len(validtimesteps))
         ]
 
     return len(frames), frames.__getitem__
@@ -1225,29 +1193,6 @@ def get_binmode(values: ControlValues) -> str:
     if values.deltalogx in DELTALOGX_SCALES:
         return values.deltalogx
     return "deltalogx" if values.deltalogx else ""
-
-
-def get_series_name(path: str) -> str:
-    """Return the legend name of a spectrum that has no --label, with no time in the name."""
-    if path_is_reference_spectrum(path):
-        filepath = find_reference_spectrum_file_or_none(path)
-        metadata = get_file_metadata(filepath) if filepath is not None else {}
-        return str(metadata.get("label", Path(path).name))
-    return get_model_name(path)
-
-
-def get_series_colours(spectra: "Sequence[str]", rows: OptionRows) -> dict[str, str]:
-    """Return the colour of the plot of each spectrum, as plotspectra gives it."""
-    return get_path_colours(spectra, [path_is_reference_spectrum(path) for path in spectra], rows)
-
-
-def set_series_values(values: ControlValues, path: str, changes: "Mapping[str, str | None]") -> ControlValues:
-    """Return the values with the value of each series style option in changes for one spectrum.
-
-    changes gives each option by its flag, e.g. --label. A value of None gives the spectrum the default of plotspectra,
-    and the other spectra keep their values.
-    """
-    return dc.replace(values, otheroptions=set_series_rows(values.otheroptions, values.spectra, path, changes))
 
 
 def get_timedays_token(viewer: SpectrumViewer, values: ControlValues) -> str:
@@ -1309,9 +1254,7 @@ def set_models(viewer: SpectrumViewer, spectra: "Sequence[str]", timegrid: str) 
         values = dc.replace(values, directionkind="", directionbins=())
     if values.notimeclamp:
         return viewer.clamp_time(values)
-    count = min(last - first + 1, len(grid.validtimesteps))
-    start = get_nearest_range_start([grid.tmids[timestep] for timestep in grid.validtimesteps], values.centre, count)
-    return viewer.snap(values, grid.validtimesteps[start], grid.validtimesteps[start + count - 1])
+    return viewer.select_positions(values, get_nearest_range(grid.validtmids, values.centre, last - first + 1))
 
 
 def get_time_slider_ranges(grid: TimestepGrid, values: ControlValues) -> tuple[tuple[float, float], float, float, int]:
@@ -1336,25 +1279,12 @@ def get_icon_curve() -> "npt.NDArray[np.float64]":
 
 # the keys and the mouse actions of the window. get_keyboard_help adds the shortcuts of the menus
 KEYBOARD_HELP_ROWS: t.Final = (
-    ("<b>Left</b>, <b>Right</b>", "Move the time to the adjacent timestep"),
-    ("<b>Up</b>, <b>Down</b>", "Make the time range one timestep wider or narrower"),
-    ("<b>Home</b>, <b>End</b>", "Move the time to the first or the last valid timestep"),
+    *TIME_KEY_HELP_ROWS,
     ("<b>Alt-Up</b>, <b>Alt-Down</b> in the list of spectra", "Move the spectrum up or down (Option on a Mac)"),
     ("<b>Double-click</b> a spectrum", "Set the label and the line style of the spectrum"),
     ("<b>Right-click</b> a spectrum", "Move it, use its timesteps, copy its path, or open its folder"),
-    ("<b>Drag</b> across the plot", "Select the x range"),
-    ("<b>Shift-drag</b> up or down the plot", "Select the y range (--ymin and --ymax)"),
-    ("<b>Double-click</b> the plot", "Get the default x range"),
-    ("<b>Right-click</b> the plot", "Change the y scale, get the automatic y range, or copy or save the figure"),
+    *get_plot_mouse_help_rows("x range", "default x range"),
 )
-
-
-def run_viewer(tokens: "Sequence[str]") -> None:
-    """Open the window of the viewer, and print the command of the last plot when the window closes.
-
-    The Dock icon also takes a file, e.g. a reference spectrum, which the active window adds to its spectra.
-    """
-    run_viewer_application(APPLICATION_NAME, get_icon_curve(), open_window, tokens, ("public.folder", "public.data"))
 
 
 def open_window(
@@ -1369,8 +1299,6 @@ def open_window(
     from PySide6 import QtGui
     from PySide6 import QtWidgets
 
-    from artistools.commands import get_path
-
     # the Settings window can give a new window options, e.g. -figscale, that the command does not give
     viewer = SpectrumViewer(add_default_options(make_parser(addargs), tokens) if newwindow else tokens, mplfig.Figure())
     # a command with no path reads the model of the working folder
@@ -1378,12 +1306,11 @@ def open_window(
         resolve_modelpath(viewer.grid.modelfolders[0]).name
     ]
     viewerwindow = start_viewer_window(
-        APPLICATION_NAME, viewer, viewer.draw, windows, (viewer.grid.modelfolders[0], ", ".join(modelnames))
+        APPLICATION_NAME, viewer, windows, (viewer.grid.modelfolders[0], ", ".join(modelnames))
     )
     if isinstance(viewerwindow, str):
         return viewerwindow
     window, canvas, plotarea, panellayout, fittimer = viewerwindow
-    playtimer = make_timer(window, 0)
 
     # each continuous slider maps its position from 0 to SLIDER_STEPS onto the range of its value
     def to_position(value: float, low: float, high: float) -> int:
@@ -1650,25 +1577,20 @@ def open_window(
     assert isinstance(datasourcemodel, QtGui.QStandardItemModel)
     autoitem, textitem = datasourcemodel.item(0), datasourcemodel.item(1)
     add_row(spectragrid, 2, [QtWidgets.QLabel("--frompackets"), datasourcebox])
-    # the box edits the row of -figscale in the other options, as the box of the estimator viewer does
-    figscalebox = make_figscale_box(helptexts)
-    defaultfigscale: float = viewer.parser.get_default("figscale")
-    defaultdpi: int = viewer.parser.get_default("dpi")
 
-    def on_option_rows(rows: OptionRows) -> None:
-        apply(dc.replace(viewer.values, otheroptions=rows))
+    def on_option_rows(rows: OptionRows, undoable: bool = True) -> None:
+        apply(dc.replace(viewer.values, otheroptions=rows), undoable=undoable)
 
-    def on_figscale(figscale: float) -> None:
-        on_option_rows(set_figscale_row(viewer.values.otheroptions, figscale, defaultfigscale))
-
-    figuresection, set_option_rows, commandtext, pythontext, (copybutton, pythoncopybutton), statusbar = (
-        add_command_sections(
-            viewerwindow,
-            viewer,
-            viewer.parser,
-            (CONTROLLED_DESTS | TABLE_EXCLUDED_DESTS, viewer.values.otheroptions, on_option_rows),
-        )
+    figscalebox, show_figscale = make_figscale_box(
+        viewer.parser, helptexts, lambda: viewer.values.otheroptions, on_option_rows
     )
+    commandsections = add_command_sections(
+        viewerwindow,
+        viewer,
+        viewer.parser,
+        (CONTROLLED_DESTS | TABLE_EXCLUDED_DESTS, viewer.values.otheroptions, on_option_rows),
+    )
+    figuresection, statusbar = commandsections.figuresection, commandsections.statusbar
     # the figure scale is a property of the figure, thus it goes in the Figure section with the format and the
     # resolution
     add_row(figuresection.grid, 1, [QtWidgets.QLabel("--figscale"), figscalebox])
@@ -1843,63 +1765,32 @@ def open_window(
             checkbox.setEnabled(reason is None)
             checkbox.setToolTip(reason or helptexts.get(dest, ""))
 
-    def get_spectra_key(values: ControlValues) -> tuple[t.Any, ...]:
-        """Return the parts of the values that the rows of the list of spectra show."""
-        styles = tuple(get_row_values(values.otheroptions, flag) for flag in SERIES_STYLE_FLAGS)
-        return (values.spectra, values.timegrid, styles)
-
-    def make_spectrum_rows(values: ControlValues) -> list[SeriesRow]:
-        """Return a row for each spectrum. The model that gives the timesteps of the time controls has a mark."""
+    def add_time_grid_parts(row: SeriesRow) -> SeriesRow:
+        """Give the row of a model the times of the model, and the mark of the model that gives the time controls."""
         modeltimes = viewer.grid.modeltimes
-        models = list(modeltimes)
-        gridpath = get_timegrid_path(values)
-        colours = get_series_colours(values.spectra, values.otheroptions)
-        rows: list[SeriesRow] = []
-        for path in values.spectra:
-            style = get_series_style(values.otheroptions, values.spectra, path)
-            itemtext = get_spectrum_item_text(path)
-            rows.append(
-                SeriesRow(
-                    path=path,
-                    name=style["--label"] or get_series_name(path),
-                    labelled=style["--label"] is not None,
-                    itemtext=itemtext,
-                    tooltip=(
-                        f"{itemtext}\n{get_model_times_text(modeltimes[path])}" if path in modeltimes else itemtext
-                    ),
-                    swatch=make_series_swatch(mplcolors.to_hex(colours[path]), style),
-                    removereason=(
-                        "The plot needs one ARTIS model at least. Add a different model first"
-                        if models == [path]
-                        else None
-                    ),
-                    mark=(
-                        (
-                            "⏱",
-                            (
-                                "The time controls read the timesteps of this model. To use a different model, select"
-                                ' it in the "Timesteps of" box or in the context menu of its row'
-                            ),
-                        )
-                        if path == gridpath
-                        else None
-                    ),
-                    extraactions=(
-                        (
-                            "Use for the Time Controls",
-                            path in modeltimes and path != gridpath,
-                            partial(on_use_timegrid, path),
-                        ),
+        gridpath = get_timegrid_path(viewer.values)
+        ismodel = row.path in modeltimes
+        return row._replace(
+            tooltip=f"{row.itemtext}\n{get_model_times_text(modeltimes[row.path])}" if ismodel else row.itemtext,
+            mark=(
+                (
+                    "⏱",
+                    (
+                        "The time controls read the timesteps of this model. To use a different model, select it in"
+                        ' the "Timesteps of" box or in the context menu of its row'
                     ),
                 )
-            )
-        return rows
+                if row.path == gridpath
+                else None
+            ),
+            extraactions=(
+                ("Use for the Time Controls", ismodel and row.path != gridpath, partial(on_use_timegrid, row.path)),
+            ),
+        )
 
     def show_values() -> None:
         """Show the values of the viewer on each widget, and block the signals that change the values again."""
-        blockers = [QtCore.QSignalBlocker(widget) for widget in signalwidgets]
-        # an error in a widget value, e.g. a bad colour of the option table, must not leave the signals blocked
-        try:
+        with blocked_signals(signalwidgets):
             values = viewer.values
             # Undo or a rejected change can give a different list of spectra, and its models have different times
             if (values.spectra, values.timegrid) != viewer.grid.loadkey:
@@ -1933,7 +1824,7 @@ def open_window(
                     widthslider.setValue(to_position(values.width, 0.0, widthmax))
                     set_edit_text(widthedit, f"{values.width:.2f}")
             else:
-                first, last = (grid.validtimesteps.index(timestep) for timestep in get_grid_selection(grid, values))
+                first, last = viewer.get_selection_positions()
                 timeslider.setValue((first + last) // 2)
                 widthslider.setValue(last - first + 1)
                 set_edit_text(widthedit, str(last - first + 1))
@@ -1976,18 +1867,10 @@ def open_window(
             hideothercheck.setChecked(values.hideother)
             emissioneventbox.setCurrentIndex(emissioneventbox.findData(values.emissionevent))
             show_direction()
-            show_series_rows(get_spectra_key(values), partial(make_spectrum_rows, values))
-            set_option_rows(values.otheroptions)
-            set_spin_value(figuresection.dpibox, values.dpi or defaultdpi)
-            set_spin_value(
-                figscalebox, float((get_row_values(values.otheroptions, "--figscale") or (str(defaultfigscale),))[0])
-            )
-            set_command_text(commandtext, viewer.get_command())
-            set_command_text(pythontext, get_plot_python_code(viewer))
+            show_series_rows()
+            show_figscale(values.otheroptions)
+            show_command_sections(commandsections, viewer, values.otheroptions, get_plot_python_code(viewer))
             show_rejections()
-        finally:
-            for blocker in blockers:
-                blocker.unblock()
         fit_canvas(canvas, viewer.figsize, plotarea)
 
     def after_draw(message: str | None) -> None:
@@ -2002,17 +1885,14 @@ def open_window(
             show_auto_yscale(yscalebox, viewer.axes[0].get_yscale())
         # --showabsorption changes the height of the frames, thus the plot can need a new -figwidthscale
         fittimer.start()
-        # a rejection occurs again at each step, thus a rejection stops the Play button
-        if message is not None:
-            playbutton.setChecked(False)
-        elif playbutton.isChecked():
-            # a draw that the Play button did not start also restarts the timer, thus one chain of steps stays
-            start_play_timer(playtimer, queue.plotseconds, fpsbox.value())
+        continue_play(message)
 
     queue = DrawQueue(
         window, viewer, statusbar, show_values, after_draw, render=viewer.render, keep_on_undo=keep_figwidthscale
     )
     show_error = queue.show_error
+    # connect_play gives each step to the queue, and step_time and move_to_end give values that clamp_time keeps
+    continue_play = connect_play(window, timecontrols, queue, partial(get_next_play_time, viewer))
 
     def apply(values: ControlValues, *, undoable: bool = True) -> None:
         """Give the queue the new values, with a time that the models have."""
@@ -2035,11 +1915,8 @@ def open_window(
             centre = 10.0 ** from_position(position, *logtrange)
             apply(dc.replace(values, centre=float(f"{centre:.4g}")))
             return
-        grid = viewer.grid
-        first, last = (grid.validtimesteps.index(timestep) for timestep in get_grid_selection(grid, values))
-        count = last - first + 1
-        start = min(max(position - (count - 1) // 2, 0), nvalid - count)
-        apply(viewer.snap(values, grid.validtimesteps[start], grid.validtimesteps[start + count - 1]))
+        positions = get_centred_range(viewer.get_selection_positions(), position, len(viewer.grid.validtimesteps))
+        apply(viewer.select_positions(values, positions))
 
     def get_timegrid_path(values: ControlValues) -> str:
         """Return the path of the model that gives the timesteps, which is the first model for the value ""."""
@@ -2066,10 +1943,8 @@ def open_window(
                 width = from_position(position, 0.0, widthmax)
                 apply(dc.replace(values, width=float(f"{width:.3g}")))
             return
-        grid = viewer.grid
-        first = grid.validtimesteps.index(get_grid_selection(grid, values)[0])
-        last = min(first + position - 1, nvalid - 1)
-        apply(viewer.snap(values, grid.validtimesteps[first], grid.validtimesteps[last]))
+        firstpos, _ = viewer.get_selection_positions()
+        apply(viewer.select_positions(values, get_clamped_range(firstpos, position, len(viewer.grid.validtimesteps))))
 
     def on_timeedit() -> None:
         # a field shows a time with two decimal places, thus only a field that the user edited gives a new value, and
@@ -2107,34 +1982,10 @@ def open_window(
             else:
                 newvalues = dc.replace(values, centre=centre, width=width)
         else:
-            validtimesteps = grid.validtimesteps
-            firstpos, lastpos = (validtimesteps.index(timestep) for timestep in get_grid_selection(grid, values))
-            count = lastpos - firstpos + 1 if width is None else min(max(1, round(width)), nvalid)
-            start = get_nearest_range_start([grid.tmids[timestep] for timestep in validtimesteps], centre, count)
-            newvalues = viewer.snap(values, validtimesteps[start], validtimesteps[start + count - 1])
+            firstpos, lastpos = viewer.get_selection_positions()
+            timestepwidth = lastpos - firstpos + 1 if width is None else round(width)
+            newvalues = viewer.select_positions(values, get_nearest_range(grid.validtmids, centre, timestepwidth))
         apply(newvalues)
-
-    def on_arrow(step: int) -> None:
-        if (values := viewer.step_time(step)) is not None:
-            apply(values)
-
-    def on_widthstep(step: int) -> None:
-        apply(viewer.step_width(step))
-
-    def play_step() -> None:
-        if not playbutton.isChecked():
-            return
-        # after the last timestep, Play starts again at the first timestep
-        values = viewer.step_time(1) or viewer.move_to_end(last=False)
-        # a time range that covers every valid timestep has no other step
-        if values == viewer.values:
-            playbutton.setChecked(False)
-            return
-        apply(values, undoable=False)
-
-    def on_play(checked: bool) -> None:
-        if checked:
-            play_step()
 
     def plot_shows_values() -> bool:
         """Return True if the plot on the screen has the values of the controls.
@@ -2301,32 +2152,6 @@ def open_window(
     def on_use_timegrid(path: str) -> None:
         apply(set_models(viewer, viewer.values.spectra, path))
 
-    def on_edit_properties(path: str) -> None:
-        """Ask for the label, the colour, the line style, the width, and the opacity of the line of a spectrum."""
-        values = viewer.values
-        if path not in values.spectra:
-            return
-        # the colour of the popup for "Default" is the colour that the spectrum has with no -color of its own
-        defaultcolours = get_series_colours(
-            values.spectra, set_series_values(values, path, {"--color": None}).otheroptions
-        )
-        style = get_series_style(values.otheroptions, values.spectra, path)
-        name = style["--label"] or get_series_name(path)
-
-        def show_changes(changes: "Mapping[str, str | None] | None", undoable: bool) -> None:
-            # a change applies to the current values, because Play can move the time while the popup is open. A value
-            # of None for changes gives the series its style from before the popup
-            apply(set_series_values(viewer.values, path, style if changes is None else changes), undoable=undoable)
-
-        edit_series_properties(
-            window,
-            name,
-            style,
-            mplcolors.to_hex(defaultcolours[path]),
-            float(mpl.rcParams["lines.linewidth"]),
-            show_changes,
-        )
-
     command = ViewerCommand(
         name="plotspectra",
         main=plotspectra_main,
@@ -2337,9 +2162,6 @@ def open_window(
     def on_export_animation() -> None:
         export_animation(window, queue, command, get_animation_frames(viewer), fpsbox.value())
 
-    def is_model_folder(path: str) -> bool:
-        return bool(get_artis_model_folders([Path(path)]))
-
     show_series_rows = add_series_list(
         spectragrid,
         window,
@@ -2348,19 +2170,15 @@ def open_window(
         " --label and the style of each series. The time controls read the timesteps of the ARTIS model with ⏱."
         " Click the up or the down arrow, drag a row, or press Alt-Up or Alt-Down (Option on a Mac) to change the"
         " order. The command gives a file from the reference data of artistools by its name alone.",
-        ReferenceData(
-            kind="reference spectrum",
-            folder=get_path("artistools_dir") / "data" / "refspectra",
-            find=find_reference_spectrum_file_or_none,
-            example="AT2017gfo",
-        ),
+        REFERENCE_DATA,
         SeriesListActions(
             get_paths=lambda: viewer.values.spectra,
+            get_rows=lambda: viewer.values.otheroptions,
             apply_paths=apply_spectra,
-            edit_properties=on_edit_properties,
-            get_full_path=get_spectrum_path,
-            is_model=is_model_folder,
+            apply_rows=on_option_rows,
             show_error=show_error,
+            extend_row=add_time_grid_parts,
+            get_extrakey=lambda: viewer.values.timegrid,
         ),
     )
 
@@ -2370,7 +2188,6 @@ def open_window(
         def show_reloaded_models() -> None:
             viewer.load_models(viewer.values.spectra, viewer.values.timegrid)
             show_model_ranges()
-            queue.redraw()
 
         reload_models(queue, viewer.grid.modelfolders, show_reloaded_models, show_error)
 
@@ -2381,7 +2198,7 @@ def open_window(
         queue,
         command,
         figuresection,
-        (copybutton, pythoncopybutton),
+        commandsections.copybuttons,
         KEYBOARD_HELP_ROWS,
         playbutton,
         extracallbacks={"Reload Data": on_reload, "Export Animation…": on_export_animation},
@@ -2392,26 +2209,8 @@ def open_window(
     )
 
     def on_plot_menu(frameindex: int, _event: t.Any) -> None:
-        """Show the actions on the frame and the figure under the pointer, as the context menu of a Mac app does."""
-        menu = QtWidgets.QMenu(window)
-        if frameindex == 0 and plot_shows_values() and len(viewer.axes):
-            add_y_axis_actions(
-                menu,
-                viewer.axes[0].get_yscale() == "log",
-                bool(viewer.values.ymin or viewer.values.ymax),
-                lambda yscale: apply(dc.replace(viewer.values, yscale=yscale)),
-                lambda: apply(dc.replace(viewer.values, ymin="", ymax="")),
-            )
-        add_figure_actions(menu)
-        menu.exec(QtGui.QCursor.pos())
-        # the window is the parent of the menu, thus without this the window keeps each menu until it closes
-        menu.deleteLater()
-
-    # the window keeps its command at a quit, and the next start opens the window again
-    def get_session_tokens() -> list[str]:
-        # a command with no path reads the working folder, and the next start can be in a different folder
-        tokens = viewer.get_plot_tokens()
-        return [str(Path.cwd()), *tokens] if viewer.values.spectra == DEFAULT_SPECTRA else tokens
+        drawn = frameindex == 0 and plot_shows_values() and len(viewer.axes) > 0
+        show_plot_menu(window, queue, viewer.axes[0] if drawn else None, add_figure_actions)
 
     modesegments.currentChanged.connect(on_time_mode)
     packetbox.currentIndexChanged.connect(on_packet_type)
@@ -2420,9 +2219,6 @@ def open_window(
     widthmodebox.currentIndexChanged.connect(on_widthmode)
     timeedit.editingFinished.connect(on_timeedit)
     widthedit.editingFinished.connect(on_timeedit)
-    playbutton.toggled.connect(on_play)
-    figscalebox.valueChanged.connect(on_figscale)
-    playtimer.timeout.connect(play_step)
     connect_xrange(on_xrange)
     xminedit.editingFinished.connect(on_xedit)
     xmaxedit.editingFinished.connect(on_xedit)
@@ -2456,14 +2252,14 @@ def open_window(
         on_menu=on_plot_menu,
         show_tag=make_readout_tag(canvas),
     )
-    connect_time_keys(
-        window,
-        stepbuttons,
-        on_arrow,
-        on_widthstep,
-        (lambda: apply(viewer.move_to_end(last=False)), lambda: apply(viewer.move_to_end(last=True))),
-    )
+    connect_time_keys(window, stepbuttons, viewer, apply)
 
-    finish_viewer_window(viewerwindow, windows, viewer, queue, get_session_tokens)
+    finish_viewer_window(
+        viewerwindow,
+        windows,
+        viewer,
+        queue,
+        lambda: get_session_tokens(viewer.get_plot_tokens(), viewer.values.spectra),
+    )
     show_values()
     return None

@@ -4,6 +4,7 @@ import argparse
 import math
 import string
 import typing as t
+import warnings
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -20,7 +21,7 @@ from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import get_middle_layer_lower_edge
-from artistools.inputmodel.core import get_modeldata
+from artistools.inputmodel.core import scan_modeldata
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
 from artistools.misc import addarg_modelpath
@@ -40,7 +41,7 @@ from artistools.plottools import save_figure
 type AxisType = t.Literal["x", "y", "z", "r", "rcyl"]
 
 
-def get_2D_slice_through_3d_model(
+def get_2d_slice_through_3d_model(
     dfmodel: pl.DataFrame,
     sliceaxis: AxisType,
     modelmeta: dict[str, t.Any] | None = None,
@@ -225,7 +226,7 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
     """Plot each of args.plotvars as a 2D slice through the model and save the figure."""
     # if the species doesn't end in a number (isotope, e.g. Sr92) then we need to also get element abundances (e.g., Sr)
     get_elemabundances = any(plotvar[-1] not in string.digits for plotvar in args.plotvars)
-    lzdfmodel, modelmeta = get_modeldata(modelpath, get_elemabundances=get_elemabundances)
+    lzdfmodel, modelmeta = scan_modeldata(modelpath, get_elemabundances=get_elemabundances)
     if modelmeta["dimensions"] not in {2, 3}:
         msg = f"plotinitialcomposition plots a 2D or a 3D model, but the model in {modelpath} is 1D"
         raise ValueError(msg)
@@ -256,7 +257,7 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
         plotaxis2: AxisType = next(ax for ax in axeschars if ax not in {sliceaxis, plotaxis1})
         print(f"Plotting slice through {sliceaxis}=0, plotting {plotaxis1} vs {plotaxis2}")
 
-        df2dslice = get_2D_slice_through_3d_model(
+        df2dslice = get_2d_slice_through_3d_model(
             dfmodel=dfmodel,
             modelmeta=modelmeta,
             sliceaxis=sliceaxis,
@@ -353,7 +354,7 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     # choose what surface will be coloured by
     plotvar = "rho" if "rho" in args.plotvars else "Ye" if "Ye" in args.plotvars else args.plotvars[0]
     # an element such as Sr needs the element abundances, and an isotope such as Sr92 is a column of the model
-    plmodel, modelmeta = get_modeldata(modelpath, get_elemabundances=plotvar[-1] not in string.digits)
+    plmodel, modelmeta = scan_modeldata(modelpath, get_elemabundances=plotvar[-1] not in string.digits)
     # a column such as tracercount keeps its name, and an element or an isotope names its mass fraction, as in 2D
     coloursurfaceby = plotvar if plotvar in {*plmodel.collect_schema().names(), "Ye"} else f"X_{plotvar.title()}"
     print(f"Colours set by {coloursurfaceby}")
@@ -478,3 +479,18 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         return
 
     plot_2d_initial_abundances(args.modelpath, args)
+
+
+# the names before the rule invalid-function-name. Each alias gives a DeprecationWarning that names the new
+# function
+@warnings.deprecated("get_2D_slice_through_3d_model is deprecated. Use get_2d_slice_through_3d_model.")
+def get_2D_slice_through_3d_model(  # ruff:ignore[invalid-function-name]
+    dfmodel: pl.DataFrame,
+    sliceaxis: AxisType,
+    modelmeta: dict[str, t.Any] | None = None,
+    plotaxis1: AxisType | None = None,
+    plotaxis2: AxisType | None = None,
+    positive_axis: bool = True,
+) -> pl.DataFrame:
+    """Return the result of get_2d_slice_through_3d_model, the new name of this function."""
+    return get_2d_slice_through_3d_model(dfmodel, sliceaxis, modelmeta, plotaxis1, plotaxis2, positive_axis)

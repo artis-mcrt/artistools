@@ -15,6 +15,8 @@ from artistools.inputmodel.core import save_empty_abundance_file as save_empty_a
 from artistools.inputmodel.core import save_initelemabundances as save_initelemabundances
 from artistools.inputmodel.core import save_modeldata as save_modeldata
 from artistools.inputmodel.core import scale_model_to_time as scale_model_to_time
+from artistools.inputmodel.core import scan_initelemabundances as scan_initelemabundances
+from artistools.inputmodel.core import scan_modeldata as scan_modeldata
 
 # isort: split
 from artistools.inputmodel import core as core

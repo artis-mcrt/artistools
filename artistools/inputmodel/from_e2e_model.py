@@ -21,12 +21,12 @@ from artistools.constants import day_to_s
 from artistools.constants import Msun_to_g as msol
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import dimension_reduce_model
-from artistools.inputmodel.core import get_initelemabundances
-from artistools.inputmodel.core import get_modeldata
 from artistools.inputmodel.core import MODEL_FILE_NAMES
 from artistools.inputmodel.core import remap_gridcontributions
 from artistools.inputmodel.core import save_initelemabundances
 from artistools.inputmodel.core import save_modeldata
+from artistools.inputmodel.core import scan_initelemabundances
+from artistools.inputmodel.core import scan_modeldata
 from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
 from artistools.misc import addarg_force
 from artistools.misc import addarg_output
@@ -697,7 +697,7 @@ def map_to_artis(
 
         # 2) load dynamical ejecta model
         # load second model as Pandas DF
-        lzdyn_model, dyn_modelmeta_in = get_modeldata(modelpath=Path(replacedyn))
+        lzdyn_model, dyn_modelmeta_in = scan_modeldata(modelpath=Path(replacedyn))
         # the merge below reads the volume and the mid-point velocity. The other derived columns stay out of memory
         dyn_model: pl.DataFrame = (
             add_derived_cols_to_modeldata(lzdyn_model, modelmeta=dyn_modelmeta_in)
@@ -705,8 +705,8 @@ def map_to_artis(
             .collect()
         )
         dyn_model = dyn_model.with_columns(dfmodel["bin_state"].alias("bin_state"))
-        dyn_abunds = get_initelemabundances(modelpath=Path(replacedyn))
-        # get_modeldata adds tracercount only for a model.txt that holds it
+        dyn_abunds = scan_initelemabundances(modelpath=Path(replacedyn))
+        # scan_modeldata adds tracercount only for a model.txt that holds it
         dyn_model = dyn_model.drop(["tracercount", "modelgridindex"], strict=False)
 
         # Step 2) Model modification

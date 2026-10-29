@@ -14,7 +14,7 @@ import polars.selectors as cs
 from artistools.constants import C_cm_per_s
 from artistools.constants import Msun_to_g
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
-from artistools.inputmodel.core import get_modeldata
+from artistools.inputmodel.core import scan_modeldata
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
@@ -31,8 +31,8 @@ from artistools.misc import is_in_range
 from artistools.misc import normalize_path_list
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
-from artistools.misc import trim_or_pad
 from artistools.plottools import make_frame_figure
+from artistools.plottools import resolve_series_styles
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
 
@@ -163,7 +163,7 @@ def plot_density_profiles(
     max_vmax_on_c = float("-inf")
     for color, label, modelpath in zip(args.color, args.label, args.modelpath, strict=True):
         print(f"Plotting {label}")
-        lzdfmodel, modelmeta = get_modeldata(modelpath)
+        lzdfmodel, modelmeta = scan_modeldata(modelpath)
         lzdfmodel = add_derived_cols_to_modeldata(lzdfmodel, modelmeta=modelmeta)
 
         vmax_on_c = modelmeta["vmax_cmps"] / C_cm_per_s
@@ -235,7 +235,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     args.modelpath = normalize_path_list(args.modelpath)
 
-    args.color, args.label = trim_or_pad(len(args.modelpath), args.color, args.label)
+    args.color = resolve_series_styles(args, [False] * len(args.modelpath), args.color, "label")
     args.label = [
         get_series_label(args.label, index, get_model_name(modelpath)) for index, modelpath in enumerate(args.modelpath)
     ]

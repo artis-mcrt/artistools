@@ -8,12 +8,14 @@ import os
 import re
 import time
 import typing as t
+import warnings
 from collections.abc import Callable
 from collections.abc import Mapping
 from collections.abc import Sequence
 from functools import lru_cache
 from itertools import batched
 from pathlib import Path
+from types import MappingProxyType
 
 import numpy as np
 import numpy.typing as npt
@@ -22,42 +24,50 @@ import polars as pl
 from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
-from artistools.inputmodel import get_modeldata
+from artistools.inputmodel import scan_modeldata
+from artistools.misc import arggroup
+from artistools.misc import check_local_path
+from artistools.misc import clear_at_reload
+from artistools.misc import COMPRESSED_EXTENSIONS
 from artistools.misc import drop_trailing_null_column
 from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_artis_option
+from artistools.misc import get_bin_index_expr
 from artistools.misc import get_file_identity
 from artistools.misc import get_file_state
 from artistools.misc import get_nprocs
 from artistools.misc import get_parquet_cache_name
+from artistools.misc import get_progress_class
 from artistools.misc import get_timestep_times
 from artistools.misc import get_viewingdirection_costhetabincount
 from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import get_viewingdirectionbincount
+from artistools.misc import make_cache_folder
+from artistools.misc import modelpath_cache
+from artistools.misc import natural_sort_key
+from artistools.misc import on_model_host
+from artistools.misc import parquet_is_readable
+from artistools.misc import polars_error_note
 from artistools.misc import polars_source
 from artistools.misc import print_detail
 from artistools.misc import print_warning
+from artistools.misc import raise_if_cut_line
+from artistools.misc import rankbatch_parquet_staleness
 from artistools.misc import write_parquet_atomic
 from artistools.misc import zopen
-from artistools.misc.fileio import COMPRESSED_EXTENSIONS
-from artistools.misc.fileio import make_cache_folder
-from artistools.misc.fileio import modelpath_cache
-from artistools.misc.fileio import natural_sort_key
-from artistools.misc.fileio import parquet_is_readable
-from artistools.misc.fileio import polars_error_note
-from artistools.misc.fileio import raise_if_cut_line
-from artistools.misc.fileio import rankbatch_parquet_staleness
-from artistools.misc.general import get_bin_index_expr
-from artistools.misc.remote import check_local_path
-from artistools.misc.remote import on_model_host
 
-type_ids = {"TYPE_GAMMA": 10, "TYPE_RPKT": 11, "TYPE_NTLEPTON": 20, "TYPE_ESCAPE": 32}
+type_ids: t.Final[Mapping[str, int]] = MappingProxyType({
+    "TYPE_GAMMA": 10,
+    "TYPE_RPKT": 11,
+    "TYPE_NTLEPTON": 20,
+    "TYPE_ESCAPE": 32,
+})
 
 # new artis added extra columns to the end of this list, but they may be absent in older versions
 # the packets file may have a truncated set of columns, but we assume that they
 # are only truncated, i.e. the columns with the same index have the same meaning
-columns_full = [
+columns_full: t.Final = (
     "number",
     "where",
     "type_id",
@@ -101,7 +111,7 @@ columns_full = [
     "true_emission_velocity",
     "trueem_time",
     "pellet_nucindex",
-]
+)
 
 
 @modelpath_cache(maxsize=16)
@@ -183,7 +193,7 @@ def get_emission_velocity_of_columns_expr(position: t.Literal["em", "trueem"], p
     """Return the radial velocity [cm/s] of get_emission_velocity_expr() from the columns that the packets hold.
 
     An old packets file holds true_emission_velocity and no position of the thermal emission. For a packet with no
-    record, get_packets gives that velocity a value of NaN, as get_emission_velocity_expr() does.
+    record, scan_packets gives that velocity a value of NaN, as get_emission_velocity_expr() does.
     """
     if position == "trueem" and "trueem_posx" not in packetcolumns:
         if "true_emission_velocity" not in packetcolumns:
@@ -385,7 +395,7 @@ def add_derived_columns_lazy(dfpackets: pl.LazyFrame | pl.DataFrame, modelpath: 
 
     The function adds all the columns, because a LazyFrame calculates a column only when a query uses it.
     """
-    dfmodel, modelmeta = get_modeldata(modelpath=modelpath)
+    dfmodel, modelmeta = scan_modeldata(modelpath=modelpath)
     timebins = [tstart * day_to_s for tstart in get_timestep_times(modelpath, loc="start")] + [
         get_timestep_times(modelpath, loc="end")[-1] * day_to_s
     ]
@@ -439,7 +449,7 @@ def get_packets_text_columns(packetsfile: Path | str, modelpath: Path | str = ".
                 assert len(column_names) == inputcolumncount
             else:  # infer from column positions
                 assert len(columns_full) >= inputcolumncount
-                column_names = columns_full[:inputcolumncount]
+                column_names = list(columns_full[:inputcolumncount])
 
     return column_names
 
@@ -585,7 +595,7 @@ def get_vpackets_text_columns(vpacketsfiletext: Path) -> list[str]:
 
 # The version of the packets parquet cache format. Increase it for a change that makes an older
 # cache file incorrect, e.g. a new column, a removed column, or a different data type. A cache keeps the
-# names of the Stokes columns of its text file, e.g. stokes1/2/3 of an older ARTIS, and get_packets renames them
+# names of the Stokes columns of its text file, e.g. stokes1/2/3 of an older ARTIS, and scan_packets renames them
 CACHEVERSION = 1
 
 # the number of ranks in each parquet cache of the packets
@@ -694,7 +704,7 @@ def get_first_packets_file(modelpath: Path) -> Path | None:
     """Return the packets text file of the first rank, or the parquet cache of the first batch, or None.
 
     The name of a cache holds the ranks of its batch. A cache of an earlier run with a different number of ranks is
-    not the cache that get_packets reads. If only such a cache exists, the function returns None.
+    not the cache that scan_packets reads. If only such a cache exists, the function returns None.
     """
     textfile = firstexisting_or_none(get_packets_textfilename(0, virtual=False), folder=modelpath)
     if textfile is not None:
@@ -823,8 +833,6 @@ def get_packets_rankbatch_parquetfile(
 
         ftextreader = read_virtual_packets_text_file if virtual else readfile_text
 
-        from artistools.misc.general import get_progress_class
-
         with get_progress_class()(total=len(text_file_paths), desc="Reading packet files", unit="file") as progressbar:
 
             def read_with_progress(text_file_path: Path) -> pl.LazyFrame:
@@ -894,6 +902,7 @@ def get_packets_mpirank_groups(modelpath: Path, maxpacketfiles: int | None) -> l
     return mpirank_groups
 
 
+@clear_at_reload("output")
 @lru_cache(maxsize=8)
 def find_first_rank_textfiles(
     modelpath: Path, firstranks: tuple[int, ...], virtual: bool
@@ -974,6 +983,7 @@ def get_packets_batch_parquet_paths(
     return nprocs_read, list(parquetpacketsfiles)
 
 
+@clear_at_reload("output")
 @lru_cache(maxsize=8)
 def check_packets_batch_parquet_paths(
     modelpath: Path,
@@ -1017,7 +1027,7 @@ def print_parquet_size(parquetfiles: Sequence[Path]) -> None:
     print(f"  Total parquet size is {packetsdatasize_gb:.1f} GB (from {len(parquetfiles)} batches)")
 
 
-def get_virtual_packets(modelpath: str | Path, maxpacketfiles: int | None = None) -> tuple[int, pl.LazyFrame]:
+def scan_virtual_packets(modelpath: str | Path, maxpacketfiles: int | None = None) -> tuple[int, pl.LazyFrame]:
     """Return the number of MPI ranks read and a lazy frame of all of the model's virtual packets."""
     nprocs_read, vpacketparquetfiles = get_packets_batch_parquet_paths(
         modelpath, maxpacketfiles=maxpacketfiles, virtual=True
@@ -1036,7 +1046,7 @@ def get_virtual_packets(modelpath: str | Path, maxpacketfiles: int | None = None
     return nprocs_read, dfpackets
 
 
-def get_packets(
+def scan_packets(
     modelpath: str | Path,
     maxpacketfiles: int | None = None,
     packet_type: str | None = None,
@@ -1399,3 +1409,37 @@ def sum_virtual_packets_by_observer(
         # solid-angle factor of the real packets
         result[vspecindex] = observersums._replace(solidanglefactor=4 * math.pi)
     return result
+
+
+def addarg_maxpacketfiles(parser: argparse.ArgumentParser) -> None:
+    """Add the --maxpacketfiles argument limiting how many packet files are read."""
+    arggroup(parser, "Packets").add_argument(
+        "-maxpacketfiles",
+        "-maxpacketsfiles",
+        type=int,
+        default=None,
+        help=(
+            f"Set the maximum number of packet files to read. The reader reads whole batches of {RANKS_PER_BATCH}"
+            f" files, thus give a value of at least {RANKS_PER_BATCH}. The reader rounds the value down to a multiple"
+            f" of {RANKS_PER_BATCH}"
+        ),
+    )
+
+
+# the names before the readers took the prefix scan_ or read_. Each alias keeps the old signature, thus a script
+# of a user still runs, and it gives a DeprecationWarning that names the new function
+@warnings.deprecated("get_packets is deprecated. Use scan_packets.")
+def get_packets(
+    modelpath: str | Path,
+    maxpacketfiles: int | None = None,
+    packet_type: str | None = None,
+    escape_type: str | None = None,
+) -> tuple[int, pl.LazyFrame]:
+    """Return the result of scan_packets, the new name of this function."""
+    return scan_packets(modelpath, maxpacketfiles=maxpacketfiles, packet_type=packet_type, escape_type=escape_type)
+
+
+@warnings.deprecated("get_virtual_packets is deprecated. Use scan_virtual_packets.")
+def get_virtual_packets(modelpath: str | Path, maxpacketfiles: int | None = None) -> tuple[int, pl.LazyFrame]:
+    """Return the result of scan_virtual_packets, the new name of this function."""
+    return scan_virtual_packets(modelpath, maxpacketfiles=maxpacketfiles)

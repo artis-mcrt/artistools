@@ -2,6 +2,7 @@
 
 import argparse
 import typing as t
+import warnings
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -9,8 +10,8 @@ import numpy as np
 import numpy.typing as npt
 import polars as pl
 
-from artistools.inputmodel.core import get_modeldata
 from artistools.inputmodel.core import RHO_FROM_LOGRHO
+from artistools.inputmodel.core import scan_modeldata
 from artistools.misc import addarg_action
 from artistools.misc import addarg_force
 from artistools.misc import addarg_modelpath
@@ -21,7 +22,7 @@ from artistools.misc import print_saved
 from artistools.misc import require_action
 
 
-def opacity_by_Ye(outputfilepath: Path | str, griddata: pl.DataFrame) -> None:
+def opacity_by_ye(outputfilepath: Path | str, griddata: pl.DataFrame) -> None:
     """Opacities from Table 1 Tanaka 2020."""
     print("Getting opacity kappa from Ye")
 
@@ -54,7 +55,7 @@ def opacity_by_Ye(outputfilepath: Path | str, griddata: pl.DataFrame) -> None:
         )
 
 
-def write_Ye_file(outputfilepath: Path | str, griddata: pl.DataFrame) -> None:
+def write_ye_file(outputfilepath: Path | str, griddata: pl.DataFrame) -> None:
     """Write the per-cell electron fraction to Ye.txt in the given folder."""
     assert griddata.schema["inputcellid"].is_integer()
 
@@ -111,9 +112,23 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.action == "uniform":
         confirm_overwrite([args.outputfile], ("opacity.txt",), force=args.force)
-        _, modelmeta = get_modeldata(modelpath)
+        _, modelmeta = scan_modeldata(modelpath)
         all_cells_same_opacity(Path(args.outputfile), modelmeta["npts_model"], kappa=args.kappa)
     else:
         opacities = get_opacity_from_file(modelpath)
         print(f"opacity.txt: {len(opacities)} cells")
         print(f"  kappa min {opacities.min():.4g}, max {opacities.max():.4g}, mean {opacities.mean():.4g} cm2/g")
+
+
+# the names before the rule invalid-function-name. Each alias gives a DeprecationWarning that names the new
+# function
+@warnings.deprecated("opacity_by_Ye is deprecated. Use opacity_by_ye.")
+def opacity_by_Ye(outputfilepath: Path | str, griddata: pl.DataFrame) -> None:  # ruff:ignore[invalid-function-name]
+    """Return the result of opacity_by_ye, the new name of this function."""
+    opacity_by_ye(outputfilepath, griddata)
+
+
+@warnings.deprecated("write_Ye_file is deprecated. Use write_ye_file.")
+def write_Ye_file(outputfilepath: Path | str, griddata: pl.DataFrame) -> None:  # ruff:ignore[invalid-function-name]
+    """Return the result of write_ye_file, the new name of this function."""
+    write_ye_file(outputfilepath, griddata)

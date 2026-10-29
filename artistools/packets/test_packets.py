@@ -1,16 +1,20 @@
 import math
 import os
 import stat
+from collections.abc import Callable
 from pathlib import Path
 from unittest import mock
 
 import matplotlib.axes as mplax
+import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 import polars.testing as pltest
 import pytest
 
 import artistools as at
+
+modelpath = at.get_path("testdata") / "testmodel"
 
 
 def get_reference_dirbin(dirx: float, diry: float, dirz: float, nphibins: int, ncosthetabins: int) -> int:
@@ -154,8 +158,8 @@ def test_a_direction_along_the_z_axis_gets_the_bin_of_artis(
     assert get_reference_dirbin(dirx, diry, dirz, nphibins=10, ncosthetabins=10) == expecteddirbin
 
 
-def test_get_virtual_packets() -> None:
-    nprocs_read, dfvpkt = at.packets.get_virtual_packets(
+def test_scan_virtual_packets() -> None:
+    nprocs_read, dfvpkt = at.packets.scan_virtual_packets(
         modelpath=at.get_path("testdata") / "vpktcontrib", maxpacketfiles=2
     )
     dfvpkt = dfvpkt.collect()
@@ -506,7 +510,7 @@ def test_emission_expressions_give_no_value_for_a_packet_with_no_record() -> Non
     An older ARTIS gives that packet a position of zero, and the current ARTIS gives it a position of NaN.
     """
     modelpath = at.get_path("testdata") / "test-classicmode_3d"
-    dfmodel, modelmeta = at.get_modeldata(modelpath, printwarningsonly=True)
+    dfmodel, modelmeta = at.scan_modeldata(modelpath, printwarningsonly=True)
     emtime_s = 5.0 * at.constants.day_to_s
     dfpackets = pl.DataFrame({
         "trueem_posx": [1.0e9 * emtime_s, 0.0, 0.0, math.nan],
@@ -533,9 +537,9 @@ def test_emission_expressions_give_no_value_for_a_packet_with_no_record() -> Non
         assert dfvalues["modelgridindex"][norecordrow] is None
 
 
-def test_get_packets_gives_nan_to_the_thermal_velocity_of_a_packet_with_no_record() -> None:
+def test_scan_packets_gives_nan_to_the_thermal_velocity_of_a_packet_with_no_record() -> None:
     """An old packets file holds a thermal emission velocity of zero for a packet with no thermal emission record."""
-    _, lzdfpackets = at.packets.get_packets(
+    _, lzdfpackets = at.packets.scan_packets(
         at.get_path("testdata") / "test-classicmode_3d", packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
     )
     dfpackets = lzdfpackets.select("trueem_time", "true_emission_velocity").collect()
@@ -604,7 +608,7 @@ def test_lastpacketinteraction_ignores_a_packet_with_no_thermal_emission_record(
 
 @pytest.mark.parametrize(("absorption", "velocityunit"), [(False, "kmps"), (True, "kmps"), (False, "c")])
 def test_lastpacketinteraction_groupby_gives_the_luminosity_of_each_group_in_each_velocity_bin(
-    tmp_path: Path, absorption: bool, velocityunit: str
+    tmp_path: Path, absorption: bool, velocityunit: str, read_data_file: Callable[[Path], pl.DataFrame]
 ) -> None:
     """The group of a packet comes from its emission type, or with --absorption, from its absorption type.
 
@@ -656,7 +660,7 @@ def test_lastpacketinteraction_groupby_gives_the_luminosity_of_each_group_in_eac
             write_data=True,
         )
 
-    dftable = pl.read_csv(tmp_path / "profile.txt", separator=" ", null_values="nan", comment_prefix="#")
+    dftable = read_data_file(tmp_path / "profile.txt")
     luminosities = {
         (label, round(xlower * kmps_per_unit)): (luminosity, perunitvelocity)
         for label, xlower, luminosity, perunitvelocity in dftable.select(
@@ -676,7 +680,7 @@ def test_lastpacketinteraction_groupby_gives_the_luminosity_of_each_group_in_eac
         assert np.isclose(perunitvelocity, energy / delta_t_s / binwidth, rtol=1e-6, atol=0.0), key
 
     # the summary includes the Fe IV packet above the bins, and the median velocity takes the energy as the weight
-    dfsummary = pl.read_csv(tmp_path / "profile_summary.txt", separator=" ", null_values="nan", comment_prefix="#")
+    dfsummary = read_data_file(tmp_path / "profile_summary.txt")
     summaryrows = {row["label"]: row for row in dfsummary.iter_rows(named=True)}
     assert summaryrows.keys() == {"Fe IV", "Other"}
     assert summaryrows["Fe IV"]["packetcount"] == 4
@@ -686,7 +690,9 @@ def test_lastpacketinteraction_groupby_gives_the_luminosity_of_each_group_in_eac
         assert np.isclose(median * kmps_per_unit, median_kmps, rtol=1e-6, atol=0.0), label
 
 
-def test_lastinteractionvelocity_gives_the_energy_weighted_quartiles_of_each_timestep(tmp_path: Path) -> None:
+def test_lastinteractionvelocity_gives_the_energy_weighted_quartiles_of_each_timestep(
+    tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """A packet takes the timestep of its arrival time, and the quartiles take the energy of each packet as the weight.
 
     A packet at the start time of a timestep is in that timestep, and a packet outside the wavelength range is in no
@@ -713,7 +719,7 @@ def test_lastinteractionvelocity_gives_the_energy_weighted_quartiles_of_each_tim
         "costhetabin": [9] * 6,
         "dirbin": [90] * 6,
     })
-    with mock.patch.object(plotlastinteractionvelocity, "get_packets", return_value=(1, dfpackets.lazy())):
+    with mock.patch.object(plotlastinteractionvelocity, "scan_packets", return_value=(1, dfpackets.lazy())):
         plotlastinteractionvelocity.main(
             argsraw=[],
             plotinvalidpart=True,
@@ -725,7 +731,7 @@ def test_lastinteractionvelocity_gives_the_energy_weighted_quartiles_of_each_tim
             write_data=True,
         )
 
-    dftable = pl.read_csv(tmp_path / "velocity.txt", separator=" ", null_values="nan", comment_prefix="#")
+    dftable = read_data_file(tmp_path / "velocity.txt")
     assert dftable["timestep"].to_list() == [25, 26]
     assert dftable["packetcount"].to_list() == [3, 1]
     # sqrt(sum(e^2)) / sum(e) of the energies 1, 2, and 1, and of one packet
@@ -742,7 +748,9 @@ def test_lastinteractionvelocity_gives_the_energy_weighted_quartiles_of_each_tim
         assert np.allclose(dftable[column].to_numpy(), values, rtol=0.0, atol=15.0), column
 
 
-def test_lastpacketinteraction_groupby_reads_the_escaped_packets_of_the_window(tmp_path: Path) -> None:
+def test_lastpacketinteraction_groupby_reads_the_escaped_packets_of_the_window(
+    tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """With real packets, the groups hold the luminosity of the escaped r-packets of the wavelength range and timestep.
 
     The luminosity is the packet energy divided by the width of the timestep and the number of MPI ranks.
@@ -763,9 +771,9 @@ def test_lastpacketinteraction_groupby_reads_the_escaped_packets_of_the_window(t
         outputfile=tmp_path / "groups.pdf",
         write_data=True,
     )
-    dfsummary = pl.read_csv(tmp_path / "groups_summary.txt", separator=" ", null_values="nan", comment_prefix="#")
+    dfsummary = read_data_file(tmp_path / "groups_summary.txt")
 
-    nprocs, lzpackets = at.packets.get_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+    nprocs, lzpackets = at.packets.scan_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
     dfwindow = (
         lzpackets
         .filter(
@@ -780,7 +788,9 @@ def test_lastpacketinteraction_groupby_reads_the_escaped_packets_of_the_window(t
     assert np.isclose(float(dfsummary["luminosity_erg_per_s"].sum()), luminosity, rtol=1e-6, atol=0.0)
 
 
-def test_lastpacketinteraction_groupby_bins_the_line_of_sight_velocity(tmp_path: Path) -> None:
+def test_lastpacketinteraction_groupby_bins_the_line_of_sight_velocity(
+    tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """-velocitykind lineofsight bins (em_pos . dir) / em_time from minus to plus the last edge.
 
     The plot had only the radial velocity, which cannot separate the blue side and the red side of a P Cygni profile.
@@ -801,7 +811,7 @@ def test_lastpacketinteraction_groupby_bins_the_line_of_sight_velocity(tmp_path:
         outputfile=tmp_path / "groups.pdf",
         write_data=True,
     )
-    dftable = pl.read_csv(tmp_path / "groups.txt", separator=" ", null_values="nan", comment_prefix="#")
+    dftable = read_data_file(tmp_path / "groups.txt")
     dfbins = (
         dftable.group_by("x_lower_kmps", "x_upper_kmps").agg(pl.col("luminosity_erg_per_s").sum()).sort("x_lower_kmps")
     )
@@ -809,7 +819,7 @@ def test_lastpacketinteraction_groupby_bins_the_line_of_sight_velocity(tmp_path:
     assert len(edges) == 11
     assert np.isclose(edges[0], -edges[-1], rtol=1e-9, atol=0.0)
 
-    nprocs, lzpackets = at.packets.get_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+    nprocs, lzpackets = at.packets.scan_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
     dfwindow = (
         lzpackets
         .filter(pl.col("t_arrive_d").is_between(t_start, t_end, closed="left"))
@@ -940,7 +950,7 @@ def test_lastpacketinteraction_takes_the_start_of_the_timestep_and_not_the_end(
     assert heatmap[0, 25] > 0.0
 
 
-def test_get_packets_stops_for_a_model_with_no_escaped_gamma_packets(tmp_path: Path) -> None:
+def test_scan_packets_stops_for_a_model_with_no_escaped_gamma_packets(tmp_path: Path) -> None:
     """ARTIS removes the escaped gamma packets unless KEEP_ESCAPED_GAMMAS is true, which is not the default.
 
     The empty frame gave a gamma-ray light curve and a gamma-ray spectrum of zero with no message.
@@ -953,18 +963,18 @@ def test_get_packets_stops_for_a_model_with_no_escaped_gamma_packets(tmp_path: P
     ).write_parquet(cachepath)
 
     with mock.patch("artistools.packets.core.get_packets_batch_parquet_paths", return_value=(1, [cachepath])):
-        _, dfrpkt = at.packets.get_packets(tmp_path, escape_type="TYPE_RPKT")
+        _, dfrpkt = at.packets.scan_packets(tmp_path, escape_type="TYPE_RPKT")
         assert dfrpkt.collect().height == 2
 
         with pytest.raises(ValueError, match="KEEP_ESCAPED_GAMMAS"):
-            at.packets.get_packets(tmp_path, escape_type="TYPE_GAMMA")
+            at.packets.scan_packets(tmp_path, escape_type="TYPE_GAMMA")
 
 
 @pytest.mark.parametrize(
     ("columnname", "values"),
     [("originated_from_positron", [True, False]), ("originated_from_particlenotgamma", [1, 0])],
 )
-def test_get_packets_gives_one_name_and_type_to_the_flag_of_the_particle_origin(
+def test_scan_packets_gives_one_name_and_type_to_the_flag_of_the_particle_origin(
     tmp_path: Path, columnname: str, values: list[bool] | list[int]
 ) -> None:
     """An older ARTIS writes originated_from_positron, and the current ARTIS writes originated_from_particlenotgamma.
@@ -975,7 +985,7 @@ def test_get_packets_gives_one_name_and_type_to_the_flag_of_the_particle_origin(
     pl.DataFrame({"type_id": [32, 32], columnname: values}).write_parquet(cachepath)
 
     with mock.patch("artistools.packets.core.get_packets_batch_parquet_paths", return_value=(1, [cachepath])):
-        _, dfpackets = at.packets.get_packets(tmp_path)
+        _, dfpackets = at.packets.scan_packets(tmp_path)
 
     dfflag = dfpackets.select("originated_from_particlenotgamma").collect()
     pltest.assert_frame_equal(dfflag, pl.DataFrame({"originated_from_particlenotgamma": [True, False]}))
@@ -1050,7 +1060,7 @@ def test_timestep_of_a_time_at_the_start_of_a_timestep() -> None:
 @mock.patch.object(mplax.Axes, "imshow", side_effect=mplax.Axes.imshow, autospec=True)
 @pytest.mark.parametrize("logcolorscale", [False, True], ids=["linear", "log"])
 def test_lastpacketinteraction_write_data_gives_the_values_of_the_image(
-    mockimshow: mock.MagicMock, logcolorscale: bool, tmp_path: Path
+    mockimshow: mock.MagicMock, logcolorscale: bool, tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
 ) -> None:
     """Each row of the table gives the edges of one bin and the value that the image shows in that bin."""
     from artistools.packets import plotlastpacketinteraction
@@ -1068,7 +1078,7 @@ def test_lastpacketinteraction_write_data_gives_the_values_of_the_image(
     )
 
     image = mockimshow.call_args.args[1]
-    dftable = pl.read_csv(outputfile.with_suffix(".txt"), separator=" ", null_values="nan", comment_prefix="#")
+    dftable = read_data_file(outputfile.with_suffix(".txt"))
     valuecolumn = (
         "log10_escaped_luminosity_erg_per_s_per_cm3" if logcolorscale else "escaped_luminosity_erg_per_s_per_cm3"
     )
@@ -1095,7 +1105,7 @@ def test_lastpacketinteraction_write_data_gives_the_values_of_the_image(
             velocitymax_kmps=0.5 * at.constants.C_cm_per_s / at.constants.km_to_cm,
             write_data=True,
         )
-        dflinear = pl.read_csv(tmp_path / "linear.txt", separator=" ", null_values="nan", comment_prefix="#")
+        dflinear = read_data_file(tmp_path / "linear.txt")
         assert np.allclose(
             10 ** dftable[valuecolumn].to_numpy(),
             dflinear["escaped_luminosity_erg_per_s_per_cm3"].to_numpy(),
@@ -1119,7 +1129,7 @@ def test_lastpacketinteraction_image_takes_each_escaped_packet(
     timestep = at.get_timestep_of_timedays(modelpath, timedays)
     tstart = at.get_timestep_times(modelpath, loc="start")[timestep]
     tend = at.get_timestep_times(modelpath, loc="end")[timestep]
-    _, lzpackets = at.packets.get_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+    _, lzpackets = at.packets.scan_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
     dfarrived = lzpackets.filter(pl.col("t_arrive_d").is_between(tstart, tend, closed="left")).collect()
     assert dfarrived.filter(pl.col("absorption_type") < 0).height > 0
 
@@ -1132,7 +1142,7 @@ def test_lastpacketinteraction_image_takes_each_escaped_packet(
 
 
 def test_packet_commands_check_the_valid_range_of_the_arrival_times(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], read_data_file: Callable[[Path], pl.DataFrame]
 ) -> None:
     """Plotlastpacketinteraction stops for a timestep after the valid range, and plotlastinteractionvelocity skips it.
 
@@ -1159,13 +1169,15 @@ def test_packet_commands_check_the_valid_range_of_the_arrival_times(
             plotinvalidpart=plotinvalidpart,
             write_data=True,
         )
-        dftable = pl.read_csv(outputfile.with_suffix(".txt"), separator=" ", null_values="nan", comment_prefix="#")
+        dftable = read_data_file(outputfile.with_suffix(".txt"))
         timestepends = at.get_timestep_times(modelpath, loc="end")
         latestend_days = max(timestepends[timestep] for timestep in dftable["timestep"].to_list())
         assert (latestend_days > validend_days) == plotinvalidpart
 
 
-def test_lastpacketinteraction_dirbin_takes_one_direction_bin_as_in_plotspectra(tmp_path: Path) -> None:
+def test_lastpacketinteraction_dirbin_takes_one_direction_bin_as_in_plotspectra(
+    tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """-dirbin N takes the one direction bin N, and --average_over_phi_angle takes all the phi bins of its costheta bin.
 
     The packet commands always took the costheta bin, thus -dirbin 10 selected other directions than in plotspectra.
@@ -1176,7 +1188,7 @@ def test_lastpacketinteraction_dirbin_takes_one_direction_bin_as_in_plotspectra(
     timestep = at.misc.get_timestep_of_timedays(modelpath, 6.5)
     t_start = at.get_timestep_times(modelpath, loc="start")[timestep]
     t_end = at.get_timestep_times(modelpath, loc="end")[timestep]
-    _, lzpackets = at.packets.get_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+    _, lzpackets = at.packets.scan_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
     dfarrived = (
         lzpackets
         .filter(pl.col("t_arrive_d").is_between(t_start, t_end, closed="left"))
@@ -1194,9 +1206,7 @@ def test_lastpacketinteraction_dirbin_takes_one_direction_bin_as_in_plotspectra(
             outputfile=outputfile,
             write_data=True,
         )
-        dfsummary = pl.read_csv(
-            outputfile.with_name(f"{outputfile.stem}_summary.txt"), separator=" ", null_values="nan", comment_prefix="#"
-        )
+        dfsummary = read_data_file(outputfile.with_name(f"{outputfile.stem}_summary.txt"))
         assert int(dfsummary["packetcount"].sum()) == expectedcount > 0
 
 
@@ -1283,3 +1293,238 @@ def test_filterpackets_keeps_a_file_with_no_escaped_rpkt(tmp_path: Path, capsys:
 
     assert packetsfile.read_bytes() == contents_before
     assert f"{packetsfile}: no escaped r-packets, thus the filter keeps the file" in capsys.readouterr().out
+
+
+@pytest.mark.benchmark
+def test_plotspherical(tmp_path: Path) -> None:
+    at.packets.plotspherical.main(argsraw=[], modelpath=modelpath, outputfile=tmp_path)
+
+    assert [path.name for path in tmp_path.glob("plotspherical_*.pdf")] == ["plotspherical_256.67-333.82d.pdf"]
+
+
+def test_plotspherical_gaussian_filter(tmp_path: Path) -> None:
+    """-gaussian_sigma must reach smooth_direction_map, which takes the width in phi bins and not in degrees."""
+    from artistools.packets.plotspherical import smooth_direction_map
+
+    with mock.patch.object(
+        at.packets.plotspherical, "smooth_direction_map", side_effect=smooth_direction_map
+    ) as mocksmooth:
+        at.packets.plotspherical.main(argsraw=[], modelpath=modelpath, gaussian_sigma=20, outputfile=tmp_path)
+
+    # one map for each of the three default plot variables, on the default grid of 64 phi bins
+    assert mocksmooth.call_count == 3
+    for callargs in mocksmooth.call_args_list:
+        _, sigma_bins, nphibins = callargs.args
+        assert nphibins == 64
+        assert np.isclose(sigma_bins, 20 / 360 * 64)
+
+
+def test_plotspherical_one_pass_matches_one_pass_per_time_range() -> None:
+    """The direction maps of several time ranges in one pass must equal the map of each range on its own."""
+    from artistools.packets.plotspherical import bin_packets_by_direction
+
+    nprocs_read, dfpackets = at.packets.scan_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
+    dfpackets = at.packets.add_derived_columns_lazy(dfpackets, modelpath=modelpath)
+    tstarts = at.get_timestep_times(modelpath, loc="start")
+    tends = at.get_timestep_times(modelpath, loc="end")
+    # the last range repeats the first one, as every frame does when the observer never gets light from the full ejecta
+    timeranges = [(tstarts[ts], tends[ts]) for ts in (60, 61, 62, 60)]
+    plotvars = ["luminosity", "emvelocityoverc", "emlosvelocityoverc", "emvelocityoverc_sigma"]
+
+    dfonepass, _ = bin_packets_by_direction(
+        modelpath, dfpackets, nprocs_read, timeranges, 8, 4, plotvars, dfestimators=None
+    )
+    assert dfonepass.height == 4 * 8 * 4
+    assert dfonepass["count"].sum() > 0
+
+    for timebin, timerange in enumerate(timeranges):
+        dfsingle, _ = bin_packets_by_direction(
+            modelpath, dfpackets, nprocs_read, [timerange], 8, 4, plotvars, dfestimators=None
+        )
+        pltest.assert_frame_equal(
+            dfonepass.filter(pl.col("timebin") == timebin).with_columns(timebin=pl.lit(0, dtype=pl.Int32)), dfsingle
+        )
+
+
+def test_plotspherical_smoothing_wraps_phi_and_crosses_each_pole() -> None:
+    """The smoothing must blend no pole with the opposite pole.
+
+    The filter wrapped the cos theta axis as it wraps phi. Thus the row at the south pole took the light of
+    the row at the north pole.
+    """
+    from artistools.packets.plotspherical import smooth_direction_map
+
+    ncosthetabins, nphibins = 8, 16
+    data = np.zeros((ncosthetabins, nphibins))
+    data[-1, 0] = 1.0  # the north polar cap, at phi bin 0
+
+    smoothed = smooth_direction_map(data, 1.0, nphibins)
+
+    assert np.allclose(smoothed[0], 0.0), "the south polar cap must stay dark"
+    # phi wraps, thus the last phi bin is a neighbour of phi bin 0
+    assert smoothed[-1, -1] > 0.0
+    # the bin on the other side of the north pole is at phi + pi in the same row
+    assert smoothed[-1, nphibins // 2] > smoothed[-1, nphibins // 4]
+
+
+@mock.patch.object(mplax.Axes, "pcolormesh", side_effect=mplax.Axes.pcolormesh, autospec=True)
+def test_plotspherical_puts_phi_zero_at_the_centre(mockpcolormesh: mock.MagicMock) -> None:
+    """The direction phi = 0 (+X) must be at the longitude zero, which is the centre of the map.
+
+    The longitude of the map started at -pi with phi bin 0, thus +X was at the edge and -X at the centre.
+    """
+    from artistools.packets.plotspherical import plot_spherical
+
+    ncosthetabins, nphibins = 4, 8
+    isphibinzero = [phibin == 0 for _ in range(ncosthetabins) for phibin in range(nphibins)]
+    dirbins = pl.DataFrame({"count": [1] * len(isphibinzero), "luminosity": [float(x) for x in isphibinzero]})
+
+    fig, _ = plot_spherical(dirbins, ["luminosity"], nphibins=nphibins, ncosthetabins=ncosthetabins)
+    plt.close(fig)
+
+    # the colour bar draws a mesh of its own after the map
+    _, meshgrid_phi, _, data = mockpcolormesh.call_args_list[0].args
+    (litcolumn,) = np.flatnonzero(np.asarray(data)[0])
+    assert np.allclose(meshgrid_phi[0, litcolumn : litcolumn + 2], [0.0, 2 * np.pi / nphibins])
+
+
+@pytest.mark.parametrize("nphibins", [1, 5, 8])
+def test_plotspherical_map_columns_cover_each_longitude_with_the_correct_phi_bin(nphibins: int) -> None:
+    """Each column of the map must show the phi bin that holds its longitude, from -pi to +pi.
+
+    For an odd -nphibins, the map ran from -0.8 pi to 1.2 pi for five bins, thus a strip at -pi stayed blank.
+    """
+    from artistools.packets.plotspherical import get_map_columns
+
+    longitude_edges, column_phibins = get_map_columns(nphibins)
+
+    assert len(longitude_edges) == len(column_phibins) + 1
+    assert np.isclose(longitude_edges[0], -np.pi)
+    assert np.isclose(longitude_edges[-1], np.pi)
+    assert np.all(np.diff(longitude_edges) > 0.0)
+    assert np.any(np.isclose(longitude_edges, 0.0)), "phi = 0 must be an edge at the centre of the map"
+    column_centre_phi = np.mod(0.5 * (longitude_edges[:-1] + longitude_edges[1:]), 2 * np.pi)
+    assert np.array_equal(np.floor(column_centre_phi / (2 * np.pi) * nphibins).astype(int), column_phibins)
+
+
+def test_plotspherical_smoothing_with_odd_phi_bins_crosses_the_pole_at_phi_plus_pi() -> None:
+    """For an odd -nphibins, the row beyond a pole must take the two bins on each side of phi + pi."""
+    from artistools.packets.plotspherical import get_rows_across_pole
+
+    rows = np.arange(5, dtype=np.float64).reshape((1, 5))
+
+    # the centre of bin 0 is at 0.2 pi, thus phi + pi is at 1.2 pi, which is the edge of bins 2 and 3
+    assert np.allclose(get_rows_across_pole(rows, 5)[0], [2.5, 3.5, 2.0, 0.5, 1.5])
+
+
+def test_plotspherical_gif(tmp_path: Path) -> None:
+    """The gif holds one frame for each timestep in the time range, in the order of time.
+
+    The frames and the gif go in a folder of this test alone. A pytest run clears the test output folder when it
+    starts. Thus a second run deleted the frames of this test before the gif read them.
+    """
+    from PIL import Image
+
+    # the timesteps 0, 1, and 2 end before 253 d. Three frames cover the code of the gif
+    at.packets.plotspherical.main(
+        argsraw=[], modelpath=modelpath, makegif=True, timemin=250, timemax=253, outputfile=tmp_path
+    )
+
+    framenames = sorted(path.name for path in tmp_path.glob("plotspherical_*.png"))
+    assert framenames == [
+        "plotspherical_250.00-250.84d.png",
+        "plotspherical_250.84-251.69d.png",
+        "plotspherical_251.69-252.54d.png",
+    ]
+    with Image.open(tmp_path / "sphericalplot.gif") as gif:
+        assert getattr(gif, "n_frames", 1) == 3
+
+
+def test_plotspherical_element_arguments_give_messages(capsys: pytest.CaptureFixture[str]) -> None:
+    """-elem with -atomic_number, or an -elem that is no element symbol, gives a message.
+
+    The first stopped with a bare AssertionError, and the second plotted the packets of "Z=-1".
+    """
+    with pytest.raises(SystemExit):
+        at.packets.plotspherical.main(argsraw=[], modelpath=modelpath, elem="Fe", atomic_number=26)
+    assert "Give one of --elem and --atomic-number" in capsys.readouterr().err
+
+    with pytest.raises(SystemExit):
+        at.packets.plotspherical.main(argsraw=[], modelpath=modelpath, elem="Xx")
+    assert "-elem Xx is not an element symbol" in capsys.readouterr().err
+
+
+def test_plotspherical_makes_the_output_folder(tmp_path: Path) -> None:
+    """A -o path that has no file extension names a folder, which the command makes.
+
+    The command wrote a file that had the name of the folder and no extension, and a run with
+    --makegif stopped, because it built the path of each frame below a folder that did not exist.
+    """
+    outfolder = tmp_path / "frames"
+    at.packets.plotspherical.main(argsraw=[], modelpath=modelpath, outputfile=str(outfolder), timemin=250, timemax=300)
+
+    assert outfolder.is_dir(), "the command must make the folder that -o names"
+    assert list(outfolder.glob("plotspherical_*.pdf")), f"no plot in {list(outfolder.iterdir())}"
+
+
+def test_plotspherical_gif_keeps_the_name_that_o_gives(tmp_path: Path) -> None:
+    """A -o path that has a file extension names the gif, and its folder then holds the frames.
+
+    A path such as movie.gif became a folder, thus the file that the user asked for was never written.
+    """
+    gifpath = tmp_path / "movie.gif"
+    at.packets.plotspherical.main(
+        argsraw=[], modelpath=modelpath, makegif=True, timemin=250, timemax=253, outputfile=str(gifpath)
+    )
+
+    assert gifpath.is_file(), f"the gif must keep its name, but {list(tmp_path.iterdir())}"
+    assert list(gifpath.parent.glob("plotspherical_*.png")), "the frames go in the folder of the gif"
+
+    # a path with no file extension still names a folder that holds the gif and the frames
+    outfolder = tmp_path / "movie"
+    at.packets.plotspherical.main(
+        argsraw=[], modelpath=modelpath, makegif=True, timemin=250, timemax=253, outputfile=str(outfolder)
+    )
+    assert (outfolder / "sphericalplot.gif").is_file(), f"no gif in {list(outfolder.iterdir())}"
+
+
+@mock.patch.object(mplax.Axes, "pcolormesh", side_effect=mplax.Axes.pcolormesh, autospec=True)
+def test_plotspherical_write_data_holds_the_drawn_maps(
+    mockpcolormesh: mock.MagicMock, tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
+    """The table of --write_data must give each pixel of each map after the smoothing, at the drawn coordinates.
+
+    The longitude of the map does not follow the ascending phi bins, and --phireverse changes its sign. Thus the
+    table must give the edges that the axes received, and not the edges of the phi bins.
+    """
+    ncosthetabins, nphibins = 4, 5
+    plotvars = ["luminosity", "emvelocityoverc"]
+    at.packets.plotspherical.main(
+        argsraw=[],
+        modelpath=modelpath,
+        outputfile=tmp_path / "map.pdf",
+        nphibins=nphibins,
+        ncosthetabins=ncosthetabins,
+        plotvars=plotvars,
+        gaussian_sigma=40,
+        phireverse=True,
+        write_data=True,
+    )
+
+    dftable = read_data_file(tmp_path / "map.txt")
+    assert dftable.columns[-2:] == ["luminosity_erg_per_s", "emvelocityoverc"]
+    # the colour bar draws a mesh of its own after each map
+    mapcalls = [call for call in mockpcolormesh.call_args_list if call.args[0].name == "mollweide"]
+    assert len(mapcalls) == len(plotvars)
+    for call, colname in zip(mapcalls, ["luminosity_erg_per_s", "emvelocityoverc"], strict=True):
+        _, meshgrid_phi, meshgrid_theta, data = call.args
+        drawn = np.asarray(data, dtype=np.float64)
+        assert drawn.shape == (ncosthetabins, nphibins + 1)
+        assert np.allclose(dftable[colname].to_numpy().reshape(drawn.shape), drawn, rtol=1e-6, atol=0, equal_nan=True)
+
+    longitude_edges = np.sort(meshgrid_phi[0])
+    assert np.allclose(dftable["longitude_lower_rad"].to_numpy()[: nphibins + 1], longitude_edges[:-1][::-1])
+    assert np.allclose(dftable["longitude_upper_rad"].to_numpy()[: nphibins + 1], longitude_edges[1:][::-1])
+    assert np.allclose(
+        dftable["costheta_lower"].to_numpy()[:: nphibins + 1], np.sin(meshgrid_theta[:-1, 0]), rtol=1e-12, atol=1e-15
+    )

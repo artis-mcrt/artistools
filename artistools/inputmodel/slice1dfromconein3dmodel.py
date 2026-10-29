@@ -15,11 +15,11 @@ from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import get_middle_layer_lower_edge
-from artistools.inputmodel.core import get_modeldata
 from artistools.inputmodel.core import LOGRHO_FROM_RHO
 from artistools.inputmodel.core import save_initelemabundances
 from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.core import savetologfile
+from artistools.inputmodel.core import scan_modeldata
 from artistools.misc import addarg_force
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
@@ -187,7 +187,7 @@ def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> 
     """Make 1D model from 3D model."""
     modelpath = normalize_path_list(args.modelpath)[0]
     logprint("Making 1D model from 3D model:", get_model_logname(modelpath))
-    pldfmodel, modelmeta = get_modeldata(modelpath=modelpath, get_elemabundances=True)
+    pldfmodel, modelmeta = scan_modeldata(modelpath=modelpath, get_elemabundances=True)
     args.t_model = modelmeta["t_model_init_days"]
     if args.makefromcone:
         logprint("From a cone")

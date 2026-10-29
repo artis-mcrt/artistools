@@ -7,7 +7,6 @@ folder of many models takes a short time.
 """
 
 import argparse
-import os
 import typing as t
 from collections.abc import Callable
 from collections.abc import Sequence
@@ -18,7 +17,7 @@ import polars as pl
 from artistools.describemodel import get_run_versions
 from artistools.describemodel import returns_only
 from artistools.inputmodel import add_derived_cols_to_modeldata
-from artistools.inputmodel import get_modeldata
+from artistools.inputmodel import scan_modeldata
 from artistools.lightcurve import find_lightcurve_file
 from artistools.lightcurve import scan_lightcurve
 from artistools.misc import addarg_table_output
@@ -28,13 +27,13 @@ from artistools.misc import get_artis_options
 from artistools.misc import get_model_name
 from artistools.misc import get_nprocs
 from artistools.misc import get_timestep_times
+from artistools.misc import natural_sort_key
 from artistools.misc import parse_cli_args
 from artistools.misc import print_detail
 from artistools.misc import print_or_write_table
 from artistools.misc import print_product
 from artistools.misc import print_warning
 from artistools.misc import resolve_table_outputfile
-from artistools.misc.fileio import natural_sort_key
 
 CATALOGSCHEMA: t.Final = pl.Schema({
     "modelname": pl.String,
@@ -90,8 +89,7 @@ def find_model_folders(folder: Path) -> list[Path]:
     """
     modelfolders: list[Path] = []
     realfolders: set[Path] = set()
-    for dirpath, dirnames, _ in os.walk(folder, followlinks=True):
-        subfolder = Path(dirpath)
+    for subfolder, dirnames, _ in folder.walk(follow_symlinks=True):
         realfolder = subfolder.resolve()
         if realfolder in realfolders:
             dirnames.clear()
@@ -107,7 +105,7 @@ def find_model_folders(folder: Path) -> list[Path]:
 
 def get_cell_columns(modelfolder: Path) -> dict[str, t.Any]:
     """Return the dimensions of model.txt, its number of cells, and the number of cells with matter."""
-    dfmodel, modelmeta = get_modeldata(modelfolder, printwarningsonly=True)
+    dfmodel, modelmeta = scan_modeldata(modelfolder, printwarningsonly=True)
     cellswithmatter = (
         add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta).select((pl.col("rho") > 0).sum()).collect().item()
     )

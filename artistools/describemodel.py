@@ -20,25 +20,25 @@ import polars as pl
 from artistools.atomic import get_composition_data
 from artistools.atomic import get_ionstring
 from artistools.inputmodel import add_derived_cols_to_modeldata
-from artistools.inputmodel import get_modeldata
+from artistools.inputmodel import scan_modeldata
 from artistools.lightcurve import scan_lightcurve
-from artistools.logsummary import get_logfiles
-from artistools.logsummary import RE_TIMESTEP
+from artistools.logs import get_logfiles
+from artistools.logs import RE_TIMESTEP
 from artistools.misc import addarg_modelpath
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_artis_options
 from artistools.misc import get_model_folder
+from artistools.misc import get_rank_outputfiles
 from artistools.misc import get_runfolders
 from artistools.misc import get_timestep_times
+from artistools.misc import get_viewingdirection_costhetabincount
+from artistools.misc import get_viewingdirection_phibincount
+from artistools.misc import get_viewingdirectionbincount
+from artistools.misc import get_vpkt_config
+from artistools.misc import on_model_host
 from artistools.misc import parse_cli_args
 from artistools.misc import print_product
 from artistools.misc import zopen
-from artistools.misc.dirbins import get_viewingdirection_costhetabincount
-from artistools.misc.dirbins import get_viewingdirection_phibincount
-from artistools.misc.dirbins import get_viewingdirectionbincount
-from artistools.misc.modelinfo import get_rank_outputfiles
-from artistools.misc.modelinfo import get_vpkt_config
-from artistools.misc.remote import on_model_host
 from artistools.packets import count_packets_textfiles
 from artistools.packets import has_packets_files
 
@@ -119,7 +119,7 @@ PHYSICSOPTIONS: tuple[tuple[str, tuple[tuple[str, ...], ...]], ...] = (
 
 def get_model_lines(modelpath: Path) -> list[str]:
     """Return the lines that describe the cells of model.txt."""
-    dfmodel, modelmeta = get_modeldata(modelpath, printwarningsonly=True)
+    dfmodel, modelmeta = scan_modeldata(modelpath, printwarningsonly=True)
     cellswithmatter = (
         add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta).select((pl.col("rho") > 0).sum()).collect().item()
     )
@@ -166,7 +166,7 @@ def get_output_lines(modelpath: Path) -> list[str]:
         )
 
     for filename in SINGLEOUTPUTFILES:
-        # the readers of the light curves and the spectra also search the run folders, and get_deposition does not
+        # the readers of the light curves and the spectra also search the run folders, and scan_deposition does not
         filepath = firstexisting_or_none(filename, folder=modelpath, search_subfolders=filename != "deposition.out")
         lines.append(
             f"{filename}: {filepath.relative_to(modelpath)}{get_reader_text(filename)}"

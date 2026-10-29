@@ -18,9 +18,10 @@ from artistools.constants import c_ang_per_s
 from artistools.constants import km_to_cm
 from artistools.constants import Lsun_to_erg_per_s
 from artistools.constants import megaparsec_to_cm
+from artistools.estimators import get_estimator_timesteps
 from artistools.estimators import scan_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
-from artistools.inputmodel import get_modeldata
+from artistools.inputmodel import scan_modeldata
 from artistools.lightcurve import find_lightcurve_file
 from artistools.lightcurve import scan_lightcurve
 from artistools.misc import addarg_force
@@ -28,19 +29,17 @@ from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import confirm_overwrite_matches
 from artistools.misc import exit_with_error
-from artistools.misc import get_deposition
-from artistools.misc import get_runfolders
 from artistools.misc import get_timestep_times
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
-from artistools.misc.modelinfo import get_runfolder_timesteps
-from artistools.spectra import read_spec
+from artistools.misc import scan_deposition
+from artistools.spectra import scan_spec
 
 
 def write_spectra(modelpath: str | Path, selected_timesteps: Sequence[int], outfilepath: Path) -> None:
     """Write the spectra at the selected timesteps in code comparison workshop format."""
-    dfspec = read_spec(modelpath).collect()
+    dfspec = scan_spec(modelpath).collect()
 
     # the header names each column of flux with its time in days
     times = [float(colname) for colname in dfspec.columns[1:]]
@@ -87,7 +86,7 @@ def get_nonempty_cells(
 ) -> tuple[pl.DataFrame, dict[str, t.Any]]:
     """Return the model data of the cells that hold estimator data, with the mid-point velocity of each one."""
     # write_phys reads rho, which a 1D model.txt does not contain. The derivation calculates it from logrho
-    lzmodeldata, modelmeta = get_modeldata(modelpath)
+    lzmodeldata, modelmeta = scan_modeldata(modelpath)
     return (
         add_derived_cols_to_modeldata(lzmodeldata, modelmeta=modelmeta)
         .filter(pl.col("modelgridindex").is_in(allnonemptymgilist))
@@ -96,7 +95,7 @@ def get_nonempty_cells(
     ), modelmeta
 
 
-def scan_cell_estimators(
+def read_cell_estimators(
     modelpath: str | Path, selected_timesteps: Sequence[int], modeldata: pl.DataFrame, modelmeta: dict[str, t.Any]
 ) -> pl.DataFrame:
     """Return the estimators of the selected timesteps, joined to the model data of each non-empty cell.
@@ -135,9 +134,7 @@ def write_edep(
     timestep n. Thus the value of a selected timestep comes from the next timestep, as in deposition.py.
     """
     # scan_estimators refuses a request of timesteps that ARTIS did not write, e.g. the one after the last
-    writtentimesteps = {
-        timestep for folder in get_runfolders(modelpath) for timestep in get_runfolder_timesteps(folder)
-    }
+    writtentimesteps = set(get_estimator_timesteps(Path(modelpath)))
     nexttimesteps = tuple(timestep + 1 for timestep in selected_timesteps if timestep + 1 in writtentimesteps)
     dfnext = dfestimators.select("modelgridindex", "timestep", total_dep=pl.lit(0.0)).clear()
     if nexttimesteps:
@@ -283,7 +280,7 @@ def write_lbol_edep(modelpath: str | Path, selected_timesteps: Sequence[int], ou
         scan_lightcurve(find_lightcurve_file(modelpath))[-1]
         .with_row_index("timestep")
         .with_columns(pl.col("timestep").cast(pl.Int32))
-        .join(get_deposition(modelpath), on="timestep", how="inner")
+        .join(scan_deposition(modelpath), on="timestep", how="inner")
         .filter(pl.col("timestep").is_in(list(selected_timesteps)))
         .sort("timestep")
         .select("timestep", "time_days", "luminosity_Lsun", "total_dep_Lsun")
@@ -348,7 +345,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             .to_list()
         )
         modeldata, modelmeta = get_nonempty_cells(modelpath, allnonemptymgilist)
-        dfestimators = scan_cell_estimators(modelpath, selected_timesteps, modeldata, modelmeta)
+        dfestimators = read_cell_estimators(modelpath, selected_timesteps, modeldata, modelmeta)
 
         # with no estimator files, the scan gives only the columns of the model, thus each select of Te stops
         if "Te" not in dfestimators.columns:
