@@ -219,8 +219,9 @@ class ModelpathCache[**P, R]:
         def __call__(self, *args: t.Any, **kwargs: t.Any) -> t.Any:
             """Return the result of the reader for the absolute path of the model.
 
-            A path that a keyword gives goes to the first position. Each other argument takes its position in the
-            signature, and a missing argument takes its default. Thus each form of a call shares one cache entry.
+            A path that a keyword gives goes to the first position. Each of the other arguments takes its position in
+            the signature, and an optional argument that the call leaves out takes its default. Thus each form of a
+            call shares one cache entry.
             """
             if not args and (pathkeyword := next((key for key in self.pathkeywords if key in kwargs), None)):
                 args = (kwargs.pop(pathkeyword),)

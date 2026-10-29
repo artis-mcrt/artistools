@@ -1656,8 +1656,8 @@ def test_empty_label_hides_a_reference_spectrum_in_the_legend(
     """An empty -label gives a reference spectrum no legend entry, as it does for a model.
 
     The spectrum plot read an empty label as a missing label, thus the reference spectrum took the name in its
-    metadata. The emission plot already kept the empty label. Then --scaletoreftime gave the line the legend entry
-    " * 0.50", and the log and the summary named no series.
+    metadata. The emission plot already kept the empty label. After the first correction, --scaletoreftime gave the
+    line the legend entry " * 0.50", and the log and the summary named no series.
     """
     refspec = "2003du_20031213_3219_8822_00.txt"
     at.spectra.plot(
@@ -3660,7 +3660,7 @@ def test_plotspectra_x_still_gives_the_unit() -> None:
 def test_emission_plot_names_a_direction_bin_that_the_average_leaves_out(tmp_path: Path) -> None:
     """The emission plot gives the error of the shared check for a bin that an average over phi leaves out.
 
-    The emission path checked the bin with a bare assert, thus the command gave the message of a fault of artistools.
+    The emission plot checked the bin with a bare assert, thus the command gave the message of a fault of artistools.
     """
     with pytest.raises(ValueError, match=r"Direction bin 5 is not the first bin of an average group"):
         at.spectra.plot(

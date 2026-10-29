@@ -1032,7 +1032,8 @@ def test_viewer_typed_centre_gives_back_the_range() -> None:
 def test_range_slider_handle_keeps_the_range_inside_the_timesteps() -> None:
     """A press beside a handle at an end of the range slider gives a valid range of one timestep or more.
 
-    The slider then gives the position -1 or the count, and the estimators viewer read the timestep at that position.
+    The slider then gives the position -1 or the number of timesteps, and the estimators viewer read the timestep at
+    that position.
     Thus it raised IndexError, or it gave the reversed range --timestep 99-0.
     """
     assert viewercore.get_dragged_range((0, 0), 0, -1, 100) == (0, 1)

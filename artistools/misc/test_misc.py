@@ -3702,8 +3702,8 @@ def test_a_cached_reader_takes_the_model_path_by_keyword(tmp_path: Path, monkeyp
 def test_a_cached_reader_shares_one_entry_for_each_form_of_a_call() -> None:
     """A call by position, a call by keyword, and a call with the default of an argument share one cache entry.
 
-    The cache took the arguments in the form of the call, thus a keyword or a default gave a new entry. Then
-    writebollightcurvedata --fromspectra read spec_res.out two times.
+    The cache took the arguments in the form of the call, thus a keyword or a default gave a new entry. For this
+    reason, writebollightcurvedata --fromspectra read spec_res.out two times.
     """
     modelpath = at.get_path("testdata") / "testmodel"
     at.get_timestep_times.cache_clear()

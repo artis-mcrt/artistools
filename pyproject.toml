@@ -182,8 +182,8 @@ project-excludes = [
     '**/target/**',
 ]
 python-interpreter-path = ".venv/bin/python3"
-# missing-import stays on, thus a renamed or mistyped module of artistools is an error. ty also reports it with
-# unresolved-import, and pyright gives only information.
+# missing-import stays on, thus an import of a renamed or mistyped module of artistools gives an error. ty also
+# reports it with unresolved-import, and pyright gives only information.
 # The [project.optional-dependencies] packages are absent from a plain `uv sync`, and zstandard is
 # not installed on 3.14+, so those resolve to Any rather than erroring.
 ignore-missing-imports = [

@@ -1880,7 +1880,7 @@ def make_note_label() -> "QtWidgets.QLabel":
 def set_note_text(label: "QtWidgets.QLabel", summary: str, detail: str = "") -> None:
     """Show a summary in a note label, with a More link to the detail if the detail gives more. No summary hides it."""
     label.setProperty("notesummary", summary)
-    # get_first_sentence gives the summary with no full stop, thus a detail of one sentence gives no more text
+    # get_first_sentence gives the summary with no full stop, thus a detail of one sentence adds no text to the summary
     label.setProperty("notedetail", detail if detail.removesuffix(".") != summary.removesuffix(".") else "")
     label.setToolTip(detail or summary)
     show_note_text(label)

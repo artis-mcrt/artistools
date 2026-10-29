@@ -1285,7 +1285,7 @@ def get_flux_contributions_cached(
     if directionbin is None or directionbin == -1:
         dbinlist = [-1]
     else:
-        # a bin that an average leaves out is a mistake of the arguments, thus it gets the error of the shared check
+        # the arguments can name a bin that the average leaves out, thus the shared check gives a clear error
         get_dirbin_definitions(
             modelpath, [directionbin], average_over_phi=average_over_phi, average_over_theta=average_over_theta
         )

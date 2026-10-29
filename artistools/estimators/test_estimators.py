@@ -630,8 +630,8 @@ def test_histogram_shows_the_velocity_range_of_each_shell(
 def test_half_axis_description_holds_the_centre_cell_of_an_odd_grid() -> None:
     """The text of a half line of cells on an odd grid gives the centre cell, which the selection holds.
 
-    The centre cell of an odd grid lies from -Δ/2 to Δ/2, and get_profile_along_axis selects it for both half-axes. The
-    text of the + half-axis started at Δ/2.
+    The centre cell of an odd grid lies from -Δ/2 to Δ/2, where Δ is the width of a cell. get_profile_along_axis
+    selects it for both half-axes. The text of the + half-axis started at Δ/2.
     """
     modelmeta = {
         "dimensions": 3,

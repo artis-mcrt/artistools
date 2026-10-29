@@ -115,7 +115,7 @@ def reload_models(
 
     def read() -> None:
         clear_reload_caches(("estimators",) if estimatorsonly else ("estimators", "output"))
-        # the call above cleared the caches of this process, thus only a remote model needs a clear on its host
+        # the call above cleared the caches of this process, thus only the host of a remote model has caches to clear
         for modelfolder in modelfolders:
             if is_remote_path(modelfolder):
                 clear_output_caches_of_model(Path(modelfolder), estimatorsonly)

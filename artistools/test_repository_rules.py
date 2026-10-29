@@ -130,8 +130,8 @@ def test_reader_prefix_tells_lazy_from_eager() -> None:
     """A reader with the prefix scan_ returns a LazyFrame, and a reader with the prefix read_ returns eager data.
 
     The README gives this rule to the users. read_spec returned a LazyFrame, and get_spectra returned a dictionary of
-    them, thus the name did not tell a user when the data was read. The test read only the core modules and misc, thus
-    scan_cell_estimators of writecomparisondata returned a DataFrame.
+    them, thus the name did not tell a user when the reader read the data. The test read only the core modules and
+    misc, thus it did not find scan_cell_estimators in writecomparisondata, which returned a DataFrame.
     """
     import ast
 
