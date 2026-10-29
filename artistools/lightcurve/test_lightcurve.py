@@ -3018,7 +3018,7 @@ def test_nuclide_light_curve_label_keeps_the_model_name(mockplot: mock.MagicMock
     lcdataframes = at.lightcurve.scan_lightcurve(modelpath / "light_curve.out")
     with mock.patch.object(lightcurvecore, "scan_lightcurve_from_packets", return_value=lcdataframes):
         plotlightcurve.plot_artis_lightcurve(
-            modelpath, axis, escape_type="TYPE_GAMMA", frompackets=True, args=args, pellet_nucname="Ni56"
+            modelpath, axis, escape_type="TYPE_GAMMA", args=args, pellet_nucname="Ni56"
         )
     assert mockplot.call_args.kwargs["label"] == rf"{at.misc.get_model_name(modelpath)} $\gamma$ Ni56"
 

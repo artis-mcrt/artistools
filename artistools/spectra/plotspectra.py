@@ -756,14 +756,8 @@ def plot_artis_spectrum(
     modelpath: Path | str,
     args: argparse.Namespace,
     scale_to_peak: float | None = None,
-    from_packets: bool = False,
     filterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None = None,
     linelabel: str | None = None,
-    directionbins: list[int] | None = None,
-    average_over_phi: bool = False,
-    average_over_theta: bool = False,
-    usedegrees: bool = False,
-    maxpacketfiles: int | None = None,
     residualseries: list[ResidualSeries] | None = None,
     summaryrows: list[dict[str, t.Any]] | None = None,
     **plotkwargs: t.Any,
@@ -791,17 +785,16 @@ def plot_artis_spectrum(
     printedmethodlines: set[str] = set()
 
     use_time = get_packet_use_time(args)
-    assert from_packets or use_time == "arrival"
+    assert args.frompackets or use_time == "arrival"
 
-    if directionbins is None:
-        directionbins = [-1]
+    directionbins: list[int] = args.plotvspecpol or args.plotviewingangle or [-1]
 
     clamp_to_timesteps = not args.notimeclamp
     # every panel reads the packets, thus one read of the union of the time windows serves them all. Each
     # panel then applies its own arrival window to the frame in memory. The packets of a remote model stay on
     # its host, thus each panel asks the host for its own spectrum
     sharesreadofpackets = (
-        from_packets
+        args.frompackets
         and args.multispecplot
         and use_time == "arrival"
         and args.plotvspecpol is None
@@ -822,7 +815,7 @@ def plot_artis_spectrum(
             modelpath,
             min(timerange[2] for timerange in timeranges),
             max(timerange[3] for timerange in timeranges),
-            maxpacketfiles=maxpacketfiles,
+            maxpacketfiles=args.maxpacketfiles,
             gamma=args.gamma,
         )
         if timeranges
@@ -897,14 +890,14 @@ def plot_artis_spectrum(
             xunit=args.xunit,
             yvariable=args.yvariable,
             fluxdistance_mpc=args.distmpc,
-            frompackets=from_packets,
+            frompackets=args.frompackets,
             vpkt_observers=args.plotvspecpol is not None,
-            average_over_phi=average_over_phi,
-            average_over_theta=average_over_theta,
-            usedegrees=usedegrees,
+            average_over_phi=args.average_over_phi_angle,
+            average_over_theta=args.average_over_theta_angle,
+            usedegrees=args.usedegrees,
             filterfunc=filterfunc,
             use_time=use_time,
-            maxpacketfiles=maxpacketfiles,
+            maxpacketfiles=args.maxpacketfiles,
             gamma=args.gamma,
             deltax=args.deltax,
             deltalogx=args.deltalogx,
@@ -1203,14 +1196,8 @@ def make_spectrum_plot(
                     specpath,
                     args=args,
                     scale_to_peak=scale_to_peak,
-                    from_packets=args.frompackets,
-                    maxpacketfiles=args.maxpacketfiles,
                     filterfunc=filterfunc,
                     linelabel=linelabel,
-                    directionbins=args.plotvspecpol or args.plotviewingangle,
-                    average_over_phi=args.average_over_phi_angle,
-                    average_over_theta=args.average_over_theta_angle,
-                    usedegrees=args.usedegrees,
                     residualseries=residualseries,
                     summaryrows=summaryrows,
                     **plotkwargs,
