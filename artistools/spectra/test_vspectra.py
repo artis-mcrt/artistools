@@ -1,5 +1,6 @@
 import shutil
 import typing as t
+from collections.abc import Callable
 from pathlib import Path
 from unittest import mock
 
@@ -159,20 +160,9 @@ def test_make_virtual_spectra_summed_file(tmp_path: Path) -> None:
         assert np.allclose(total[1:, 1:], 2 * source[1:, 1:], rtol=1e-12, atol=0.0)
 
 
-def copy_vpktcontrib_model(modelfolder: Path, timewindowline: str, rangesline: str) -> Path:
-    """Copy the vpktcontrib model with a new time window line and a new wavelength range line in vpkt.txt."""
-    sourcedir = at.get_path("testdata") / "vpktcontrib"
-    modelfolder.mkdir()
-    for filename in ("input.txt", "vpackets_0000.out.zst", "vpackets_0001.out.zst"):
-        shutil.copy(sourcedir / filename, modelfolder / filename)
-    vpktlines = (sourcedir / "vpkt.txt").read_text(encoding="utf-8").splitlines()
-    # the fifth line is the time window override, and the sixth line is the custom wavelength range flag
-    vpktlines[4:6] = [timewindowline, rangesline]
-    (modelfolder / "vpkt.txt").write_text("\n".join(vpktlines) + "\n", encoding="utf-8")
-    return modelfolder
-
-
-def test_vpkt_frompackets_spectrum_keeps_the_rows_inside_the_vpkt_ranges(tmp_path: Path) -> None:
+def test_vpkt_frompackets_spectrum_keeps_the_rows_inside_the_vpkt_ranges(
+    tmp_path: Path, copy_vpktcontrib_model: Callable[[Path, str, str], Path]
+) -> None:
     """The spectrum of a virtual observer bins only the rows with nu_rf inside a wavelength range of vpkt.txt.
 
     ARTIS also writes a row when only the absorption frequency is inside a range, and it keeps that row out of
@@ -214,7 +204,9 @@ def test_vpkt_frompackets_spectrum_keeps_the_rows_inside_the_vpkt_ranges(tmp_pat
         )
 
 
-def test_vpkt_frompackets_plot_refuses_a_time_range_outside_the_vpkt_window(tmp_path: Path) -> None:
+def test_vpkt_frompackets_plot_refuses_a_time_range_outside_the_vpkt_window(
+    tmp_path: Path, copy_vpktcontrib_model: Callable[[Path, str, str], Path]
+) -> None:
     """--frompackets with -plotvspecpol stops as the vspecpol branch does when the time range leaves the window.
 
     ARTIS writes a virtual packet only inside the time window of vpkt.txt. The flux of the packets took the full

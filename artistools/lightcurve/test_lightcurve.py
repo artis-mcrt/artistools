@@ -4,7 +4,6 @@ import gzip
 import lzma
 import re
 import shlex
-import shutil
 import typing as t
 import warnings
 from collections.abc import Callable
@@ -132,30 +131,24 @@ def test_lightcurve_of_a_virtual_observer_holds_the_energy_of_its_packets() -> N
 
 
 def test_lightcurve_of_a_virtual_observer_keeps_the_vpkt_window_and_ranges(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], copy_vpktcontrib_model: Callable[[Path, str, str], Path]
 ) -> None:
     """The light curve of a virtual observer holds only the timesteps inside the time window of vpkt.txt.
 
     The energy comes only from the rows with nu_rf inside a wavelength range of vpkt.txt, as for the spectrum. A
     timestep outside the window gave zero luminosity, and a timestep across an edge gave a low luminosity.
     """
-    sourcedir = at.get_path("testdata") / "vpktcontrib"
-    for filename in ("input.txt", "vpackets_0000.out.zst", "vpackets_0001.out.zst"):
-        shutil.copy(sourcedir / filename, tmp_path / filename)
-    vpktlines = (sourcedir / "vpkt.txt").read_text(encoding="utf-8").splitlines()
-    # the fifth line is the time window override, and the sixth line is the custom wavelength range flag
-    vpktlines[4:6] = ["1 130 140", "1 2 3500 6000 6400 7200"]
-    (tmp_path / "vpkt.txt").write_text("\n".join(vpktlines) + "\n", encoding="utf-8")
-    nprocs_read, dfvpackets = at.packets.scan_virtual_packets(tmp_path)
+    vpktmodel = copy_vpktcontrib_model(tmp_path / "model", "1 130 140", "1 2 3500 6000 6400 7200")
+    nprocs_read, dfvpackets = at.packets.scan_virtual_packets(vpktmodel)
     dirbin = 4
 
     dflightcurve = at.lightcurve.scan_lightcurve_from_packets(
-        tmp_path, directionbins=[dirbin], directionbins_are_vpkt_observers=True
+        vpktmodel, directionbins=[dirbin], directionbins_are_vpkt_observers=True
     )[dirbin].collect()
 
     assert "leaves out" in capsys.readouterr().err
     dftimesteps = (
-        at.misc.scan_timesteps(tmp_path).filter(pl.col("timestep").is_in(dflightcurve["timestep"].implode())).collect()
+        at.misc.scan_timesteps(vpktmodel).filter(pl.col("timestep").is_in(dflightcurve["timestep"].implode())).collect()
     )
     windowstart, windowend = (
         float(dftimesteps["tstart_days"].to_numpy().min()),
@@ -163,7 +156,7 @@ def test_lightcurve_of_a_virtual_observer_keeps_the_vpkt_window_and_ranges(
     )
     assert windowstart >= 130.0
     assert windowend <= 140.0
-    assert 0 < dftimesteps.height < at.misc.scan_timesteps(tmp_path).collect().height
+    assert 0 < dftimesteps.height < at.misc.scan_timesteps(vpktmodel).collect().height
 
     c = at.constants.c_ang_per_s
     lambda_rf = c / pl.col("dir1_nu_rf")
@@ -181,11 +174,12 @@ def test_lightcurve_of_a_virtual_observer_keeps_the_vpkt_window_and_ranges(
     )
     assert np.isclose(energy, dfinrange["dir1_e_rf_1"].to_numpy().sum(dtype=np.float64), rtol=1e-10, atol=0.0)
 
+    vpktlines = (vpktmodel / "vpkt.txt").read_text(encoding="utf-8").splitlines()
     vpktlines[4] = "1 100 110"
-    (tmp_path / "vpkt.txt").write_text("\n".join(vpktlines) + "\n", encoding="utf-8")
+    (vpktmodel / "vpkt.txt").write_text("\n".join(vpktlines) + "\n", encoding="utf-8")
     with pytest.raises(ValueError, match="No selected timestep lies fully inside the time window"):
         at.lightcurve.scan_lightcurve_from_packets(
-            tmp_path, directionbins=[dirbin], directionbins_are_vpkt_observers=True
+            vpktmodel, directionbins=[dirbin], directionbins_are_vpkt_observers=True
         )
 
 

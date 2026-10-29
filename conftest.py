@@ -127,6 +127,32 @@ def copy_model_inputs() -> "Callable[[Path, Path, Sequence[str]], None]":
 
 
 @pytest.fixture
+def copy_vpktcontrib_model() -> "Callable[[Path, str, str], Path]":
+    """Return a function that copies the vpktcontrib model, with a new time window and new wavelength ranges.
+
+    The function takes the folder of the copy, the time window line, and the wavelength range line of vpkt.txt.
+    """
+    import shutil
+
+    from artistools.paths import get_path
+
+    def copy_vpktcontrib_model(modelfolder: Path, timewindowline: str, rangesline: str) -> Path:
+        testdatapath = get_path("testdata")
+        assert isinstance(testdatapath, Path)
+        sourcedir = testdatapath / "vpktcontrib"
+        modelfolder.mkdir()
+        for filename in ("input.txt", "vpackets_0000.out.zst", "vpackets_0001.out.zst"):
+            shutil.copy(sourcedir / filename, modelfolder / filename)
+        vpktlines = (sourcedir / "vpkt.txt").read_text(encoding="utf-8").splitlines()
+        # the fifth line is the time window override, and the sixth line is the custom wavelength range flag
+        vpktlines[4:6] = [timewindowline, rangesline]
+        (modelfolder / "vpkt.txt").write_text("\n".join(vpktlines) + "\n", encoding="utf-8")
+        return modelfolder
+
+    return copy_vpktcontrib_model
+
+
+@pytest.fixture
 def get_cell_texts() -> "Callable[[str], list[str]]":
     """Return a function that splits the text of an estimator file into the text of each cell.
 
