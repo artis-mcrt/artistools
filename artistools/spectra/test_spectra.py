@@ -98,7 +98,7 @@ def test_histogram_steps_are_on_the_packet_bin_edges() -> None:
         assert np.allclose(upper, expectededges[1:], rtol=1e-12, atol=0.0), xunit
 
 
-def test_get_from_packets_relnoise_is_the_noise_of_the_packet_energies() -> None:
+def test_scan_spectra_from_packets_relnoise_is_the_noise_of_the_packet_energies() -> None:
     """The relative noise of a bin is sqrt(sum(e^2)) / sum(e) of the packets that arrive in it."""
     timelowdays, timehighdays = 290.0, 330.0
     lambda_bin_edges = np.geomspace(3000.0, 10000.0, 60)
@@ -1802,7 +1802,7 @@ def test_get_emabs_timeblock_count() -> None:
         atspectra.get_emabs_timeblock_count(dfwrong, n_nu, n_timesteps, "emission.out")
 
 
-def test_get_spectra_gamma_does_not_mix_in_uvoir_dirbins() -> None:
+def test_scan_spectra_gamma_does_not_mix_in_uvoir_dirbins() -> None:
     """Gamma spectra must not pick up the UVOIR direction-resolved file.
 
     test-classicmode_3d has spec_res.out but no gamma_spec_res.out, so a gamma request must return only the
@@ -1823,7 +1823,7 @@ def test_get_spectra_gamma_does_not_mix_in_uvoir_dirbins() -> None:
     assert nu_gamma > nu_uvoir
 
 
-def test_get_spectra_rejects_averaging_over_both_angles() -> None:
+def test_scan_spectra_rejects_averaging_over_both_angles() -> None:
     """Averaging over phi and theta at once leaves too few bins, so it must be rejected up front."""
     with pytest.raises(ValueError, match="both the phi and theta"):
         atspectra.scan_spectra(
@@ -2470,7 +2470,7 @@ def test_plotspectra_write_data_names_each_direction_bin(tmp_path: Path) -> None
     assert sum(column.startswith("f_lambda") and column.endswith("_dirbin05") for column in columns) == 1
 
 
-def test_get_specpol_data_reads_one_direction_bin() -> None:
+def test_scan_specpol_data_reads_one_direction_bin() -> None:
     """ARTIS writes one file specpol_res.out that holds a table for each direction bin.
 
     The reader asked for specpol_res_<dirbin>.out, which no model folder holds, thus every direction bin
@@ -2692,7 +2692,7 @@ def test_spectraemissionplot_forwards_the_velocity_ranges(mockgetcontributions: 
     assert velocityranges["lineofsightvelocity"] == (-15000.0, 15000.0)
 
 
-def test_read_spec_follows_the_working_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_scan_spec_follows_the_working_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The spectra of the default model path must change with the working folder.
 
     A cache held the relative Path("."). Thus a second model in the same process got the spectra of
@@ -2709,7 +2709,7 @@ def test_read_spec_follows_the_working_folder(tmp_path: Path, monkeypatch: pytes
     assert atspectra.scan_spec(Path()).collect()["10.0"].item() == pytest.approx(2.0)
 
 
-def test_read_spec_of_a_cut_or_empty_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_scan_spec_of_a_cut_or_empty_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """sn3d writes spec.out again at each timestep. A run that stops during that write leaves a bad file.
 
     An empty file gave a polars NoDataError with no file name. A cut last line gave null values or its cut number as
@@ -2902,7 +2902,7 @@ def make_model_with_a_new_spec_out(folder: Path, sourcemodel: Path, spectext: st
     return folder
 
 
-def test_get_spectra_names_the_last_timestep_of_a_run_that_stopped_early(tmp_path: Path) -> None:
+def test_scan_spectra_names_the_last_timestep_of_a_run_that_stopped_early(tmp_path: Path) -> None:
     """ARTIS writes a column of spec.out for each timestep that ran, thus a later timestep needs a clear message.
 
     The column of a timestep came from its position, thus polars stopped with ColumnNotFoundError.
@@ -2920,7 +2920,7 @@ def test_get_spectra_names_the_last_timestep_of_a_run_that_stopped_early(tmp_pat
         at.spectra.scan_spectra(earlymodel, 82, 82, directionbins=[-1])
 
 
-def test_get_spectra_reads_specpol_out_of_a_model_without_spec_out() -> None:
+def test_scan_spectra_reads_specpol_out_of_a_model_without_spec_out() -> None:
     """A model with POL_ON can hold specpol.out and no spec.out. The Stokes I part of specpol.out is the spectrum."""
     vspecpolmodel = at.get_path("testdata") / "vspecpolmodel"
     assert not (vspecpolmodel / "spec.out").exists()

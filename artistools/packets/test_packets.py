@@ -158,7 +158,7 @@ def test_a_direction_along_the_z_axis_gets_the_bin_of_artis(
     assert get_reference_dirbin(dirx, diry, dirz, nphibins=10, ncosthetabins=10) == expecteddirbin
 
 
-def test_get_virtual_packets() -> None:
+def test_scan_virtual_packets() -> None:
     nprocs_read, dfvpkt = at.packets.scan_virtual_packets(
         modelpath=at.get_path("testdata") / "vpktcontrib", maxpacketfiles=2
     )
@@ -537,7 +537,7 @@ def test_emission_expressions_give_no_value_for_a_packet_with_no_record() -> Non
         assert dfvalues["modelgridindex"][norecordrow] is None
 
 
-def test_get_packets_gives_nan_to_the_thermal_velocity_of_a_packet_with_no_record() -> None:
+def test_scan_packets_gives_nan_to_the_thermal_velocity_of_a_packet_with_no_record() -> None:
     """An old packets file holds a thermal emission velocity of zero for a packet with no thermal emission record."""
     _, lzdfpackets = at.packets.scan_packets(
         at.get_path("testdata") / "test-classicmode_3d", packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT"
@@ -950,7 +950,7 @@ def test_lastpacketinteraction_takes_the_start_of_the_timestep_and_not_the_end(
     assert heatmap[0, 25] > 0.0
 
 
-def test_get_packets_stops_for_a_model_with_no_escaped_gamma_packets(tmp_path: Path) -> None:
+def test_scan_packets_stops_for_a_model_with_no_escaped_gamma_packets(tmp_path: Path) -> None:
     """ARTIS removes the escaped gamma packets unless KEEP_ESCAPED_GAMMAS is true, which is not the default.
 
     The empty frame gave a gamma-ray light curve and a gamma-ray spectrum of zero with no message.
@@ -974,7 +974,7 @@ def test_get_packets_stops_for_a_model_with_no_escaped_gamma_packets(tmp_path: P
     ("columnname", "values"),
     [("originated_from_positron", [True, False]), ("originated_from_particlenotgamma", [1, 0])],
 )
-def test_get_packets_gives_one_name_and_type_to_the_flag_of_the_particle_origin(
+def test_scan_packets_gives_one_name_and_type_to_the_flag_of_the_particle_origin(
     tmp_path: Path, columnname: str, values: list[bool] | list[int]
 ) -> None:
     """An older ARTIS writes originated_from_positron, and the current ARTIS writes originated_from_particlenotgamma.

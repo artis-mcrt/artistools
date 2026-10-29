@@ -399,7 +399,7 @@ def test_atomic_files_with_comment_lines(tmp_path: Path, ionlist: list[tuple[int
 
 
 @pytest.mark.parametrize("bflistcontents", ["0\n", "", "0"])
-def test_get_bflist_with_no_transitions(tmp_path: Path, bflistcontents: str) -> None:
+def test_scan_bflist_with_no_transitions(tmp_path: Path, bflistcontents: str) -> None:
     """A model with no bound-free transitions must give an empty frame, not fail at a later collect().
 
     pl.scan_csv is lazy, so an empty bflist.out used to surface as NoDataError from whichever
@@ -413,7 +413,7 @@ def test_get_bflist_with_no_transitions(tmp_path: Path, bflistcontents: str) -> 
     assert {"bfindex", "lowerlevel", "upperionlevel", "atomic_number", "ion_stage", "ion_str"} <= set(dfbflist.columns)
 
 
-def test_get_bflist_reads_transitions() -> None:
+def test_scan_bflist_reads_transitions() -> None:
     """The populated case must be unaffected by the empty-file handling."""
     dfbflist = at.atomic.scan_bflist(modelpath_classic_3d).collect()
 
@@ -619,7 +619,7 @@ def write_linestatfile(filepath: Path, lines: Sequence[tuple[float, int, int, in
 @pytest.mark.parametrize(("nlines", "suffix"), [(0, ""), (1, ""), (3, ""), (3, ".zst")])
 # numpy warns for the five empty rows of linestat.out with no lines
 @pytest.mark.filterwarnings("error::UserWarning")
-def test_get_linelist_pldf_reads_linelist_and_linestat(nlines: int, suffix: str, tmp_path: Path) -> None:
+def test_scan_linelist_reads_linelist_and_linestat(nlines: int, suffix: str, tmp_path: Path) -> None:
     """linelist.out and linestat.out with the same lines give the same frame.
 
     linestat.out holds one column for each line, thus a file of one line gave a one-dimensional array. The reader then
@@ -643,7 +643,7 @@ def test_get_linelist_pldf_reads_linelist_and_linestat(nlines: int, suffix: str,
     pltest.assert_frame_equal(dflinelist, at.atomic.scan_linelist(tmp_path / "linestat").collect())
 
 
-def test_get_linelist_pldf_reads_the_columns_by_name(tmp_path: Path) -> None:
+def test_scan_linelist_reads_the_columns_by_name(tmp_path: Path) -> None:
     """The header row gives the order of the columns, and the reader ignores a column that it does not know."""
     (tmp_path / "linelist.out").write_text(
         "#lambda_angstroms atomic_number ion_stage lowerlevelindex upperlevelindex einstein_a\n"
@@ -655,7 +655,7 @@ def test_get_linelist_pldf_reads_the_columns_by_name(tmp_path: Path) -> None:
     assert dflinelist.select("atomic_number", "upperlevelindex", "lowerlevelindex").row(0) == (57, 1, 0)
 
 
-def test_get_linelist_pldf_ignores_a_row_without_values(tmp_path: Path) -> None:
+def test_scan_linelist_ignores_a_row_without_values(tmp_path: Path) -> None:
     """An edit can add an empty line. It holds no line, thus it must not give the error for a cut line."""
     write_text_rows(tmp_path / "linelist.out", [LINELIST_HEADER, "13898.2958 57 3 1 0", "", "4216.708 38 2 2 0", ""])
 
@@ -665,7 +665,7 @@ def test_get_linelist_pldf_ignores_a_row_without_values(tmp_path: Path) -> None:
 @pytest.mark.parametrize("nlines", [0, 3])
 # numpy warns for the empty rows of linestat.out with no lines
 @pytest.mark.filterwarnings("error::UserWarning")
-def test_get_linelist_pldf_reads_linestat_with_rows_of_counts(nlines: int, tmp_path: Path) -> None:
+def test_scan_linelist_reads_linestat_with_rows_of_counts(nlines: int, tmp_path: Path) -> None:
     """An ARTIS before March 2026 with RECORD_LINESTAT adds two rows of counts at each timestep after the five rows."""
     write_linestatfile(tmp_path / "linestat.out", TEST_LINES[:nlines])
     with (tmp_path / "linestat.out").open("a", encoding="utf-8") as linestatfile:
@@ -675,7 +675,7 @@ def test_get_linelist_pldf_reads_linestat_with_rows_of_counts(nlines: int, tmp_p
     assert dflinelist["upperlevelindex"].to_list() == [line[3] for line in TEST_LINES[:nlines]]
 
 
-def test_get_linelist_pldf_reads_a_wavelength_after_many_integer_wavelengths(tmp_path: Path) -> None:
+def test_scan_linelist_reads_a_wavelength_after_many_integer_wavelengths(tmp_path: Path) -> None:
     """ARTIS writes a wavelength such as 6500 Angstroms with no decimal point.
 
     polars infers the type of a column from the first rows, thus a column of integers stopped the read at 6500.5.
@@ -687,7 +687,7 @@ def test_get_linelist_pldf_reads_a_wavelength_after_many_integer_wavelengths(tmp
     assert np.isclose(dflinelist["lambda_angstroms"][-1], 6500.5)
 
 
-def test_get_linelist_pldf_reads_only_the_model_folder(tmp_path: Path) -> None:
+def test_scan_linelist_reads_only_the_model_folder(tmp_path: Path) -> None:
     """ARTIS writes linelist.out and linestat.out into the model folder only, thus a copy in a run folder is ignored."""
     (tmp_path / "123.slurm").mkdir()
     write_linelistfile(tmp_path / "123.slurm" / "linelist.out", TEST_LINES)
@@ -698,7 +698,7 @@ def test_get_linelist_pldf_reads_only_the_model_folder(tmp_path: Path) -> None:
     assert at.atomic.scan_linelist(tmp_path).collect().height == 1
 
 
-def test_get_linelist_pldf_refuses_the_cache_of_the_other_file(tmp_path: Path) -> None:
+def test_scan_linelist_refuses_the_cache_of_the_other_file(tmp_path: Path) -> None:
     """A cache of one text file is not current for a different file, also if the two files have the same time stamp."""
     write_linestatfile(tmp_path / "linestat.out", TEST_LINES[:1])
     assert at.atomic.scan_linelist(tmp_path).collect().height == 1
@@ -710,9 +710,7 @@ def test_get_linelist_pldf_refuses_the_cache_of_the_other_file(tmp_path: Path) -
     assert at.atomic.scan_linelist(tmp_path).collect().height == 3
 
 
-def test_get_linelist_pldf_keeps_the_cache_after_a_compression(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_scan_linelist_keeps_the_cache_after_a_compression(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """A compression with zstd keeps the modification time, thus the cache of the text must stay current."""
     write_linelistfile(tmp_path / "linelist.out", TEST_LINES)
     at.atomic.scan_linelist(tmp_path).collect()
@@ -765,7 +763,7 @@ NO_LINE_END_MESSAGE = "is empty or does not end with a line end"
         ),
     ],
 )
-def test_get_linelist_pldf_refuses_a_file_that_is_not_complete(
+def test_scan_linelist_refuses_a_file_that_is_not_complete(
     filename: str, content: bytes, expectedmessage: str, tmp_path: Path
 ) -> None:
     """ARTIS or a copy can still write the file. A cache of the partial file stays current after the write ends."""
@@ -776,7 +774,7 @@ def test_get_linelist_pldf_refuses_a_file_that_is_not_complete(
     assert not (tmp_path / "linelist.out.parquet.tmp").exists()
 
 
-def test_get_linelist_pldf_refuses_a_compressed_file_that_ends_inside_a_row(tmp_path: Path) -> None:
+def test_scan_linelist_refuses_a_compressed_file_that_ends_inside_a_row(tmp_path: Path) -> None:
     """A zstd file of two frames decompresses with no error, also if the second frame ends inside a row."""
     write_linelistfile(tmp_path / "linelist.out.zst", TEST_LINES[:1])
     with get_decompress_open(".zst")(tmp_path / "linelist.out.zst", mode="ab") as fout:
@@ -795,7 +793,7 @@ def test_polars_error_note_names_a_damaged_xz_file(tmp_path: Path) -> None:
     assert any("linelist.out.xz" in note for note in excinfo.value.__notes__)
 
 
-def test_get_linelist_pldf_reads_a_folder_name_with_glob_characters(tmp_path: Path) -> None:
+def test_scan_linelist_reads_a_folder_name_with_glob_characters(tmp_path: Path) -> None:
     """Polars reads a path as a glob pattern by default, thus the folder model[1] gave the lines of model1."""
     (tmp_path / "model[1]").mkdir()
     write_linelistfile(tmp_path / "model[1]" / "linelist.out", TEST_LINES)

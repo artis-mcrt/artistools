@@ -2121,7 +2121,7 @@ def test_get_timestep_of_timedays(tmp_path: Path) -> None:
         at.get_timestep_of_timedays(tmp_path, 500)
 
 
-def test_get_deposition(tmp_path: Path) -> None:
+def test_scan_deposition(tmp_path: Path) -> None:
     write_timesteps_out(tmp_path)
     deplines = ["#tmid_days gammadep_Lsun positrondep_Lsun total_dep_Lsun"]
     for ts in range(5):

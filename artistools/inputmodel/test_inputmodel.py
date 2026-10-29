@@ -296,7 +296,7 @@ def test_describeinputmodel_3d(capsys: pytest.CaptureFixture[str]) -> None:
     assert "M_tot_rho" in output
 
 
-def test_get_modeldata_1d() -> None:
+def test_scan_modeldata_1d() -> None:
     lzdfmodel, modelmeta = get_derived_modeldata(modelpath)
     assert math.isclose(modelmeta["t_model_init_days"], 0.00115740740741, rel_tol=0.0001)
     assert math.isclose(modelmeta["vmax_cmps"], 800000000.0)
@@ -307,7 +307,7 @@ def test_get_modeldata_1d() -> None:
 
 
 @pytest.mark.benchmark
-def test_get_modeldata_3d() -> None:
+def test_scan_modeldata_3d() -> None:
     lzdfmodel, modelmeta = get_derived_modeldata(modelpath_3d)
     assert math.isclose(modelmeta["vmax_cmps"], 2892020000.0)
     assert modelmeta["dimensions"] == 3
@@ -346,7 +346,7 @@ def test_get_spatial_scales_follows_the_working_folder(monkeypatch: pytest.Monke
 
 
 @pytest.mark.parametrize("cachecontents", [b"", b"not a parquet file", b"PAR1" + bytes(64)])
-def test_get_modeldata_replaces_unreadable_cache(tmp_path: Path, cachecontents: bytes) -> None:
+def test_scan_modeldata_replaces_unreadable_cache(tmp_path: Path, cachecontents: bytes) -> None:
     """A damaged parquet cache must be deleted and rebuilt, not raise from read_parquet_metadata."""
     shutil.copy(modelpath / "model.txt", tmp_path)
     cachefilepath = tmp_path / "model.txt.parquet.tmp"
@@ -362,7 +362,7 @@ def test_get_modeldata_replaces_unreadable_cache(tmp_path: Path, cachecontents: 
     pltest.assert_frame_equal(lzdfmodel.collect(), at.scan_modeldata(modelpath=tmp_path)[0].collect())
 
 
-def test_get_modeldata_rejects_cache_without_metadata(tmp_path: Path) -> None:
+def test_scan_modeldata_rejects_cache_without_metadata(tmp_path: Path) -> None:
     """A readable parquet file that is missing the artistools metadata keys must not be trusted."""
     shutil.copy(modelpath / "model.txt", tmp_path)
     textfilepath = tmp_path / "model.txt"
@@ -379,7 +379,7 @@ def test_get_modeldata_rejects_cache_without_metadata(tmp_path: Path) -> None:
     assert "modelmeta_json" in pl.read_parquet_metadata(cachefilepath)
 
 
-def test_get_modeldata_refreshes_stale_cache(tmp_path: Path) -> None:
+def test_scan_modeldata_refreshes_stale_cache(tmp_path: Path) -> None:
     """A cache whose recorded text-source mtime no longer matches must be rewritten from the text source."""
     shutil.copy(modelpath / "model.txt", tmp_path)
     textfilepath = tmp_path / "model.txt"
@@ -1342,7 +1342,7 @@ def test_scale_model_to_time_keeps_empty_cells_and_scales_volume() -> None:
     assert dfscaled["volume"].to_list() == pytest.approx([0.4**3, 2.0 * 0.4**3])
 
 
-def test_get_initelemabundances_reads_both_delimiter_formats(tmp_path: Path) -> None:
+def test_scan_initelemabundances_reads_both_delimiter_formats(tmp_path: Path) -> None:
     """Read an abundances.txt that has one space between two values with no call of read_wsv.
 
     An older file with more spaces, and a file with a nan token, must give the same table as read_wsv gives.
@@ -1544,7 +1544,7 @@ def write_2d_model(
     return modelfile
 
 
-def test_get_modeldata_2d(tmp_path: Path) -> None:
+def test_scan_modeldata_2d(tmp_path: Path) -> None:
     """A 2D cylindrical model must be read with the right grid metadata and cell positions."""
     ncoordgridrcyl, ncoordgridz = 4, 6
     vmax_cmps, t_model_days = 1.0e9, 1.0
@@ -1596,7 +1596,7 @@ def test_model_header_comments_round_trip(tmp_path: Path) -> None:
     assert math.isclose(modelmeta_saved["vmax_cmps"], 1.0e9)
 
 
-def test_get_modeldata_2d_rejects_misplaced_cells(tmp_path: Path) -> None:
+def test_scan_modeldata_2d_rejects_misplaced_cells(tmp_path: Path) -> None:
     """Cell midpoints inconsistent with vmax and the grid size must be rejected rather than read silently."""
     ncoordgridrcyl, ncoordgridz = 4, 6
     vmax_cmps, t_model_days = 1.0e9, 1.0
@@ -1997,7 +1997,7 @@ def test_remap_mass_weighted_quantity_gives_zero_for_an_empty_coarse_cell() -> N
     assert ye[1] == pytest.approx((0.3 * 1.0 + 0.4 * 3.0 + 0.3 * 1.0 + 0.4 * 1.0) / 6.0)
 
 
-def test_get_modeldata_regenerates_a_cache_with_malformed_metadata(tmp_path: Path) -> None:
+def test_scan_modeldata_regenerates_a_cache_with_malformed_metadata(tmp_path: Path) -> None:
     """A cache with a current stamp but an unreadable modelmeta_json must be regenerated from model.txt."""
     modelfile = tmp_path / "model.txt"
     shutil.copy(at.firstexisting("model.txt", folder=modelpath, tryzipped=True), modelfile)
@@ -2122,7 +2122,7 @@ def test_model_reader_renames_the_cellye_column_of_an_old_model(tmp_path: Path) 
 
 
 @pytest.mark.parametrize("sourcemodelpath", [modelpath, modelpath_3d])
-def test_get_modeldata_gives_only_the_file_columns(sourcemodelpath: Path) -> None:
+def test_scan_modeldata_gives_only_the_file_columns(sourcemodelpath: Path) -> None:
     """Give only the file columns. A change to a file column then keeps each derived column current."""
     lzdfmodel_file, _ = at.inputmodel.core.scan_modelfile_text(sourcemodelpath / "model.txt")
     lzdfmodel, _ = at.inputmodel.scan_modeldata(sourcemodelpath)
@@ -2647,7 +2647,7 @@ def test_from_e2e_model_3d_equatorial_symmetry_with_nodyn(tmp_path: Path, capsys
 
 
 @pytest.mark.parametrize(("prefix", "suffix"), [(" ", ""), ("", " "), ("\t", "")])
-def test_get_modeldata_1d_reads_a_line_with_one_leading_space(tmp_path: Path, prefix: str, suffix: str) -> None:
+def test_scan_modeldata_1d_reads_a_line_with_one_leading_space(tmp_path: Path, prefix: str, suffix: str) -> None:
     """A model.txt whose lines start or end with a space must give the cell ids and the velocities.
 
     The fast reader only tested for a double space. A single leading space gave polars an empty first
@@ -2668,7 +2668,7 @@ def test_get_modeldata_1d_reads_a_line_with_one_leading_space(tmp_path: Path, pr
     assert np.isclose(modelmeta["vmax_cmps"], 3000.0 * 1e5)
 
 
-def test_get_modeldata_1d_with_one_cell_uses_the_fast_reader(
+def test_scan_modeldata_1d_with_one_cell_uses_the_fast_reader(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """A model.txt with one cell must use the fast reader.
@@ -3047,7 +3047,7 @@ def test_dimension_reduce_keeps_abundances_of_empty_shells(tmp_path: Path, zero_
         )
 
 
-def test_get_modeldata_reads_a_header_comment_with_a_quotation_mark(tmp_path: Path) -> None:
+def test_scan_modeldata_reads_a_header_comment_with_a_quotation_mark(tmp_path: Path) -> None:
     """A header comment with one quotation mark must not hide the cells from the fast reader.
 
     The reader took the quotation mark as the start of a quoted field. Thus it skipped the cells after the
@@ -3073,7 +3073,7 @@ def test_get_modeldata_reads_a_header_comment_with_a_quotation_mark(tmp_path: Pa
     ],
     ids=["onelinepercell", "twolinespercell"],
 )
-def test_get_modeldata_1d_cell_ids_can_start_at_zero(tmp_path: Path, modeltext: str) -> None:
+def test_scan_modeldata_1d_cell_ids_can_start_at_zero(tmp_path: Path, modeltext: str) -> None:
     """sn3d takes the id of the first cell, 0 or 1, as the start of the cell index.
 
     The reader took each id as one more than the cell index. Thus the first cell got the index -1, and the
@@ -3088,7 +3088,7 @@ def test_get_modeldata_1d_cell_ids_can_start_at_zero(tmp_path: Path, modeltext: 
     assert dfmodel["X_Ni56"].to_list() == pytest.approx([0.2, 0.4, 0.6])
 
 
-def test_get_modeldata_2d_cell_ids_can_start_at_zero(tmp_path: Path) -> None:
+def test_scan_modeldata_2d_cell_ids_can_start_at_zero(tmp_path: Path) -> None:
     """A 2D model with the ids 0 to 7 reads, and its cell positions agree with the cell index from 0."""
     ncoordgridrcyl, ncoordgridz = 2, 4
     vmax_cmps = 1e9
@@ -3105,7 +3105,7 @@ def test_get_modeldata_2d_cell_ids_can_start_at_zero(tmp_path: Path) -> None:
     assert dfmodel["modelgridindex"].to_list() == list(range(8))
 
 
-def test_get_modeldata_3d_cell_ids_can_start_at_zero(tmp_path: Path) -> None:
+def test_scan_modeldata_3d_cell_ids_can_start_at_zero(tmp_path: Path) -> None:
     """A 3D model with the ids 0 to 7 gives the cell index 0 to 7."""
     lzdfmodel, modelmeta = get_empty_3d_model(ncoordgrid=2, vmax=1e9, t_model_init_days=1.0)
     dfmodel = lzdfmodel.collect().with_columns(pl.col("inputcellid") - 1, rho=pl.lit(1e-10))
@@ -3128,7 +3128,7 @@ def test_get_modeldata_3d_cell_ids_can_start_at_zero(tmp_path: Path) -> None:
     ],
     ids=["fastreader", "slowreader", "twolinespercell", "nocells", "missingid"],
 )
-def test_get_modeldata_rejects_a_model_with_missing_cells(tmp_path: Path, modeltext: str, match: str) -> None:
+def test_scan_modeldata_rejects_a_model_with_missing_cells(tmp_path: Path, modeltext: str, match: str) -> None:
     """A model.txt with fewer cells than its header gives, or with a gap in the ids, stops with a message, as in sn3d.
 
     The reader gave the cells that the file held, and the vmax of a 1D model then came from the last of them.
@@ -3140,7 +3140,7 @@ def test_get_modeldata_rejects_a_model_with_missing_cells(tmp_path: Path, modelt
 
 
 @pytest.mark.parametrize("skippedline", ["# time of the snapshot [days]\n", "\n", "   # an indented comment\n"])
-def test_get_modeldata_skips_a_comment_before_the_time(tmp_path: Path, skippedline: str) -> None:
+def test_scan_modeldata_skips_a_comment_before_the_time(tmp_path: Path, skippedline: str) -> None:
     """sn3d skips a comment line and an empty line before the time of the model, thus the reader must also skip it."""
     (tmp_path / "model.txt").write_text(
         f"3\n{skippedline}2.5\n1 1000 -10 0 0 0 0 0\n2 2000 -10 0 0 0 0 0\n3 3000 -10 0 0 0 0 0\n", encoding="utf-8"
@@ -3152,7 +3152,7 @@ def test_get_modeldata_skips_a_comment_before_the_time(tmp_path: Path, skippedli
     assert dfmodel.collect()["vel_r_max_kmps"].to_list() == pytest.approx([1000.0, 2000.0, 3000.0])
 
 
-def test_get_modeldata_3d_header_with_mid_point_positions(tmp_path: Path) -> None:
+def test_scan_modeldata_3d_header_with_mid_point_positions(tmp_path: Path) -> None:
     """A 3D header can name the positions pos_x_mid, pos_y_mid, and pos_z_mid, which sn3d accepts.
 
     Only the name pos_x_min selected the header names. Each other name went to the code for a file with no
