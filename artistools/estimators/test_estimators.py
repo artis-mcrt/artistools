@@ -627,6 +627,24 @@ def test_histogram_shows_the_velocity_range_of_each_shell(
     assert np.allclose(mockplot.call_args_list[0].args[1], np.column_stack([lower, upper]).ravel(), rtol=1e-6, atol=0)
 
 
+def test_half_axis_description_holds_the_centre_cell_of_an_odd_grid() -> None:
+    """The text of a half line of cells on an odd grid gives the centre cell, which the selection holds.
+
+    The centre cell of an odd grid lies from -Δ/2 to Δ/2, and get_profile_along_axis selects it for both half-axes. The
+    text of the + half-axis started at Δ/2.
+    """
+    modelmeta = {
+        "dimensions": 3,
+        "vmax_cmps": 0.1 * at.constants.C_cm_per_s,
+        "ncoordgridx": 11,
+        "ncoordgridy": 11,
+        "ncoordgridz": 11,
+    }
+    for axis, axisrange in (("+z", "-0.009091c ≤ z < 0.1c"), ("-z", "-0.1c ≤ z < 0.009091c")):
+        args = argparse.Namespace(projection=None, dimensionreduce=1, axis=axis, readonlymgi="alongaxis")
+        assert axisrange in at.estimators.core.get_cell_selection_description(args, [], modelmeta), axis
+
+
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_estimator_snapshot_classic_3d_x_axis(mockplot: mock.MagicMock) -> None:
     plotlist = PLOTLIST_IONS

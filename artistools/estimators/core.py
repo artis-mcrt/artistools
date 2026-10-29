@@ -2037,7 +2037,7 @@ def get_cell_selection_description(
         uppertext = format_cell_edge(float(secondedges[middle + 1]), "c")
         axisedges = get_cell_edges(axisname, modelmeta)
         if ispositive:
-            start = float(axisedges[:-1][axisedges[:-1] >= 0.0].min())
+            start = float(axisedges[:-1][axisedges[1:] > 0.0].min())
             axisrange = f"{format_cell_edge(start, 'c')} ≤ {axisname} < {format_cell_edge(float(axisedges[-1]), 'c')}"
         else:
             end = float(axisedges[1:][axisedges[:-1] < 0.0].max())
