@@ -480,7 +480,7 @@ def plot_reference_spectrum(
     filepath = find_reference_spectrum_file(filename)
 
     metadata = get_file_metadata(filepath)
-    # an empty --label gives the line no legend entry, thus the log, the tables, and the residuals take the label of
+    # an empty -label gives the line no legend entry, thus the log, the tables, and the residuals take the label of
     # the file
     givenlabel = plotkwargs.pop("label", None)
     assert givenlabel is None or isinstance(givenlabel, str)
@@ -2779,7 +2779,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         write_flambda_spectra_of_models(args.specpath, outdirectory, force=True)
 
     else:
-        # resolve_plot_args gives the fields of the template, thus a bad field of -o stops the command before the read
+        # resolve_plot_args gives the fields of the template, thus a field of -o that the command does not give
+        # stops the command before the read
         filenameout = get_plot_outputfile(args)
         fig, axes, residualaxis = make_plot_figure(args)
         tables = draw_plot(args, axes, residualaxis)

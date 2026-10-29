@@ -1724,10 +1724,10 @@ def test_empty_label_keeps_the_name_of_a_reference_spectrum_in_the_tables(
 def test_emission_plot_leaves_a_reference_spectrum_with_an_empty_label_out_of_the_legend(
     tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
 ) -> None:
-    """An empty -label gives a reference spectrum no entry in the legend of the emission plot either.
+    """An empty -label also gives a reference spectrum no entry in the legend of the emission plot.
 
     The emission plot gave the legend its labels as they were, thus the empty label gave an entry with no text. Its
-    table of the reference spectra also had no file and the series name _child15.
+    table of the reference spectra also had no file path, and the series name was _child15.
     """
     refspec = "2003du_20031213_3219_8822_00.txt"
     with mock.patch.object(plotspectra, "set_legend", side_effect=plotspectra.set_legend) as mocklegend:
@@ -3742,7 +3742,7 @@ def test_plotspectra_x_still_gives_the_unit() -> None:
 def test_emission_plot_names_a_direction_bin_that_the_average_leaves_out(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """The command refuses a bin that an average over phi leaves out, before it reads data.
+    """The command refuses a bin that an average over phi leaves out, before it reads the data.
 
     The emission plot checked the bin with a bare assert, thus the command gave the message of a fault of artistools.
     With --frompackets, the command read each packet before the error.
@@ -3768,9 +3768,9 @@ def test_emission_plot_names_a_direction_bin_that_the_average_leaves_out(
 
 
 def test_output_template_stops_plotspectra_before_the_read(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """A bad field of -o stops plotspectra before it reads the spectra.
+    """A field of -o that plotspectra does not give stops the command before it reads the spectra.
 
-    The command checked the template after the read and the draw, which takes minutes for the packets of a large model.
+    The command checked the template after the read and the draw. For the packets of a large model, these take minutes.
     """
     with pytest.raises(ValueError, match=r"holds the field 'timestep'"):
         at.spectra.plot(argsraw=[str(modelpath), "-t", "300", "-o", str(tmp_path / "spec_{timestep}.pdf")])
@@ -3794,7 +3794,7 @@ def test_gamma_spectrum_check_follows_the_working_folder(tmp_path: Path, monkeyp
 
 
 def test_output_template_names_a_field_that_plotspectra_does_not_give(tmp_path: Path) -> None:
-    """A field of -o that the command does not give gets a clear error, as in the other commands.
+    """The command plotspectra refuses a field of -o that it does not give, as the other commands do.
 
     get_plot_outputfile filled the template with str.format, thus the command stopped with the traceback of a KeyError.
     """

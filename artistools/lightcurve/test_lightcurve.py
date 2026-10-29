@@ -1153,8 +1153,8 @@ def test_bol_reflightcurve_unbounded_bar_keeps_the_bright_half_and_gets_an_arrow
 def test_bol_reflightcurve_empty_label_stays_out_of_the_legend() -> None:
     """An explicit -label "" keeps a positional reference curve out of the legend, and the series keeps its name.
 
-    Only a missing label takes the file metadata for the legend: matplotlib gives no legend entry to a series
-    labelled "", which is how one is suppressed. The log and the tables gave such a series an empty name.
+    Only a missing label takes the file metadata for the legend. A series with the label "" has no legend entry in
+    matplotlib. The log and the tables gave such a series an empty name.
     """
     _fig, axis = plt.subplots()
     plottedpoints: list[pl.DataFrame] = []
@@ -3461,8 +3461,8 @@ def test_reference_band_data_takes_a_header_line_that_starts_with_a_hash(tmp_pat
 def test_reference_band_data_with_no_label_takes_the_name_that_the_command_gives(tmp_path: Path) -> None:
     """A band reference file with no label takes the name that the command gives, as a bolometric file does.
 
-    The band reader took the stem of the file, thus the band legend showed "refband" and the bolometric legend
-    showed "refband.dat" for one rule.
+    The band reader took the stem of the file. Thus a file with no label gave "refband" in the band legend and
+    "refband.dat" in the bolometric legend.
     """
     datafile = tmp_path / "refband.dat"
     datafile.write_text("time magnitude band\n55800.0 12.0 B\n", encoding="utf-8")

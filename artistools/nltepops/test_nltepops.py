@@ -812,7 +812,7 @@ def test_nltepops_timestep_range_with_a_timestep_of_no_rows(tmp_path: Path, caps
 
 
 def test_nltepops_output_template_names_a_field_that_the_command_does_not_give(tmp_path: Path) -> None:
-    """A field of -o that plotnltepops does not give gets a clear error, as in the other commands.
+    """The command plotnltepops refuses a field of -o that it does not give, as the other commands do.
 
     The plot against the velocity or the time filled the template with str.format, thus the command stopped with the
     traceback of a KeyError.

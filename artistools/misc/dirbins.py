@@ -137,8 +137,8 @@ def get_dirbins(average_over_phi: bool = False, average_over_theta: bool = False
 def get_average_group_dirbins(dirbin: int, *, average_over_phi: bool, average_over_theta: bool) -> list[int]:
     """Return the direction bins that the average of a bin holds, or the bin alone with no average.
 
-    The bin of an average is the first bin of its group, and a different bin raises ValueError. The check reads no
-    file of the model.
+    The bin of an average is the first bin of its group, and a different bin raises ValueError. The function reads
+    no file of the model.
     """
     get_dirbin_labels([dirbin], average_over_phi=average_over_phi, average_over_theta=average_over_theta)
     # dirbin == costheta_index * nphibins + phi_index, thus the bins of one costheta index are contiguous, and the bins

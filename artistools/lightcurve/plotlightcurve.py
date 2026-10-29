@@ -435,7 +435,7 @@ def plot_bol_reflightcurve(
 ) -> str:
     """Plot an observed bolometric light curve in the y axis units, with error bars if the data file has them.
 
-    The label of the legend comes from the file metadata unless label is given, and an empty label gives no legend
+    The label of the legend comes from the file metadata if label is None, and an empty label gives no legend
     entry. Return the name of the series, which is the label or the label of the file metadata. The log, the tables,
     and the residuals take this name. plottedpoints takes the rows of the file, with the name as the model,
     "reference" as the escape type, and the plotted values. summaryrows takes the fields of the summary line. Only the

@@ -1272,7 +1272,7 @@ def get_flux_contributions_cached(
     if directionbin is None or directionbin == -1:
         dbinlist = [-1]
     else:
-        # a library call can name a bin that the average leaves out, thus the shared rule gives a clear error
+        # a library call can name a bin that the average leaves out, thus get_average_group_dirbins gives a clear error
         dbinlist = get_average_group_dirbins(
             directionbin, average_over_phi=average_over_phi, average_over_theta=average_over_theta
         )

@@ -837,8 +837,8 @@ def get_centred_range(positions: tuple[int, int], centre: int, count: int) -> tu
 def get_slider_handle_position(positions: tuple[int, int], handle: int, position: int, steps: int) -> int:
     """Return the position of a handle of a range slider after a press or a drag at a position from 0 to steps.
 
-    The handles of a range of two positions or more stay one position apart. The handles of a range of one position
-    can stay together, thus a press on them does not change the range.
+    The handles of a range of two positions or more stay at least one position apart. The handles of a range of one
+    position can stay together, thus a press on them does not change the range.
     """
     gap = 1 if positions[0] < positions[1] else 0
     position = min(position, positions[1] - gap) if handle == 0 else max(position, positions[0] + gap)

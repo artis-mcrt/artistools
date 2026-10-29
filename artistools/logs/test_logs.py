@@ -409,7 +409,7 @@ def test_logfiles_with_no_timing_data_replace_the_table_of_an_earlier_run(tmp_pa
 
 
 def test_plotlogfiles_output_template_names_a_field_that_the_command_does_not_give(tmp_path: Path) -> None:
-    """A field of -o that plotlogfiles does not give gets a clear error, and the field {} still takes the model name.
+    """The command plotlogfiles refuses a field of -o that it does not give, and {} still takes the model name.
 
     The command filled the template with str.format, thus it stopped with the traceback of a KeyError.
     """

@@ -1032,8 +1032,9 @@ def test_viewer_typed_centre_gives_back_the_range() -> None:
 def test_range_slider_keeps_a_range_of_one_position_and_stays_inside_the_slider() -> None:
     """A press on the handles of a range of one position keeps the range, and a handle stays inside the slider.
 
-    The slider kept one position between its handles. Thus each press on a range of one timestep made it wider, and a
-    press beside an end gave the position -1 or the number of timesteps, which the estimators viewer then read.
+    The slider kept its handles one position apart at least. Thus each press on a range of one timestep made the range
+    wider. A press beside an end gave the position -1 or the number of timesteps, and the estimators viewer then read
+    that position.
     """
     assert viewercore.get_slider_handle_position((50, 50), 1, 50, 99) == 50
     assert viewercore.get_slider_handle_position((50, 50), 0, 50, 99) == 50
