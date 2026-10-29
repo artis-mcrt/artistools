@@ -20,7 +20,6 @@ import numpy.typing as npt
 import polars as pl
 import pytest
 from matplotlib.backend_bases import MouseEvent
-from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 import artistools as at
 from artistools.estimators import interactive
@@ -35,15 +34,6 @@ from artistools.viewertools.window import draw_values
 
 modelpath = at.get_path("testdata") / "testmodel"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
-
-
-def make_headless_viewer(tokens: list[str]) -> interactive.EstimatorViewer:
-    """Return a viewer that draws on a canvas with no window, after its first plot."""
-    fig = mplfig.Figure()
-    FigureCanvasAgg(fig)
-    viewer = interactive.EstimatorViewer(tokens, fig)
-    assert draw_values(viewer) is None
-    return viewer
 
 
 def get_drawn_lines(fig: mplfig.Figure) -> list[list[tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]]]:
@@ -69,14 +59,16 @@ def assert_same_lines(fig: mplfig.Figure, otherfig: mplfig.Figure) -> None:
 
 
 def test_interactive_command_reproduces_plot(
-    tmp_path: Path, get_plotestimators_figure: Callable[[Sequence[str], Path], mplfig.Figure]
+    tmp_path: Path,
+    get_plotestimators_figure: Callable[[Sequence[str], Path], mplfig.Figure],
+    make_viewer: Callable[[str, list[str]], t.Any],
 ) -> None:
     """The command that the viewer shows must draw the same data as the viewer.
 
     The first subplot goes before the folder and each other subplot follows --plot, thus a quoted ion and a directive
     must reach plotestimators unchanged.
     """
-    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "5", "--interactive"])
+    viewer = make_viewer("estimators", [str(modelpath_classic_3d), "-t", "5", "--interactive"])
     subplots = (("Te", "TR", "yscale=linear"), ("populations", "Fe II", "Fe III", "Ni II"), ("nne",))
     newvalues = dc.replace(viewer.select_positions(viewer.values, (10, 12)), subplots=subplots, xbins="8")
     assert apply_values(viewer, newvalues) is None
@@ -86,13 +78,13 @@ def test_interactive_command_reproduces_plot(
     assert_same_lines(viewer.fig, get_plotestimators_figure(shlex.split(command)[2:], tmp_path / "estimators.pdf"))
 
 
-def test_interactive_swatches_give_the_colours_of_the_lines() -> None:
+def test_interactive_swatches_give_the_colours_of_the_lines(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """A chip shows the colour of the line of its series, and the popup shows the colour with no style of its own.
 
     --markers draws the points after the line with a lighter colour. A series with a colour does not move the axes
     cycle, thus TR after the red Te takes the first colour of the cycle.
     """
-    viewer = make_headless_viewer([str(modelpath_classic_3d), "-timestep", "10", "--markers", "--interactive"])
+    viewer = make_viewer("estimators", [str(modelpath_classic_3d), "-timestep", "10", "--markers", "--interactive"])
     assert (
         apply_values(viewer, dc.replace(viewer.values, subplots=(("Te", "TR@linewidth=3"), ("Te", "TR@color=#d55e00"))))
         is None
@@ -367,24 +359,24 @@ def test_estimator_window_keeps_the_keyboard_and_the_popup_values(tmp_path: Path
     assert results["yaxisfocus"]
 
 
-def test_colour_note_follows_the_colours_of_the_plot() -> None:
+def test_colour_note_follows_the_colours_of_the_plot(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """The note of the element colours shows only for a subplot whose plot gives its ions the element colours.
 
     The note counted the names of the subplot, but the plot leaves out an ion that the model does not hold. Thus the
     note showed for Fe II, Fe III, and Zn II, and the plot gave each ion its own colour.
     """
-    viewer = make_headless_viewer([str(modelpath_classic_3d), "-timestep", "10", "--colorbyion", "--interactive"])
+    viewer = make_viewer("estimators", [str(modelpath_classic_3d), "-timestep", "10", "--colorbyion", "--interactive"])
     subplots = (("populations", "Fe II", "Fe III", "Zn II"), ("populations", "Fe II", "Co II"))
     assert apply_values(viewer, dc.replace(viewer.values, subplots=subplots)) is None
     assert viewer.elementcolourrows == frozenset({1})
 
 
-def test_style_change_keeps_the_warning_of_the_data() -> None:
+def test_style_change_keeps_the_warning_of_the_data(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """A plot that draws the data of the last plot shows the warning of that data again.
 
     The data cache read no data, thus the plot printed no warning, and the status bar removed a warning that applied.
     """
-    viewer = make_headless_viewer([str(modelpath_classic_3d), "-timestep", "10", "--interactive"])
+    viewer = make_viewer("estimators", [str(modelpath_classic_3d), "-timestep", "10", "--interactive"])
     assert apply_values(viewer, dc.replace(viewer.values, subplots=(("populations", "Fe II", "Fe VIII"),))) is None
     warning = viewer.warning
     assert "compositiondata.txt" in warning
@@ -395,12 +387,12 @@ def test_style_change_keeps_the_warning_of_the_data() -> None:
     assert viewer.warning == warning
 
 
-def test_style_colour_keeps_the_colours_of_the_other_series() -> None:
+def test_style_colour_keeps_the_colours_of_the_other_series(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """A colour of a style changes only its own series, and each other series keeps its colour of the axes cycle.
 
     A series with a style colour took no place in the cycle, thus each later series took the colour before its own.
     """
-    viewer = make_headless_viewer([str(modelpath_classic_3d), "-timestep", "10", "--interactive"])
+    viewer = make_viewer("estimators", [str(modelpath_classic_3d), "-timestep", "10", "--interactive"])
 
     def get_line_colours(subplot: tuple[str, ...]) -> dict[str, str]:
         assert apply_values(viewer, dc.replace(viewer.values, subplots=(subplot,))) is None
@@ -417,9 +409,9 @@ def test_style_colour_keeps_the_colours_of_the_other_series() -> None:
     assert viewer.swatches[0, "TJ"].defaultcolour == plain["TJ"]
 
 
-def test_swatches_show_the_drawn_colours() -> None:
+def test_swatches_show_the_drawn_colours(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """The swatch of a chip shows the opacity of its colour and the colour of Dark Mode, as the plot draws the line."""
-    viewer = make_headless_viewer([str(modelpath_classic_3d), "-timestep", "10", "--interactive"])
+    viewer = make_viewer("estimators", [str(modelpath_classic_3d), "-timestep", "10", "--interactive"])
     subplot = ("TR@color=#ff000080", "TJ@color=none", "W@color=#000000")
     assert apply_values(viewer, dc.replace(viewer.values, subplots=(subplot,))) is None
     assert np.isclose(viewer.swatches[0, "TR"].alpha, 128 / 255)
@@ -430,7 +422,9 @@ def test_swatches_show_the_drawn_colours() -> None:
     assert viewer.swatches[0, "W"].colour == "#ffffff"
 
 
-def test_host_receives_the_plot_items_without_styles(tmp_path: Path) -> None:
+def test_host_receives_the_plot_items_without_styles(
+    tmp_path: Path, make_viewer: Callable[[str, list[str]], t.Any]
+) -> None:
     """The client draws the series styles and selects the cells, thus the host receives the names and the cells.
 
     A host that runs an older release read a styled item as an unknown directive, e.g. "'Te@color' is not a plot
@@ -461,28 +455,22 @@ def test_host_receives_the_plot_items_without_styles(tmp_path: Path) -> None:
     assert selectedcells[0]
     assert (tmp_path / "styled.pdf").is_file()
 
-    viewer = make_headless_viewer([
-        str(modelpath_classic_3d),
-        "-timestep",
-        "10",
-        "-readonlymgi",
-        "alongaxis",
-        "-axis",
-        "+x",
-        "--interactive",
-    ])
+    viewer = make_viewer(
+        "estimators",
+        [str(modelpath_classic_3d), "-timestep", "10", "-readonlymgi", "alongaxis", "-axis", "+x", "--interactive"],
+    )
     assert apply_values(viewer, dc.replace(viewer.values, subplots=(("Te",),))) is None
     with mock.patch.object(plotestimators, "get_cells_along_axis", wraps=plotestimators.get_cells_along_axis) as cells:
         assert apply_values(viewer, dc.replace(viewer.values, subplots=(("Te@color=C3",),))) is None
         assert cells.call_count == 0
 
 
-def test_interactive_style_change_reuses_the_data() -> None:
+def test_interactive_style_change_reuses_the_data(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """A change of a series style or of -linewidthscale draws the data of the last plot again, and reads no data.
 
     A change of the time reads the data again. A click on a legend entry finds its series, also after a new style.
     """
-    viewer = make_headless_viewer([str(modelpath_classic_3d), "-timestep", "10", "--interactive"])
+    viewer = make_viewer("estimators", [str(modelpath_classic_3d), "-timestep", "10", "--interactive"])
     assert apply_values(viewer, dc.replace(viewer.values, subplots=(("populations", "Fe II", "Fe III"),))) is None
     styled = dc.replace(viewer.values, subplots=(("populations", "Fe II", "Fe III@color=#d55e00,label=Iron 2+"),))
     with mock.patch.object(plotestimators, "get_figures_data", wraps=plotestimators.get_figures_data) as getdata:
@@ -505,13 +493,15 @@ def test_interactive_style_change_reuses_the_data() -> None:
         assert interactive.get_series_at(axis, event, legendonly=True) == expected
 
 
-def test_interactive_python_code_reproduces_plot(tmp_path: Path) -> None:
+def test_interactive_python_code_reproduces_plot(
+    tmp_path: Path, make_viewer: Callable[[str, list[str]], t.Any]
+) -> None:
     """The Python code that the viewer shows must draw the same data as the viewer.
 
     The code groups the names of a type of series, also for a list of ions with no type. A directive becomes a pair with
     an underscore, and the value of ymin= becomes a number.
     """
-    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "5", "--interactive"])
+    viewer = make_viewer("estimators", [str(modelpath_classic_3d), "-t", "5", "--interactive"])
     subplots = (("Te", "TR", "yscale=linear", "ymin=1000"), ("Fe II", "Fe III"), ("populations", "Ni II"))
     newvalues = dc.replace(viewer.select_positions(viewer.values, (10, 12)), subplots=subplots, xbins="8")
     assert apply_values(viewer, newvalues) is None
@@ -538,14 +528,16 @@ def test_interactive_python_code_reproduces_plot(tmp_path: Path) -> None:
 
 
 def test_interactive_subplot_with_no_series_stays_as_an_empty_frame(
-    tmp_path: Path, get_plotestimators_figure: Callable[[Sequence[str], Path], mplfig.Figure]
+    tmp_path: Path,
+    get_plotestimators_figure: Callable[[Sequence[str], Path], mplfig.Figure],
+    make_viewer: Callable[[str, list[str]], t.Any],
 ) -> None:
     """A subplot whose last series the user removed stays, and its frame is empty until the user adds a series.
 
     The viewer deleted such a subplot, thus the user lost its place and its type. A first subplot with no item follows
     --plot, and a series type with no names gives only its directives to the command.
     """
-    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "5", "--interactive"])
+    viewer = make_viewer("estimators", [str(modelpath_classic_3d), "-t", "5", "--interactive"])
     subplots = ((), ("TR", "yscale=linear"), ("populations", "yscale=log"))
     assert apply_values(viewer, dc.replace(viewer.values, subplots=subplots)) is None
     assert viewer.values.subplots == subplots
@@ -556,28 +548,30 @@ def test_interactive_subplot_with_no_series_stays_as_an_empty_frame(
     assert_same_lines(viewer.fig, get_plotestimators_figure(tokens, tmp_path / "estimators.pdf"))
 
 
-def test_interactive_session_keeps_an_empty_last_subplot() -> None:
+def test_interactive_session_keeps_an_empty_last_subplot(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """The command of the next start keeps a last subplot with no item, also when the window read the working folder.
 
     The session put the working folder after the last -plot. plotestimators then took the folder out of that -plot and
     removed the -plot, which was empty, thus the next start lost the subplot.
     """
-    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "5", "--interactive"])
+    viewer = make_viewer("estimators", [str(modelpath_classic_3d), "-t", "5", "--interactive"])
     subplots = (("TR",), ())
     assert apply_values(viewer, dc.replace(viewer.values, subplots=subplots)) is None
     tokens = viewer.get_plot_tokens(modeltoken=str(modelpath_classic_3d.absolute()))
-    assert make_headless_viewer([*tokens, "--interactive"]).values.subplots == subplots
+    assert make_viewer("estimators", [*tokens, "--interactive"]).values.subplots == subplots
 
 
 def test_interactive_command_gives_the_default_subplots(
-    tmp_path: Path, get_plotestimators_figure: Callable[[Sequence[str], Path], mplfig.Figure]
+    tmp_path: Path,
+    get_plotestimators_figure: Callable[[Sequence[str], Path], mplfig.Figure],
+    make_viewer: Callable[[str, list[str]], t.Any],
 ) -> None:
     """The command gives each subplot also for the default subplots, and it draws the figure of no --plot.
 
     The command left out the default subplots, thus it depended on the default of the version of plotestimators. The
     viewer writes a default item such as ["_ymin", 1e-16] as the directive "ymin=1e-16".
     """
-    viewer = make_headless_viewer([str(modelpath), "--timestep", "50", "--interactive"])
+    viewer = make_viewer("estimators", [str(modelpath), "--timestep", "50", "--interactive"])
     assert viewer.values.subplots == viewer.modeldata.defaultsubplots
     assert "averageexcitation" in viewer.modeldata.defaultsubplots[-1]
     # the window hides the output of the command, thus the viewer keeps the reason for each left out subplot
@@ -594,12 +588,14 @@ def test_interactive_command_gives_the_default_subplots(
     )
 
 
-def test_interactive_default_x_follows_a_slice_line_of_the_table() -> None:
+def test_interactive_default_x_follows_a_slice_line_of_the_table(
+    make_viewer: Callable[[str, list[str]], t.Any],
+) -> None:
     """A -slice line in the option table changes the default x, and a command with no -x takes that default.
 
     The viewer kept the old default as a fixed -x, thus the command plotted the line against the radial velocity.
     """
-    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-timestep", "5", "--interactive"])
+    viewer = make_viewer("estimators", ["Te", str(modelpath_classic_3d), "-timestep", "5", "--interactive"])
     sliceline = interactive.replace_option_rows(viewer, viewer.values, (("-slice", ("z=0,y=0",)),))
     assert "-x" not in viewer.get_plot_tokens(sliceline)
     assert apply_values(viewer, sliceline) is None
@@ -610,12 +606,12 @@ def test_interactive_default_x_follows_a_slice_line_of_the_table() -> None:
     assert interactive.replace_option_rows(viewer, chosen, (("-slice", ("z=0,y=0",)),)).x == "vel_r_mid"
 
 
-def test_interactive_snapshot_reads_all_the_cells() -> None:
+def test_interactive_snapshot_reads_all_the_cells(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """A change from a plot against time to a snapshot removes -cell.
 
     The window hides the control of the cells for a snapshot, thus a -cell of the plot against time stayed hidden.
     """
-    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "--interactive"])
+    viewer = make_viewer("estimators", ["Te", str(modelpath_classic_3d), "--interactive"])
     evolution = dc.replace(viewer.values, x="time", cells=str(viewer.modeldata.cells[5]))
     assert interactive.is_evolution(evolution)
     viewer.values = evolution
@@ -624,12 +620,12 @@ def test_interactive_snapshot_reads_all_the_cells() -> None:
     assert "-cell" not in viewer.get_plot_tokens(snapshot)
 
 
-def test_interactive_snapshot_and_time_evolution() -> None:
+def test_interactive_snapshot_and_time_evolution(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """A plot against time reads all the timesteps and names no time, and a snapshot reads one timestep.
 
     The Play button of a plot against time moves through the cells, and it stops after the last cell.
     """
-    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "--timestep", "20-22", "--interactive"])
+    viewer = make_viewer("estimators", ["Te", str(modelpath_classic_3d), "--timestep", "20-22", "--interactive"])
     evolution = viewer.set_xvariable(viewer.values, "time")
     assert (evolution.first, evolution.last) == (
         viewer.modeldata.validtimesteps[0],
@@ -675,13 +671,13 @@ def test_interactive_command_of_a_dispatcher_call() -> None:
     )
 
 
-def test_interactive_classicartis_row_reads_the_other_format() -> None:
+def test_interactive_classicartis_row_reads_the_other_format(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """A --classicartis row in the table must read the classic format, as the command does, and not the old query.
 
     The viewer read the model one time with the first --classicartis value. The window then drew the modern estimators
     for a command that plotestimators rejects.
     """
-    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
+    viewer = make_viewer("estimators", ["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
     command = viewer.get_command()
     message = apply_values(viewer, dc.replace(viewer.values, otheroptions=(("--classicartis", ()),)))
     assert message is not None
@@ -689,12 +685,12 @@ def test_interactive_classicartis_row_reads_the_other_format() -> None:
     assert viewer.get_command() == command
 
 
-def test_interactive_unexpected_error_keeps_the_old_plot() -> None:
+def test_interactive_unexpected_error_keeps_the_old_plot(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """An error that is not a user error, e.g. of polars, gives a message, and the old plot draws again.
 
     Such an error left draw and change, thus the figure stayed empty and the viewer kept the failed values.
     """
-    viewer = make_headless_viewer(["rho", str(modelpath), "-ts", "5", "--interactive"])
+    viewer = make_viewer("estimators", ["rho", str(modelpath), "-ts", "5", "--interactive"])
     command = viewer.get_command()
     # a mock gives the unexpected error, thus the test does not depend on a fault of the code
     with mock.patch.object(
@@ -707,20 +703,22 @@ def test_interactive_unexpected_error_keeps_the_old_plot() -> None:
     assert viewer.fig.axes[0].get_lines()
 
 
-def test_interactive_codecomparison_model(toy_codecomparison_model: str) -> None:
+def test_interactive_codecomparison_model(
+    toy_codecomparison_model: str, make_viewer: Callable[[str, list[str]], t.Any]
+) -> None:
     """The viewer opens a codecomparison model, which has no run folders, as the command does."""
-    viewer = make_headless_viewer(["Te", toy_codecomparison_model, "-timestep", "0", "--interactive"])
+    viewer = make_viewer("estimators", ["Te", toy_codecomparison_model, "-timestep", "0", "--interactive"])
     assert viewer.modeldata.validtimesteps == [0]
     assert viewer.fig.axes[0].get_lines()
 
 
-def test_interactive_time_field_keeps_the_range() -> None:
+def test_interactive_time_field_keeps_the_range(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """A Return in the time field with no edit keeps the time range.
 
     The field showed the mean of the start and the end of the range, and the viewer read it as the middle of a
     timestep. A range of an even count then moved one timestep later.
     """
-    viewer = make_headless_viewer(["Te", str(modelpath), "-timestep", "40", "--interactive"])
+    viewer = make_viewer("estimators", ["Te", str(modelpath), "-timestep", "40", "--interactive"])
     nvalid = len(viewer.modeldata.validtimesteps)
     for count in range(1, 5):
         for firstpos in range(nvalid - count + 1):
@@ -729,13 +727,15 @@ def test_interactive_time_field_keeps_the_range() -> None:
             assert viewer.select_centre(float(text)) == viewer.values, (count, firstpos, text)
 
 
-def test_interactive_readout_names_each_series() -> None:
+def test_interactive_readout_names_each_series(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """The readout gives the value of each series, also the one line with no label of a subplot of one variable.
 
     The readout skipped each line with a label that starts with "_", which is the only line of such a subplot. A
     colour image gives an array of one value under the pointer, and NumPy 2.5 does not convert it with float().
     """
-    viewer = make_headless_viewer(["Te", "TR", str(modelpath_classic_3d), "-t", "5", "-plot", "nne", "--interactive"])
+    viewer = make_viewer(
+        "estimators", ["Te", "TR", str(modelpath_classic_3d), "-t", "5", "-plot", "nne", "--interactive"]
+    )
     firstaxis, nneaxis = viewer.fig.axes
     xmid = float(np.mean(firstaxis.get_xlim()))
     # the parts of a readout are the x value and then "value label" for each series
@@ -765,13 +765,13 @@ def test_interactive_converts_stale_batches_in_a_child_process() -> None:
     mockchild.assert_called_once()
 
 
-def test_interactive_shows_the_bins_that_the_plot_chose() -> None:
+def test_interactive_shows_the_bins_that_the_plot_chose(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """A snapshot of a 3D model has many cells at one velocity, thus the plot takes automatic bins and --colorbyion.
 
     -xbins N also draws a shaded area for each bin, and the area has no dash to separate the ions of an element. It
     turned --colorbyion on only for automatic bins. -xbins 0 draws the points alone, and it keeps the colours.
     """
-    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
+    viewer = make_viewer("estimators", ["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
     assert viewer.plotxbins is not None
     assert viewer.plotxbins > 3
     assert viewer.plotcolorbyion
@@ -787,9 +787,9 @@ def test_interactive_shows_the_bins_that_the_plot_chose() -> None:
     assert interactive.get_xunit_text(1e5 / 299792.458, "beta") == " [km/s]"
 
 
-def test_interactive_keeps_the_last_warning_of_a_plot() -> None:
+def test_interactive_keeps_the_last_warning_of_a_plot(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """A limit outside the data gives a warning, which the status bar of the window shows after the plot."""
-    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
+    viewer = make_viewer("estimators", ["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
     assert not viewer.warning
     assert apply_values(viewer, dc.replace(viewer.values, subplots=(("Te", "ymin=1e12"),))) is None
     assert "requested minimum" in viewer.warning
@@ -819,9 +819,11 @@ def test_interactive_directives_of_a_subplot() -> None:
     assert interactive.get_short_limits(1.23456e-5, 2.3456e-5) == ("1.23e-05", "2.35e-05")
 
 
-def test_interactive_menu_plots_a_cell_against_time_and_a_snapshot_at_a_time() -> None:
+def test_interactive_menu_plots_a_cell_against_time_and_a_snapshot_at_a_time(
+    make_viewer: Callable[[str, list[str]], t.Any],
+) -> None:
     """The menu of a snapshot names the cell at the pointer, and the menu of a plot against time names the time."""
-    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
+    viewer = make_viewer("estimators", ["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
     assert viewer.values.x == "velocity"
     assert interactive.get_snapshot_values(viewer, 1.0) is None
     cell = interactive.get_nearest_cell(viewer, 12000.0)
@@ -851,13 +853,15 @@ def reread_model_data(viewer: interactive.EstimatorViewer) -> interactive.ModelD
     return interactive.read_model_data(viewer.modelpath, viewer.userargs, len(viewer.tmids))
 
 
-def test_interactive_reload_keeps_the_time_range_inside_the_valid_timesteps() -> None:
+def test_interactive_reload_keeps_the_time_range_inside_the_valid_timesteps(
+    make_viewer: Callable[[str, list[str]], t.Any],
+) -> None:
     """A reload reads the valid timesteps again.
 
     A range of all the timesteps grows when ARTIS writes more timesteps. A different range stays inside the valid
     timesteps.
     """
-    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
+    viewer = make_viewer("estimators", ["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
     validtimesteps = viewer.modeldata.validtimesteps
     assert len(validtimesteps) > 8
     lastpos = len(validtimesteps) - 1
@@ -876,12 +880,14 @@ def test_interactive_reload_keeps_the_time_range_inside_the_valid_timesteps() ->
     assert draw_values(viewer) is None
 
 
-def test_interactive_empty_selection_with_bins_gives_the_message() -> None:
+def test_interactive_empty_selection_with_bins_gives_the_message(
+    make_viewer: Callable[[str, list[str]], t.Any],
+) -> None:
     """An empty cell with -xbins gave a TypeError, because the bins read the minimum of no rows.
 
     The message gives the size of a long selection of cells and not each cell.
     """
-    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
+    viewer = make_viewer("estimators", ["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
     emptycell = next(cell for cell in range(1000) if cell not in viewer.modeldata.cells)
     for xbins in ("8", "-1"):
         message = apply_values(viewer, dc.replace(viewer.values, cells=str(emptycell), xbins=xbins))
@@ -896,21 +902,17 @@ def test_interactive_empty_selection_with_bins_gives_the_message() -> None:
     assert len(message) < 200
 
 
-def test_interactive_cells_apply_only_where_cell_selects_the_cells() -> None:
+def test_interactive_cells_apply_only_where_cell_selects_the_cells(
+    make_viewer: Callable[[str, list[str]], t.Any],
+) -> None:
     """-slice, -dimensionreduce 2, and -readonlymgi select the cells, thus the window offers no -cell with them.
 
     With -readonlymgi, plotestimators replaced -cell with the cells along the axis. The menu then plotted other cells,
     and Page Up, Page Down, and Play changed -cell with no effect on the plot.
     """
-    viewer = make_headless_viewer([
-        "Te",
-        str(modelpath_classic_3d),
-        "-t",
-        "5",
-        "-dimensionreduce",
-        "2",
-        "--interactive",
-    ])
+    viewer = make_viewer(
+        "estimators", ["Te", str(modelpath_classic_3d), "-t", "5", "-dimensionreduce", "2", "--interactive"]
+    )
     assert viewer.isimage
     assert not interactive.cells_apply(viewer.values)
     for mode in ("alongaxis", "cone", "plane", "line"):
@@ -922,9 +924,9 @@ def test_interactive_cells_apply_only_where_cell_selects_the_cells() -> None:
     assert viewer.step_cell(1) is not None
 
 
-def test_interactive_subplot_types_and_suggestions() -> None:
+def test_interactive_subplot_types_and_suggestions(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """The type of a subplot sets its choices and its suggestions, and each result draws with plotestimators."""
-    viewer = make_headless_viewer([str(modelpath), "-timestep", "50", "--interactive"])
+    viewer = make_viewer("estimators", [str(modelpath), "-timestep", "50", "--interactive"])
     columns = viewer.modeldata.estimatorcolumns
     types = subplotcards.get_subplot_types(columns)
     assert types[:2] == [subplotcards.VARIABLES_TYPE, "populations"]
@@ -955,7 +957,7 @@ def test_interactive_subplot_types_and_suggestions() -> None:
         allsuggested += remaining
         remaining = subplotcards.get_new_subplot_suggestions(allsuggested, viewer.modeldata.defaultsubplots, columns)
     assert subplotcards.get_new_subplot(allsuggested, viewer.modeldata.defaultsubplots, columns) == ("Te",)
-    aliasviewer = make_headless_viewer(["n_e", str(modelpath), "-timestep", "50", "--interactive"])
+    aliasviewer = make_viewer("estimators", ["n_e", str(modelpath), "-timestep", "50", "--interactive"])
     assert aliasviewer.values.subplots == (("nne",),)
     # a colour image gives the card the controls of a colour scale, thus the card of an image is a new card
     assert subplotcards.get_card_key(0, (("Te",),), columns, isimage=True) != subplotcards.get_card_key(
@@ -994,7 +996,9 @@ def test_interactive_subplot_types_and_suggestions() -> None:
         assert apply_values(viewer, dc.replace(viewer.values, subplots=(subplot,))) is None, subplot
 
 
-def test_interactive_ionpoptype_belongs_to_each_populations_subplot() -> None:
+def test_interactive_ionpoptype_belongs_to_each_populations_subplot(
+    make_viewer: Callable[[str, list[str]], t.Any],
+) -> None:
     """The window sets the quantity of the ions for each populations subplot, thus --ionpoptype goes to them."""
     tokens = [
         "Te",
@@ -1008,7 +1012,7 @@ def test_interactive_ionpoptype_belongs_to_each_populations_subplot() -> None:
         "--ionpoptype",
         "elpop",
     ]
-    viewer = make_headless_viewer([*tokens, "--interactive"])
+    viewer = make_viewer("estimators", [*tokens, "--interactive"])
     assert viewer.values.subplots == (("Te",), ("populations", "Fe II", "Fe III", "ionpoptype=elpop"))
     assert "--ionpoptype" not in viewer.get_plot_tokens()
     # the default quantity needs no directive, and each subplot keeps its own
@@ -1023,21 +1027,15 @@ def test_interactive_ionpoptype_belongs_to_each_populations_subplot() -> None:
         (("Te",),),
         rows,
     )
-    teviewer = make_headless_viewer([
-        "Te",
-        str(modelpath),
-        "--timestep",
-        "50",
-        "--ionpoptype",
-        "elpop",
-        "--interactive",
-    ])
+    teviewer = make_viewer(
+        "estimators", ["Te", str(modelpath), "--timestep", "50", "--ionpoptype", "elpop", "--interactive"]
+    )
     assert "--ionpoptype" in teviewer.get_plot_tokens()
 
 
-def test_interactive_geometry_modes_draw() -> None:
+def test_interactive_geometry_modes_draw(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """Each way to select the cells of a 3D model gives a command that plotestimators draws."""
-    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
+    viewer = make_viewer("estimators", ["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
     for mode in interactive.GEOMETRY_MODES:
         values = interactive.set_geometry_mode(viewer, viewer.values, mode)
         assert interactive.get_geometry_mode(values) == mode
@@ -1128,7 +1126,7 @@ def test_interactive_geometry_modes_draw() -> None:
 
     # a 1D model has the average around the z axis, and the selector of the window did not offer it
     assert interactive.get_geometry_choices(1) == ["all", "cells", "average"]
-    viewer1d = make_headless_viewer(["Te", str(modelpath), "--timestep", "50", "--interactive"])
+    viewer1d = make_viewer("estimators", ["Te", str(modelpath), "--timestep", "50", "--interactive"])
     assert apply_values(viewer1d, interactive.set_geometry_mode(viewer1d, viewer1d.values, "average")) is None
 
     # a projection averages each line of cells along its axis, thus it needs a 3D model and no -slice
@@ -1147,22 +1145,15 @@ def test_interactive_geometry_modes_draw() -> None:
     assert "needs a 3D model" in message
 
 
-def test_interactive_smoothing_and_section_rows() -> None:
+def test_interactive_smoothing_and_section_rows(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """A smoothing draws, and the rows of the sections and of the output stay in the command.
 
     The window dropped --dpi, thus a PDF file lost the resolution of its raster parts. The table hid --verbose, thus
     the user could not remove it.
     """
-    viewer = make_headless_viewer([
-        "Te",
-        str(modelpath_classic_3d),
-        "-t",
-        "5",
-        "--dpi",
-        "300",
-        "--verbose",
-        "--interactive",
-    ])
+    viewer = make_viewer(
+        "estimators", ["Te", str(modelpath_classic_3d), "-t", "5", "--dpi", "300", "--verbose", "--interactive"]
+    )
     assert {"--dpi", "--verbose"} <= set(viewer.get_plot_tokens())
     assert "--verbose" not in viewer.modelformatflags
     for mode, numbers in (("movingavg", (3,)), ("savgol", (5, 2)), ("none", ())):
@@ -1175,13 +1166,13 @@ def test_interactive_smoothing_and_section_rows() -> None:
     assert viewer.modelformatflags == {"--classicartis"}
 
 
-def test_interactive_level_populations() -> None:
+def test_interactive_level_populations(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """A model with NLTE populations offers the level populations, with the lowest NLTE levels of each ion.
 
     The choices came from the atomic data, thus they gave levels with no NLTE population, e.g. Fe V 3 and each level
     of Ni. A model with no NLTE populations offered averageexcitation, which reads them.
     """
-    viewer = make_headless_viewer([str(modelpath), "-timestep", "50", "--interactive"])
+    viewer = make_viewer("estimators", [str(modelpath), "-timestep", "50", "--interactive"])
     assert viewer.nltetypes == ("averageexcitation", "levelpopulation", "levelpopulation_dn_on_dvel")
     columns = viewer.modeldata.estimatorcolumns
     assert "levelpopulation" in subplotcards.get_subplot_types(columns, viewer.nltetypes)
@@ -1199,19 +1190,19 @@ def test_interactive_level_populations() -> None:
     for name in (subplot[1], "Fe V 0", levelnames[-1]):
         assert apply_values(viewer, dc.replace(viewer.values, subplots=(("levelpopulation", name),))) is None, name
 
-    classicviewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
+    classicviewer = make_viewer("estimators", ["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
     assert not classicviewer.nltetypes
     assert "averageexcitation" not in subplotcards.get_subplot_types(classicviewer.modeldata.estimatorcolumns)
     # each series type of plotestimators has a family of columns, or it reads the NLTE populations
     assert set(plotitems.SERIESTYPES) <= {*subplotcards.SPECIES_FAMILIES, *subplotcards.NLTE_SERIESTYPES}
 
 
-def test_subplots_per_row_fill_each_row() -> None:
+def test_subplots_per_row_fill_each_row(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """-subplotsperrow puts the subplots in rows from the left, and the lowest subplot of each column has x labels.
 
     A column whose last place is empty takes its x labels on the subplot above that place.
     """
-    viewer = make_headless_viewer(["Te", str(modelpath), "-timestep", "50", "--interactive"])
+    viewer = make_viewer("estimators", ["Te", str(modelpath), "-timestep", "50", "--interactive"])
     subplots = (("Te",), ("TR",), ("nne",))
     for count, expectedcolumns in ((None, 1), (2, 2), (5, 3)):
         rows = () if count is None else (("-subplotsperrow", (str(count),)),)
@@ -1224,47 +1215,53 @@ def test_subplots_per_row_fill_each_row() -> None:
         assert haslabel == [index + expectedcolumns >= 3 for index in range(3)], count
 
 
-def test_interactive_image_panels_name_their_subplot() -> None:
+def test_interactive_image_panels_name_their_subplot(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """Each panel of a colour image names its subplot, thus Set current range finds the colour scale of each subplot.
 
     A subplot of two ions gives two panels, and a subplot that an image cannot show gives none.
     """
-    viewer = make_headless_viewer([
-        "Te",
-        str(modelpath_classic_3d),
-        "-t",
-        "5",
-        "-slice",
-        "xy",
-        "-plot",
-        "populations",
-        "Fe II",
-        "Fe III",
-        "--interactive",
-    ])
+    viewer = make_viewer(
+        "estimators",
+        [
+            "Te",
+            str(modelpath_classic_3d),
+            "-t",
+            "5",
+            "-slice",
+            "xy",
+            "-plot",
+            "populations",
+            "Fe II",
+            "Fe III",
+            "--interactive",
+        ],
+    )
     assert viewer.isimage
     labels = [ax.get_label() for ax in interactive.get_plot_frames(viewer.fig)]
     assert labels == [plotestimators.get_panel_axes_label(index) for index in (0, 1, 1)]
 
 
-def test_image_shows_the_average_ionisation() -> None:
+def test_image_shows_the_average_ionisation(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """A colour image shows the average ion charge of an element. The image left out a subplot of averageionisation.
 
     The mean over the cells of a pixel takes the number density of the element as a weight, as the line does. Thus
     the pixel gives the charge of each nucleus of the pixel.
     """
-    viewer = make_headless_viewer([
-        "Te",
-        str(modelpath_classic_3d),
-        "-t",
-        "5",
-        "-slice",
-        "xy",
-        "-plot",
-        "averageionisation",
-        "Fe",
-        "--interactive",
-    ])
+    viewer = make_viewer(
+        "estimators",
+        [
+            "Te",
+            str(modelpath_classic_3d),
+            "-t",
+            "5",
+            "-slice",
+            "xy",
+            "-plot",
+            "averageionisation",
+            "Fe",
+            "--interactive",
+        ],
+    )
     frames = interactive.get_plot_frames(viewer.fig)
     assert [frame.get_label() for frame in frames] == [plotestimators.get_panel_axes_label(index) for index in (0, 1)]
     chargearray = frames[1].collections[0].get_array()
@@ -1285,12 +1282,12 @@ def test_image_shows_the_average_ionisation() -> None:
     assert np.isclose(mean, (1e3 * 1 + 1e5 * 3) / (1e3 + 1e5), rtol=1e-12)
 
 
-def test_interactive_initial_abundance_of_an_isotope() -> None:
+def test_interactive_initial_abundance_of_an_isotope(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """An isotope such as Fe52 has its own column of initial abundances, and not the column of its element.
 
     plotestimators removed the mass number and plotted the abundance of Fe with the label Fe52.
     """
-    viewer = make_headless_viewer([str(modelpath), "-timestep", "50", "--interactive"])
+    viewer = make_viewer("estimators", [str(modelpath), "-timestep", "50", "--interactive"])
     assert {"Fe52", "Fe"} <= set(subplotcards.get_species_choices("initabundances", viewer.modeldata.estimatorcolumns))
     assert apply_values(viewer, dc.replace(viewer.values, subplots=(("initabundances", "Fe52", "Fe"),))) is None
     ydata = {line.get_label(): np.asarray(line.get_ydata()) for ax in viewer.fig.axes for line in ax.get_lines()}
@@ -1299,12 +1296,14 @@ def test_interactive_initial_abundance_of_an_isotope() -> None:
     assert not np.allclose(ydata["Fe52"], ydata["Fe"], rtol=1e-6, atol=1e-30)
 
 
-def test_interactive_x_variable_with_no_value_names_the_variable() -> None:
+def test_interactive_x_variable_with_no_value_names_the_variable(
+    make_viewer: Callable[[str, list[str]], t.Any],
+) -> None:
     """A column with no value in the rows of the plot, e.g. tmid_days_prevtimestep at timestep 0, gives its name.
 
     The message said that the estimators held no row, although the rows were there.
     """
-    viewer = make_headless_viewer(["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
+    viewer = make_viewer("estimators", ["Te", str(modelpath_classic_3d), "-t", "5", "--interactive"])
     first = viewer.modeldata.validtimesteps[0]
     message = apply_values(viewer, dc.replace(viewer.values, x="tmid_days_prevtimestep", first=first, last=first))
     assert message is not None

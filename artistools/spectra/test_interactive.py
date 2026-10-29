@@ -3,6 +3,8 @@ import dataclasses as dc
 import math
 import shlex
 import sys
+import typing as t
+from collections.abc import Callable
 from pathlib import Path
 from unittest import mock
 
@@ -28,7 +30,7 @@ modelpath = at.get_path("testdata") / "testmodel"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
 
 
-def test_deltalogx_largestscale_is_the_diagonal_of_a_cell() -> None:
+def test_deltalogx_largestscale_is_the_diagonal_of_a_cell(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """-deltalogx largestscale gives Δv/c of the diagonal of a cell of a 3D grid, and the viewer keeps the keyword."""
     vmax_cmps = 2892020000.0
     expected = math.sqrt(3) * 2 * vmax_cmps / 10 / at.constants.C_cm_per_s
@@ -36,14 +38,18 @@ def test_deltalogx_largestscale_is_the_diagonal_of_a_cell() -> None:
     plotspectra.resolve_deltalogx_scale(args)
     assert math.isclose(args.deltalogx, expected, rel_tol=1e-6)
 
-    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "5", "-deltalogx", "largestscale", "--interactive"])
+    viewer = make_viewer(
+        "spectra", [str(modelpath_classic_3d), "-t", "5", "-deltalogx", "largestscale", "--interactive"]
+    )
     assert viewer.values.deltalogx == "largestscale"
     assert "-deltalogx largestscale" in viewer.get_command()
     assert viewer.drawndeltalogx is not None
     assert math.isclose(viewer.drawndeltalogx, expected, rel_tol=1e-6)
 
 
-def test_explicit_linear_yscale_with_logscaley_stops_the_command() -> None:
+def test_explicit_linear_yscale_with_logscaley_stops_the_command(
+    make_viewer: Callable[[str, list[str]], t.Any],
+) -> None:
     """An explicit -yscale linear gives a different scale from --logscaley, also when linear is the default.
 
     resolve_yscale compared -yscale with the default of the command, thus it did not see an explicit linear as a
@@ -58,7 +64,7 @@ def test_explicit_linear_yscale_with_logscaley_stops_the_command() -> None:
     # the viewer has no box item for the alias "lin", thus the resolved scale has the spelling "linear"
     args = at.misc.parse_cli_args(plotspectra.addargs, None, None, [str(modelpath), "-yscale", "lin"])
     assert (args.yscale, args.logscaley) == ("linear", False)
-    viewer = make_headless_viewer([str(modelpath), "-t", "300", "-yscale", "lin", "--interactive"])
+    viewer = make_viewer("spectra", [str(modelpath), "-t", "300", "-yscale", "lin", "--interactive"])
     assert viewer.values.yscale in viewercore.get_yscale_choices(viewer.parser)
 
 
@@ -131,28 +137,28 @@ def test_interactive_time_range_argument() -> None:
             assert bounds[0] <= float(text) <= bounds[1], (centre, width, text)
 
 
-def test_interactive_continuous_range_keeps_its_bounds() -> None:
+def test_interactive_continuous_range_keeps_its_bounds(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """A --notimeclamp range of days keeps its bounds when the viewer opens, also inside one timestep.
 
     The viewer changed a range that holds the middle of one timestep or of no timestep into a single time, and a
     single time reads the whole timestep.
     """
-    viewer = make_headless_viewer([str(modelpath), "-t", "299.5-301", "--notimeclamp", "--interactive"])
+    viewer = make_viewer("spectra", [str(modelpath), "-t", "299.5-301", "--notimeclamp", "--interactive"])
     tokens = shlex.split(viewer.get_command())
     assert tokens[tokens.index("-t") + 1] == "299.5-301"
 
     # a continuous single time takes the width of Δ ln t, because a width of 0 reads the whole timestep
-    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--notimeclamp", "--interactive"])
+    viewer = make_viewer("spectra", [str(modelpath), "-t", "300", "--notimeclamp", "--interactive"])
     assert viewer.values.widthmode == "dlogt"
     assert viewer.values.width > 0.0
 
 
-def test_interactive_continuous_width_is_never_zero() -> None:
+def test_interactive_continuous_width_is_never_zero(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """Each width mode of a continuous range gives a width above 0, and the width follows the time.
 
     A continuous width of 0 selected the whole timestep that holds the time, which is the clamped range.
     """
-    viewer = make_headless_viewer([str(modelpath), "-t", "299-301", "--notimeclamp", "--interactive"])
+    viewer = make_viewer("spectra", [str(modelpath), "-t", "299-301", "--notimeclamp", "--interactive"])
     assert (viewer.values.widthmode, viewer.values.width) == ("days", 2.0)
     # a width of 0 in days changes to Δ ln t, which starts with the Δ ln t of each timestep of the logarithmic grid
     assert apply_values(viewer, viewer.clamp_time(dc.replace(viewer.values, width=0.0))) is None
@@ -171,9 +177,9 @@ def test_interactive_continuous_width_is_never_zero() -> None:
     assert viewer.step_width(1).widthmode == "days"
 
 
-def test_interactive_valid_timesteps() -> None:
+def test_interactive_valid_timesteps(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """The time controls stay inside the valid times, thus a step after the last valid timestep gives None."""
-    viewer = make_headless_viewer([str(modelpath), "--interactive"])
+    viewer = make_viewer("spectra", [str(modelpath), "--interactive"])
     validstart, validend = viewer.grid.timebounds
     assert viewer.grid.tstarts[viewer.grid.validtimesteps[0]] >= validstart > viewer.grid.tstarts[0]
     assert viewer.grid.tends[viewer.grid.validtimesteps[-1]] <= validend < viewer.grid.tends[-1]
@@ -184,7 +190,7 @@ def test_interactive_valid_timesteps() -> None:
     assert draw_values(viewer) is None
 
     # a continuous range at each end of the valid times keeps its Δ ln t, and plotspectra accepts it
-    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--notimeclamp", "--interactive"])
+    viewer = make_viewer("spectra", [str(modelpath), "-t", "300", "--notimeclamp", "--interactive"])
     # each end starts from the values of the command, thus it does not keep the width mode of the other end
     base = viewer.values
     for bound in (validstart, validend):
@@ -195,31 +201,26 @@ def test_interactive_valid_timesteps() -> None:
         assert apply_values(viewer, dc.replace(viewer.values, centre=bound, widthmode="days", width=1.0)) is None
 
 
-def test_interactive_up_key_at_the_last_timestep_widens_the_range_backwards() -> None:
+def test_interactive_up_key_at_the_last_timestep_widens_the_range_backwards(
+    make_viewer: Callable[[str, list[str]], t.Any],
+) -> None:
     """The Up key at the last valid timestep adds the timestep before the range, as the estimators viewer does.
 
     The viewer kept the first timestep of the range and clamped the last one, thus the Up key did nothing there.
     """
-    viewer = make_headless_viewer([str(modelpath), "--interactive"])
+    viewer = make_viewer("spectra", [str(modelpath), "--interactive"])
     validtimesteps = viewer.grid.validtimesteps
     viewer.values = viewer.move_to_end(last=True)
     wider = viewer.step_width(1)
     assert interactive.get_grid_selection(viewer.grid, wider) == (validtimesteps[-2], validtimesteps[-1])
 
 
-def make_headless_viewer(tokens: list[str]) -> interactive.SpectrumViewer:
-    """Return a viewer that draws on a canvas with no window, after its first plot."""
-    fig = mplfig.Figure()
-    FigureCanvasAgg(fig)
-    viewer = interactive.SpectrumViewer(tokens, fig)
-    assert draw_values(viewer) is None
-    return viewer
-
-
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_interactive_command_reproduces_plot(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+def test_interactive_command_reproduces_plot(
+    mockplot: mock.MagicMock, tmp_path: Path, make_viewer: Callable[[str, list[str]], t.Any]
+) -> None:
     """The command that the viewer shows must draw the same data as the viewer."""
-    viewer = make_headless_viewer([str(modelpath), "-t", "290", "--interactive"])
+    viewer = make_viewer("spectra", [str(modelpath), "-t", "290", "--interactive"])
     # a continuous range gives --notimeclamp, and the snapped range below gives whole timesteps
     continuous = dc.replace(
         viewer.values, notimeclamp=True, widthmode="days", centre=306.4, width=5.0, xmin="3000", xmax="9000"
@@ -243,10 +244,10 @@ def test_interactive_command_reproduces_plot(mockplot: mock.MagicMock, tmp_path:
     assert np.allclose(np.array(mockplot.call_args[0][2]), viewery, rtol=1e-12, atol=0.0)
 
 
-def test_interactive_emission_options() -> None:
+def test_interactive_emission_options(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """A change that plotspectra rejects must keep the old values, and --showabsorption draws a taller frame."""
     # the test model has no emission.out, thus plotspectra cannot draw its emission plot
-    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
+    viewer = make_viewer("spectra", [str(modelpath), "-t", "300", "--interactive"])
     oldvalues, command = viewer.values, viewer.get_command()
     # the status line gives the first line of the error, which names the missing files
     message = apply_values(viewer, dc.replace(viewer.values, showemission=True))
@@ -257,7 +258,7 @@ def test_interactive_emission_options() -> None:
 
     # the viewer stores the default grouping as None. A stored "ion" was not equal to the None of the controls, thus a
     # change of an emission option removed the series lock
-    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "5", "--groupby", "ion", "--interactive"])
+    viewer = make_viewer("spectra", [str(modelpath_classic_3d), "-t", "5", "--groupby", "ion", "--interactive"])
     assert viewer.values.groupby is None
     figheight = viewer.fig.get_figheight()
     assert apply_values(viewer, dc.replace(viewer.values, showabsorption=True, maxseriescount=5, nostack=True)) is None
@@ -270,9 +271,9 @@ def test_interactive_emission_options() -> None:
     assert "nuclide" in rejection
 
 
-def test_interactive_xunit_and_references() -> None:
+def test_interactive_xunit_and_references(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """A new x unit converts and sorts the limits, and a reference spectrum goes after the model paths."""
-    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--deltax", "20", "--interactive"])
+    viewer = make_viewer("spectra", [str(modelpath), "-t", "300", "--deltax", "20", "--interactive"])
     # a frequency increases where the wavelength decreases, thus the limit of 19000 Å becomes the minimum
     inhertz = interactive.convert_xunit(viewer.values, "hz", gamma=False)
     assert (inhertz.xmin, inhertz.xmax, inhertz.deltax) == ("1.578e+14", "1.199e+15", "")
@@ -288,14 +289,16 @@ def test_interactive_xunit_and_references() -> None:
     assert len(viewer.axes[0].get_lines()) == 2
 
 
-def test_interactive_spectra_hold_the_models_and_the_references(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_interactive_spectra_hold_the_models_and_the_references(
+    monkeypatch: pytest.MonkeyPatch, make_viewer: Callable[[str, list[str]], t.Any]
+) -> None:
     """The list of spectra holds each ARTIS model and each reference, also the model of the working folder.
 
     A command with no path reads the model of the working folder, thus the list shows that model first and the
     command still gives no path. A model that the user adds reaches the command and the plot.
     """
     monkeypatch.chdir(modelpath)
-    viewer = make_headless_viewer(["-t", "300", "--interactive"])
+    viewer = make_viewer("spectra", ["-t", "300", "--interactive"])
     assert viewer.values.spectra == (".",)
     assert viewerseries.get_series_item_text(interactive.REFERENCE_DATA, ".") == f"Model: {modelpath.absolute()}"
     assert shlex.split(viewer.get_command())[2:4] == ["-t", "300"]
@@ -309,14 +312,14 @@ def test_interactive_spectra_hold_the_models_and_the_references(monkeypatch: pyt
     assert viewerseries.get_series_item_text(interactive.REFERENCE_DATA, reference).startswith("Reference: /")
 
 
-def test_interactive_new_first_model_gives_the_time_grid() -> None:
+def test_interactive_new_first_model_gives_the_time_grid(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """A new order of the models gives the time controls the timesteps of the new first model.
 
     A snapped range keeps its middle and its count of timesteps on the new grid. The new first model has longer
     timesteps, thus the days of the old range contain only 3 of them.
     """
     classic1dpath = at.get_path("testdata") / "test-classicmode_1d"
-    viewer = make_headless_viewer([str(modelpath_classic_3d), str(classic1dpath), "-t", "4.5-5", "--interactive"])
+    viewer = make_viewer("spectra", [str(modelpath_classic_3d), str(classic1dpath), "-t", "4.5-5", "--interactive"])
     first, last = interactive.get_grid_selection(viewer.grid, viewer.values)
     assert last - first + 1 == 4
     centre = viewer.values.centre
@@ -329,14 +332,14 @@ def test_interactive_new_first_model_gives_the_time_grid() -> None:
     assert viewer.grid.tmids[first] < centre < viewer.grid.tmids[last]
 
 
-def test_interactive_time_grid_of_a_later_model() -> None:
+def test_interactive_time_grid_of_a_later_model(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """A model that is not first can give its timesteps to the time controls, and the valid times apply to all models.
 
     plotspectra rejects a time outside the timesteps of each model, thus the valid times stay inside both models.
     """
     classic1dpath = at.get_path("testdata") / "test-classicmode_1d"
     spectra = [str(modelpath_classic_3d), str(classic1dpath)]
-    viewer = make_headless_viewer([*spectra, "-t", "4.5-5", "--interactive"])
+    viewer = make_viewer("spectra", [*spectra, "-t", "4.5-5", "--interactive"])
     viewer.values = interactive.set_models(viewer, spectra, str(classic1dpath))
     assert viewer.grid.gridfolder == classic1dpath
     assert viewer.values.spectra == tuple(spectra)
@@ -368,7 +371,7 @@ def test_interactive_time_fits_the_timestep_of_each_model() -> None:
     assert interactive.fits_each_model([(classic1dpath, modeltimes)], f"{tstarts[timestep - 1] + 0.001:.6f}")
 
 
-def test_interactive_series_styles_stay_on_their_spectrum() -> None:
+def test_interactive_series_styles_stay_on_their_spectrum(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """A new order of the spectra keeps each --label and each --color on its spectrum.
 
     Each option gives its values in the order of the spectra. Thus a spectrum with no value in front of a spectrum with
@@ -384,7 +387,7 @@ def test_interactive_series_styles_stay_on_their_spectrum() -> None:
     # the values of a removed spectrum go out of the option rows
     assert dict(viewercore.move_series_styles(rows, oldspectra, oldspectra[1:])) == {"--color": ("blue",)}
 
-    viewer = make_headless_viewer([*oldspectra[:2], "-t", "300", "--interactive"])
+    viewer = make_viewer("spectra", [*oldspectra[:2], "-t", "300", "--interactive"])
     labelledrows = viewercore.set_series_rows(
         viewer.values.otheroptions, oldspectra[:2], reference, {"--label": "Observed"}
     )
@@ -398,7 +401,9 @@ def test_interactive_series_styles_stay_on_their_spectrum() -> None:
     assert viewercore.get_row_values(unlabelledrows, "--label") is None
 
 
-def test_interactive_list_gives_a_reference_spectrum_its_legend_label(tmp_path: Path) -> None:
+def test_interactive_list_gives_a_reference_spectrum_its_legend_label(
+    tmp_path: Path, make_viewer: Callable[[str, list[str]], t.Any]
+) -> None:
     """The list of spectra gives a reference spectrum the label of its line in the legend.
 
     A reference file with no label in its metadata takes the path of the command as its label. The list showed the
@@ -406,7 +411,7 @@ def test_interactive_list_gives_a_reference_spectrum_its_legend_label(tmp_path: 
     """
     reference = tmp_path / "myref.txt"
     reference.write_bytes(plotspectra.find_reference_spectrum_file("sn2011fe_PTF11kly_20120822_norm.txt").read_bytes())
-    viewer = make_headless_viewer([str(modelpath), str(reference), "-t", "300", "--interactive"])
+    viewer = make_viewer("spectra", [str(modelpath), str(reference), "-t", "300", "--interactive"])
     legendlabel = viewer.axes[0].get_lines()[1].get_label()
     assert legendlabel == str(reference)
     assert viewerseries.get_series_name(interactive.REFERENCE_DATA, str(reference)) == legendlabel
@@ -424,50 +429,38 @@ def test_reference_spectrum_names_are_files_that_plotspectra_finds() -> None:
     assert all(plotspectra.find_reference_spectrum_file_or_none(name) is not None for name in names)
 
 
-def test_interactive_paths_keep_their_place() -> None:
+def test_interactive_paths_keep_their_place(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """Each path of the command stays a path and keeps its place, also a path after an option.
 
     The viewer took the paths only from the start of the command, and it put the references after the models. Thus a
     path after an option left the command, and -label named the wrong series.
     """
     reference = "sn2011fe_PTF11kly_20120822_norm.txt"
-    viewer = make_headless_viewer([
-        reference,
-        str(modelpath),
-        "-label",
-        "Observed",
-        "Model",
-        "-t",
-        "300",
-        "--interactive",
-    ])
+    viewer = make_viewer(
+        "spectra", [reference, str(modelpath), "-label", "Observed", "Model", "-t", "300", "--interactive"]
+    )
     assert shlex.split(viewer.get_command())[2:4] == [reference, str(modelpath)]
 
-    viewer = make_headless_viewer(["-t", "300", "--notitle", str(modelpath), "--interactive"])
+    viewer = make_viewer("spectra", ["-t", "300", "--notitle", str(modelpath), "--interactive"])
     assert viewer.modelpathtokens == [str(modelpath)]
     # the command without the option starts with the path, and the viewer still reads the time of the command
     assert apply_values(viewer, dc.replace(viewer.values, otheroptions=())) is None
     assert "Timestep 54" in viewer.get_time_range_text()
 
     # -fixedionlist reads each word that follows it, but a folder at the end of the command is a path
-    viewer = make_headless_viewer([
-        "--showemission",
-        "-fixedionlist",
-        "Fe II",
-        "Co II",
-        str(modelpath_classic_3d),
-        "--interactive",
-    ])
+    viewer = make_viewer(
+        "spectra", ["--showemission", "-fixedionlist", "Fe II", "Co II", str(modelpath_classic_3d), "--interactive"]
+    )
     assert viewer.modelpathtokens == [str(modelpath_classic_3d)]
     assert str(modelpath_classic_3d) in shlex.split(viewer.get_command())
 
 
-def test_interactive_command_gives_the_series_count_of_the_box() -> None:
+def test_interactive_command_gives_the_series_count_of_the_box(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """The command gives the count of the box, also when that count is the default without -fixedionlist.
 
     plotspectra gives a missing count the length of -fixedionlist, thus a count of 14 with a list needs the option.
     """
-    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "4", "--showemission", "--interactive"])
+    viewer = make_viewer("spectra", [str(modelpath_classic_3d), "-t", "4", "--showemission", "--interactive"])
     series = viewer.get_drawn_series()
     for fixedionlist, maxseriescount in ((series[:3], plotspectra.DEFAULT_MAXSERIESCOUNT), (series[:3], 3), ((), 5)):
         values = dc.replace(viewer.values, fixedionlist=fixedionlist, maxseriescount=maxseriescount)
@@ -476,9 +469,9 @@ def test_interactive_command_gives_the_series_count_of_the_box() -> None:
         assert args.maxseriescount == maxseriescount
 
 
-def test_interactive_fixed_y_axis() -> None:
+def test_interactive_fixed_y_axis(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """A fixed y axis keeps a negative --ymin through the command, and the limits stay when the time changes."""
-    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
+    viewer = make_viewer("spectra", [str(modelpath), "-t", "300", "--interactive"])
     assert apply_values(viewer, dc.replace(viewer.values, ymin="-1e-13", ymax="3e-13")) is None
     # Python 3.13 reads a separate -1e-13 as an option, thus the value joins its flag
     assert " --ymin=-1e-13 --ymax 3e-13" in viewer.get_command()
@@ -486,9 +479,9 @@ def test_interactive_fixed_y_axis() -> None:
     assert np.allclose(viewer.axes[0].get_ylim(), (-1e-13, 3e-13), rtol=1e-9, atol=0.0)
 
 
-def test_interactive_figwidthscale_fills_the_plot_area() -> None:
+def test_interactive_figwidthscale_fills_the_plot_area(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """The viewer sets --figwidthscale to give the figure the shape of the plot area, and the command shows it."""
-    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--figwidthscale", "1.5", "--interactive"])
+    viewer = make_viewer("spectra", [str(modelpath), "-t", "300", "--figwidthscale", "1.5", "--interactive"])
     for areawidth, areaheight in ((1600.0, 500.0), (600.0, 500.0)):
         figwidthscale = fit_one_frame_column(viewer, areawidth, areaheight)
         assert apply_values(viewer, dc.replace(viewer.values, figwidthscale=figwidthscale)) is None
@@ -498,13 +491,13 @@ def test_interactive_figwidthscale_fills_the_plot_area() -> None:
         assert f" --figwidthscale {figwidthscale:g}" in viewer.get_command()
 
 
-def test_maxseriescount_cuts_the_fixedionlist() -> None:
+def test_maxseriescount_cuts_the_fixedionlist(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """A smaller -maxseriescount removes the last entries of -fixedionlist, and a list alone keeps each entry.
 
     Before the correction, a -fixedionlist kept each entry, and -maxseriescount applied only to the names in the
     order of the flux.
     """
-    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "4", "--showemission", "--interactive"])
+    viewer = make_viewer("spectra", [str(modelpath_classic_3d), "-t", "4", "--showemission", "--interactive"])
     series = viewer.get_drawn_series()
     assert len(series) > 2
     assert apply_values(viewer, dc.replace(viewer.values, fixedionlist=series[::-1], maxseriescount=2)) is None
@@ -517,13 +510,15 @@ def test_maxseriescount_cuts_the_fixedionlist() -> None:
         assert args.maxseriescount == maxseriescount
 
 
-def test_interactive_render_changes_nothing_until_the_window_shows_the_plot() -> None:
+def test_interactive_render_changes_nothing_until_the_window_shows_the_plot(
+    make_viewer: Callable[[str, list[str]], t.Any],
+) -> None:
     """A render draws a new figure and changes nothing of the viewer. Only the function that it returns shows the plot.
 
     The worker thread runs the render while the window reads the viewer. Thus a render that changed the figure or the
     frames gave the window a plot in progress. The spectrum viewer drew in the thread of the window for this reason.
     """
-    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
+    viewer = make_viewer("spectra", [str(modelpath), "-t", "300", "--interactive"])
     oldfig, oldaxes = viewer.fig, viewer.axes
     newvalues = viewer.step_time(1)
     assert newvalues is not None
@@ -537,12 +532,12 @@ def test_interactive_render_changes_nothing_until_the_window_shows_the_plot() ->
     assert viewer.fig.canvas is oldfig.canvas, "the canvas of the window must show the new figure"
 
 
-def test_interactive_assertion_of_plotspectra_is_a_rejection() -> None:
+def test_interactive_assertion_of_plotspectra_is_a_rejection(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """An AssertionError of plotspectra is a rejection, and the viewer keeps the old values.
 
     The viewer caught fewer errors than the CLI, thus the error left the window with the rejected values.
     """
-    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
+    viewer = make_viewer("spectra", [str(modelpath), "-t", "300", "--interactive"])
     oldvalues = viewer.values
     # resolve_plot_args asserts that the command does not give both kinds of viewing angle
     newvalues = dc.replace(oldvalues, otheroptions=(("-plotvspecpol", ("0",)), ("-plotviewingangle", ("0",))))
@@ -551,23 +546,23 @@ def test_interactive_assertion_of_plotspectra_is_a_rejection() -> None:
     assert viewer.values == oldvalues
 
 
-def test_interactive_rejected_frames_leave_a_plot_on_the_figure() -> None:
+def test_interactive_rejected_frames_leave_a_plot_on_the_figure(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """An error of the new frames empties the figure, and the next plot must make new frames on it.
 
     The viewer kept the key of the old frames, thus each later plot went to axes that the figure did not hold.
     """
-    viewer = make_headless_viewer([str(modelpath), "-t", "290", "--interactive"])
+    viewer = make_viewer("spectra", [str(modelpath), "-t", "290", "--interactive"])
     assert apply_values(viewer, dc.replace(viewer.values, otheroptions=(("-figscale", ("-10",)),))) is not None
     assert apply_values(viewer, viewer.step_time(1) or viewer.values) is None
     assert viewer.fig.axes, "the figure must hold the frames of the plot"
 
 
-def test_interactive_redraw_matches_a_new_plot() -> None:
+def test_interactive_redraw_matches_a_new_plot(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """A plot that the viewer draws again gives the same pixels as a new plot of the same command.
 
     The viewer keeps the tick objects and the title position from one plot to the next.
     """
-    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "4", "--interactive"])
+    viewer = make_viewer("spectra", [str(modelpath_classic_3d), "-t", "4", "--interactive"])
     later = viewer.step_time(2)
     assert later is not None
     for values in (
@@ -576,7 +571,7 @@ def test_interactive_redraw_matches_a_new_plot() -> None:
         dc.replace(later, showemission=True, maxseriescount=4),
     ):
         assert apply_values(viewer, values) is None
-    newviewer = make_headless_viewer([*shlex.split(viewer.get_command())[2:], "--interactive"])
+    newviewer = make_viewer("spectra", [*shlex.split(viewer.get_command())[2:], "--interactive"])
     canvases = [viewer.fig.canvas, newviewer.fig.canvas]
     pixels = []
     for canvas in canvases:
@@ -586,32 +581,34 @@ def test_interactive_redraw_matches_a_new_plot() -> None:
     assert np.array_equal(pixels[0], pixels[1])
 
 
-def test_interactive_tick_labels_come_back_after_hidexticklabels() -> None:
+def test_interactive_tick_labels_come_back_after_hidexticklabels(
+    make_viewer: Callable[[str, list[str]], t.Any],
+) -> None:
     """The tick labels come back when the user removes --hidexticklabels from the table.
 
     cla() keeps the tick parameters, and the plot hides the labels only when the command gives the option.
     """
-    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
+    viewer = make_viewer("spectra", [str(modelpath), "-t", "300", "--interactive"])
     for otheroptions, labelsvisible in (((("--hidexticklabels", ()),), False), ((), True)):
         assert apply_values(viewer, dc.replace(viewer.values, otheroptions=otheroptions)) is None
         viewer.fig.canvas.draw()
         assert viewer.axes[0].xaxis.get_major_ticks()[0].label1.get_visible() is labelsvisible
 
 
-def test_interactive_status_line_gives_the_error() -> None:
+def test_interactive_status_line_gives_the_error(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """The status line gives the error of argparse, and not the usage line that argparse prints before it."""
-    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
+    viewer = make_viewer("spectra", [str(modelpath), "-t", "300", "--interactive"])
     rejection = viewer.get_rejection(dc.replace(viewer.values, deltax="20", otheroptions=(("-deltalambda", ("5",)),)))
     assert rejection is not None
     assert rejection.startswith("Argument --deltalambda")
 
 
-def test_interactive_zero_xmin_keeps_its_side_in_a_new_unit() -> None:
+def test_interactive_zero_xmin_keeps_its_side_in_a_new_unit(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """A minimum wavelength of 0 becomes a range of frequencies above the other limit, and not below it.
 
     The zero limit took the default limit at the same position, thus the range went to the other side of 5000 Å.
     """
-    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
+    viewer = make_viewer("spectra", [str(modelpath), "-t", "300", "--interactive"])
     values = dc.replace(viewer.values, xmin="0", xmax="5000")
     inhertz = interactive.convert_xunit(values, "hz", gamma=False)
     assert np.isclose(float(inhertz.xmin), at.constants.c_ang_per_s / 5000.0, rtol=1e-3, atol=0.0)
@@ -648,7 +645,7 @@ def test_interactive_reference_name_finds_the_picked_file(tmp_path: Path, monkey
     assert viewerseries.get_reference_token(str(bundledfile), find) == str(bundledfile)
 
 
-def test_interactive_valid_times_of_each_model() -> None:
+def test_interactive_valid_times_of_each_model(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """The time controls stay inside the times that are valid for every model of the command.
 
     plotspectra checks the times of each model, and the viewer took the valid times of the first model only.
@@ -656,7 +653,7 @@ def test_interactive_valid_times_of_each_model() -> None:
     # each call of the mock gives the valid range of the next model
     ranges = [(None, 260.0, 330.0), (None, 270.0, 320.0)]
     with mock.patch.object(interactive, "get_escaped_arrivalrange", side_effect=ranges):
-        viewer = make_headless_viewer([str(modelpath), str(modelpath), "-t", "300", "--interactive"])
+        viewer = make_viewer("spectra", [str(modelpath), str(modelpath), "-t", "300", "--interactive"])
     assert viewer.grid.timebounds == (270.0, 320.0)
 
 
@@ -677,21 +674,21 @@ def test_interactive_command_of_a_dispatcher_call() -> None:
     )
 
 
-def test_interactive_unlock_gives_the_default_count() -> None:
+def test_interactive_unlock_gives_the_default_count(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """A count that came from the length of -fixedionlist becomes the default count when the lock ends."""
-    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
+    viewer = make_viewer("spectra", [str(modelpath), "-t", "300", "--interactive"])
     locked = dc.replace(viewer.values, fixedionlist=("Fe II", "Co II"), maxseriescount=2)
     assert interactive.remove_series_lock(locked).maxseriescount == plotspectra.DEFAULT_MAXSERIESCOUNT
     assert interactive.remove_series_lock(dc.replace(locked, maxseriescount=5)).maxseriescount == 5
 
 
-def test_interactive_data_source() -> None:
+def test_interactive_data_source(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """The data source gives --frompackets, Auto names the files that it selects, and Text files refuses the packets.
 
     The --frompackets box showed only the flag of the user. An option that needs the packets, e.g. -groupby element,
     made plotspectra read them with the box empty.
     """
-    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "4", "--frompackets", "--interactive"])
+    viewer = make_viewer("spectra", [str(modelpath_classic_3d), "-t", "4", "--frompackets", "--interactive"])
     assert viewer.values.datasource == "packets"
     assert not viewer.values.otheroptions
     assert "--frompackets" in shlex.split(viewer.get_command())
@@ -711,24 +708,27 @@ def test_interactive_data_source() -> None:
     assert viewer.values == oldvalues
 
 
-def test_interactive_direction_and_bin_controls() -> None:
+def test_interactive_direction_and_bin_controls(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """The controls of the viewing direction and the bins take the options of the user, and give each option one time.
 
     The deprecated --average-every-tenth-viewing-angle becomes --average-over-phi-angle, and the table of the other
     options holds none of these options.
     """
-    viewer = make_headless_viewer([
-        str(modelpath_classic_3d),
-        "-t",
-        "4",
-        "--average-every-tenth-viewing-angle",
-        "--plotviewingangle",
-        "10",
-        "--dlogx",
-        "0.002",
-        "--normalised",
-        "--interactive",
-    ])
+    viewer = make_viewer(
+        "spectra",
+        [
+            str(modelpath_classic_3d),
+            "-t",
+            "4",
+            "--average-every-tenth-viewing-angle",
+            "--plotviewingangle",
+            "10",
+            "--dlogx",
+            "0.002",
+            "--normalised",
+            "--interactive",
+        ],
+    )
     values = viewer.values
     assert (values.directionkind, values.directionbins, values.deltalogx) == ("phi", (10,), "0.002")
     assert values.normalised
@@ -812,9 +812,9 @@ def test_interactive_option_rows() -> None:
     assert viewercore.get_default_tokens(actions["--title"]) is None
 
 
-def test_interactive_other_options_reach_the_command() -> None:
+def test_interactive_other_options_reach_the_command(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """The command contains each row of the table, and a row that plotspectra rejects keeps the old options."""
-    viewer = make_headless_viewer([str(modelpath), "-t", "300", "--filtermovingavg", "3", "--interactive"])
+    viewer = make_viewer("spectra", [str(modelpath), "-t", "300", "--filtermovingavg", "3", "--interactive"])
     assert viewer.values.otheroptions == (("--filtermovingavg", ("3",)),)
 
     otheroptions = (("--filtermovingavg", ("5",)), ("--title", ("A title",)))
@@ -830,9 +830,9 @@ def test_interactive_other_options_reach_the_command() -> None:
     assert viewer.values.otheroptions == otheroptions
 
 
-def test_interactive_lock_series() -> None:
+def test_interactive_lock_series(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """A locked list of series keeps the colour of each series when the time changes."""
-    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "4", "--showemission", "--interactive"])
+    viewer = make_viewer("spectra", [str(modelpath_classic_3d), "-t", "4", "--showemission", "--interactive"])
 
     def get_series_colours() -> dict[str, tuple[float, float, float, float]]:
         legend = viewer.axes[0].get_legend()
@@ -898,13 +898,13 @@ def test_interactive_spectrum_path_is_the_same_for_each_spelling(monkeypatch: py
     assert get_full_path(".") != get_full_path(str(modelpath.parent))
 
 
-def test_interactive_switch_between_r_packets_and_gamma_packets() -> None:
+def test_interactive_switch_between_r_packets_and_gamma_packets(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """The packet control switches the plot between the r-packets and the gamma packets, with the units of each.
 
     --gamma was an option of the table, thus the x unit, the x range, and the grouping kept the defaults of the
     r-packets after a switch.
     """
-    viewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "4", "--interactive"])
+    viewer = make_viewer("spectra", [str(modelpath_classic_3d), "-t", "4", "--interactive"])
     assert not viewer.values.gamma
     assert apply_values(viewer, interactive.set_packet_type(viewer.values, gamma=True)) is None
     tokens = viewer.get_plot_tokens()
@@ -915,12 +915,12 @@ def test_interactive_switch_between_r_packets_and_gamma_packets() -> None:
     assert "--gamma" not in viewer.get_plot_tokens()
     assert viewer.values.xunit == "angstrom"
     # a command with --gamma starts in the mode of the gamma packets, and the option table does not show --gamma
-    gammaviewer = make_headless_viewer([str(modelpath_classic_3d), "-t", "4", "--gamma", "--interactive"])
+    gammaviewer = make_viewer("spectra", [str(modelpath_classic_3d), "-t", "4", "--gamma", "--interactive"])
     assert gammaviewer.values.gamma
     assert all(flag != "--gamma" for flag, _ in gammaviewer.values.otheroptions)
     # the test model has packets and no gamma_spec.out, thus plotspectra reads the packets of its gamma-ray spectrum.
     # The viewer set --frompackets for the gamma packets, and that flag stayed after the switch back to the r-packets
-    packetsviewer = make_headless_viewer([str(modelpath), "-t", "300", "--interactive"])
+    packetsviewer = make_viewer("spectra", [str(modelpath), "-t", "300", "--interactive"])
     assert packetsviewer.grid.hasgammaspectrum
     gammavalues = interactive.set_packet_type(packetsviewer.values, gamma=True)
     assert gammavalues.datasource == "auto"
@@ -951,12 +951,12 @@ def test_interactive_gamma_spectrum_needs_one_source_for_all_models(tmp_path: Pa
     assert not interactive.has_gamma_spectrum([specmodel, packetsmodel])
 
 
-def test_interactive_direction_kinds_follow_the_first_model() -> None:
+def test_interactive_direction_kinds_follow_the_first_model(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """The kinds of viewing direction come from the first model of the list, also after a change of the list.
 
     The kinds came from the first model of the command, thus a new first model with no vpkt.txt kept -plotvspecpol.
     """
-    viewer = make_headless_viewer([str(at.get_path("testdata") / "vpktcontrib"), "--interactive"])
+    viewer = make_viewer("spectra", [str(at.get_path("testdata") / "vpktcontrib"), "--interactive"])
     assert "vpkt" in viewer.grid.directionkinds
     viewer.load_models([str(modelpath), str(at.get_path("testdata") / "vpktcontrib")])
     assert "vpkt" not in viewer.grid.directionkinds
@@ -995,13 +995,13 @@ def test_viewer_command_keeps_the_time_grid_of_a_later_model() -> None:
     assert reopened.values.timegrid == models[1]
 
 
-def test_interactive_command_reads_one_grid_of_the_models() -> None:
+def test_interactive_command_reads_one_grid_of_the_models(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """The worker thread makes the command from the timestep grid while the window can load the models again.
 
     A new model replaced the grid during a plot, and the worker then read a timestep of the old grid in the new grid.
     The command must read the grid one time, thus a load during the command has no effect on it.
     """
-    viewer = make_headless_viewer([str(modelpath), "-t", "290", "--interactive"])
+    viewer = make_viewer("spectra", [str(modelpath), "-t", "290", "--interactive"])
     expectedtokens = viewer.get_plot_tokens()
     oldgrid = viewer.grid
     get_grid_selection = interactive.get_grid_selection

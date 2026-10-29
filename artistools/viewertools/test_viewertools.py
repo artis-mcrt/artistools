@@ -29,27 +29,15 @@ from artistools.viewertools import series as viewerseries
 from artistools.viewertools import widgets as viewerwidgets
 from artistools.viewertools import window as viewerwindow
 from artistools.viewertools.window import apply_values
-from artistools.viewertools.window import draw_values
 
 modelpath = at.get_path("testdata") / "testmodel"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
 
 
-def make_viewer(kind: str, tokens: list[str]) -> t.Any:
-    """Return the viewer of a command, with a canvas and no window, after its first plot."""
-    module = importlib.import_module(f"artistools.{kind}.interactive")
-    viewerclass = next(
-        value for name, value in vars(module).items() if name.endswith("Viewer") and isinstance(value, type)
-    )
-    fig = mplfig.Figure()
-    FigureCanvasAgg(fig)
-    viewer = viewerclass(tokens, fig)
-    assert draw_values(viewer) is None
-    return viewer
-
-
 @pytest.mark.parametrize("kind", ["spectra", "lightcurve"])
-def test_viewer_gives_the_standard_spellings_for_older_ones(kind: str) -> None:
+def test_viewer_gives_the_standard_spellings_for_older_ones(
+    kind: str, make_viewer: Callable[[str, list[str]], t.Any]
+) -> None:
     """A command with the older spellings gives a viewer command with the standard spellings, as the help shows them.
 
     The viewers made their commands with the older spellings, e.g. -figwidthscale, thus a copied command disagreed
@@ -68,7 +56,7 @@ def test_viewer_gives_the_standard_spellings_for_older_ones(kind: str) -> None:
 
 
 @pytest.mark.parametrize("kind", ["spectra", "lightcurve"])
-def test_viewer_changes_the_residual_baseline(kind: str) -> None:
+def test_viewer_changes_the_residual_baseline(kind: str, make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """The option table gives the baseline index to the command and keeps the residual panel."""
     timetokens = ["-t", "300"] if kind == "spectra" else []
     viewer = make_viewer(kind, [str(modelpath), str(modelpath), *timetokens, "--residualbaselineseries"])
@@ -85,7 +73,9 @@ def test_viewer_changes_the_residual_baseline(kind: str) -> None:
 
 @pytest.mark.parametrize("kind", ["spectra", "lightcurve"])
 @pytest.mark.parametrize("flag", ["-residualbaselineseries", "-residuals", "-residual", "--residuals"])
-def test_viewer_keeps_paths_after_a_bare_residual_flag(kind: str, flag: str) -> None:
+def test_viewer_keeps_paths_after_a_bare_residual_flag(
+    kind: str, flag: str, make_viewer: Callable[[str, list[str]], t.Any]
+) -> None:
     """Both viewers keep the paths after a bare residual flag."""
     timetokens = ["-t", "300"] if kind == "spectra" else []
     paths = (str(modelpath), str(modelpath))
@@ -99,7 +89,7 @@ def test_viewer_keeps_paths_after_a_bare_residual_flag(kind: str, flag: str) -> 
 
 
 @pytest.mark.parametrize("kind", ["spectra", "lightcurve"])
-def test_viewer_selects_the_residual_series(kind: str) -> None:
+def test_viewer_selects_the_residual_series(kind: str, make_viewer: Callable[[str, list[str]], t.Any]) -> None:
     """Both viewers use the residual indices and the baseline index from the option table."""
     timetokens = ["-t", "300"] if kind == "spectra" else []
     viewer = make_viewer(kind, [str(modelpath)] * 3 + timetokens + ["-residual"])
@@ -123,7 +113,9 @@ def test_viewer_selects_the_residual_series(kind: str) -> None:
 
 @pytest.mark.parametrize("kind", ["spectra", "lightcurve"])
 @pytest.mark.parametrize("residualtype", ["absolute", "relative", "relativelog"])
-def test_viewer_selects_the_residual_type(kind: str, residualtype: str) -> None:
+def test_viewer_selects_the_residual_type(
+    kind: str, residualtype: str, make_viewer: Callable[[str, list[str]], t.Any]
+) -> None:
     """Both viewers use the residual type from the option table."""
     timetokens = ["-t", "300"] if kind == "spectra" else []
     viewer = make_viewer(kind, [str(modelpath)] * 2 + timetokens + ["--residual"])
@@ -154,7 +146,9 @@ def test_viewer_selects_the_residual_type(kind: str, residualtype: str) -> None:
 
 @pytest.mark.parametrize("residualtype", ["absolute", "relative", "relativelog"])
 @pytest.mark.parametrize("kind", ["spectra", "lightcurve"])
-def test_viewer_sets_the_residual_y_maximum(kind: str, residualtype: str) -> None:
+def test_viewer_sets_the_residual_y_maximum(
+    kind: str, residualtype: str, make_viewer: Callable[[str, list[str]], t.Any]
+) -> None:
     """Both viewers pass the residual maximum through the option table and the command."""
     timetokens = ["-t", "300"] if kind == "spectra" else []
     viewer = make_viewer(kind, [str(modelpath)] * 2 + timetokens + ["-residual", "-residualtype", residualtype])
@@ -170,7 +164,11 @@ def test_viewer_sets_the_residual_y_maximum(kind: str, residualtype: str) -> Non
 
 @pytest.mark.parametrize(("kind", "timetokens"), [("spectra", ["-t", "300"]), ("lightcurve", ["--plotcmf"])])
 def test_viewer_takes_back_a_folder_of_a_list_option(
-    kind: str, timetokens: list[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    kind: str,
+    timetokens: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    make_viewer: Callable[[str, list[str]], t.Any],
 ) -> None:
     """A model folder that --label took must be a series of the window, as the command gives the folder back.
 
@@ -200,7 +198,9 @@ def test_viewer_takes_back_a_folder_of_a_list_option(
         ("estimators", ["Te", str(modelpath), "-timestep", "50"]),
     ],
 )
-def test_viewer_command_opens_no_file(kind: str, tokens: list[str]) -> None:
+def test_viewer_command_opens_no_file(
+    kind: str, tokens: list[str], make_viewer: Callable[[str, list[str]], t.Any]
+) -> None:
     """The command of a window must not hold --show or --open.
 
     Copy Figure and Export Animation run the command for a temporary file, and --open opened each such file.
@@ -1088,7 +1088,11 @@ VIEWER_CASES: t.Final = (
 
 @pytest.mark.parametrize(("kind", "timetokens"), [("spectra", ["-t", "300"]), ("lightcurve", [])])
 def test_viewer_takes_the_model_of_the_path_option(
-    kind: str, timetokens: list[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    kind: str,
+    timetokens: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    make_viewer: Callable[[str, list[str]], t.Any],
 ) -> None:
     """A viewer must plot the model of -modelpath, and not read the working folder, which is not a model folder."""
     monkeypatch.chdir(tmp_path)
@@ -1099,7 +1103,9 @@ def test_viewer_takes_the_model_of_the_path_option(
 
 
 @pytest.mark.parametrize(("kind", "tokens"), VIEWER_CASES)
-def test_viewer_command_opens_the_same_plot(kind: str, tokens: list[str]) -> None:
+def test_viewer_command_opens_the_same_plot(
+    kind: str, tokens: list[str], make_viewer: Callable[[str, list[str]], t.Any]
+) -> None:
     """The command that a viewer shows must open a viewer with the same command.
 
     A user copies the command of a window and runs it later, e.g. in a script. An option that the window gives but
@@ -1112,7 +1118,9 @@ def test_viewer_command_opens_the_same_plot(kind: str, tokens: list[str]) -> Non
 
 
 @pytest.mark.parametrize(("kind", "tokens"), VIEWER_CASES)
-def test_viewer_keeps_its_plot_after_a_rejected_change(kind: str, tokens: list[str]) -> None:
+def test_viewer_keeps_its_plot_after_a_rejected_change(
+    kind: str, tokens: list[str], make_viewer: Callable[[str, list[str]], t.Any]
+) -> None:
     """A change that the command rejects must keep the values and the figure of the last plot, and give the reason."""
     viewer = make_viewer(kind, tokens)
     oldvalues, oldfig = viewer.values, viewer.fig

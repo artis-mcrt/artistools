@@ -190,6 +190,33 @@ def get_plotestimators_figure() -> "Callable[[Sequence[str], Path], mplfig.Figur
 
 
 @pytest.fixture
+def make_viewer() -> "Callable[[str, list[str]], t.Any]":
+    """Return a function that gives the viewer of a command, e.g. of "spectra", with a canvas and no window.
+
+    The viewer has drawn its first plot.
+    """
+    import importlib
+
+    import matplotlib.figure as mplfig
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+
+    from artistools.viewertools.window import draw_values
+
+    def make_viewer(kind: str, tokens: list[str]) -> t.Any:
+        module = importlib.import_module(f"artistools.{kind}.interactive")
+        viewerclass = next(
+            value for name, value in vars(module).items() if name.endswith("Viewer") and isinstance(value, type)
+        )
+        fig = mplfig.Figure()
+        FigureCanvasAgg(fig)
+        viewer = viewerclass(tokens, fig)
+        assert draw_values(viewer) is None
+        return viewer
+
+    return make_viewer
+
+
+@pytest.fixture
 def toy_codecomparison_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
     """Write a code comparison model of one epoch and three shells, and return its virtual path."""
     import artistools as at
