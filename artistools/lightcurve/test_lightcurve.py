@@ -3458,6 +3458,21 @@ def test_reference_band_data_takes_a_header_line_that_starts_with_a_hash(tmp_pat
     assert np.allclose(dfband["magnitude"].to_numpy(), [12.0 - 5 * np.log10(10e6) + 5, 12.5 - 5 * np.log10(10e6) + 5])
 
 
+def test_reference_band_data_with_no_label_takes_the_name_that_the_command_gives(tmp_path: Path) -> None:
+    """A band reference file with no label takes the name that the command gives, as a bolometric file does.
+
+    The band reader took the stem of the file, thus the band legend showed "refband" and the bolometric legend
+    showed "refband.dat" for one rule.
+    """
+    datafile = tmp_path / "refband.dat"
+    datafile.write_text("time magnitude band\n55800.0 12.0 B\n", encoding="utf-8")
+    (tmp_path / "refband.dat.meta.yml").write_text("timecorrection: 55790.0\n", encoding="utf-8")
+
+    _, metadata = at.lightcurve.core.read_reflightcurve_band_data(datafile)
+
+    assert metadata["label"] == str(datafile)
+
+
 @pytest.mark.parametrize(("zvalue", "distance_mpc"), [("1e-3", 4.28), ("0", None), ("-0.01", None)])
 def test_reference_band_data_takes_its_distance_from_a_redshift(
     tmp_path: Path, zvalue: str, distance_mpc: float | None

@@ -35,6 +35,7 @@ from artistools.misc import find_reference_data_file
 from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_file_metadata
+from artistools.misc import get_metadata_label
 from artistools.misc import get_metadata_path
 from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import get_vpkt_config
@@ -802,7 +803,8 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pl.Dat
             f"Write {get_metadata_path(data_path).name} in the folder of the data, with a timecorrection value and a"
             " label",
         )
-    metadata.setdefault("label", data_path.stem)
+    # a file with no label takes the name that the command gives, as the bolometric curves and the spectra do
+    metadata["label"] = get_metadata_label(metadata, lightcurvefilename)
 
     with zopen(data_path, encoding="utf-8") as datafile:
         lines = datafile.read().splitlines()
