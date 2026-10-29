@@ -235,7 +235,7 @@ def test_linefluxes_gives_a_colour_to_each_model_after_the_default_palette() -> 
     assert all(color is not None for color in colors)
 
 
-def test_linefluxes_lineflux_ratio_plot(tmp_path: Path) -> None:
+def test_linefluxes_lineflux_ratio_plot(tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]) -> None:
     """The line flux ratio plot must run with no arguments beyond the model path.
 
     The plot of Fe II 7155 Å and 12570 Å also draws the fit of Flörs et al. (2020), and --write_data gave no table of
@@ -251,9 +251,7 @@ def test_linefluxes_lineflux_ratio_plot(tmp_path: Path) -> None:
         write_data=True,
     )
     assert (tmp_path / "linefluxes.pdf").is_file()
-    dfcomparisons = pl.read_csv(
-        tmp_path / "linefluxes_comparisons.txt", separator=" ", null_values="nan", comment_prefix="#"
-    )
+    dfcomparisons = read_data_file(tmp_path / "linefluxes_comparisons.txt")
     assert dfcomparisons["series"].unique().to_list() == ["Flörs+2020 fit"]
     assert dfcomparisons.height == 3
 
@@ -361,7 +359,9 @@ def test_linefluxes_timebins_in_reverse_order_take_the_order_in_time() -> None:
     ]
 
 
-def test_linefluxes_emitting_regions_give_one_file_for_each_time_bin(tmp_path: Path) -> None:
+def test_linefluxes_emitting_regions_give_one_file_for_each_time_bin(
+    tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """Each time bin of the emitting regions has its own figure, thus two bins can overlap.
 
     The command wrote each figure to the one name that -o gives, thus only the last one stayed.
@@ -382,7 +382,7 @@ def test_linefluxes_emitting_regions_give_one_file_for_each_time_bin(tmp_path: P
 
     assert sorted(path.name for path in tmp_path.glob("*.pdf")) == ["emreg_5.0d.pdf", "emreg_6.0d.pdf"]
     # the model has no packets in the features, and the table left out the reference curve, thus it gave no file
-    dfpoints = pl.read_csv(tmp_path / "emreg_5.0d.txt", separator=" ", null_values="nan", comment_prefix="#")
+    dfpoints = read_data_file(tmp_path / "emreg_5.0d.txt")
     assert dfpoints.select("modelpath", "label", "feature", "log10nne", "Te").rows() == [
         (None, "Flörs+2020 +5d", "reference", 5.0, 5000.0)
     ]
@@ -423,7 +423,9 @@ def test_linefluxes_emitting_regions_write_the_drawn_points(tmp_path: Path, caps
         assert dfpoints["log10nne"].to_list()[:2] == [5.0, 6.0]
 
 
-def test_linefluxes_emitting_regions_keep_two_models_with_one_label_apart(tmp_path: Path) -> None:
+def test_linefluxes_emitting_regions_keep_two_models_with_one_label_apart(
+    tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """The table named each model by its name alone, thus two models with one label gave rows with one key."""
     import collections
 
@@ -444,7 +446,7 @@ def test_linefluxes_emitting_regions_keep_two_models_with_one_label_apart(tmp_pa
             write_data=True,
         )
 
-    dfpoints = pl.read_csv(tmp_path / "emreg.txt", separator=" ", null_values="nan", comment_prefix="#")
+    dfpoints = read_data_file(tmp_path / "emreg.txt")
     assert set(dfpoints["label"].to_list()) == {"same"}
     assert set(dfpoints["modelpath"].to_list()) == {str(modelpath_classic_3d), str(secondpath)}
 

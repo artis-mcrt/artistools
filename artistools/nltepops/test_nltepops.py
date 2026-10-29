@@ -691,6 +691,7 @@ def test_nltepops_singletimestep_write_data_gives_the_plotted_series(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     get_plot_xy: Callable[[t.Any], tuple[np.ndarray, np.ndarray]],
+    read_data_file: Callable[[Path], pl.DataFrame],
 ) -> None:
     """The table has one row for each level of each subplot, and one column for each series of the subplots.
 
@@ -703,7 +704,7 @@ def test_nltepops_singletimestep_write_data_gives_the_plotted_series(
 
     at.nltepops.plot(argsraw=[], modelpath=modeldir, outputfile=tmp_path / "pops.pdf", timestep=40, write_data=True)
 
-    dftable = pl.read_csv(tmp_path / "pops.txt", separator=" ", null_values="nan", comment_prefix="#")
+    dftable = read_data_file(tmp_path / "pops.txt")
     columnoflabel = {
         "LTE T$_e$": "n_LTE_T_e_per_cm3",
         "LTE T$_R$": "n_LTE_T_R_per_cm3",
@@ -741,6 +742,7 @@ def test_nltepops_time_or_velocity_write_data_gives_the_plotted_series(
     timeargs: dict[str, t.Any],
     tmp_path: Path,
     get_plot_xy: Callable[[t.Any], tuple[np.ndarray, np.ndarray]],
+    read_data_file: Callable[[Path], pl.DataFrame],
 ) -> None:
     """The table has one row for each point of each series, and the columns ion and level name the series.
 
@@ -757,7 +759,7 @@ def test_nltepops_time_or_velocity_write_data_gives_the_plotted_series(
         **timeargs,
     )
 
-    dftable = pl.read_csv(tmp_path / "plotnltepops_Fe.txt", separator=" ", null_values="nan", comment_prefix="#")
+    dftable = read_data_file(tmp_path / "plotnltepops_Fe.txt")
     assert dftable["modelpath"].unique().to_list() == [str(modelpath)]
     serieskeys = [("Fe I", 0), ("Fe I", 1), ("Fe II", 0), ("Fe II", 1)]
     assert len(mockplot.call_args_list) == len(serieskeys)
@@ -769,7 +771,9 @@ def test_nltepops_time_or_velocity_write_data_gives_the_plotted_series(
         assert np.allclose(dfseries["n_NLTE_per_cm3"].to_numpy(), yarr, rtol=1e-12, atol=0.0)
 
 
-def test_nltepops_versus_time_write_data_gives_the_points_inside_xmax(tmp_path: Path) -> None:
+def test_nltepops_versus_time_write_data_gives_the_points_inside_xmax(
+    tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """The table held the timesteps after -xmax."""
     commonargs: dict[str, t.Any] = {
         "modelpath": modelpath,
@@ -781,13 +785,13 @@ def test_nltepops_versus_time_write_data_gives_the_points_inside_xmax(tmp_path: 
         "write_data": True,
     }
     at.nltepops.plot(argsraw=[], outputfile=tmp_path / "all", **commonargs)
-    dfall = pl.read_csv(tmp_path / "all" / "plotnltepops_Fe.txt", separator=" ", null_values="nan", comment_prefix="#")
+    dfall = read_data_file(tmp_path / "all" / "plotnltepops_Fe.txt")
     times = dfall["time_days"].to_list()
     assert len(times) > 3
 
     at.nltepops.plot(argsraw=[], outputfile=tmp_path, xmax=(times[1] + times[2]) / 2, **commonargs)
 
-    dftable = pl.read_csv(tmp_path / "plotnltepops_Fe.txt", separator=" ", null_values="nan", comment_prefix="#")
+    dftable = read_data_file(tmp_path / "plotnltepops_Fe.txt")
     assert dftable["time_days"].to_list() == times[:2]
 
 

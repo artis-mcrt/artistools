@@ -899,7 +899,9 @@ def test_spectraemissionplot_velocity_ranges(
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_spectraemissionplot_linewidth_arg(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+def test_spectraemissionplot_linewidth_arg(
+    mockplot: mock.MagicMock, tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """The -linewidth list sets the width of the net spectrum and of a reference spectrum on the emission plot."""
     at.spectra.plot(
         argsraw=[],
@@ -917,9 +919,7 @@ def test_spectraemissionplot_linewidth_arg(mockplot: mock.MagicMock, tmp_path: P
     # the net spectrum of the model is the first line, and the reference spectrum is the second line
     assert [callargs.kwargs.get("linewidth") for callargs in mockplot.call_args_list] == [0.5, 7.0]
     # the emission plot gave no table of the reference spectrum, because only make_spectrum_plot made one
-    dfreferences = pl.read_csv(
-        tmp_path / "emission_linewidth_references.txt", separator=" ", null_values="nan", comment_prefix="#"
-    )
+    dfreferences = read_data_file(tmp_path / "emission_linewidth_references.txt")
     # the table holds the points that the axes show, and the reference has negative fluxes below the bottom of 0
     axis, drawnx, drawny = mockplot.call_args_list[1].args
     drawnx, drawny = np.asarray(drawnx, dtype=float), np.asarray(drawny, dtype=float)
@@ -930,7 +930,9 @@ def test_spectraemissionplot_linewidth_arg(mockplot: mock.MagicMock, tmp_path: P
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_emission_plot_data_gives_the_drawn_values(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+def test_emission_plot_data_gives_the_drawn_values(
+    mockplot: mock.MagicMock, tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """The table gave f_lambda alone, and the figure scales it for --normalised and draws the absorption below zero."""
     at.spectra.plot(
         argsraw=[],
@@ -944,7 +946,7 @@ def test_emission_plot_data_gives_the_drawn_values(mockplot: mock.MagicMock, tmp
         normalised=True,
         write_data=True,
     )
-    dftable = pl.read_csv(tmp_path / "emission.txt", separator=" ", null_values="nan", comment_prefix="#")
+    dftable = read_data_file(tmp_path / "emission.txt")
     # the line can hold a point outside -xmin and -xmax, and the table takes the points inside them
     xlow, xhigh = dftable["x_plotted_angstrom"].min(), dftable["x_plotted_angstrom"].max()
     drawnlines = [
@@ -1479,7 +1481,9 @@ def test_spectra_multispec_outputfile(tmp_path: Path) -> None:
     assert (tmp_path / "custom_multispec.pdf").is_file()
 
 
-def test_write_data_puts_reference_spectra_in_their_own_table(tmp_path: Path) -> None:
+def test_write_data_puts_reference_spectra_in_their_own_table(
+    tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """--write_data must write one column for each ARTIS model, and the drawn points of a reference spectrum in a table.
 
     Only the ARTIS branch produces series data, so an unset variable used to raise UnboundLocalError for a
@@ -1496,7 +1500,7 @@ def test_write_data_puts_reference_spectra_in_their_own_table(tmp_path: Path) ->
 
     dfout = pl.read_csv(tmp_path / "spec.txt", separator=" ", comment_prefix="#")
     assert [col for col in dfout.columns if col.startswith("f_lambda")] == ["f_lambda.TEST MODEL"]
-    dfreferences = pl.read_csv(tmp_path / "spec_references.txt", separator=" ", null_values="nan", comment_prefix="#")
+    dfreferences = read_data_file(tmp_path / "spec_references.txt")
     assert dfreferences["series"].n_unique() == 1
     # two reference files can have one label, thus each row names its file
     assert dfreferences["specpath"].unique().to_list() == ["2003du_20031213_3219_8822_00.txt"]
@@ -1511,10 +1515,7 @@ def test_write_data_puts_reference_spectra_in_their_own_table(tmp_path: Path) ->
     )
     assert (tmp_path / "refonly.pdf").is_file()
     assert not (tmp_path / "refonly.txt").exists()
-    pltest.assert_frame_equal(
-        pl.read_csv(tmp_path / "refonly_references.txt", separator=" ", null_values="nan", comment_prefix="#"),
-        dfreferences,
-    )
+    pltest.assert_frame_equal(read_data_file(tmp_path / "refonly_references.txt"), dfreferences)
 
     # the filter curves of --showfilterfunctions have their own wavelength grids, and no table held them
     at.spectra.plot(
@@ -1526,7 +1527,7 @@ def test_write_data_puts_reference_spectra_in_their_own_table(tmp_path: Path) ->
         normalised=True,
         write_data=True,
     )
-    dffilters = pl.read_csv(tmp_path / "filters_references.txt", separator=" ", null_values="nan", comment_prefix="#")
+    dffilters = read_data_file(tmp_path / "filters_references.txt")
     assert dffilters["series"].unique(maintain_order=True).to_list() == ["U", "B", "V", "I"]
     assert (dffilters["transmission"] <= 1.0).all()
 
@@ -2181,7 +2182,9 @@ def write_fake_observed_spectrum(folder: Path) -> Path:
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_spectra_residual_panel_gives_model_minus_reference(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+def test_spectra_residual_panel_gives_model_minus_reference(
+    mockplot: mock.MagicMock, tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """An observed flux of 1.1 times the model gives a negative absolute residual and a ratio of 1 / 1.1."""
     obsfile = write_fake_observed_spectrum(tmp_path)
     at.spectra.plot(
@@ -2193,7 +2196,7 @@ def test_spectra_residual_panel_gives_model_minus_reference(mockplot: mock.Magic
         write_data=True,
         outputfile=tmp_path / "residuals.pdf",
     )
-    dfstats = pl.read_csv(tmp_path / "residuals_residuals.txt", separator=" ", null_values="nan", comment_prefix="#")
+    dfstats = read_data_file(tmp_path / "residuals_residuals.txt")
     assert dfstats.height == 1
     assert dfstats["reference"].item() == "fake observation"
     assert dfstats["npoints"].item() > 100
@@ -2205,9 +2208,7 @@ def test_spectra_residual_panel_gives_model_minus_reference(mockplot: mock.Magic
     assert (residual <= 0.0).all()
     assert (residual < 0.0).any()
     # the table gave the statistics of the residual panel alone, and not its curve
-    dfcurves = pl.read_csv(
-        tmp_path / "residuals_residualcurves.txt", separator=" ", null_values="nan", comment_prefix="#"
-    )
+    dfcurves = read_data_file(tmp_path / "residuals_residualcurves.txt")
     assert dfcurves["reference"].unique().to_list() == ["fake observation"]
     assert np.allclose(dfcurves["residual"].to_numpy(), residual, rtol=1e-6, atol=0, equal_nan=True)
     assert np.allclose(dfcurves["x"].to_numpy(), np.asarray(mockplot.call_args_list[-1].args[1]), rtol=1e-9, atol=0)
@@ -2228,7 +2229,9 @@ def test_spectra_residual_panel_gives_model_minus_reference(mockplot: mock.Magic
 
 
 @pytest.mark.parametrize("referenceonly", [False, True])
-def test_spectra_residual_panel_compares_series_of_the_same_type(tmp_path: Path, referenceonly: bool) -> None:
+def test_spectra_residual_panel_compares_series_of_the_same_type(
+    tmp_path: Path, referenceonly: bool, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """The default baseline is series 0, with two models or two reference spectra."""
     specpath = write_fake_observed_spectrum(tmp_path) if referenceonly else modelpath
     at.spectra.plot(
@@ -2239,13 +2242,15 @@ def test_spectra_residual_panel_compares_series_of_the_same_type(tmp_path: Path,
         write_data=True,
         outputfile=tmp_path / "same_type.pdf",
     )
-    dfstats = pl.read_csv(tmp_path / "same_type_residuals.txt", separator=" ", null_values="nan", comment_prefix="#")
+    dfstats = read_data_file(tmp_path / "same_type_residuals.txt")
     assert dfstats["model"].item() == "comparison"
     assert dfstats["reference"].item() == "baseline"
     assert np.isclose(dfstats["rms"].item(), 0.0)
 
 
-def test_residual_keywords_select_the_baseline_and_comparisons(tmp_path: Path) -> None:
+def test_residual_keywords_select_the_baseline_and_comparisons(
+    tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """Keep the baseline keyword separate from the selected series."""
     at.spectra.plot(
         argsraw=[],
@@ -2257,14 +2262,16 @@ def test_residual_keywords_select_the_baseline_and_comparisons(tmp_path: Path) -
         write_data=True,
         outputfile=tmp_path / "selected.pdf",
     )
-    stats = pl.read_csv(tmp_path / "selected_residuals.txt", separator=" ", null_values="nan", comment_prefix="#")
+    stats = read_data_file(tmp_path / "selected_residuals.txt")
     assert stats["model"].to_list() == ["comparison"]
     assert stats["reference"].to_list() == ["baseline"]
     assert np.isclose(stats["rms"].item(), 0.0)
 
 
 @pytest.mark.parametrize("baselineindex", [0, 1, 2])
-def test_residual_baseline_counts_codecomparison_spectra(tmp_path: Path, baselineindex: int) -> None:
+def test_residual_baseline_counts_codecomparison_spectra(
+    tmp_path: Path, baselineindex: int, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """Check each baseline index with a code comparison spectrum between two other spectra."""
     wavelengths = np.array([3000.0, 4000.0, 5000.0, 6000.0, 7000.0, 9000.0])
     data = pl.DataFrame({"lambda": wavelengths, "300.0": np.arange(1.0, 7.0) * 1e40})
@@ -2293,7 +2300,7 @@ def test_residual_baseline_counts_codecomparison_spectra(tmp_path: Path, baselin
         assert np.allclose(item.x, np.asarray(line.get_xdata(), dtype=np.float64))
         assert np.allclose(item.y, np.asarray(line.get_ydata(), dtype=np.float64), atol=0.0)
         assert item.color == line.get_color()
-    stats = pl.read_csv(tmp_path / "codecomparison_residuals.txt", separator=" ", null_values="nan", comment_prefix="#")
+    stats = read_data_file(tmp_path / "codecomparison_residuals.txt")
     assert stats["reference"].to_list() == [series[baselineindex].label] * 2
     assert stats["model"].to_list() == [item.label for index, item in enumerate(series) if index != baselineindex]
     assert (stats["npoints"] > 0).all()
@@ -2301,7 +2308,9 @@ def test_residual_baseline_counts_codecomparison_spectra(tmp_path: Path, baselin
 
 @pytest.mark.parametrize("baselineindex", range(5))
 @pytest.mark.parametrize("xunit", ["angstrom", "nm"])
-def test_residual_baseline_counts_filter_curves(tmp_path: Path, baselineindex: int, xunit: str) -> None:
+def test_residual_baseline_counts_filter_curves(
+    tmp_path: Path, baselineindex: int, xunit: str, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """Check each filter index and its data in both units of wavelength."""
     with mock.patch.object(plotspectra, "draw_residual_panel", wraps=plotspectra.draw_residual_panel) as mockdraw:
         at.spectra.plot(
@@ -2323,7 +2332,7 @@ def test_residual_baseline_counts_filter_curves(tmp_path: Path, baselineindex: i
         assert np.allclose(item.x, np.asarray(line.get_xdata(), dtype=np.float64))
         assert np.allclose(item.y, np.asarray(line.get_ydata(), dtype=np.float64))
         assert item.color == line.get_color()
-    stats = pl.read_csv(tmp_path / "filters_residuals.txt", separator=" ", null_values="nan", comment_prefix="#")
+    stats = read_data_file(tmp_path / "filters_residuals.txt")
     assert stats["reference"].to_list() == [series[baselineindex].label] * stats.height
     assert stats.height > 0
     if baselineindex == 0:
@@ -2770,7 +2779,9 @@ def test_polarisation_plot_refuses_a_y_range_that_is_not_in_order(
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_polarisation_plot_writes_the_drawn_ratio(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+def test_polarisation_plot_writes_the_drawn_ratio(
+    mockplot: mock.MagicMock, tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """The plot of a Stokes ratio returned before output_data, thus --write_data gave no table."""
     at.spectra.plot(
         argsraw=[],
@@ -2781,7 +2792,7 @@ def test_polarisation_plot_writes_the_drawn_ratio(mockplot: mock.MagicMock, tmp_
         outputfile=tmp_path,
     )
     (tablepath,) = tmp_path.glob("plotpol_*.txt")
-    dftable = pl.read_csv(tablepath, separator=" ", null_values="nan", comment_prefix="#")
+    dftable = read_data_file(tablepath)
     assert dftable.columns == ["x_plotted_angstrom", "Q/I"]
     _, drawnx, drawny = mockplot.call_args.args
     drawnx, drawny = np.asarray(drawnx, dtype=np.float64), np.asarray(drawny, dtype=np.float64)
@@ -2804,7 +2815,7 @@ def test_polarisation_plot_writes_the_drawn_ratio(mockplot: mock.MagicMock, tmp_
         outputfile=tmp_path / "range",
     )
     (tablepath,) = (tmp_path / "range").glob("plotpol_*.txt")
-    wavelengths = pl.read_csv(tablepath, separator=" ", null_values="nan", comment_prefix="#")["x_plotted_angstrom"]
+    wavelengths = read_data_file(tablepath)["x_plotted_angstrom"]
     assert wavelengths.is_between(4000.0, 6000.0).all()
     assert wavelengths.len() > 0
 
@@ -3096,7 +3107,9 @@ def test_filter_functions_take_the_unit_of_the_x_axis(mockplot: mock.MagicMock) 
     assert xvalues.max() < 1000.0
 
 
-def test_write_data_gives_a_table_for_each_wavelength_grid(tmp_path: Path) -> None:
+def test_write_data_gives_a_table_for_each_wavelength_grid(
+    tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """--write_data stopped for two models with different wavelength grids, and the figure can draw both.
 
     A wide table holds one grid, thus the second grid goes in its own table.
@@ -3114,8 +3127,8 @@ def test_write_data_gives_a_table_for_each_wavelength_grid(tmp_path: Path) -> No
         write_data=True,
         outputfile=tmp_path / "twogrids.pdf",
     )
-    dffirst = pl.read_csv(tmp_path / "twogrids.txt", separator=" ", null_values="nan", comment_prefix="#")
-    dfsecond = pl.read_csv(tmp_path / "twogrids_grid2.txt", separator=" ", null_values="nan", comment_prefix="#")
+    dffirst = read_data_file(tmp_path / "twogrids.txt")
+    dfsecond = read_data_file(tmp_path / "twogrids_grid2.txt")
     # the copy of the model has the same plotlabel.txt, thus the name of its columns adds the index of the model
     assert [col for col in dffirst.columns if col.startswith("f_lambda")] == ["f_lambda.TEST MODEL"]
     assert [col for col in dfsecond.columns if col.startswith("f_lambda")] == ["f_lambda.TEST MODEL_1"]
@@ -3138,7 +3151,9 @@ def test_write_data_gives_a_table_for_each_wavelength_grid(tmp_path: Path) -> No
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_write_data_gives_the_edges_of_a_histogram(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+def test_write_data_gives_the_edges_of_a_histogram(
+    mockplot: mock.MagicMock, tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """--histogram draws each bin from its lower edge to its upper edge, and the table gave the centre alone."""
     at.spectra.plot(
         argsraw=[],
@@ -3148,7 +3163,7 @@ def test_write_data_gives_the_edges_of_a_histogram(mockplot: mock.MagicMock, tmp
         write_data=True,
         outputfile=tmp_path / "histogram.pdf",
     )
-    dftable = pl.read_csv(tmp_path / "histogram.txt", separator=" ", null_values="nan", comment_prefix="#")
+    dftable = read_data_file(tmp_path / "histogram.txt")
     drawnedges = np.asarray(mockplot.call_args_list[0].args[1], dtype=np.float64).reshape(-1, 2)
     edges = np.column_stack([dftable["x_lower_angstrom"].to_numpy(), dftable["x_upper_angstrom"].to_numpy()])
     # the plot can draw a bin outside -xmin and -xmax, and the table takes the bins inside them
@@ -3157,7 +3172,9 @@ def test_write_data_gives_the_edges_of_a_histogram(mockplot: mock.MagicMock, tmp
 
 
 @mock.patch.object(mplax.Axes, "fill_between", side_effect=mplax.Axes.fill_between, autospec=True)
-def test_write_data_gives_the_noise_of_shownoise(mockfill: mock.MagicMock, tmp_path: Path) -> None:
+def test_write_data_gives_the_noise_of_shownoise(
+    mockfill: mock.MagicMock, tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """--shownoise draws the band y * (1 +- r), and the table gave y alone, thus it could not give the band."""
     at.spectra.plot(
         argsraw=[],
@@ -3169,7 +3186,7 @@ def test_write_data_gives_the_noise_of_shownoise(mockfill: mock.MagicMock, tmp_p
         write_data=True,
         outputfile=tmp_path / "noise.pdf",
     )
-    dftable = pl.read_csv(tmp_path / "noise.txt", separator=" ", null_values="nan", comment_prefix="#")
+    dftable = read_data_file(tmp_path / "noise.txt")
     modelname = at.get_model_name(modelpath_classic_3d)
     y = dftable[f"flux_plotted.{modelname}"].to_numpy()
     relnoise = np.nan_to_num(dftable[f"flux_relnoise.{modelname}"].to_numpy())
@@ -3501,7 +3518,9 @@ def test_plotspectra_ymax_alone_keeps_the_bottom_at_zero(tmp_path: Path) -> None
     assert axis.get_ylim() == (0.0, 2e-12)
 
 
-def test_spectrum_table_keeps_two_models_of_the_same_name(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_spectrum_table_keeps_two_models_of_the_same_name(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """Two models of the same name gave the same columns, and the second model replaced the first in the table."""
     at.spectra.plot(
         argsraw=[],
@@ -3511,7 +3530,7 @@ def test_spectrum_table_keeps_two_models_of_the_same_name(tmp_path: Path, capsys
         write_data=True,
     )
     assert "gives the columns of" in capsys.readouterr().err
-    dftable = pl.read_csv(tmp_path / "samename.txt", separator=" ", null_values="nan", comment_prefix="#")
+    dftable = read_data_file(tmp_path / "samename.txt")
     fluxcolumns = [colname for colname in dftable.columns if colname.startswith("f_lambda.")]
     assert len(fluxcolumns) == 2, dftable.columns
 

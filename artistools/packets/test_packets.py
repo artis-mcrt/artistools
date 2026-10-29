@@ -608,7 +608,7 @@ def test_lastpacketinteraction_ignores_a_packet_with_no_thermal_emission_record(
 
 @pytest.mark.parametrize(("absorption", "velocityunit"), [(False, "kmps"), (True, "kmps"), (False, "c")])
 def test_lastpacketinteraction_groupby_gives_the_luminosity_of_each_group_in_each_velocity_bin(
-    tmp_path: Path, absorption: bool, velocityunit: str
+    tmp_path: Path, absorption: bool, velocityunit: str, read_data_file: Callable[[Path], pl.DataFrame]
 ) -> None:
     """The group of a packet comes from its emission type, or with --absorption, from its absorption type.
 
@@ -660,7 +660,7 @@ def test_lastpacketinteraction_groupby_gives_the_luminosity_of_each_group_in_eac
             write_data=True,
         )
 
-    dftable = pl.read_csv(tmp_path / "profile.txt", separator=" ", null_values="nan", comment_prefix="#")
+    dftable = read_data_file(tmp_path / "profile.txt")
     luminosities = {
         (label, round(xlower * kmps_per_unit)): (luminosity, perunitvelocity)
         for label, xlower, luminosity, perunitvelocity in dftable.select(
@@ -680,7 +680,7 @@ def test_lastpacketinteraction_groupby_gives_the_luminosity_of_each_group_in_eac
         assert np.isclose(perunitvelocity, energy / delta_t_s / binwidth, rtol=1e-6, atol=0.0), key
 
     # the summary includes the Fe IV packet above the bins, and the median velocity takes the energy as the weight
-    dfsummary = pl.read_csv(tmp_path / "profile_summary.txt", separator=" ", null_values="nan", comment_prefix="#")
+    dfsummary = read_data_file(tmp_path / "profile_summary.txt")
     summaryrows = {row["label"]: row for row in dfsummary.iter_rows(named=True)}
     assert summaryrows.keys() == {"Fe IV", "Other"}
     assert summaryrows["Fe IV"]["packetcount"] == 4
@@ -690,7 +690,9 @@ def test_lastpacketinteraction_groupby_gives_the_luminosity_of_each_group_in_eac
         assert np.isclose(median * kmps_per_unit, median_kmps, rtol=1e-6, atol=0.0), label
 
 
-def test_lastinteractionvelocity_gives_the_energy_weighted_quartiles_of_each_timestep(tmp_path: Path) -> None:
+def test_lastinteractionvelocity_gives_the_energy_weighted_quartiles_of_each_timestep(
+    tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """A packet takes the timestep of its arrival time, and the quartiles take the energy of each packet as the weight.
 
     A packet at the start time of a timestep is in that timestep, and a packet outside the wavelength range is in no
@@ -729,7 +731,7 @@ def test_lastinteractionvelocity_gives_the_energy_weighted_quartiles_of_each_tim
             write_data=True,
         )
 
-    dftable = pl.read_csv(tmp_path / "velocity.txt", separator=" ", null_values="nan", comment_prefix="#")
+    dftable = read_data_file(tmp_path / "velocity.txt")
     assert dftable["timestep"].to_list() == [25, 26]
     assert dftable["packetcount"].to_list() == [3, 1]
     # sqrt(sum(e^2)) / sum(e) of the energies 1, 2, and 1, and of one packet
@@ -746,7 +748,9 @@ def test_lastinteractionvelocity_gives_the_energy_weighted_quartiles_of_each_tim
         assert np.allclose(dftable[column].to_numpy(), values, rtol=0.0, atol=15.0), column
 
 
-def test_lastpacketinteraction_groupby_reads_the_escaped_packets_of_the_window(tmp_path: Path) -> None:
+def test_lastpacketinteraction_groupby_reads_the_escaped_packets_of_the_window(
+    tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """With real packets, the groups hold the luminosity of the escaped r-packets of the wavelength range and timestep.
 
     The luminosity is the packet energy divided by the width of the timestep and the number of MPI ranks.
@@ -767,7 +771,7 @@ def test_lastpacketinteraction_groupby_reads_the_escaped_packets_of_the_window(t
         outputfile=tmp_path / "groups.pdf",
         write_data=True,
     )
-    dfsummary = pl.read_csv(tmp_path / "groups_summary.txt", separator=" ", null_values="nan", comment_prefix="#")
+    dfsummary = read_data_file(tmp_path / "groups_summary.txt")
 
     nprocs, lzpackets = at.packets.scan_packets(modelpath, packet_type="TYPE_ESCAPE", escape_type="TYPE_RPKT")
     dfwindow = (
@@ -784,7 +788,9 @@ def test_lastpacketinteraction_groupby_reads_the_escaped_packets_of_the_window(t
     assert np.isclose(float(dfsummary["luminosity_erg_per_s"].sum()), luminosity, rtol=1e-6, atol=0.0)
 
 
-def test_lastpacketinteraction_groupby_bins_the_line_of_sight_velocity(tmp_path: Path) -> None:
+def test_lastpacketinteraction_groupby_bins_the_line_of_sight_velocity(
+    tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """-velocitykind lineofsight bins (em_pos . dir) / em_time from minus to plus the last edge.
 
     The plot had only the radial velocity, which cannot separate the blue side and the red side of a P Cygni profile.
@@ -805,7 +811,7 @@ def test_lastpacketinteraction_groupby_bins_the_line_of_sight_velocity(tmp_path:
         outputfile=tmp_path / "groups.pdf",
         write_data=True,
     )
-    dftable = pl.read_csv(tmp_path / "groups.txt", separator=" ", null_values="nan", comment_prefix="#")
+    dftable = read_data_file(tmp_path / "groups.txt")
     dfbins = (
         dftable.group_by("x_lower_kmps", "x_upper_kmps").agg(pl.col("luminosity_erg_per_s").sum()).sort("x_lower_kmps")
     )
@@ -1054,7 +1060,7 @@ def test_timestep_of_a_time_at_the_start_of_a_timestep() -> None:
 @mock.patch.object(mplax.Axes, "imshow", side_effect=mplax.Axes.imshow, autospec=True)
 @pytest.mark.parametrize("logcolorscale", [False, True], ids=["linear", "log"])
 def test_lastpacketinteraction_write_data_gives_the_values_of_the_image(
-    mockimshow: mock.MagicMock, logcolorscale: bool, tmp_path: Path
+    mockimshow: mock.MagicMock, logcolorscale: bool, tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
 ) -> None:
     """Each row of the table gives the edges of one bin and the value that the image shows in that bin."""
     from artistools.packets import plotlastpacketinteraction
@@ -1072,7 +1078,7 @@ def test_lastpacketinteraction_write_data_gives_the_values_of_the_image(
     )
 
     image = mockimshow.call_args.args[1]
-    dftable = pl.read_csv(outputfile.with_suffix(".txt"), separator=" ", null_values="nan", comment_prefix="#")
+    dftable = read_data_file(outputfile.with_suffix(".txt"))
     valuecolumn = (
         "log10_escaped_luminosity_erg_per_s_per_cm3" if logcolorscale else "escaped_luminosity_erg_per_s_per_cm3"
     )
@@ -1099,7 +1105,7 @@ def test_lastpacketinteraction_write_data_gives_the_values_of_the_image(
             velocitymax_kmps=0.5 * at.constants.C_cm_per_s / at.constants.km_to_cm,
             write_data=True,
         )
-        dflinear = pl.read_csv(tmp_path / "linear.txt", separator=" ", null_values="nan", comment_prefix="#")
+        dflinear = read_data_file(tmp_path / "linear.txt")
         assert np.allclose(
             10 ** dftable[valuecolumn].to_numpy(),
             dflinear["escaped_luminosity_erg_per_s_per_cm3"].to_numpy(),
@@ -1136,7 +1142,7 @@ def test_lastpacketinteraction_image_takes_each_escaped_packet(
 
 
 def test_packet_commands_check_the_valid_range_of_the_arrival_times(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], read_data_file: Callable[[Path], pl.DataFrame]
 ) -> None:
     """Plotlastpacketinteraction stops for a timestep after the valid range, and plotlastinteractionvelocity skips it.
 
@@ -1163,13 +1169,15 @@ def test_packet_commands_check_the_valid_range_of_the_arrival_times(
             plotinvalidpart=plotinvalidpart,
             write_data=True,
         )
-        dftable = pl.read_csv(outputfile.with_suffix(".txt"), separator=" ", null_values="nan", comment_prefix="#")
+        dftable = read_data_file(outputfile.with_suffix(".txt"))
         timestepends = at.get_timestep_times(modelpath, loc="end")
         latestend_days = max(timestepends[timestep] for timestep in dftable["timestep"].to_list())
         assert (latestend_days > validend_days) == plotinvalidpart
 
 
-def test_lastpacketinteraction_dirbin_takes_one_direction_bin_as_in_plotspectra(tmp_path: Path) -> None:
+def test_lastpacketinteraction_dirbin_takes_one_direction_bin_as_in_plotspectra(
+    tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """-dirbin N takes the one direction bin N, and --average_over_phi_angle takes all the phi bins of its costheta bin.
 
     The packet commands always took the costheta bin, thus -dirbin 10 selected other directions than in plotspectra.
@@ -1198,9 +1206,7 @@ def test_lastpacketinteraction_dirbin_takes_one_direction_bin_as_in_plotspectra(
             outputfile=outputfile,
             write_data=True,
         )
-        dfsummary = pl.read_csv(
-            outputfile.with_name(f"{outputfile.stem}_summary.txt"), separator=" ", null_values="nan", comment_prefix="#"
-        )
+        dfsummary = read_data_file(outputfile.with_name(f"{outputfile.stem}_summary.txt"))
         assert int(dfsummary["packetcount"].sum()) == expectedcount > 0
 
 

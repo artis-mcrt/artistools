@@ -1,4 +1,5 @@
 import io
+from collections.abc import Callable
 from pathlib import Path
 from unittest import mock
 
@@ -77,7 +78,9 @@ def test_values_of_a_range_of_cells_give_one_row_for_each_cell_and_timestep(
     assert any(line.startswith("# command:") for line in header)
 
 
-def test_values_give_the_time_of_volume_prevtimestep(tmp_path: Path) -> None:
+def test_values_give_the_time_of_volume_prevtimestep(
+    tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """The method lines gave the mid time of the row for volume_prevtimestep, which takes the timestep before."""
     from artistools.estimators.values import main
 
@@ -101,7 +104,7 @@ def test_values_give_the_time_of_volume_prevtimestep(tmp_path: Path) -> None:
         "volume_prevtimestep = init_volume (t_prev / t_model)^3, where t_prev is the mid time of the timestep before"
         in text
     )
-    dfwritten = pl.read_csv(outputfile, separator=" ", null_values="nan", comment_prefix="#").sort("timestep")
+    dfwritten = read_data_file(outputfile).sort("timestep")
     volumecolumn = next(column for column in dfwritten.columns if column.startswith("volume["))
     prevcolumn = next(column for column in dfwritten.columns if column.startswith("volume_prevtimestep"))
     assert dfwritten[prevcolumn].to_list()[0] is None

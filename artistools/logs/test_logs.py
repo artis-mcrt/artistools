@@ -151,7 +151,7 @@ def test_corehours_counts_the_link_to_a_log_one_time(tmp_path: Path, capsys: pyt
 
 
 def test_logsummary_reads_a_run_that_stopped_before_its_estimators(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], read_data_file: Callable[[Path | io.StringIO], pl.DataFrame]
 ) -> None:
     """A run that stops early writes a log and no estimator file, and its log holds the error that stopped it."""
     import artistools.__main__
@@ -165,12 +165,14 @@ def test_logsummary_reads_a_run_that_stopped_before_its_estimators(
     )
 
     artistools.__main__.main(argsraw=["logsummary", str(modelfolder), "--quiet"])
-    dfsummary = pl.read_csv(io.StringIO(capsys.readouterr().out), separator=" ", null_values="nan", comment_prefix="#")
+    dfsummary = read_data_file(io.StringIO(capsys.readouterr().out))
     assert dfsummary["level"].to_list() == ["error"]
     assert dfsummary["first_timestep"].item() == 0
 
 
-def test_logsummary_all_ranks_reads_the_ranks_of_each_run(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_logsummary_all_ranks_reads_the_ranks_of_each_run(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], read_data_file: Callable[[Path | io.StringIO], pl.DataFrame]
+) -> None:
     """A restart can use fewer ranks, and -ranks all read only the ranks of input.txt, which left out an error."""
     import artistools.__main__
 
@@ -187,7 +189,7 @@ def test_logsummary_all_ranks_reads_the_ranks_of_each_run(tmp_path: Path, capsys
         )
 
     artistools.__main__.main(argsraw=["logsummary", str(modelfolder), "-ranks", "all", "--quiet"])
-    dfsummary = pl.read_csv(io.StringIO(capsys.readouterr().out), separator=" ", null_values="nan", comment_prefix="#")
+    dfsummary = read_data_file(io.StringIO(capsys.readouterr().out))
     assert sorted(dfsummary["level"].to_list()) == ["error", "warning"]
 
 
@@ -351,7 +353,9 @@ def test_logsummary_keeps_identical_logs_of_two_run_folders(tmp_path: Path, caps
     assert dfsummary["count"].to_list() == [3]
 
 
-def test_logsummary_counts_each_kind_of_warning(capsys: pytest.CaptureFixture[str]) -> None:
+def test_logsummary_counts_each_kind_of_warning(
+    capsys: pytest.CaptureFixture[str], read_data_file: Callable[[Path | io.StringIO], pl.DataFrame]
+) -> None:
     """A log holds thousands of warnings of a few kinds, thus the table names each kind, its timesteps, and its cells.
 
     In the classic-mode 3D test, heating is bigger than cooling in many cells, thus ARTIS sets Te to MAXTEMP. The first
@@ -360,7 +364,7 @@ def test_logsummary_counts_each_kind_of_warning(capsys: pytest.CaptureFixture[st
     import artistools.__main__
 
     artistools.__main__.main(argsraw=["logsummary", str(modelpath_classic_3d), "--quiet"])
-    dfsummary = pl.read_csv(io.StringIO(capsys.readouterr().out), separator=" ", null_values="nan", comment_prefix="#")
+    dfsummary = read_data_file(io.StringIO(capsys.readouterr().out))
     dfmaxtemp = dfsummary.filter(pl.col("kind").str.contains("T_e forced to be MAXTEMP"))
     assert dfmaxtemp.height == 1
     assert dfmaxtemp["count"].item() > 1000

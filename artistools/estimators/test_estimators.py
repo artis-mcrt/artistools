@@ -2802,7 +2802,9 @@ def test_makegif_takes_the_gif_name_from_o(tmp_path: Path) -> None:
     assert dottedgif.is_file(), f"no gif in {list((tmp_path / 'results.v1').iterdir())}"
 
 
-def test_frames_of_a_gif_print_one_table(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_frames_of_a_gif_print_one_table(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """Each frame printed its own table with its own header, thus the output of a gif was not one table."""
     gifpath = tmp_path / "movie.gif"
     at.estimators.plotestimators.main(
@@ -2817,7 +2819,7 @@ def test_frames_of_a_gif_print_one_table(tmp_path: Path, capsys: pytest.CaptureF
     )
     output = capsys.readouterr().out
     assert output.count(" velocity_kmps ") == 1
-    dftable = pl.read_csv(tmp_path / "movie.txt", separator=" ", null_values="nan", comment_prefix="#")
+    dftable = read_data_file(tmp_path / "movie.txt")
     assert sorted(dftable["timestep"].unique().to_list()) == ["ts040", "ts041", "ts042"]
 
 
@@ -2971,7 +2973,9 @@ def test_estimator_image_table_holds_only_the_drawn_cells() -> None:
     assert dfcut.filter(pl.col("panel") == 1)["vel_x_on_c"].to_list() == pytest.approx([-0.05], rel=1e-9)
 
 
-def test_estimator_plot_of_2_dimensions_gives_the_average_around_the_z_axis(tmp_path: Path) -> None:
+def test_estimator_plot_of_2_dimensions_gives_the_average_around_the_z_axis(
+    tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """-dimensionreduce 2 gives the mean of the cells in each ring of cylindrical radius and z."""
     ((_, edges1, edges2, tegrid),) = get_image_panel_calls(
         {"plotlist": [["Te"]], "dimensionreduce": 2, "write_data": True}, tmp_path
@@ -2979,7 +2983,7 @@ def test_estimator_plot_of_2_dimensions_gives_the_average_around_the_z_axis(tmp_
     assert len(list(tmp_path.glob("plotestimators_cylindrical_rz_ts008_*.pdf"))) == 1
     # --write_data gave only a warning for a colour image, and no table of its cells
     (tablepath,) = tmp_path.glob("plotestimators_cylindrical_rz_ts008_*.txt")
-    dftable = pl.read_csv(tablepath, separator=" ", null_values="nan", comment_prefix="#")
+    dftable = read_data_file(tablepath)
     assert dftable.height == int(np.isfinite(tegrid.filled(np.nan)).sum())
     assert np.isclose(dftable["vel_rcyl_on_c"].to_numpy().min(), (edges1[0] + edges1[1]) / 2)
     assert np.allclose(np.sort(dftable["value"].to_numpy()), np.sort(tegrid.compressed()), rtol=1e-6, atol=0)
@@ -4728,7 +4732,10 @@ def test_classic_restart_repeats_its_first_timestep(tmp_path: Path) -> None:
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_estimator_print_data_gives_the_drawn_values(
-    mockplot: mock.MagicMock, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    mockplot: mock.MagicMock,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+    read_data_file: Callable[[Path | io.StringIO], pl.DataFrame],
 ) -> None:
     """--print_data must give the values of the drawn line, thus a script gets the plot as numbers."""
     at.estimators.plot(
@@ -4738,7 +4745,7 @@ def test_estimator_print_data_gives_the_drawn_values(
     headerstart = output.rindex("\n", 0, output.index(" velocity_kmps ")) + 1
     # an empty line separates the table of the points from the table _summary
     pointstext, summarytext = output[headerstart:].split("\n\n", 1)
-    dftable = pl.read_csv(io.StringIO(pointstext), separator=" ", null_values="nan", comment_prefix="#")
+    dftable = read_data_file(io.StringIO(pointstext))
     assert summarytext.startswith("timestep timedays series subplot point_count ")
 
     assert set(dftable["series"]) == {"Te"}
@@ -4769,9 +4776,7 @@ def test_estimator_print_data_gives_the_drawn_values(
     )
     output = capsys.readouterr().out
     headerstart = output.rindex("\n", 0, output.index(" velocity_kmps ")) + 1
-    dfmarkertable = pl.read_csv(
-        io.StringIO(output[headerstart:].split("\n\n", 1)[0]), separator=" ", null_values="nan", comment_prefix="#"
-    )
+    dfmarkertable = read_data_file(io.StringIO(output[headerstart:].split("\n\n", 1)[0]))
     dfline = dfmarkertable.filter(pl.col("points") == "line")
     assert dfline.height == dftable.height
     assert np.allclose(dfline["value"], dftable["value"], rtol=1e-6, atol=0)
@@ -4792,7 +4797,9 @@ def test_listvariables_print_data_gives_the_units_of_each_column(capsys: pytest.
     assert "fraction" in descriptions["heating_heating_dep/total_dep"]
 
 
-def test_summary_table_agrees_with_the_summary_lines(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_summary_table_agrees_with_the_summary_lines(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """The table _summary of --write_data gives the numbers of each summary line, thus an agent need not parse the line.
 
     The maximum must also agree with the bins of the table of the plotted points, which a different query makes.
@@ -4808,14 +4815,9 @@ def test_summary_table_agrees_with_the_summary_lines(tmp_path: Path, capsys: pyt
     captured = capsys.readouterr()
     output = captured.out + captured.err
     (summaryfile,) = tmp_path.glob("*_summary.txt")
-    dfsummary = pl.read_csv(summaryfile, separator=" ", null_values="nan", comment_prefix="#")
+    dfsummary = read_data_file(summaryfile)
     assert dfsummary["series"].to_list() == ["Te", "rho"]
-    dfpoints = pl.read_csv(
-        summaryfile.with_name(summaryfile.name.replace("_summary", "")),
-        separator=" ",
-        null_values="nan",
-        comment_prefix="#",
-    )
+    dfpoints = read_data_file(summaryfile.with_name(summaryfile.name.replace("_summary", "")))
     for row in dfsummary.iter_rows(named=True):
         match = re.search(
             rf"{row['series']}: subplot 0, (\d+) points, .*, max (\S+) {re.escape(row['units'])} at x = (\S+),"
@@ -4865,7 +4867,9 @@ def test_element_group_mass_fractions_take_only_the_elements_of_the_group() -> N
     assert "init_X_actinides" not in dfgroups.columns
 
 
-def test_dirbin_selects_the_cells_and_a_mass_fraction_takes_the_mass_weight(tmp_path: Path) -> None:
+def test_dirbin_selects_the_cells_and_a_mass_fraction_takes_the_mass_weight(
+    tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """-dirbin 50 keeps the cells with 0 ≤ cos θ ≤ 0.2 at the centre, and init_X_Fe uses the cell masses as weights.
 
     Te uses the volume as the weight. A mean of a mass fraction with that weight gave too much weight to the cells of
@@ -4881,7 +4885,7 @@ def test_dirbin_selects_the_cells_and_a_mass_fraction_takes_the_mass_weight(tmp_
         write_data=True,
     )
     (summaryfile,) = tmp_path.glob("*_summary.txt")
-    dfsummary = pl.read_csv(summaryfile, separator=" ", null_values="nan", comment_prefix="#")
+    dfsummary = read_data_file(summaryfile)
 
     _, modelmeta = at.scan_modeldata(modelpath_classic_3d)
     dfcells = (

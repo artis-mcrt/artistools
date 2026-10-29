@@ -1000,13 +1000,10 @@ def test_plotinitialcomposition(tmp_path: Path) -> None:
     assert (tmp_path / "plotcomposition_rho,fe.pdf").is_file()
 
 
-def read_data_table(path: Path) -> pl.DataFrame:
-    """Read a table of --write_data, which starts with comment lines and gives a missing value as nan."""
-    return pl.read_csv(path, separator=" ", null_values="nan", comment_prefix="#")
-
-
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_plotdensity_write_data_gives_the_plotted_profiles(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+def test_plotdensity_write_data_gives_the_plotted_profiles(
+    mockplot: mock.MagicMock, tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """--write_data gives the points of each curve of each panel, and a model with no Ye has a null Ye.
 
     The enclosed mass and the dM/dv profile have different velocity grids, thus each one has its own table.
@@ -1035,8 +1032,8 @@ def test_plotdensity_write_data_gives_the_plotted_profiles(mockplot: mock.MagicM
         quiet=True,
     )
 
-    dfenclosed = read_data_table(tmp_path / "densityprofile.txt")
-    dfprofile = read_data_table(tmp_path / "densityprofile_massprofile.txt")
+    dfenclosed = read_data_file(tmp_path / "densityprofile.txt")
+    dfprofile = read_data_file(tmp_path / "densityprofile_massprofile.txt")
     assert dfprofile.filter(pl.col("model") == "noye")["Ye"].is_null().all()
 
     # main names the axes after it draws on them, thus the label of the axes gives the panel of each call
@@ -1054,7 +1051,9 @@ def test_plotdensity_write_data_gives_the_plotted_profiles(mockplot: mock.MagicM
     assert ncurves == 5
 
 
-def test_plotinitialcomposition_write_data_gives_each_pixel_of_the_slice(tmp_path: Path) -> None:
+def test_plotinitialcomposition_write_data_gives_each_pixel_of_the_slice(
+    tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """--write_data gives one row for each pixel, with the velocities of the cell and the value of each panel.
 
     The values are the values of the images, thus they have the log10 of the colour scale, and a hidden empty cell
@@ -1068,7 +1067,7 @@ def test_plotinitialcomposition_write_data_gives_each_pixel_of_the_slice(tmp_pat
             write_data=True,
         )
 
-    dftable = read_data_table(tmp_path / "plotcomposition_rho,fe.txt")
+    dftable = read_data_file(tmp_path / "plotcomposition_rho,fe.txt")
     assert mockimshow.call_count == 2
     for call, column in zip(mockimshow.call_args_list, ["log10_rho_g_per_cm3", "log10_rho_Fe_g_per_cm3"], strict=True):
         valuegrid = call.args[1]
@@ -2543,7 +2542,9 @@ def test_plotinitialabundances_main_passes_the_selection(tmp_path: Path) -> None
     assert (tmp_path / "plotinitialabundances_XvsA_vmax0.02_thetamin90.0.pdf").is_file()
 
 
-def test_plotinitialabundances_write_data_gives_the_plotted_curves(tmp_path: Path) -> None:
+def test_plotinitialabundances_write_data_gives_the_plotted_curves(
+    tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """--write_data gives one table with the points of the curve of each model, which have different nuclides."""
     with mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True) as mockplot:
         at.inputmodel.plotinitialabundances.main(
@@ -2551,7 +2552,7 @@ def test_plotinitialabundances_write_data_gives_the_plotted_curves(tmp_path: Pat
             write_data=True,
         )
 
-    dftable = read_data_table(tmp_path / "plotinitialabundances_abundancevsZ.txt")
+    dftable = read_data_file(tmp_path / "plotinitialabundances_abundancevsZ.txt")
     assert dftable.columns == ["model", "modelpath", "Z", "abundance"]
     assert mockplot.call_count == 2
     for call in mockplot.call_args_list:
@@ -2562,7 +2563,9 @@ def test_plotinitialabundances_write_data_gives_the_plotted_curves(tmp_path: Pat
         assert dfcurve.join(dfdrawn, on=["Z", "abundance"], how="anti").is_empty()
 
 
-def test_plotinitialabundances_table_keeps_two_models_of_one_name_apart(tmp_path: Path) -> None:
+def test_plotinitialabundances_table_keeps_two_models_of_one_name_apart(
+    tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """Two models of one name gave one value of the column model, and the filter took them for one line."""
     modelcopy = tmp_path / "copy" / modelpath.name
     modelcopy.mkdir(parents=True)
@@ -2573,7 +2576,7 @@ def test_plotinitialabundances_table_keeps_two_models_of_one_name_apart(tmp_path
         argsraw=[str(modelpath), str(modelcopy), "-x", "Z", "-y", "abundance", "-o", str(tmp_path)], write_data=True
     )
 
-    dftable = read_data_table(tmp_path / "plotinitialabundances_abundancevsZ.txt")
+    dftable = read_data_file(tmp_path / "plotinitialabundances_abundancevsZ.txt")
     assert sorted(dftable["modelpath"].unique().to_list()) == sorted([str(modelpath), str(modelcopy)])
     curvesizes = dftable.group_by("modelpath").len()["len"].to_list()
     assert len(set(curvesizes)) == 1
@@ -3570,7 +3573,9 @@ def test_closest_network_timesteps_agree_with_a_filter_of_each_time(trajectory_c
     assert get_closest_network_timesteps(trajectory_copy, 114511, times[-1:], cond="greaterorequal") == [None]
 
 
-def test_plotdensity_table_keeps_two_models_of_one_label_apart(tmp_path: Path) -> None:
+def test_plotdensity_table_keeps_two_models_of_one_label_apart(
+    tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """Two models of one label gave one value of the column model, and the filter took them for one line."""
     modelcopy = tmp_path / "copy"
     modelcopy.mkdir()
@@ -3585,12 +3590,14 @@ def test_plotdensity_table_keeps_two_models_of_one_label_apart(tmp_path: Path) -
         quiet=True,
     )
     for filename in ("densityprofile.txt", "densityprofile_massprofile.txt"):
-        dftable = read_data_table(tmp_path / filename)
+        dftable = read_data_file(tmp_path / filename)
         assert sorted(dftable["modelpath"].unique().to_list()) == sorted([str(modelpath), str(modelcopy)]), filename
         assert len(set(dftable.group_by("modelpath").len()["len"].to_list())) == 1, filename
 
 
-def test_plotdensity_write_data_gives_only_the_velocities_of_the_axis(tmp_path: Path) -> None:
+def test_plotdensity_write_data_gives_only_the_velocities_of_the_axis(
+    tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """The axis shows the velocities from -xmin to -xmax, and the tables also gave the points far outside the axis.
 
     A point outside the axis stays only as the end of a segment that crosses an edge of the axis.
@@ -3599,7 +3606,7 @@ def test_plotdensity_write_data_gives_only_the_velocities_of_the_axis(tmp_path: 
         argsraw=[], modelpath=[modelpath], outputpath=tmp_path, xmin=0.01, xmax=0.05, write_data=True, quiet=True
     )
     for filename in ("densityprofile.txt", "densityprofile_massprofile.txt"):
-        dftable = read_data_table(tmp_path / filename)
+        dftable = read_data_file(tmp_path / filename)
         isinside = pl.col("vel_r_on_c").is_between(0.01, 0.05)
         hasinsideneighbour = isinside.shift(1).fill_null(value=False) | isinside.shift(-1).fill_null(value=False)
         assert dftable.filter(isinside).height > 0, filename

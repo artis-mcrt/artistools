@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 if t.TYPE_CHECKING:
+    import io
     from collections.abc import Callable
     from collections.abc import Sequence
 
@@ -84,12 +85,12 @@ def get_plot_xy() -> "Callable[[t.Any], tuple[np.ndarray, np.ndarray]]":
 
 
 @pytest.fixture
-def read_data_file() -> "Callable[[Path], pl.DataFrame]":
-    """Return a function that reads a table that --write-data wrote."""
+def read_data_file() -> "Callable[[Path | io.StringIO], pl.DataFrame]":
+    """Return a function that reads a table that --write-data wrote or that --print-data printed."""
     import polars as pl
 
-    def read_data_file(path: Path) -> pl.DataFrame:
-        return pl.read_csv(path, separator=" ", null_values="nan", comment_prefix="#")
+    def read_data_file(source: "Path | io.StringIO") -> pl.DataFrame:
+        return pl.read_csv(source, separator=" ", null_values="nan", comment_prefix="#")
 
     return read_data_file
 

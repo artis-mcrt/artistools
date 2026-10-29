@@ -203,7 +203,9 @@ def test_line_summary_joins_the_cells_of_a_line_with_different_population_method
     assert np.isclose(dfsummary["velocity_kmps_emission_mean"].item(), 1750.0, rtol=1e-12)
 
 
-def test_plotlinecontributions_bins_the_cells_of_each_line_by_velocity(tmp_path: Path) -> None:
+def test_plotlinecontributions_bins_the_cells_of_each_line_by_velocity(
+    tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """The emission and the mean tau_sobolev of each bin agree with a sum by hand over the selected cells of the line.
 
     -costhetamin selects the cells by the direction of their centre, thus the ranking and the emission of each line
@@ -223,7 +225,7 @@ def test_plotlinecontributions_bins_the_cells_of_each_line_by_velocity(tmp_path:
         write_data=True,
         **commonargs,
     )
-    dfdrawn = pl.read_csv(tmp_path / "lines.txt", separator=" ", null_values="nan", comment_prefix="#")
+    dfdrawn = read_data_file(tmp_path / "lines.txt")
     # the rows of the black curve of all the lines come first, and they have no line
     dfalllines = dfdrawn.filter(pl.col("ion").is_null())
     dfdrawn = dfdrawn.filter(pl.col("ion").is_not_null())

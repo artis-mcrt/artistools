@@ -188,7 +188,9 @@ def test_comparetogsinetwork_plots_the_global_qdot_with_no_cell(mockplot: mock.M
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_comparetogsinetwork_write_data_gives_the_drawn_series(mockplot: mock.MagicMock, tmp_path: Path) -> None:
+def test_comparetogsinetwork_write_data_gives_the_drawn_series(
+    mockplot: mock.MagicMock, tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
     """--write_data gives one row for each drawn point of the Qdot figure and of the abundance figure of a cell.
 
     The command had no data flags, and the rule of AGENTS.md gives them to each plot command.
@@ -204,12 +206,9 @@ def test_comparetogsinetwork_write_data_gives_the_drawn_series(mockplot: mock.Ma
         write_data=True,
     )
 
-    def read_table(path: Path) -> pl.DataFrame:
-        return pl.read_csv(path, separator=" ", null_values="nan", comment_prefix="#")
-
     # each heating rate of the test model is zero
-    assert (read_table(tmp_path / "gsinetwork_global-qdot.txt")["qdot_erg_per_s_per_g"] == 0).all()
-    dfabund = read_table(tmp_path / f"gsinetwork_mgi{cell}-abundance.txt")
+    assert (read_data_file(tmp_path / "gsinetwork_global-qdot.txt")["qdot_erg_per_s_per_g"] == 0).all()
+    dfabund = read_data_file(tmp_path / f"gsinetwork_mgi{cell}-abundance.txt")
     drawncount = 0
     for callargs in mockplot.call_args_list:
         _, drawnx, drawny = callargs.args
