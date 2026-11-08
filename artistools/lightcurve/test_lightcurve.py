@@ -2689,6 +2689,37 @@ def test_lightcurve_of_the_angle_average_and_a_bin(mockplot: mock.MagicMock, tmp
     assert mockplot.call_count >= 2
 
 
+@pytest.mark.parametrize("directionresolved", [False, True])
+def test_scan_lightcurve_reads_tables_with_different_time_roundoff(tmp_path: Path, directionresolved: bool) -> None:
+    """Read both tables when their time values have small differences from roundoff."""
+    lcfile = tmp_path / "light_curve.out"
+    lcfile.write_text(
+        "2.03723 1700510 0\n3.17155 60345800 30774900\n72.9323 251910000 250877000\n"
+        "2.03723 0 0\n3.17156 0 0\n72.9322 0 0\n",
+        encoding="utf-8",
+    )
+
+    lcdata = at.lightcurve.scan_lightcurve(lcfile, directionresolved=directionresolved)
+    assert sorted(lcdata) == ([0, 1] if directionresolved else [-1])
+    pltest.assert_frame_equal(
+        lcdata[0 if directionresolved else -1].select("time_days", "luminosity_Lsun", "luminosity_cmf_Lsun").collect(),
+        pl.DataFrame({
+            "time_days": [2.03723, 3.17155, 72.9323],
+            "luminosity_Lsun": [1700510.0, 60345800.0, 251910000.0],
+            "luminosity_cmf_Lsun": [0.0, 30774900.0, 250877000.0],
+        }),
+    )
+    if directionresolved:
+        pltest.assert_frame_equal(
+            lcdata[1].select("time_days", "luminosity_Lsun", "luminosity_cmf_Lsun").collect(),
+            pl.DataFrame({
+                "time_days": [2.03723, 3.17156, 72.9322],
+                "luminosity_Lsun": [0.0, 0.0, 0.0],
+                "luminosity_cmf_Lsun": [0.0, 0.0, 0.0],
+            }),
+        )
+
+
 def test_scan_lightcurve_reads_many_leading_zeros(tmp_path: Path) -> None:
     """ARTIS writes 0.0 as 0, thus a gamma-ray light curve can start with more than 100 rows of 0.
 
