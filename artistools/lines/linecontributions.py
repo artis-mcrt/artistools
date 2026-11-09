@@ -36,6 +36,7 @@ from artistools.misc import exit_with_error
 from artistools.misc import get_average_group_dirbins
 from artistools.misc import get_column_description_lines
 from artistools.misc import get_dirbin_centre_direction
+from artistools.misc import get_inputfilepath
 from artistools.misc import get_model_logname
 from artistools.misc import get_selected_timestep
 from artistools.misc import get_standard_flag
@@ -43,6 +44,7 @@ from artistools.misc import get_timestep_time
 from artistools.misc import get_timestep_times
 from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import get_weighted_quantile_expr
+from artistools.misc import on_model_host
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_file
 from artistools.misc import positive_int_arg
@@ -305,7 +307,7 @@ def get_cell_line_table(
     """Return one row for each cell and line, with the level populations, tau_sobolev, and the emission.
 
     tau_sobolev = (A lambda^3 t / 8 pi) (g_u n_l / g_l - n_u). The emission is n_u A h nu beta, with the escape
-    probability beta = (1 - exp(-tau)) / tau.
+    probability beta = (1 - exp(-tau)) / tau. A population inversion has beta = 1, as in ARTIS.
     """
     time_s = time_days * day_to_s
     popframes = []
@@ -325,7 +327,8 @@ def get_cell_line_table(
         )
     dfpops = pl.concat(popframes)
 
-    tau = pl.col("tau_sobolev")
+    # ARTIS uses tau = 0 for a population inversion (tau_line in rpkt.cc), thus beta is 1 and not above 1
+    tau = pl.col("tau_sobolev").clip(lower_bound=0.0)
     return (
         dfcells
         .select("modelgridindex", "velocity_kmps", "volume", "Te", "nne", "T_exc")
@@ -350,7 +353,7 @@ def get_cell_line_table(
             * (pl.col("upper_g") / pl.col("lower_g") * pl.col("n_lower_per_cm3") - pl.col("n_upper_per_cm3"))
         )
         .with_columns(
-            escape_probability=pl.when(tau.abs() < SMALLTAU).then(1.0 - tau / 2.0).otherwise((1.0 - (-tau).exp()) / tau)
+            escape_probability=pl.when(tau < SMALLTAU).then(1.0 - tau / 2.0).otherwise((1.0 - (-tau).exp()) / tau)
         )
         .with_columns(
             line_emissivity_erg_per_s_per_cm3=pl.col("n_upper_per_cm3")
@@ -464,6 +467,14 @@ def parse_ions(iontexts: Sequence[str], optionname: str) -> list[tuple[int, int]
     return ions
 
 
+@on_model_host
+def get_num_lte_timesteps(modelpath: Path) -> int:
+    """Return the number of LTE timesteps at the start of a run, which is the 19th value line of input.txt."""
+    lines = get_inputfilepath(modelpath).read_text(encoding="utf-8").splitlines()
+    valuelines = [line for line in lines if line.strip() and not line.lstrip().startswith("#")]
+    return int(valuelines[18].split("#")[0])
+
+
 class CellLineInputs(t.NamedTuple):
     """The data that get_cell_line_batches() reads for each batch of cells."""
 
@@ -512,18 +523,24 @@ def get_cell_line_inputs(
     # a model with no NLTE files has no NLTE row for any ion, thus each ion takes its LTE populations
     dfnltepops = pl.DataFrame(schema=NLTEPOPS_SCHEMA)
     if has_nlte_populations(modelpath):
-        dfnltepops = read_nltepops(modelpath, timestep=timestep)
-        if dfnltepops.is_empty():
+        dfreadpops = read_nltepops(modelpath, timestep=timestep)
+        if not dfreadpops.is_empty():
+            dfnltepops = (
+                dfreadpops
+                .filter(pl.col("timestep") == timestep)
+                .select(NLTEPOPS_SCHEMA.names())
+                .unique(subset=["modelgridindex", "Z", "ion_stage", "level"], keep="first", maintain_order=True)
+            )
+        elif timestep < (numltetimesteps := get_num_lte_timesteps(Path(modelpath))):
+            print_detail(
+                f"Timestep {timestep} is an LTE timestep (input.txt gives {numltetimesteps} LTE timesteps). ARTIS"
+                " writes no NLTE populations for such a timestep (nltepop.cc), thus each ion takes its LTE populations"
+            )
+        else:
             exit_with_error(
                 f"The model has NLTE populations, but the NLTE files hold no row for timestep {timestep}",
                 "ARTIS writes the NLTE populations only for some timesteps. Give a different time",
             )
-        dfnltepops = (
-            dfnltepops
-            .filter(pl.col("timestep") == timestep)
-            .select(NLTEPOPS_SCHEMA.names())
-            .unique(subset=["modelgridindex", "Z", "ion_stage", "level"], keep="first", maintain_order=True)
-        )
     if path_is_file(Path(modelpath, "autoion.txt")):
         print_warning(
             "The model has autoion.txt. ARTIS does not include the autoionising levels in the Boltzmann sum of the"
@@ -616,7 +633,8 @@ def get_cell_line_inputs(
     print_detail(
         "The emission of a line in a cell is n_u A h nu beta times the volume of the cell. n_u A h nu is the"
         " emissivity of the line. The escape probability beta = (1 - exp(-tau)) / tau removes the photons that the"
-        f" same line absorbs again in its resonance region ({ESCAPE_PROBABILITY_REFERENCE})"
+        f" same line absorbs again in its resonance region ({ESCAPE_PROBABILITY_REFERENCE}). A population inversion"
+        " gives a negative tau_sobolev. ARTIS uses tau = 0 for such a line (rpkt.cc), thus its beta is 1"
     )
     print_detail(
         "Thus the emission is the energy that leaves the resonance region in the line each second. In an optically"
@@ -756,8 +774,8 @@ def warn_about_line_summary(dfsummary: pl.DataFrame) -> None:
     """Warn about the lines with a population inversion in each cell, and the lines with no level population."""
     if (inverted := dfsummary.filter(pl.col("tau_sobolev_max") < 0.0).height) > 0:
         print_warning(
-            f"{inverted} lines have a negative tau_sobolev in each cell, i.e. a population inversion. The escape"
-            " probability of such a line is above 1"
+            f"{inverted} lines have a negative tau_sobolev in each cell, i.e. a population inversion. ARTIS uses"
+            " tau = 0 for such a line, thus its escape probability is 1"
         )
     if (nopopulation := dfsummary.filter(pl.col("tau_sobolev_max").is_null()).height) > 0:
         print_warning(f"{nopopulation} lines have no level population in any cell, thus they have no tau_sobolev")

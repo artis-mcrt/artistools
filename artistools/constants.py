@@ -29,6 +29,15 @@ hour_to_s = 3600.0  # Hour [s]
 
 angstroms_per_cm = 1e8  # Centimetre [Angstrom]
 angstroms_per_micron = 1e4  # Micrometre [Angstrom]
+angstroms_per_nm = 10.0  # Nanometre [Angstrom]
+
+# m_e c / (8 pi^2 e^2): A_ul = f_lu (g_l / g_u) / (this lambda^2) with lambda in [Angstrom]
+me_c_over_8pi2_e2_s_per_angstrom2 = 1.49919e-16
+
+# The geometric units of the hydrodynamic models (G = c = Msun = 1)
+geometric_time_to_s = 4.926e-6  # Time [s]
+geometric_length_to_km = 1.478  # Length [km]
+geometric_density_to_g_per_cm3 = 6.176e17  # Density [g/cm3]
 
 # The refractive index of standard air is (n - 1) * 1e8 = A + B / (C - sigma^2) + D / (E - sigma^2). The vacuum
 # wavenumber sigma is in [1/micron]. The tuple holds (A, B, C, D, E).

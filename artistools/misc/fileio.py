@@ -286,6 +286,7 @@ def scan_lines(filepath: Path, skip_rows: int = 0, encoding: t.Literal["utf8", "
     with polars_source_open(filepath, mode="rb") as source:
         return pl.scan_csv(
             source,
+            glob=False,
             # the ASCII unit separator, which an ARTIS text file never holds, so that each line stays
             # one field. artisatomic reads a line in the same way, with the same separator
             separator="\x1f",

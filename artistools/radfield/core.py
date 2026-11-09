@@ -10,6 +10,7 @@ import numpy.typing as npt
 import polars as pl
 
 from artistools.constants import c_ang_per_s
+from artistools.constants import C_cm_per_s
 from artistools.constants import h_erg_s
 from artistools.constants import K_B_erg_per_K
 from artistools.misc import get_artis_option
@@ -83,12 +84,13 @@ def j_nu_dbb(arr_nu_hz: Sequence[float] | npt.NDArray[np.floating], W: float, T:
     # frequencies contribute zero. Catching OverflowError around the whole comprehension instead would discard
     # every frequency's value, not just the ones that overflowed
     max_exponent = math.log(sys.float_info.max)
+    two_h_over_c_squared = 2.0 * h_erg_s / C_cm_per_s**2
 
     def j_nu(nu_hz: float) -> float:
         exponent = h_erg_s * nu_hz / T / K_B_erg_per_K
         if exponent >= max_exponent:
             return 0.0
-        return W * 1.4745007e-47 * pow(nu_hz, 3) / math.expm1(exponent)
+        return W * two_h_over_c_squared * pow(nu_hz, 3) / math.expm1(exponent)
 
     # iterate Python floats, since math.expm1 on numpy scalars is much slower
     return [j_nu(nu_hz) for nu_hz in np.asarray(arr_nu_hz, dtype=float).tolist()]

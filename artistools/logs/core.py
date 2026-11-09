@@ -212,11 +212,6 @@ def get_folder_log_ranks(folder: Path) -> list[int]:
     })
 
 
-def summarise_log_messages(dfmessages: pl.DataFrame) -> pl.DataFrame:
-    """Return one row for each kind of message, with its count, its timesteps, its number of cells, and an example."""
-    return combine_log_summaries([get_partial_log_summary(dfmessages)])
-
-
 def get_partial_log_summary(dfmessages: pl.DataFrame) -> pl.DataFrame:
     """Return one row for each kind of message of one log, with its count, its timesteps, its cells, and an example.
 

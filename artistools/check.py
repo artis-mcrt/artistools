@@ -536,7 +536,7 @@ def run_check(checkfunction: Callable[[], tuple[str, str]]) -> tuple[str, str]:
     except SystemExit as exc:
         return "error", f"the check stopped with the exit status {exc.code}, and the message above gives the reason"
     # the row gives the error of one check, and the other checks still run
-    except Exception as exc:  # ruff:ignore[blind-except]
+    except (Exception, pl.exceptions.PanicException) as exc:  # ruff:ignore[blind-except]
         return "error", " ".join(f"{type(exc).__name__}: {exc}".split())
     assert status in STATUSES
     # a message of an exception can hold line breaks, and a detail is one line of the table

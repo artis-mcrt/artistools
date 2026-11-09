@@ -28,6 +28,7 @@ from artistools.constants import K_B_ev_per_K
 from artistools.constants import peck_reeder_air_coefficients
 from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
+from artistools.misc import get_artis_options
 from artistools.misc import get_file_identity
 from artistools.misc import get_parquet_cache_name
 from artistools.misc import modelpath_cache
@@ -770,6 +771,18 @@ def get_kept_levels(dflevels: pl.DataFrame, keptlevelcount: int | None) -> pl.Da
     return dflevels if keptlevelcount is None else dflevels.head(keptlevelcount)
 
 
+def get_single_level_top_ion_stages(modelpath: Path | str) -> dict[int, int]:
+    """Return the top ion stage of each element if ARTIS keeps one level of that ion, or an empty dict.
+
+    The option SINGLE_LEVEL_TOP_ION of artisoptions.h has the name single_level_top_ion in an older ARTIS.
+    """
+    options = get_artis_options(modelpath)
+    if "true" not in {options.get("SINGLE_LEVEL_TOP_ION"), options.get("single_level_top_ion")}:
+        return {}
+    dfcomposition = get_composition_data(modelpath)
+    return dict(zip(dfcomposition["Z"].to_list(), dfcomposition["uppermost_ion_stage"].to_list(), strict=True))
+
+
 def get_ionstages_from_outputfile(modelpath: Path | str) -> dict[int, list[int]]:
     """Return the ion stages of each element from the log of a run, in the sequence of the log.
 
@@ -842,7 +855,11 @@ def get_elements_df() -> pl.DataFrame:
     every helper below. Cached and shared, so callers must derive a new frame rather than modify this one.
     """
     return pl.read_csv(
-        get_path("datadir") / "elements.csv", has_header=True, separator=",", schema_overrides={"Z": pl.Int32}
+        get_path("datadir") / "elements.csv",
+        has_header=True,
+        separator=",",
+        schema_overrides={"Z": pl.Int32},
+        glob=False,
     )
 
 
@@ -1075,7 +1092,7 @@ def scan_nuclides(modelpath: Path) -> pl.LazyFrame:
 
     dfnuclides = (
         pl
-        .scan_csv(polars_source(filepath), separator=" ", has_header=True)
+        .scan_csv(polars_source(filepath), separator=" ", has_header=True, glob=False)
         .rename({"#nucindex": "pellet_nucindex", "Z": "atomic_number"})
         .join(get_elsymbols_df().lazy(), on="atomic_number", how="left", maintain_order="left")
         .with_columns(nucname=pl.col("elsymbol") + pl.col("A").cast(pl.String))
@@ -1125,6 +1142,7 @@ def scan_bflist(modelpath: Path | str) -> pl.LazyFrame:
             separator=" ",
             new_columns=["bfindex", "elementindex", "ionindex", "lowerlevel", "upperionlevel"],
             schema_overrides=schema,
+            glob=False,
         )
         if hastransitions
         else pl.LazyFrame(schema=schema)

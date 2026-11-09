@@ -440,12 +440,12 @@ def copy_figure_of_command(
     worker thread runs the command, thus the window accepts input.
     """
     suffix, dpi = choice
-    tokens = [*remove_options(parser, plottokens, {"dpi"}), "--dpi", str(dpi)]
     files: list[bytes] = []
 
     def draw_file() -> str | None:
         import tempfile
 
+        tokens = [*remove_options(parser, plottokens, {"dpi"}), "--dpi", str(dpi)]
         with tempfile.TemporaryDirectory() as folder:
             filepath = Path(folder) / f"figure.{suffix}"
             commandmain(argsraw=[*tokens, "-o", str(filepath)])

@@ -669,7 +669,7 @@ def map_to_artis(
     print(f"Number of non-zero nuclides {len(dictabunds)}")
     dfmodel = dfmodel.with_columns(list(itertools.starmap(pl.Series, dictabunds.items())))
 
-    dfelabundances = pl.DataFrame(dictelabunds).fill_null(0.0)
+    dfelabundances = pl.DataFrame(dictelabunds)
 
     if replacedyn:
         # Either replace dynamical ejecta or interpolate between the models
@@ -857,12 +857,16 @@ def map_to_artis(
 
             # ... and in the model dataframe
             dfmodel_aligned, dyn_model_aligned = align_composition_columns(dfmodel, dyn_model)
+            # a cell volume can be more than the largest Float32 value, and the mass sums below read it
+            floats_without_volume = cs.float() - cs.by_name("volume")
             dfmodel_cast = dfmodel_aligned.with_columns(
-                cs.float().cast(pl.Float32), pl.col("inputcellid").cast(pl.Int32)
+                floats_without_volume.cast(pl.Float32),
+                pl.col("volume").cast(pl.Float64),
+                pl.col("inputcellid").cast(pl.Int32),
             ).filter(~pl.col("inputcellid").is_in(id_list))
-            dyn_model_cast = dyn_model_aligned.with_columns(cs.float().cast(pl.Float32)).filter(
-                pl.col("inputcellid").is_in(id_list)
-            )
+            dyn_model_cast = dyn_model_aligned.with_columns(
+                floats_without_volume.cast(pl.Float32), pl.col("volume").cast(pl.Float64)
+            ).filter(pl.col("inputcellid").is_in(id_list))
             dfmodel = pl.concat([dfmodel_cast, dyn_model_cast]).sort("inputcellid")
 
             M_tot_after_replacing = dfmodel.select(pl.col("rho").dot(pl.col("volume"))).item() / msol
@@ -1227,14 +1231,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-ngridx",
         type=int,
         default=50,
-        help="The number of cells in x direction the ARTIS model shall have (from --vmax to +vmax)",
+        help="The number of cells in x direction the ARTIS model shall have (from -vmax to +vmax)",
     )
 
     parser.add_argument(
         "-ngridy",
         type=int,
         default=50,
-        help="The number of cells in y direction the ARTIS model shall have (from --vmax to +vmax)",
+        help="The number of cells in y direction the ARTIS model shall have (from -vmax to +vmax)",
     )
 
     parser.add_argument("--nonutrapping", action="store_true", help="Exclude neutrino energy from the snapshot energy")
@@ -1353,6 +1357,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if model_dim == 2:
         if args.perturb3Dmodel:
             print_warning("Density perturbations only work on 3D models. Skip.")
+        if args.replacedyn:
+            print_warning("--replacedyn only works on 3D models, thus the dynamical ejecta stay. Give --mapto3D.")
         ngrid_rcyl = int(args.ngridrcyl)
         ngrid_z = int(args.ngridz)
         (

@@ -49,9 +49,11 @@ from artistools.misc import modelpath_cache
 from artistools.misc import normalize_path_list
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
+from artistools.misc import print_detail
 from artistools.misc import print_heading
 from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
+from artistools.misc import zopen
 from artistools.nltepops import read_nltepops
 from artistools.packets import add_derived_columns_lazy
 from artistools.packets import addarg_maxpacketfiles
@@ -232,6 +234,20 @@ def get_line_luminosities_from_packets(
     return pl.concat([pl.DataFrame({"time": arr_tmid}), *dfluminosities], how="horizontal")
 
 
+def get_shell_volumes_at_1s(modeldata: pl.DataFrame, t_model_s: float) -> npt.NDArray[np.floating]:
+    """Return the volume of each cell at a time of 1 s. A cell with rho = 0 holds no atoms, thus its volume is 0.
+
+    The flow is homologous, thus the volume of a cell scales with t^3.
+    """
+    return (
+        modeldata
+        .select(pl.when(pl.col("rho") > 0.0).then(pl.col("volume").cast(pl.Float64)).otherwise(0.0))
+        .to_series()
+        .to_numpy()
+        / t_model_s**3
+    )
+
+
 def get_line_luminosities_from_pops(
     emfeatures: Sequence[FeatureTuple],
     modelpath: Path | str,
@@ -246,7 +262,7 @@ def get_line_luminosities_from_pops(
     lzmodel, modelmeta = scan_modeldata(modelpath)
     modeldata = (
         add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
-        .select("modelgridindex", "volume")
+        .select("modelgridindex", "volume", "rho")
         .sort("modelgridindex")
         .collect()
     )
@@ -257,10 +273,13 @@ def get_line_luminosities_from_pops(
     # one read gives the populations of every ion, thus each feature filters this frame
     dfnltepops_allions = read_nltepops(modelpath)
 
-    # the flow is homologous, thus the volume of a cell scales with t^3
-    shell_volumes_at_1s = (
-        modeldata["volume"].cast(pl.Float64).to_numpy() / (modelmeta["t_model_init_days"] * day_to_s) ** 3
-    )
+    shell_volumes_at_1s = get_shell_volumes_at_1s(modeldata, modelmeta["t_model_init_days"] * day_to_s)
+    if modelmeta["dimensions"] == 1:
+        print_detail(
+            "A shell with NLTE populations also takes the volume of the shells inside it with matter and with no"
+            " populations. ARTIS writes no NLTE populations for a thick cell (nltepop.cc). A shell with rho = 0"
+            " gives no volume"
+        )
 
     timesteps = [get_timestep_of_timedays(modelpath, float(timedays)) for timedays in arr_tmid]
     dftimes = pl.DataFrame({
@@ -336,9 +355,10 @@ def sum_line_luminosities(
     (timeindex, timestep, t_sec_cubed). Each time must have data for at least one cell.
 
     With fillshellgaps, the cells are the radial shells of a 1D model, in order. A shell with no population data
-    then gives its volume to the next shell outward that has data. Thus an empty shell inside the ejecta counts,
-    and the outermost empty shells do not. The cells of a 2D or 3D model have no radial order, thus each cell with
-    data counts its own volume, and a cell with no data counts nothing.
+    then gives its volume to the next shell outward that has data. Thus a thick shell inside the ejecta counts, and
+    the outermost shells with no data do not. shell_volumes_at_1s gives zero for a shell with rho = 0, thus such a
+    shell gives no volume. The cells of a 2D or 3D model have no radial order. Thus each cell with data counts its
+    own volume, and a cell with no data counts nothing.
     """
     keydtypes = {colname: dfnltepops.schema[colname] for colname in ("timestep", "level", "modelgridindex")}
     dfshells = pl.DataFrame({
@@ -497,7 +517,7 @@ def plot_floers_model_ratios(axis: mplax.Axes, floersmodelratiopath: Path, args:
     # the 263 d epoch is excluded because those models were not run to that epoch with the same setup
     dffloers = (
         pl
-        .read_csv(floersmodelratiopath)
+        .read_csv(floersmodelratiopath, glob=False)
         .filter(pl.col("epoch").cast(pl.Int32) != 263)
         .with_columns(
             modelname=pl
@@ -779,7 +799,8 @@ def read_te_nne_refdata(
             f"Put {refdatafilename} in the working folder, or give --norefdata to plot the model data alone",
         )
 
-    te_nne: dict[str, dict[str, list[float]]] = json.loads(refdatapath.read_text(encoding="utf-8"))
+    with zopen(refdatapath, encoding="utf-8") as refdatafile:
+        te_nne: dict[str, dict[str, list[float]]] = json.load(refdatafile)
     # the keys are strings and not floats, thus the sort takes a key function
     refdatakeys = sorted(te_nne, key=float)
     print(f"{refdatafilename} data available for times: {refdatakeys}")

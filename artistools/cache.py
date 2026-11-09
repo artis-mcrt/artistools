@@ -177,7 +177,14 @@ def make_caches(modelfolder: Path) -> pl.DataFrame:
     for kind, step, nodatadetail in steps:
         try:
             detail = step()
-        except (OSError, ValueError, AssertionError, pl.exceptions.PolarsError) as exc:
+        except (
+            OSError,
+            EOFError,
+            ValueError,
+            AssertionError,
+            pl.exceptions.PolarsError,
+            pl.exceptions.PanicException,
+        ) as exc:
             rows.append((kind, "error", f"{type(exc).__name__}: {exc}"))
             continue
         rows.append((kind, "no data", nodatadetail) if detail is None else (kind, "ok", detail))

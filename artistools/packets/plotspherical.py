@@ -607,10 +607,13 @@ def main(args: argparse.Namespace | None = None, argsraw: list[str] | None = Non
         ]
         outformat = "png"
     elif args.timestep is not None:
-        time_ranges = [
-            (tstarts[ts], tends[ts], f"timestep {ts}")
-            for ts in parse_range_list(str(args.timestep), dictvars={"last": len(tstarts) - 1})
-        ]
+        timesteps = parse_range_list(str(args.timestep), dictvars={"last": len(tstarts) - 1})
+        if outofrange := [ts for ts in timesteps if not 0 <= ts < len(tstarts)]:
+            exit_with_error(
+                f"--timestep gives {outofrange}, but the model has the timesteps 0 to {len(tstarts) - 1}",
+                "Give timesteps in that range",
+            )
+        time_ranges = [(tstarts[ts], tends[ts], f"timestep {ts}") for ts in timesteps]
         outformat = args.format or "pdf"
     else:
         time_ranges = [(args.timemin, args.timemax, "")]

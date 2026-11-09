@@ -154,6 +154,15 @@ def test_linefluxes_feature_includes_a_line_at_a_wavelength_bound() -> None:
     assert feature.lowestlambda == feature.highestlambda == linelambda
 
 
+def test_linefluxes_shell_with_no_matter_has_no_volume() -> None:
+    """A shell with rho = 0 holds no atoms, thus the next shell outward must not take its volume."""
+    from artistools.plotlinefluxes import get_shell_volumes_at_1s
+
+    modeldata = pl.DataFrame({"volume": [8e45, 1e43, 2e43], "rho": [0.0, 1e-14, 2e-14]})
+    volumes = get_shell_volumes_at_1s(modeldata, t_model_s=100.0)
+    assert np.allclose(volumes, [0.0, 1e37, 2e37], rtol=1e-12, atol=0.0)
+
+
 def test_linefluxes_pops_luminosity_matches_a_loop_over_the_cells() -> None:
     """The vectorised sum over the lines and the cells must give what the loop over each cell gave.
 

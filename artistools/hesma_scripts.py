@@ -13,6 +13,7 @@ from artistools.constants import c_ang_per_s
 from artistools.lightcurve.writebollightcurvedata import get_bol_lc_from_lightcurveout
 from artistools.misc import addarg_action
 from artistools.misc import addarg_darkmode
+from artistools.misc import addarg_data_output
 from artistools.misc import addarg_force
 from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelpath
@@ -28,6 +29,7 @@ from artistools.misc import get_standard_flag
 from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import get_vpkt_config
 from artistools.misc import match_closest_time
+from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import read_wsv
 from artistools.misc import require_action
@@ -39,8 +41,8 @@ from artistools.plottools import set_legend
 from artistools.spectra import scan_vspecpol_data
 
 
-def plot_hesma_spectrum(timeavg: float, axes: Sequence[mplax.Axes], hesmafile: Path | str) -> None:
-    """Plot a HESMA reference spectrum at the time closest to timeavg onto each of axes."""
+def plot_hesma_spectrum(timeavg: float, axes: Sequence[mplax.Axes], hesmafile: Path | str) -> pl.DataFrame:
+    """Plot a HESMA reference spectrum at the time closest to timeavg onto each of axes, and return the plotted data."""
     hesma_spec = read_wsv(hesmafile, comment_prefix="#").cast(pl.Float64)
 
     # the header names each column with its time, in a format that the file sets. Thus the lookup takes the
@@ -55,18 +57,26 @@ def plot_hesma_spectrum(timeavg: float, axes: Sequence[mplax.Axes], hesmafile: P
     dist_mpc = 1e-5  # HESMA specta at 10 pc
     hesma_spec = hesma_spec.with_columns(pl.col(timecolumn) * dist_mpc**2)  # refspecditance Mpc / 1 Mpc ** 2
 
+    label = f"HESMA {Path(hesmafile).stem}"
     for ax in axes:
-        ax.plot(hesma_spec[lambdacolumn], hesma_spec[timecolumn], label=f"HESMA {Path(hesmafile).stem}")
+        ax.plot(hesma_spec[lambdacolumn], hesma_spec[timecolumn], label=label)
+
+    return hesma_spec.select(
+        pl.lit(label).alias("label"),
+        pl.col(lambdacolumn).alias("lambda_angstroms"),
+        pl.col(timecolumn).alias("f_lambda"),
+    )
 
 
 def plothesmaresspec(
     ax: mplax.Axes, specfiles: Sequence[Path | str], timedays: float, args: argparse.Namespace
-) -> None:
+) -> pl.DataFrame:
     """Plot each direction bin of each HESMA direction-resolved spectrum file at the time closest to timedays.
 
     A file holds one table for each direction bin. The first row of each table gives the time of each spectrum
-    column, thus the file sets the times and the number of tables.
+    column, thus the file sets the times and the number of tables. The function returns the plotted data.
     """
+    plottedtables = []
     for specfilename in specfiles:
         specdata = read_wsv(specfilename, has_header=False, comment_prefix="#").cast(pl.Float64)
 
@@ -79,13 +89,16 @@ def plothesmaresspec(
 
         # 1e-5 rescales 10 pc to 1 Mpc
         for dirbin, dftable in res_specdata.items():
-            ax.plot(
-                dftable[:, 0].slice(1),
-                dftable[:, timecolumnindex].slice(1) * (1e-5) ** 2,
-                label=f"{Path(specfilename).stem} {dirbin}",
+            wavelengths = dftable[:, 0].slice(1)
+            fluxes = dftable[:, timecolumnindex].slice(1) * (1e-5) ** 2
+            label = f"{Path(specfilename).stem} {dirbin}"
+            ax.plot(wavelengths, fluxes, label=label)
+            plottedtables.append(
+                pl.DataFrame({"lambda_angstroms": wavelengths, "f_lambda": fluxes}).with_columns(label=pl.lit(label))
             )
 
     set_legend(ax, args)
+    return pl.concat(plottedtables)
 
 
 def make_hesma_vspecfiles(modelpath: Path, outpath: Path | None = None) -> None:
@@ -158,7 +171,7 @@ def make_hesma_peakmag_dm15_dm40(
     deltam40_polyfit to that same file.
     """
     viewinganglefilename = f"{band}band_{modelname}_viewing_angle_data.txt"
-    dfviewingangle = read_wsv(pathtofiles / viewinganglefilename)
+    dfviewingangle = read_wsv(pathtofiles / viewinganglefilename, comment_prefix="#")
     columns = dfviewingangle.columns
 
     if "peak_mag_polyfit" not in columns:
@@ -195,16 +208,19 @@ def plot_hesma_peakmag_dm15_dm40(pathtofiles: Path | str, args: argparse.Namespa
     """Plot peak magnitude against dm15 for every width-luminosity file in a folder."""
     fig, axesgrid = make_frame_figure()
     axis = axesgrid[0][0]
+    plottedtables = []
     for filepath in sorted(Path(pathtofiles).iterdir()):
         print(f"Reading {filepath}")
         dfwidthlum = read_wsv(filepath)
         axis.scatter(dfwidthlum["dm15"], dfwidthlum["peakmag"], label=filepath.stem)
+        plottedtables.append(dfwidthlum.select("dm15", "peakmag").with_columns(label=pl.lit(filepath.stem)))
 
     axis.invert_yaxis()
     axis.set_xlabel(r"$\Delta m_{15}$")
     axis.set_ylabel("Peak magnitude")
     set_legend(axis, args)
 
+    output_data(args, {"": pl.concat(plottedtables)}, outputfile)
     save_figure(fig, outputfile, args=args)
 
 
@@ -238,6 +254,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-plotfile", type=Path, help="Path for the plot. Default: hesma_<action>.pdf in the working folder"
     )
     addarg_show(parser)
+    addarg_data_output(parser)
     addarg_timeminmax(parser)
     parser.add_argument(
         "-hesmafile", type=Path, nargs="+", help="HESMA spectrum file(s) to plot (plotspectrum, plotresspec)"
@@ -305,18 +322,22 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         fig, axesgrid = make_frame_figure()
         axis = axesgrid[0][0]
         timedays = require(args.timedays, "-timedays", args.action)
-        for hesmafile in require(args.hesmafile, "-hesmafile", args.action):
+        plottedtables = [
             plot_hesma_spectrum(timedays, [axis], hesmafile)
+            for hesmafile in require(args.hesmafile, "-hesmafile", args.action)
+        ]
         set_legend(axis, args)
+        output_data(args, {"": pl.concat(plottedtables)}, plotfile)
         save_figure(fig, plotfile, args=args)
 
     else:
         fig, axesgrid = make_frame_figure()
         axis = axesgrid[0][0]
-        plothesmaresspec(
+        plotteddata = plothesmaresspec(
             axis,
             require(args.hesmafile, "-hesmafile", args.action),
             require(args.timedays, "-timedays", args.action),
             args,
         )
+        output_data(args, {"": plotteddata}, plotfile)
         save_figure(fig, plotfile, args=args)

@@ -662,8 +662,9 @@ def set_legend(
                 make_room_for_legend,
                 legend,
                 isbest=isbest,
-                keeptop=keeptop or getattr(args, "ymax", None) is not None,
-                keepbottom=keepbottom or getattr(args, "ymin", None) is not None,
+                keeptop=keeptop,
+                keepbottom=keepbottom,
+                userylimits=(getattr(args, "ymin", None), getattr(args, "ymax", None)),
             )
         )
     return legend
@@ -791,12 +792,20 @@ def get_data_fraction_range(ax: mplax.Axes, xlow: float, xhigh: float) -> tuple[
         if follows_data(patch)
     )
     for collection in ax.collections:
-        if isinstance(collection, mplcollections.QuadMesh) or not follows_data(collection):
+        if isinstance(collection, mplcollections.QuadMesh):
             continue
         if isinstance(collection, mplcollections.PathCollection):
+            # the offsets of a scatter hold the data transform, and the transform of the collection is the identity
             offsets = np.asarray(collection.get_offsets(), dtype=np.float64)
-            if offsets.size:
-                scatterpoints.append(toaxes.transform(collection.get_offset_transform().transform(offsets)))
+            offsettransform = collection.get_offset_transform()
+            if (
+                collection.get_visible()
+                and offsets.size
+                and all(offsettransform.contains_branch_seperately(ax.transData))
+            ):
+                scatterpoints.append(toaxes.transform(offsettransform.transform(offsets)))
+            continue
+        if not follows_data(collection):
             continue
         polylines.extend(
             toaxes.transform(collection.get_transform().transform(path.vertices)) for path in collection.get_paths()
@@ -817,14 +826,21 @@ def get_legend_frame(legend: "mpllegend.Legend", renderer: "RendererBase") -> "m
 
 
 def make_room_for_legend(
-    legend: "mpllegend.Legend", renderer: "RendererBase", *, isbest: bool, keeptop: bool, keepbottom: bool
+    legend: "mpllegend.Legend",
+    renderer: "RendererBase",
+    *,
+    isbest: bool,
+    keeptop: bool,
+    keepbottom: bool,
+    userylimits: tuple[float | None, float | None],
 ) -> None:
     """Move the top or the bottom of the y axis, thus the legend does not cover the data.
 
     A legend in the upper half of the axes moves the top, and a legend in the lower half moves the bottom. The
     change scales the distances of the data from the other limit, in the scale of the axis, thus it also suits a log
     axis and an inverted axis. The data then keeps a gap of LEGEND_GAP_FONTSIZES from the legend. A legend at "best"
-    moves to the upper corner that needs less room, because matplotlib found no place clear of the data.
+    moves to the upper corner that needs less room, because matplotlib found no place clear of the data. A limit
+    that equals a value of userylimits stays. The value decides, because -ymin is at the top of an inverted axis.
     """
     ax = legend.axes
     if ax is None or ax.get_legend() is not legend or not legend.get_visible():
@@ -849,6 +865,9 @@ def make_room_for_legend(
     frame, yrange = get_overlap()
     if yrange is None:
         return
+    bottom, top = ax.get_ylim()
+    keeptop = keeptop or top in userylimits
+    keepbottom = keepbottom or bottom in userylimits
     if isbest and not keeptop:
         corners: tuple[t.Literal["upper right", "upper left"], ...] = ("upper right", "upper left")
 
@@ -865,7 +884,6 @@ def make_room_for_legend(
             return
 
     scale = ax.yaxis.get_transform()
-    bottom, top = ax.get_ylim()
     if (bottom, top) != ax.yaxis.limit_range_for_scale(bottom, top):
         # the scale cannot show a limit, e.g. zero on a log axis, thus the fractions of the data mean nothing
         return
@@ -1926,7 +1944,7 @@ def get_viewinganglecolor_for_colorbar(
 
 
 def make_colorbar_viewingangles(
-    scaledmap: t.Any, args: argparse.Namespace, fig: mplfig.Figure | None = None, ax: AxesTree | None = None
+    scaledmap: t.Any, args: argparse.Namespace, *, ax: AxesTree, fig: mplfig.Figure | None = None
 ) -> None:
     """Add a colorbar labelled with the cos(theta) or phi viewing angle bin boundaries."""
     if args.colorbarphi:
@@ -1947,11 +1965,8 @@ def make_colorbar_viewingangles(
     assert len(ticklabels) == len(ticklocs), f"{len(ticklabels)} labels for {len(ticklocs)} ticks of {nbins} bins"
 
     # colorbar takes a flat sequence of axes, thus flatten the grid that subplots() gives
-    axeslist = iter_axes(ax) if ax is not None else None
-    targetfig = fig
-    if targetfig is None:
-        assert axeslist is not None
-        targetfig = axeslist[0].get_figure()
+    axeslist = iter_axes(ax)
+    targetfig = fig if fig is not None else axeslist[0].get_figure()
     assert isinstance(targetfig, mplfig.Figure)
     if any(axis.get_axes_locator() is not None for axis in targetfig.axes):
         # a frame that a Divider places takes back the space that colorbar steals, thus the
@@ -1964,7 +1979,6 @@ def make_colorbar_viewingangles(
     elif fig:
         cbar = fig.colorbar(scaledmap, orientation="horizontal", location="top", pad=0.10, ax=axeslist, shrink=0.95)
     else:
-        assert axeslist is not None
         cbar = targetfig.colorbar(scaledmap, ax=axeslist)
     cbar.set_label(label, rotation=0)
     cbar.locator = mplticker.FixedLocator(ticklocs)

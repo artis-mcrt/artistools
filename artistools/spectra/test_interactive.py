@@ -710,9 +710,9 @@ def test_interactive_unlock_gives_the_default_count(
 ) -> None:
     """A count that came from the length of -fixedionlist becomes the default count when the lock ends."""
     viewer = make_viewer("spectra", [str(modelpath), "-t", "300", "--interactive"])
-    locked = dc.replace(viewer.values, fixedionlist=("Fe II", "Co II"), maxseriescount=2)
+    locked = dc.replace(viewer.values, fixedionlist=("Fe II", "Co II"), maxseriescount=2, countfromlist=True)
     assert interactive.remove_series_lock(locked).maxseriescount == plotspectra.DEFAULT_MAXSERIESCOUNT
-    assert interactive.remove_series_lock(dc.replace(locked, maxseriescount=5)).maxseriescount == 5
+    assert interactive.remove_series_lock(dc.replace(locked, countfromlist=False)).maxseriescount == 2
 
 
 def test_interactive_data_source(make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer]) -> None:

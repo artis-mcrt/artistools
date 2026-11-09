@@ -12,6 +12,7 @@ import numpy as np
 import numpy.typing as npt
 import polars as pl
 
+from artistools.constants import geometric_time_to_s
 from artistools.inputmodel.core import savetologfile
 from artistools.inputmodel.modelfromhydro import read_ejectasnapshot
 from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
@@ -113,7 +114,7 @@ def maptogrid(
 
     # Propagate particles to dtextra using velocities
     logprint(f"Propagating particles for dtextra_seconds={dtextra_seconds}")
-    dtextra = dtextra_seconds / 4.926e-6  # convert to geom units.
+    dtextra = dtextra_seconds / geometric_time_to_s
     dfsnapshot = (
         dfsnapshot
         .with_columns(
@@ -170,7 +171,7 @@ def maptogrid(
 
     logprint(f"Total mass of sph particle {totmass} max dist {rmax} mean dist {rmean}")
     logprint(f"Smoothing length min {hmin} mean {hmean}")
-    logprint("Ratio between vrad and vperp mean", dfsnapshot.select(pl.col("vperp") - pl.col("vrad")).mean().item(0, 0))
+    logprint("Mean ratio of vperp to vrad", dfsnapshot.select(pl.col("vperp") / pl.col("vrad")).mean().item(0, 0))
 
     # check maybe cm and correct by shifting
 
@@ -347,13 +348,12 @@ def maptogrid(
 
     gmass = np.sum(grho) * dx * dy * dz
 
-    # k starts at 1 to match the original scan, which skipped the k=0 plane
-    isempty = grho[:, :, 1:] < 1.0e-20
+    isempty = grho < 1.0e-20
     # compare squared distances to avoid a sqrt over every cell
     dis2 = (
         arrgx[:, np.newaxis, np.newaxis] ** 2
         + arrgy[np.newaxis, :, np.newaxis] ** 2
-        + arrgz[np.newaxis, np.newaxis, 1:] ** 2
+        + arrgz[np.newaxis, np.newaxis, :] ** 2
     )
 
     nzero = int(np.count_nonzero(isempty))

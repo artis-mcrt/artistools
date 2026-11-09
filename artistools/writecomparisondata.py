@@ -20,6 +20,10 @@ from artistools.constants import Lsun_to_erg_per_s
 from artistools.constants import megaparsec_to_cm
 from artistools.estimators import get_estimator_timesteps
 from artistools.estimators import scan_estimators
+from artistools.estimators.deposition import get_cell_deposition_rates
+from artistools.estimators.deposition import get_configured_analytic_channels
+from artistools.estimators.deposition import get_deposition_channels
+from artistools.estimators.deposition import select_deposition_channels
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import scan_modeldata
 from artistools.lightcurve import find_lightcurve_file
@@ -130,25 +134,45 @@ def write_edep(
 ) -> None:
     """Write the deposition of every cell at the selected timesteps, in the format of the workshop.
 
-    ARTIS writes the deposition rate of timestep n into the estimators of timestep n + 1, per unit volume of
-    timestep n. Thus the value of a selected timestep comes from the next timestep, as in deposition.py.
+    The rate comes from the deposition_ columns, as in deposition.py. A model with no such column gets a warning and no
+    file. artistools derives the total_dep of such a model from the heating rate, which is not the deposition rate of
+    a cell.
     """
     # scan_estimators refuses a request of timesteps that ARTIS did not write, e.g. the one after the last
     writtentimesteps = set(get_estimator_timesteps(Path(modelpath)))
-    nexttimesteps = tuple(timestep + 1 for timestep in selected_timesteps if timestep + 1 in writtentimesteps)
-    dfnext = dfestimators.select("modelgridindex", "timestep", total_dep=pl.lit(0.0)).clear()
-    if nexttimesteps:
-        lznext = scan_estimators(modelpath=modelpath, timestep=nexttimesteps)
-        expr_total_dep = (
-            pl.col("total_dep").cast(pl.Float64) if "total_dep" in lznext.collect_schema().names() else pl.lit(0.0)
+    readtimesteps = tuple(
+        sorted({*selected_timesteps, *(ts + 1 for ts in selected_timesteps if ts + 1 in writtentimesteps)})
+    )
+    lzestimators = scan_estimators(modelpath=modelpath, timestep=readtimesteps, join_modeldata=True)
+    colnames = lzestimators.collect_schema().names()
+    if not get_deposition_channels(colnames):
+        print_warning(
+            f"The estimators of {modelpath} hold no deposition_ column, thus they give no deposition rate of a cell."
+            f" The command does not write the file {outfile.name}"
         )
-        dfnext = (
-            lznext
-            .select("modelgridindex", pl.col("timestep") - 1, total_dep=expr_total_dep)
-            .collect()
-            .cast(dfnext.schema)
+        return
+
+    dfcellrates = (
+        get_cell_deposition_rates(
+            lzestimators,
+            selected_timesteps,
+            select_deposition_channels(colnames, None),
+            get_configured_analytic_channels(modelpath),
         )
-    if withoutnext := sorted(set(selected_timesteps) - set(dfnext["timestep"].to_list())):
+        .join(
+            lzestimators.select("timestep", "modelgridindex", "volume"),
+            on=["timestep", "modelgridindex"],
+            how="inner",
+            maintain_order="left",
+        )
+        .select("modelgridindex", "timestep", total_dep=pl.col("dep_erg_per_s") / pl.col("volume"))
+        .collect()
+        .cast(dfestimators.select("modelgridindex", "timestep", total_dep=pl.lit(0.0)).schema)
+    )
+    if nancount := int(dfcellrates["total_dep"].is_nan().sum()):
+        print_warning(f"{nancount} deposition rates are NaN, thus the deposition file gives zero for each of them")
+    dfcellrates = dfcellrates.with_columns(pl.col("total_dep").fill_nan(None))
+    if withoutnext := sorted(set(selected_timesteps) - set(dfcellrates["timestep"].to_list())):
         print_warning(
             f"ARTIS wrote no timestep after {', '.join(str(ts) for ts in withoutnext)}, thus the deposition file"
             " gives zero at those times"
@@ -160,7 +184,7 @@ def write_edep(
     dfdeposition = (
         dfestimators
         .select("modelgridindex", "vel_r_mid", "timestep")
-        .join(dfnext, on=["modelgridindex", "timestep"], how="left", maintain_order="left")
+        .join(dfcellrates, on=["modelgridindex", "timestep"], how="left", maintain_order="left")
         .pivot(on="timestep", index=("modelgridindex", "vel_r_mid"), values="total_dep")
         .select("vel_r_mid", *(pl.col(str(timestep)).fill_null(0.0) for timestep in selected_timesteps))
     )

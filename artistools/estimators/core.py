@@ -33,6 +33,8 @@ from artistools.atomic import get_boltzmann_factor_expr
 from artistools.atomic import get_elsymbol
 from artistools.atomic import get_elsymbolset
 from artistools.atomic import get_ion_levels
+from artistools.atomic import get_kept_level_counts
+from artistools.atomic import get_kept_levels
 from artistools.atomic import roman_numerals
 from artistools.codecomparison import read_reference_estimators
 from artistools.constants import C_cm_per_s
@@ -208,12 +210,12 @@ def get_units(name: str, *, latex: bool = True) -> str | None:
     if not units:
         units = next((value for suffix, value in UNITS_BY_SUFFIX.items() if key.endswith(suffix)), "")
     if not units:
-        # each shorter ending first, because a name can carry the whole quantity at its end, e.g.
-        # init_volume and heating_heating_dep/total_dep. The start "heating" would shadow that ratio
-        units = next((found for start in range(1, len(parts)) if (found := unitsof("_".join(parts[start:])))), "")
-    if not units:
-        # then each shorter start, e.g. gamma_NT_Ar_I finds the record gamma_NT
-        units = next((found for stop in range(len(parts) - 1, 0, -1) if (found := unitsof("_".join(parts[:stop])))), "")
+        # a name can carry the whole quantity at its end, e.g. init_volume and heating_heating_dep/total_dep, or at its
+        # start, e.g. gamma_NT_Ar_I. An element at the end names no quantity, e.g. Te in nnelement_Te is tellurium
+        endings = ["_".join(parts[start:]) for start in range(1, len(parts))]
+        starts = ["_".join(parts[:stop]) for stop in range(len(parts) - 1, 0, -1)]
+        candidates = [*starts, *endings] if parts[-1] in get_elsymbolset() else [*endings, *starts]
+        units = next((found for candidate in candidates if (found := unitsof(candidate))), "")
 
     if not units:
         return None
@@ -657,7 +659,7 @@ def get_allranks_timesteps(folderpath: Path | str) -> tuple[int, ...] | None:
     if allranks_parquet_is_current(folderpath):
         return tuple(
             pl
-            .scan_parquet(get_allranks_parquetpath(folderpath))
+            .scan_parquet(get_allranks_parquetpath(folderpath), glob=False)
             .select("timestep")
             .unique()
             .sort("timestep")
@@ -844,7 +846,9 @@ def scan_timestep_parts(timestepparts: TimestepParts, schema: pl.Schema) -> pl.L
     parts = [part for timestep in sorted(timestepparts) for part in timestepparts[timestep]]
     if not parts:
         return pl.LazyFrame(schema=schema)
-    return pl.scan_parquet([part.path for part in parts], schema=schema, missing_columns="insert").fill_null(0)
+    return pl.scan_parquet(
+        [part.path for part in parts], schema=schema, missing_columns="insert", glob=False
+    ).fill_null(0)
 
 
 def get_estimator_textfiles(runfolder: Path, textfile: Path | None) -> list[Path]:
@@ -1099,11 +1103,8 @@ class RemoteEstimatorSource(t.NamedTuple):
     batchcaches: "tuple[EstimatorBatchCache, ...] | None"
 
 
-def get_remote_source_query(hostpath: Path, source: RemoteEstimatorSource) -> tuple[pl.LazyFrame, dict[str, t.Any]]:
-    """Return the estimators of the source of a remote model, and the metadata of the model if the model data joins.
-
-    This runs on the host of the model.
-    """
+def get_remote_source_query(hostpath: Path, source: RemoteEstimatorSource) -> pl.LazyFrame:
+    """Return the estimators of the source of a remote model. This runs on the host of the model."""
     estimators = scan_estimators(
         hostpath,
         modelgridindex=source.cells,
@@ -1111,14 +1112,14 @@ def get_remote_source_query(hostpath: Path, source: RemoteEstimatorSource) -> tu
         classicartis=source.classicartis,
         batchcaches=source.batchcaches,
     )
-    return join_cell_modeldata(estimators, hostpath) if source.join_modeldata else (estimators, {})
+    return join_cell_modeldata(estimators, hostpath)[0] if source.join_modeldata else estimators
 
 
 @on_model_host
 def get_remote_estimator_schema(
     modelpath: Path, source: RemoteEstimatorSource
-) -> tuple[pl.DataFrame, dict[str, t.Any], RemoteEstimatorSource]:
-    """Return an empty frame with the columns of the source of a remote model, the model metadata, and the source.
+) -> tuple[pl.DataFrame, RemoteEstimatorSource]:
+    """Return an empty frame with the columns of the source of a remote model, and the source.
 
     If the source has no batch caches, this checks the text files of the selection and converts the stale batches.
     The source that comes back holds the caches of the selection, and each query then reads them with no check of the
@@ -1127,8 +1128,7 @@ def get_remote_estimator_schema(
     if source.batchcaches is None and not source.classicartis and not path_is_codecomparison(modelpath):
         batchcaches = convert_selected_estimator_batches(modelpath, source.cells, source.timesteps, verbose=False)
         source = source._replace(batchcaches=tuple(batchcaches))
-    estimators, modelmeta = get_remote_source_query(modelpath, source)
-    return estimators.clear().collect(), modelmeta, source
+    return get_remote_source_query(modelpath, source).clear().collect(), source
 
 
 @on_model_host
@@ -1145,7 +1145,7 @@ def read_estimator_rows_on_host(
     """
     import io
 
-    estimators, _ = get_remote_source_query(modelpath, source)
+    estimators = get_remote_source_query(modelpath, source)
     if predicate is not None:
         estimators = estimators.filter(pl.Expr.deserialize(io.BytesIO(predicate)))
     if with_columns is not None:
@@ -1179,15 +1179,15 @@ def scan_remote_estimators(
     classicartis: bool,
     join_modeldata: bool,
     batchcaches: "Sequence[EstimatorBatchCache] | None" = None,
-) -> tuple[pl.LazyFrame, dict[str, t.Any]]:
-    """Return a LazyFrame of the estimators of a remote model, and the metadata of the model if the model data joins.
+) -> pl.LazyFrame:
+    """Return a LazyFrame of the estimators of a remote model.
 
     A script builds its queries on this frame as for a local model. When the script collects the frame, the host
     sends the rows and the columns of the query. batchcaches gives the caches of the model on the host.
     """
     import functools
 
-    template, modelmeta, source = get_remote_estimator_schema(
+    template, source = get_remote_estimator_schema(
         modelpath,
         RemoteEstimatorSource(
             cells=None if modelgridindex is None else tuple(modelgridindex),
@@ -1198,7 +1198,7 @@ def scan_remote_estimators(
         ),
     )
     reader = functools.partial(read_remote_estimator_rows, modelpath, source)
-    return register_io_source(reader, schema=template.schema, is_pure=True), modelmeta
+    return register_io_source(reader, schema=template.schema, is_pure=True)
 
 
 def join_cell_modeldata(
@@ -1312,7 +1312,7 @@ def scan_parquet_file(
 
     A copy onto the file, or a new cache that takes a freed inode, then gets a new scan.
     """
-    return pl.scan_parquet(parquetfile)
+    return pl.scan_parquet(parquetfile, glob=False)
 
 
 def scan_kept_parquet_file(parquetfile: Path) -> pl.LazyFrame:
@@ -1422,7 +1422,7 @@ def scan_estimators(
             classicartis=classicartis,
             join_modeldata=join_modeldata,
             batchcaches=batchcaches,
-        )[0]
+        )
 
     # a codecomparison path has no ARTIS run folders to scan, so build the frame from the reference file and
     # fall through to the shared filter/derive/join tail rather than returning early and skipping it
@@ -1737,7 +1737,8 @@ def scan_artis_estimators(
             )
         # a window keeps the scans for its many plots. A command reads each file one time
         scans = [
-            pl.scan_parquet(pfile) if batchcaches is None else scan_kept_parquet_file(pfile) for pfile in parquetfiles
+            pl.scan_parquet(pfile, glob=False) if batchcaches is None else scan_kept_parquet_file(pfile)
+            for pfile in parquetfiles
         ]
         # The reader gives zero to a species that a cell does not write. A batch cache of an earlier artistools
         # version gives a null to such a species when a whole rank lacks it. Thus a zero replaces that null.
@@ -1795,8 +1796,9 @@ def get_averageexcitation(
     """Return the population-weighted mean level excitation energy [eV] of an ion per timestep and cell.
 
     dftexc gives the excitation temperature (columns timestep, modelgridindex, T_exc) used to spread
-    the superlevel population over the levels that it replaces. dfnltepops holds the NLTE populations
-    of every ion, which a caller that asks for several ions reads one time.
+    the superlevel population over the levels that it replaces. These are the levels above the NLTE levels that
+    ARTIS keeps, see get_kept_levels. dfnltepops holds the NLTE populations of every ion, which a caller that
+    asks for several ions reads one time.
     """
     dfpops = dfnltepops.filter((pl.col("Z") == atomic_number) & (pl.col("ion_stage") == ion_stage))
 
@@ -1804,8 +1806,15 @@ def get_averageexcitation(
     if dfionlevels is None:
         msg = f"No level data for Z={atomic_number} ion_stage={ion_stage}"
         raise ValueError(msg)
-    dflevels = dfionlevels.lazy().select(
-        level=pl.col("levelindex").cast(pl.Int64), energy_ev=pl.col("energy_ev"), g=pl.col("g")
+    try:
+        keptlevelcount = get_kept_level_counts(modelpath).get(atomic_number)
+    except FileNotFoundError:
+        print_warning(f"{modelpath} holds no compositiondata.txt, thus each superlevel holds all the levels above it")
+        keptlevelcount = None
+    dflevels = (
+        get_kept_levels(dfionlevels, keptlevelcount)
+        .lazy()
+        .select(level=pl.col("levelindex").cast(pl.Int64), energy_ev=pl.col("energy_ev"), g=pl.col("g"))
     )
 
     groupcols = ["timestep", "modelgridindex"]

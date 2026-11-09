@@ -39,6 +39,29 @@ def split_multitable_dataframe(res_df: pl.DataFrame | pl.LazyFrame) -> dict[int,
     return {tableindex: res_df.head((tableindex + 1) * nu_points).tail(nu_points) for tableindex in range(tablecount)}
 
 
+def get_common_first_column(
+    dirbindataframes: dict[int, pl.DataFrame] | dict[int, pl.LazyFrame], columnname: str
+) -> pl.Series:
+    """Return the first column of direction bin 0, after a check that each direction bin agrees with it.
+
+    ARTIS writes a value with six significant digits, thus the same time can differ by one unit of the last digit in
+    two tables. A larger difference shows a different grid, and an average of such tables has no meaning.
+    """
+    maxrounding_rtol = 2e-5
+    commonvalues = dirbindataframes[0].lazy().select(columnname).collect().to_series()
+    for dirbin, table in dirbindataframes.items():
+        values = table.lazy().select(columnname).collect().to_series()
+        if values.len() != commonvalues.len() or not np.allclose(
+            values.to_numpy(), commonvalues.to_numpy(), rtol=maxrounding_rtol, atol=0.0
+        ):
+            msg = (
+                f"Cannot average the direction bins: the column {columnname} of direction bin {dirbin} does not agree"
+                " with the column of direction bin 0"
+            )
+            raise ValueError(msg)
+    return commonvalues
+
+
 def average_direction_bins(
     dirbindataframes: dict[int, pl.DataFrame] | dict[int, pl.LazyFrame], overangle: t.Literal["phi", "theta"]
 ) -> dict[int, pl.LazyFrame]:
@@ -74,6 +97,9 @@ def average_direction_bins(
     # we will make a copy to ensure that we don't cause side effects from altering the original DataFrames
     # that might be returned again later by an lru_cached function
     dirbindataframesout: dict[int, pl.LazyFrame] = {}
+    commonfirstcolumn = get_common_first_column(
+        dirbindataframes, dirbindataframes[0].lazy().collect_schema().names()[0]
+    )
 
     for start_bin in start_bin_range:
         contribbins = get_average_group_dirbins(
@@ -85,7 +111,14 @@ def average_direction_bins(
 
         dirbindataframesout[start_bin] = (
             pl
-            .concat([dirbindataframes[dirbin].lazy().select(colnames) for dirbin in contribbins], how="vertical")
+            .concat(
+                [
+                    # the group_by compares exact values, thus each table needs the same values
+                    dirbindataframes[dirbin].lazy().select(colnames).with_columns(pl.lit(commonfirstcolumn))
+                    for dirbin in contribbins
+                ],
+                how="vertical",
+            )
             .group_by(firstcolname, maintain_order=True)
             .agg([(pl.col(col).sum() / len(contribbins)).alias(col) for col in colnames[1:]])
         )
@@ -364,12 +397,14 @@ def get_dirbin_labels(
     if modelpath:
         modelpath = Path(modelpath)
         MABINS = get_viewingdirectionbincount()
-        if list(modelpath.glob("*_res_00.out*")):
-            # if the first direction bin file exists, check:
-            # check last bin exists
-            assert list(modelpath.glob(f"*_res_{MABINS - 1:02d}.out*"))
-            # check one beyond does not exist
-            assert not list(modelpath.glob(f"*_res_{MABINS:02d}.out*"))
+        # ARTIS sets MABINS when it compiles, thus a different build can write a different count of direction bins
+        if list(modelpath.glob("*_res_00.out*")) and (
+            not list(modelpath.glob(f"*_res_{MABINS - 1:02d}.out*")) or list(modelpath.glob(f"*_res_{MABINS:02d}.out*"))
+        ):
+            print_warning(
+                f"The *_res_ files in {modelpath} do not give {MABINS} direction bins, and artistools gives the angles"
+                f" of {MABINS} direction bins. Thus the angle of a direction bin can be incorrect"
+            )
 
     _, _, costhetabinlabels = get_costheta_bins(usedegrees=usedegrees)
     _, _, phibinlabels = get_phi_bins(usedegrees=usedegrees)

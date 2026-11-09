@@ -28,6 +28,7 @@ from artistools.viewertools.core import get_path_colours
 from artistools.viewertools.core import get_row_values
 from artistools.viewertools.core import get_series_style
 from artistools.viewertools.core import OptionRows
+from artistools.viewertools.core import run_command_step
 from artistools.viewertools.core import SERIES_STYLE_FLAGS
 from artistools.viewertools.core import set_series_rows
 from artistools.viewertools.widgets import copy_text
@@ -1029,13 +1030,22 @@ def add_series_list(
     from PySide6 import QtGui
     from PySide6 import QtWidgets
 
+    def apply_paths(paths: "Sequence[str]") -> None:
+        """Apply a new list of series. A SystemExit in a Qt slot ends the process, thus an error stays here."""
+
+        def apply_new_paths() -> None:
+            actions.apply_paths(paths)
+
+        if (message := run_command_step(apply_new_paths, quiet=False)) is not None:
+            actions.show_error(message)
+
     def move_row(row: int, step: int) -> None:
         """Move the series of a row one row up or down, and select it."""
         paths = list(actions.get_paths())
         if row < 0 or not 0 <= row + step < len(paths):
             return
         paths.insert(row + step, paths.pop(row))
-        actions.apply_paths(paths)
+        apply_paths(paths)
         serieslist.setCurrentRow(row + step)
 
     serieslist = make_reorder_list(lambda step: move_row(serieslist.currentRow(), step))
@@ -1086,7 +1096,7 @@ def add_series_list(
         if not newpaths:
             actions.show_error("The list already holds each of these series")
             return
-        actions.apply_paths((*current, *newpaths))
+        apply_paths((*current, *newpaths))
 
     def remove_path(path: str) -> None:
         paths = [other for other in actions.get_paths() if other != path]
@@ -1096,7 +1106,7 @@ def add_series_list(
                 "The plot needs one ARTIS model at least. Add a different model before you remove this one"
             )
             return
-        actions.apply_paths(paths)
+        apply_paths(paths)
 
     def copy_path(path: str) -> None:
         copy_text(str(get_series_full_path(reference, path)))
@@ -1262,7 +1272,7 @@ def add_series_list(
             return
         # the rows show the numbers and the buttons of the old order, thus show_rows makes them again
         shown[0] = None
-        actions.apply_paths(order)
+        apply_paths(order)
 
     def get_start_folder() -> Path:
         # the dialog shows only local folders, thus it opens in the working folder for a first model on a different host

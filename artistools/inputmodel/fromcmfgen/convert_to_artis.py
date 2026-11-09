@@ -116,7 +116,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     confirm_overwrite([outputpath], ("model.txt", "abundances.txt"), force=args.force)
     outputpath.mkdir(parents=True, exist_ok=True)
 
-    a: dict[str, t.Any] = rd_sn_hydro_data(args.snapshot, reverse=True)
+    a: dict[str, t.Any] = rd_sn_hydro_data(args.snapshot)
 
     atomic_numbers = get_cmfgen_atomic_numbers(a["spec"])
 

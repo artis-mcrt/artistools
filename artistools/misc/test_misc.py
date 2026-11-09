@@ -35,6 +35,7 @@ from artistools.misc import parquetcache
 from artistools.misc import parse_cli_args
 from artistools.misc import remote
 from artistools.misc.columns import get_column_description_lines
+from artistools.misc.fileio import scan_lines
 from artistools.misc.general import get_bin_index_expr
 from artistools.misc.general import get_weighted_quantile_expr
 from artistools.viewertools.core import run_command_step_with_warning
@@ -423,11 +424,6 @@ def test_add_cli_arg_helper_variants() -> None:
     assert argsrepeat.modelgridindex == [3, 5, 6, 7]
     # one occurrence replaces the default and does not join to it
     assert parserrepeat.parse_args(["-ts", "5"]).timestep == "5"
-
-    parserrequired = argparse.ArgumentParser()
-    at.misc.addarg_modelpath(parserrequired, required=True)
-    with pytest.raises(SystemExit):
-        parserrequired.parse_args([])
 
 
 def test_the_cells_of_modelgridindex_are_a_list_from_every_source() -> None:
@@ -1689,7 +1685,7 @@ def test_server_protocol_changes_with_the_readers(package_modules: list[Path]) -
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (11, "356340ccb796afa8"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (12, "fe478c0da62b763d"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )
@@ -2262,6 +2258,44 @@ def test_average_direction_bins_rejects_missing_bins(monkeypatch: pytest.MonkeyP
         dirbins.average_direction_bins(averaged, overangle="phi")
 
 
+def test_average_direction_bins_gives_one_row_for_each_rounded_time(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Times that differ because the file rounds them gave extra rows, each with a partial sum."""
+    monkeypatch.setattr(dirbins, "get_viewingdirection_phibincount", lambda: 2)
+    monkeypatch.setattr(dirbins, "get_viewingdirection_costhetabincount", lambda: 1)
+
+    averaged = dirbins.average_direction_bins(
+        {
+            0: pl.DataFrame({"time_days": [3.17156, 4.0], "value": [2.0, 2.0]}),
+            1: pl.DataFrame({"time_days": [3.17155, 4.0], "value": [4.0, 4.0]}),
+        },
+        overangle="phi",
+    )[0].collect()
+    assert averaged["time_days"].to_list() == [3.17156, 4.0]
+    assert averaged["value"].to_list() == pytest.approx([3.0, 3.0])
+
+    with pytest.raises(ValueError, match="does not agree"):
+        dirbins.average_direction_bins(
+            {
+                0: pl.DataFrame({"time_days": [3.0, 4.0], "value": [2.0, 2.0]}),
+                1: pl.DataFrame({"time_days": [3.1, 4.0], "value": [4.0, 4.0]}),
+            },
+            overangle="phi",
+        )
+
+
+def test_glob_characters_in_a_model_path_are_literal(tmp_path: Path) -> None:
+    """A model folder named model[12] gave the rows of the folders model1 and model2."""
+    for foldername, tstart in (("model1", 10), ("model2", 20), ("model[12]", 99)):
+        (tmp_path / foldername).mkdir()
+        (tmp_path / foldername / "timesteps.out").write_text(
+            f"#timestep tstart_days tmid_days twidth_days\n0 {tstart} {tstart + 0.5} 1\n"
+        )
+
+    modelfolder = tmp_path / "model[12]"
+    assert at.misc.scan_timesteps(modelfolder).collect()["tstart_days"].to_list() == [99.0]
+    assert scan_lines(modelfolder / "timesteps.out").collect().height == 2
+
+
 def test_centre_direction_of_each_dirbin_is_in_that_dirbin() -> None:
     """The packet binning of ARTIS puts the centre direction of each direction bin into that bin.
 
@@ -2276,6 +2310,19 @@ def test_centre_direction_of_each_dirbin_is_in_that_dirbin() -> None:
     dfdirections = pl.DataFrame({"dirx": directions[:, 0], "diry": directions[:, 1], "dirz": directions[:, 2]})
     dfbinned = bin_packet_directions_polars(add_packet_directions_lazypolars(dfdirections)).collect()
     assert dfbinned["dirbin"].to_list() == list(range(ndirbins))
+
+
+def test_get_time_range_without_clamping_inside_the_outer_half_timesteps(tmp_path: Path) -> None:
+    """A range after the last mid time or before the first mid time is inside the timesteps of the model."""
+    write_timesteps_out(tmp_path)
+
+    assert at.misc.get_time_range(tmp_path, timedays_range_str="147-149", clamp_to_timesteps=False)[:2] == (4, 4)
+    assert at.misc.get_time_range(tmp_path, timedays_range_str="101-103", clamp_to_timesteps=False)[:2] == (0, 0)
+
+    with pytest.raises(ValueError, match="greater than all timesteps"):
+        at.misc.get_time_range(tmp_path, timedays_range_str="151-152", clamp_to_timesteps=False)
+    with pytest.raises(ValueError, match="less than all timesteps"):
+        at.misc.get_time_range(tmp_path, timedays_range_str="90-95", clamp_to_timesteps=False)
 
 
 def test_get_time_range_timesteps_without_clamping(tmp_path: Path) -> None:
@@ -2739,7 +2786,6 @@ def test_the_rank_search_of_many_cells_agrees_with_the_blocks_of_each_rank(monke
 
     The lookup for each cell took 2 to 10 s for the 125 000 cells of a 3D snapshot.
     """
-    from artistools.misc.modelinfo import get_cellsofmpirank
     from artistools.misc.modelinfo import get_mpiranks_of_cells
     from artistools.misc.modelinfo import get_rankassignments
 
@@ -2753,7 +2799,7 @@ def test_the_rank_search_of_many_cells_agrees_with_the_blocks_of_each_rank(monke
     cells = np.arange(len(expected), dtype=np.int64)
     assert np.array_equal(get_mpiranks_of_cells(modelpath, cells), expected)
 
-    # with no such file, the blocks of get_cellsofmpirank give the rank of each cell. No test model has fewer
+    # with no such file, the blocks of the formula give the rank of each cell. No test model has fewer
     # ranks than cells, thus 7 ranks for 100 cells give blocks of 15 and 14 cells
     from artistools.misc import modelinfo
 
@@ -2761,8 +2807,7 @@ def test_the_rank_search_of_many_cells_agrees_with_the_blocks_of_each_rank(monke
     monkeypatch.setattr(modelinfo, "get_nprocs", mock.Mock(return_value=7))
     monkeypatch.setattr(modelinfo, "get_npts_model", mock.Mock(return_value=100))
     ranks = get_mpiranks_of_cells(modelpath, np.arange(100, dtype=np.int64)).tolist()
-    assert sorted(set(ranks)) == list(range(7))
-    assert all(cell in get_cellsofmpirank(rank, modelpath) for cell, rank in enumerate(ranks))
+    assert ranks == [rank for rank in range(7) for _ in range(15 if rank < 2 else 14)]
 
 
 def test_check_time_selection_reads_each_spelling_as_argparse_does() -> None:
@@ -4213,6 +4258,17 @@ def test_explain_reads_no_packets_and_gives_the_timesteps(capsys: pytest.Capture
     assert "Time: timesteps" in stdout
 
 
+def test_explain_takes_the_model_folder_from_the_end_of_the_items(capsys: pytest.CaptureFixture[str]) -> None:
+    """Give the model of the last positional item, because --explain stops before main removes that item."""
+    from artistools.__main__ import main
+
+    modelfolder = at.get_path("testdata") / "test-classicmode_3d"
+    main(argsraw=["plotestimators", "Te", str(modelfolder), "--explain", "-ts", "20"])
+    stdout = capsys.readouterr().out
+    assert "plotitems = ['Te']" in stdout
+    assert f"Model: {modelfolder}" in stdout
+
+
 def test_reversed_wavelength_selection_stops_before_the_read(capsys: pytest.CaptureFixture[str]) -> None:
     """Stop at the parse when -lambdamin is above -lambdamax, because such a range selects no packet."""
     from artistools.__main__ import main
@@ -4323,49 +4379,16 @@ def test_get_nprocs(tmp_path: Path) -> None:
     assert at.get_nprocs(tmp_path) == 4
 
 
-def test_get_cellsofmpirank(tmp_path: Path) -> None:
-    def make_model(path: Path, npts: int, nprocs: int) -> None:
-        lines = ["placeholder\n"] * 21 + [f"{nprocs} #nprocs\n"]
-        (path / "input.txt").write_text("".join(lines))
-        (path / "model.txt").write_text(f"{npts}\n")
+def test_get_mpiranks_of_cells_gives_the_extra_cells_to_the_first_ranks(tmp_path: Path) -> None:
+    from artistools.misc.modelinfo import get_mpiranks_of_cells
 
-    for npts, nprocs in ((20, 4), (21, 4), (7, 3)):
-        subdir = tmp_path / f"npts{npts}_nprocs{nprocs}"
+    for npts, nprocs, cellsofrank in ((20, 4, [5, 5, 5, 5]), (21, 4, [6, 5, 5, 5]), (7, 3, [3, 2, 2])):
+        subdir = tmp_path / f"{npts}_{nprocs}"
         subdir.mkdir()
-        make_model(subdir, npts=npts, nprocs=nprocs)
-
-        all_cells: list[int] = []
-        cells_per_rank = []
-        for rank in range(nprocs):
-            cells = list(at.misc.get_cellsofmpirank(rank, subdir))
-            cells_per_rank.append(cells)
-            all_cells.extend(cells)
-
-        # Every cell index appears exactly once and all cells are covered
-        assert sorted(all_cells) == list(range(npts))
-
-        # Load balancing: ranks differ by at most 1 cell
-        sizes = [len(c) for c in cells_per_rank]
-        assert max(sizes) - min(sizes) <= 1
-
-        # Cells within each rank are contiguous
-        for cells in cells_per_rank:
-            assert cells == list(range(cells[0], cells[0] + len(cells)))
-
-    # Verify specific assignments for evenly divisible case (npts=20, nprocs=4)
-    even_dir = tmp_path / "even"
-    even_dir.mkdir()
-    make_model(even_dir, npts=20, nprocs=4)
-    assert list(at.misc.get_cellsofmpirank(0, even_dir)) == list(range(5))
-    assert list(at.misc.get_cellsofmpirank(3, even_dir)) == list(range(15, 20))
-
-    # Verify specific assignments for uneven case (npts=21, nprocs=4):
-    # rank 0 gets one extra cell (leftover), ranks 1-3 get the base count
-    uneven_dir = tmp_path / "uneven"
-    uneven_dir.mkdir()
-    make_model(uneven_dir, npts=21, nprocs=4)
-    assert list(at.misc.get_cellsofmpirank(0, uneven_dir)) == list(range(6))
-    assert list(at.misc.get_cellsofmpirank(1, uneven_dir)) == list(range(6, 11))
+        (subdir / "input.txt").write_text("".join(["placeholder\n"] * 21 + [f"{nprocs} #nprocs\n"]))
+        (subdir / "model.txt").write_text(f"{npts}\n")
+        expected = [rank for rank, cellcount in enumerate(cellsofrank) for _ in range(cellcount)]
+        assert get_mpiranks_of_cells(subdir, np.arange(npts, dtype=np.int64)).tolist() == expected
 
 
 def test_path_is_artis_model_accepts_a_compressed_output_file() -> None:
