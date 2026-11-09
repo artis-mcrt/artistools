@@ -361,20 +361,17 @@ def get_line_points(dfseries: pl.LazyFrame, args: argparse.Namespace) -> pl.Lazy
     )
 
     filterfunc = get_filterfunc(args)
-    if filterfunc is not None and edgeexprs:
-        # the bins on the two sides of a gap are not neighbours, thus the filter smooths each run of adjacent bins
+    if filterfunc is not None:
         windowlength = int(args.filtersavgol[0]) if getattr(args, "filtersavgol", None) else 1
 
         def filter_run(yvalues: pl.Series) -> pl.Series:
-            # a Savitzky-Golay filter needs at least one window of points
+            # a Savitzky-Golay filter needs at least one window of points, and each filter needs at least one point
             return yvalues if yvalues.len() < windowlength else pl.Series(filterfunc(yvalues.to_numpy()))
 
+        filteredvalues = pl.col("yvalue_binned").map_batches(filter_run, return_dtype=pl.self_dtype())
+        # the bins on the two sides of a gap are not neighbours, thus the filter smooths each group of adjacent bins
         dflinepoints = dflinepoints.with_columns(
-            pl.col("yvalue_binned").map_batches(filter_run, return_dtype=pl.self_dtype()).over(get_bin_run_expr())
-        )
-    elif filterfunc is not None:
-        dflinepoints = dflinepoints.with_columns(
-            pl.col("yvalue_binned").map_batches(filterfunc, return_dtype=pl.self_dtype())
+            filteredvalues.over(get_bin_run_expr()) if edgeexprs else filteredvalues
         )
 
     return dflinepoints
@@ -1129,11 +1126,24 @@ def get_ion_series_weight(
     return pl.lit(1.0), "cell volume times time step duration"
 
 
+def get_cylindrical_velocity_expr(estimatorcolumns: Collection[str]) -> pl.Expr:
+    """Return the velocity of each cell from the rotation axis in cm/s. A 1D model has no such axis, thus it stops."""
+    if "vel_rcyl_mid" in estimatorcolumns:
+        return pl.col("vel_rcyl_mid")
+    if "vel_x_mid" not in estimatorcolumns:
+        exit_with_error(
+            "The ion population type cylradialdensity needs a cylindrical radius, and a 1D model has none",
+            "Give -ionpoptype radialdensity for the radial density of a 1D model",
+        )
+    return (pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2).sqrt()
+
+
 def get_multi_ion_series_plans(
     settings: SubplotSettings,
     seriestype: str,
     ionlist: Sequence[str],
     estimators: pl.LazyFrame,
+    fullrangeestimators: pl.LazyFrame,
     modelpath: str | Path,
     poptype: str,
     args: argparse.Namespace,
@@ -1143,6 +1153,9 @@ def get_multi_ion_series_plans(
 
     The poptype parameter sets the normalisation of a population series. Each subplot carries its own
     value, thus one figure can show an absolute density in one subplot and an ion fraction in another.
+
+    fullrangeestimators holds the cells outside --xmin and --xmax also, see get_xlist. A cumulative count sums them,
+    thus the value at an x does not change with the x range of the plot.
     """
     # the series of an ion keeps the name of its plot item, e.g. "Fe 2" or "Fe II", because a series style uses it. Two
     # spellings of one ion give two series, as two plot items do
@@ -1185,9 +1198,19 @@ def get_multi_ion_series_plans(
 
     ionentries = [entry for entry in ionentries if entry[0] not in nocolumnions]
 
-    if seriestype == "populations" and poptype == "cumulative" and args.xmin is not None:
-        # get_xlist drops the rows outside -xmin and -xmax, thus the sum cannot hold the cells below -xmin
-        print_warning(f"The cumulative population starts at x = {args.xmin}, and it leaves out each cell below that x")
+    if seriestype == "populations" and ionentries and path_is_codecomparison(modelpath):
+        if poptype != "elpop":
+            exit_with_error(
+                f"A code comparison file gives the ion fractions n_ion / n_element and no element density, thus it has"
+                f" no ion population of type '{poptype}'",
+                "Give -ionpoptype elpop for the fraction of each ion in its element",
+            )
+        print_detail(
+            "A code comparison file gives no element density. Thus a mean of the ion fractions over the cells takes"
+            " the total atom density as the weight"
+        )
+    if seriestype == "populations" and poptype == "cumulative":
+        print_detail(f"The cumulative count of each timestep sums the cells in the order of {args.x}")
 
     lazyframes = []
     weightnames: list[str] = []
@@ -1208,17 +1231,28 @@ def get_multi_ion_series_plans(
         if ispopulation and poptype == "radialdensity":
             expr_yvals *= 4 * math.pi * (pl.col("vel_r_mid") * expr_tmid_s).pow(2)
         elif ispopulation and poptype == "cylradialdensity":
-            expr_yvals *= 2 * math.pi * pl.col("vel_rcyl_mid") * expr_tmid_s
+            expr_yvals *= 2 * math.pi * get_cylindrical_velocity_expr(estimatorcolumns) * expr_tmid_s
 
+        dfion = estimators
         if ispopulation and poptype == "cumulative":
             # multiply each cell's number density by its volume before the sum, so the result is a particle count
             # the sum is over the cells of one timestep, thus it must restart at each timestep
-            expr_yvals = (expr_yvals * pl.col("volume")).cum_sum().over("timestep")
+            dfion = estimators.join(
+                fullrangeestimators.select(
+                    "timestep",
+                    "modelgridindex",
+                    cumulativecount=(expr_yvals * pl.col("volume")).cum_sum().over("timestep"),
+                ),
+                on=["timestep", "modelgridindex"],
+                how="left",
+                maintain_order="left",
+            )
+            expr_yvals = pl.col("cumulativecount")
 
         weight, weightname = get_ion_series_weight(seriestype, poptype, atomic_number, ion_stage, estimatorcolumns)
         weightnames.append(weightname)
         lazyframes.append(
-            estimators.select(
+            dfion.select(
                 (pl.col("deltavol_deltat") * weight).alias("celltsweight"),
                 # 0/0 gives NaN for a cell that holds none of the element. Make it null. The weighted
                 # mean in get_line_points then drops the cell and does not count it as zero.
@@ -1353,8 +1387,11 @@ def get_series_plans(
 
 def get_xlist(
     xvariable: str, estimators: pl.LazyFrame, timestepslist: Collection[int] | None, args: argparse.Namespace
-) -> tuple[list[float | int], list[int], list[int], pl.LazyFrame, tuple[float, float]]:
-    """Return the x values, model grid indices, and timesteps to plot, the filtered estimators, and the x limits.
+) -> tuple[list[float | int], list[int], list[int], pl.LazyFrame, pl.LazyFrame, tuple[float, float]]:
+    """Return the x values, cells, and timesteps to plot, the two frames of estimators, and the x limits.
+
+    The first frame holds the rows inside --xmin and --xmax. The second frame holds each row with a finite x value, in
+    the order of x, for a sum that starts outside the plotted range.
 
     The x limits are --xmin and --xmax, or else the range of the x values. A histogram with the extent of each cell or
     timestep takes the outer edges of the extents in place of the range.
@@ -1389,6 +1426,8 @@ def get_xlist(
     # a row with no finite x value has no place on the axis, e.g. tmid_days_prevtimestep at the first timestep. The
     # minimum of such a list gave a TypeError, and set_xlim refuses a NaN or an infinite limit
     hasxvalue = pl.col("xvalue").is_not_null() & pl.col("xvalue").cast(pl.Float64).is_finite()
+    # cells at one x value need a fixed order, because a sum over them can stop between two of them
+    fullrangeestimators = estimators.filter(hasxvalue).sort("xvalue", "modelgridindex")
     xvalues = pl.col("xvalue").filter(hasxvalue)
     # one collect gives the statistics and the unique values. The command line can give the statistics, and then the
     # query leaves them out
@@ -1517,7 +1556,7 @@ def get_xlist(
     if not xlist:
         raise NoEstimatorRowsError(get_no_rows_message(timestepslist, args))
 
-    return xlist, mgilist, timesteps, estimators, xlimits
+    return xlist, mgilist, timesteps, estimators, fullrangeestimators, xlimits
 
 
 def get_cell_x_extent(xvariable: str, columns: Collection[str]) -> tuple[pl.Expr, pl.Expr, str] | None:
@@ -1599,6 +1638,7 @@ def get_subplot_plans(
     mgilist: list[int],
     modelpath: str | Path,
     estimators: pl.LazyFrame,
+    fullrangeestimators: pl.LazyFrame,
     args: argparse.Namespace,
     **plotkwargs: t.Any,
 ) -> tuple[list[SeriesPlan], SubplotSettings]:
@@ -1704,6 +1744,7 @@ def get_subplot_plans(
                     seriestype=seriestype,
                     ionlist=ionlist,
                     estimators=estimators,
+                    fullrangeestimators=fullrangeestimators,
                     modelpath=modelpath,
                     poptype=poptype,
                     args=args,
@@ -1918,12 +1959,13 @@ def get_line_figure_data(
 
     A plot of one cell against time gives the field cell, and a snapshot gives the fields timestep and timedays.
     """
-    _, mgilist, timestepslist, estimators, (xmin, xmax) = get_xlist(
+    _, mgilist, timestepslist, estimators, fullrangeestimators, (xmin, xmax) = get_xlist(
         xvariable=xvariable, estimators=estimators, timestepslist=timestepslist, args=args
     )
 
     subplotplans = [
-        get_subplot_plans(timestepslist, plotitems, mgilist, modelpath, estimators, args) for plotitems in plotlist
+        get_subplot_plans(timestepslist, plotitems, mgilist, modelpath, estimators, fullrangeestimators, args)
+        for plotitems in plotlist
     ]
     temperaturelimits = get_temperature_limits(modelpath)
     queries = [get_subplot_queries(plans, args, temperaturelimits) for plans, _ in subplotplans]
@@ -2096,7 +2138,12 @@ def get_line_figure_table(figuredata: LineFigureData, args: argparse.Namespace) 
                 ))
             dfseriestables.extend(
                 dfpoints.select(
-                    *(pl.lit(fieldvalue).alias(fieldname) for fieldname, fieldvalue in figuredata.framefields.items()),
+                    *(
+                        pl.lit(fieldvalue).alias(fieldname)
+                        for fieldname, fieldvalue in figuredata.framefields.items()
+                        # -x timestep gives each point its own timestep, and two columns cannot have the same name
+                        if fieldname not in dfpoints.columns
+                    ),
                     pl.lit(subplotindex).alias("subplot"),
                     pl.lit(series.seriesname).alias("series"),
                     pl.lit(pointkind).alias("points"),

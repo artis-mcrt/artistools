@@ -206,7 +206,7 @@ def get_catalog_row(modelfolder: Path, folder: Path) -> dict[str, t.Any]:
         except FileNotFoundError:
             continue
         # a fault in one model must not stop the table of the other models
-        except Exception as exc:  # ruff:ignore[blind-except]
+        except (Exception, pl.exceptions.PanicException) as exc:  # ruff:ignore[blind-except]
             failures.append(f"{partname} ({type(exc).__name__}: {exc})")
     if failures:
         print_warning(f"Model {modelname} in {relativefolder}: the table gives nan for {'; '.join(failures)}")

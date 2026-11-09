@@ -439,8 +439,8 @@ def find_option_action(parser: argparse.ArgumentParser, argstring: str) -> tuple
 
 
 def is_flag(argstring: str) -> bool:
-    """Return True if the argument is a flag, and not a value such as a negative number."""
-    return argstring.startswith("-") and not re.match(r"-\.?\d", argstring)
+    """Return True for a flag, and False for a value, e.g. a negative number or a text with a space."""
+    return argstring.startswith("-") and not re.match(r"-\.?\d", argstring) and " " not in argstring.partition("=")[0]
 
 
 def split_argstrings(parser: "SuggestingArgumentParser", tokens: "Sequence[str]") -> list[str]:
@@ -683,11 +683,16 @@ def get_series_tokens(values: "Sequence[str | None]") -> tuple[str, ...] | None:
     return tuple(SERIES_DEFAULT if value is None else value for value in values) or None
 
 
+# the flags that select the baseline of the residual panel, as the rows give them. With no value, the index is 0
+RESIDUAL_BASELINE_FLAGS: t.Final = frozenset({"--residualbaselineseries", "-residuals", "--res", "--residuals"})
+
+
 def move_series_styles(rows: OptionRows, oldpaths: "Sequence[str]", newpaths: "Sequence[str]") -> OptionRows:
     """Return the option rows with the value of each series style option on the same path in the new list.
 
     Thus a --label stays on its series when the order changes. The values of a removed series go out of the rows. The
     values after the paths stay after the new paths, because a command can add series after them, e.g. --obsspec.
+    The indices of the residual options also stay on their series.
     """
     changes: dict[str, tuple[str, ...] | None] = {}
     for flag in SERIES_STYLE_FLAGS:
@@ -700,7 +705,56 @@ def move_series_styles(rows: OptionRows, oldpaths: "Sequence[str]", newpaths: "S
         ])
         if newvalues != values:
             changes[flag] = newvalues
-    return set_row_values(rows, changes)
+    return move_residual_indices(set_row_values(rows, changes), oldpaths, newpaths)
+
+
+def move_residual_indices(rows: OptionRows, oldpaths: "Sequence[str]", newpaths: "Sequence[str]") -> OptionRows:
+    """Return the option rows with the residual baseline and the residual series on the same series in the new list.
+
+    These options give a series by its index in plot order. The row of a removed baseline goes away, and the command
+    then takes the series at index 0. A removed series goes out of --residual, and a list with no series left goes
+    away. A command with --residual and no baseline row takes the baseline at index 0.
+    """
+    if list(oldpaths) == list(newpaths):
+        return rows
+    positions: dict[str, list[int]] = {}
+    for position, path in enumerate(newpaths):
+        positions.setdefault(path, []).append(position)
+    # the second copy of a path stays the second copy
+    newindices = {index: positions[path].pop(0) for index, path in enumerate(oldpaths) if positions.get(path)}
+
+    def get_new_index(word: str) -> str | None:
+        """Return the new index of a series, the unchanged word for a non-index, or None for a removed series."""
+        if not word.isdecimal():
+            return word
+        index = int(word)
+        # a series after the paths, e.g. of --obsspec, stays after the paths
+        newindex = index + len(newpaths) - len(oldpaths) if index >= len(oldpaths) else newindices.get(index)
+        return None if newindex is None else str(newindex)
+
+    movedrows: list[tuple[str, tuple[str, ...]]] = []
+    for flag, values in rows:
+        if flag in RESIDUAL_BASELINE_FLAGS:
+            baseline = values[0] if values else "0"
+            if (newbaseline := get_new_index(baseline)) == baseline:
+                movedrows.append((flag, values))
+            elif newbaseline is not None:
+                movedrows.append(("--residualbaselineseries", (newbaseline,)))
+        elif flag == "--residual":
+            moved = tuple(newword for word in values if (newword := get_new_index(word)) is not None)
+            if moved or not values:
+                movedrows.append((flag, moved))
+        else:
+            movedrows.append((flag, values))
+    flags = {flag for flag, _ in rows}
+    if (
+        "--residual" in flags
+        and not flags & RESIDUAL_BASELINE_FLAGS
+        and (newbaseline := get_new_index("0"))
+        and newbaseline != "0"
+    ):
+        movedrows.append(("--residualbaselineseries", (newbaseline,)))
+    return tuple(movedrows)
 
 
 def set_series_rows(

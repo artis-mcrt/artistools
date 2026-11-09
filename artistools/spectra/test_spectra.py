@@ -1216,6 +1216,22 @@ def test_spectra_get_flux_contributions(benchmark: BenchmarkFixture) -> None:
     assert max(diff) / integrated_flux_specout < 1e-9
 
 
+def test_spectra_thermal_emission_contributions_sum_to_the_spectrum() -> None:
+    """A packet with no thermal emission record has no column in emissiontrue.out, and the series NOT SET holds it.
+
+    The total of the emission plot is the sum of the series, and it was 27 percent below spec.out on this model.
+    """
+    timestepmin, timestepmax = 20, 24
+    dfspectrum = at.spectra.scan_spectra(modelpath_classic_3d, timestepmin, timestepmax)[-1].collect()
+    contributions, flambda_total, arraylambda = at.spectra.get_flux_contributions(
+        modelpath_classic_3d, timestepmin=timestepmin, timestepmax=timestepmax, use_lastemissiontype=False
+    )
+
+    assert "NOT SET" in {contribution.linelabel for contribution in contributions}
+    assert np.allclose(flambda_total[::-1], dfspectrum["f_lambda"].to_numpy(), rtol=1e-6, atol=1e-30)
+    assert np.allclose(arraylambda[::-1], dfspectrum["lambda_angstroms"].to_numpy(), rtol=1e-6, atol=0.0)
+
+
 def test_spectra_get_flux_contributions_reads_a_compressed_compositiondata(tmp_path: Path) -> None:
     """A model with only compositiondata.txt.xz gives the elements from that file and not from the log."""
     for filename in ("input.txt", "spec.out", "emissiontrue.out.xz", "absorption.out.xz"):
@@ -2149,6 +2165,30 @@ def test_plotspectra_one_sided_bound_that_the_first_model_does_not_reach(tmp_pat
     pdfnames = [path.name for path in tmp_path.glob("*.pdf")]
     assert len(pdfnames) == 1
     assert "None" not in pdfnames[0]
+
+
+def test_plotspectra_one_sided_bound_stays_the_request_of_each_model(tmp_path: Path) -> None:
+    """Each model selects its timesteps from the -timemin that the user gave.
+
+    The union of the clamped ranges replaced the bound, thus a model selected a timestep that the bound excludes.
+    """
+    modelpaths = [tmp_path / "modela", tmp_path / "modelb"]
+    clampedranges = {modelpaths[0]: (2, 29, 3.23475, 8.0), modelpaths[1]: (3, 29, 3.30916, 7.9)}
+    parser = argparse.ArgumentParser()
+    at.spectra.plotspectra.addargs(parser)
+    args = parser.parse_args(["-timemin", "3.26", *[str(path) for path in modelpaths]])
+
+    def clamped_range_of_model(modelpath: Path, **_kwargs: t.Any) -> tuple[int, int, float, float]:
+        return clampedranges[modelpath]
+
+    with (
+        mock.patch.object(at.spectra.plotspectra, "get_artis_model_folders", return_value=modelpaths),
+        mock.patch.object(at.spectra.plotspectra, "get_time_range", side_effect=clamped_range_of_model),
+    ):
+        at.spectra.plotspectra.resolve_plot_args(args)
+
+    assert args.timemin == pytest.approx(3.26)
+    assert args.timemax == pytest.approx(8.0)
 
 
 def test_plotspectra_takes_a_reference_named_out_before_a_model(tmp_path: Path) -> None:

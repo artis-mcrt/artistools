@@ -41,6 +41,7 @@ from artistools.misc import addarg_positional_items
 from artistools.misc import addarg_show
 from artistools.misc import addarg_verbose
 from artistools.misc import CellListAction
+from artistools.misc import CommaJoinAction
 from artistools.misc import exit_with_error
 from artistools.misc import format_frame_path
 from artistools.misc import get_cell_list
@@ -56,7 +57,7 @@ from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
-from artistools.misc import resolve_outputfile
+from artistools.misc import resolve_frameset_paths
 from artistools.misc import resolve_positional_modelpath
 from artistools.misc import time_days_range_arg
 from artistools.misc import TIME_UNIT_HELP
@@ -243,7 +244,9 @@ def get_floers_data(
             modeldata = add_derived_cols_to_modeldata(dfmodel, modelmeta).select("vel_r_max").collect()
             vel_outer = modeldata["vel_r_max"].item(modelgridindex) / km_to_cm
             print(f"  Reading {floersmultizonepath} for vel_outer {vel_outer} and Te {T_e}")
-            dffloers = pl.read_csv(floersmultizonepath).filter((pl.col("vel_outer") - vel_outer).abs() < 0.5)
+            dffloers = pl.read_csv(floersmultizonepath, glob=False).filter(
+                (pl.col("vel_outer") - vel_outer).abs() < 0.5
+            )
             # the reference file has no superlevel, thus it takes the resolved levels that the plot shows. The two
             # populations then have the same sum over these levels
             dfresolved = dfpopthision.filter(pl.col("config") != "superlevel")
@@ -1117,7 +1120,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     timegroup.add_argument("-timedayslist", nargs="+", help="A list of times in days for time sequence subplots")
 
     # no type, thus this reads the same text as every other command: a number, "last", or a range
-    timegroup.add_argument("-timestep", "-ts", help="Timestep number to plot, e.g. 40, last, or 40-45")
+    timegroup.add_argument(
+        "-timestep", "-ts", action=CommaJoinAction, help="Timestep number to plot, e.g. 40, last, or 40-45"
+    )
 
     cellgroup = parser.add_mutually_exclusive_group()
     # a mutually exclusive group, thus the flags are spelled out rather than taken from addarg_modelgridindex
@@ -1231,9 +1236,15 @@ def resolve_plot_args(args: argparse.Namespace) -> list[int]:
             "No time given. Use --timedays or --timestep. A model of more than one cell also needs --modelgridindex"
         )
 
-    args.outputfile = resolve_outputfile(
-        args.outputfile, defaultoutputfile_timeorvelocity if args.x in {"time", "velocity"} else defaultoutputfile
-    )
+    # a plot against the level index makes one figure for each element and each timestep. A plot against the time or
+    # the velocity makes one figure for each element. A name with no field keeps only the last figure
+    plotstimeorvelocity = args.x in {"time", "velocity"}
+    timestepcount = len(timesteps_selected or range(args.timestepmin, args.timestepmax + 1))
+    args.outputfile = resolve_frameset_paths(
+        args.outputfile,
+        framecount=len(get_atomic_numbers(args.elements)) * (1 if plotstimeorvelocity else timestepcount),
+        framename=defaultoutputfile_timeorvelocity if plotstimeorvelocity else defaultoutputfile,
+    ).frametemplate
 
     mgilist: list[int] = list(args.modelgridindex or [])
     mgilist.extend(get_mgi_of_velocity_kms(modelpath, velocity_kmps) for velocity_kmps in args.velocity_kmps or [])

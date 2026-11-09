@@ -295,7 +295,11 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
     ("tau_sobolev_max", "the maximum Sobolev optical depth of the line in the cells", ""),
     ("velocity_kmps_at_tau_sobolev_max", "the radial velocity of the cell with the maximum tau_sobolev", "km/s"),
     ("cellcount_tau_sobolev_above_1", "the number of cells where the line has a tau_sobolev above 1", ""),
-    ("escape_probability", "the Sobolev escape probability (1 - exp(-tau)) / tau of the line in the cell", ""),
+    (
+        "escape_probability",
+        "the Sobolev escape probability (1 - exp(-tau)) / tau of the line in the cell, or 1 for a population inversion",
+        "",
+    ),
     (
         "line_emissivity_erg_per_s_per_cm3",
         (

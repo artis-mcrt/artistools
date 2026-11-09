@@ -21,26 +21,6 @@ if t.TYPE_CHECKING:
     from collections.abc import Sequence
 
 
-def get_example_specs() -> "tuple[tuple[str, str, CommandSpec], ...]":
-    """Return every example of the tree as (command line, description, spec of the command), for the test.
-
-    The help lists no hidden command, thus its examples stay out. A hidden name such as describeinputmodel then does
-    not repeat the examples of its visible name.
-    """
-
-    def walk(tree: CommandTree, path: str) -> "Generator[tuple[str, str, CommandSpec]]":
-        for name, spec in tree.items():
-            if isinstance(spec, dict):
-                yield from walk(spec, f"{path}{name} ")
-            elif not spec.hidden:
-                yield from (
-                    (f"{path}{name} {arguments}".rstrip(), description, spec)
-                    for arguments, description in spec.examples
-                )
-
-    return tuple(walk(subcommandtree, ""))
-
-
 def get_examples(tree: "CommandTree | None" = None, path: str = "") -> tuple[tuple[str, str], ...]:
     """Return the examples of the commands of one level of the tree as (command line, description).
 
@@ -103,8 +83,8 @@ def get_epilog() -> str:
         + "\nA command that reads a model takes its folder with --modelpath. Most of these commands also take the"
         + "\nfolder as the last positional argument."
         + "\nA time or a wavelength can have a unit, e.g. -t 12h or --lambdamin 600nm. A value with no unit"
-        + "\nis in days or in Angstroms. --explain prints what the arguments select. Then it stops before it"
-        + "\nreads the data."
+        + "\nis in days or in Angstroms. The x range of plotspectra takes a number in the unit of --xunit."
+        + "\n--explain prints what the arguments select. Then it stops before it reads the data."
         + "\nSet ARTISTOOLS_TRACEBACK=1 to get the full traceback of an error."
         + "\nThe exit status is 0 for success, 2 for an argument that the parser refuses, and 1 for a different"
         + "\nerror. `artistools check` also gives 1 for a check with a warning or an error."

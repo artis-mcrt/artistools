@@ -23,6 +23,7 @@ from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_mgi_of_velocity_kms
 from artistools.inputmodel import scan_modeldata
 from artistools.misc import addarg_darkmode
+from artistools.misc import addarg_data_output
 from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
@@ -36,6 +37,7 @@ from artistools.misc import get_selected_timestep
 from artistools.misc import get_single_modelgridindex
 from artistools.misc import get_timestep_time
 from artistools.misc import import_optional
+from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import print_product
 from artistools.misc import print_warning
@@ -122,6 +124,7 @@ def make_ntstats_plot(ntstatfile: str | Path, args: argparse.Namespace) -> None:
     ax.autoscale(enable=True, axis="both", tight=True)
     outputfilename = Path(ntstatfile).with_suffix(".pdf")
     save_figure(fig, outputfilename, format="pdf", args=args)
+    output_data(args, {"": dfstats}, outputfilename)
 
 
 def ionpops_for_electronfraction(atomic_number: int, x_e: float, nntot: float) -> dict[tuple[int, int], float]:
@@ -173,6 +176,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_legend(parser)
     addarg_darkmode(parser)
     addarg_show(parser)
+    addarg_data_output(parser)
     addarg_modelpath(parser, positional=True, default=Path())
 
     addarg_timedays(parser, kind="str")
@@ -295,6 +299,11 @@ def get_artis_conditions(args: argparse.Namespace, modelpath: Path) -> PlasmaCon
     assert isinstance(args.modelgridindex, int)
     estimators = read_estimators(modelpath, timestep=args.timestep, modelgridindex=args.modelgridindex)
     assert isinstance(args.timestep, int)
+    if (args.timestep, args.modelgridindex) not in estimators:
+        exit_with_error(
+            f"The estimators hold no row for cell {args.modelgridindex} at timestep {args.timestep}",
+            "ARTIS writes no estimators for an empty cell. Give a different cell or timestep",
+        )
     estim = estimators[args.timestep, args.modelgridindex]
 
     deposition_erg = get_ntlepton_deposition_rate_density(estim)

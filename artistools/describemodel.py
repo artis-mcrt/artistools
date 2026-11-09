@@ -66,7 +66,7 @@ READERCOMMANDS: Mapping[str, str] = MappingProxyType({
     "spec.out": "plotspectra -t <days>",
     "spec_res.out": "plotspectra -t <days> --plotviewingangle N",
     "gamma_spec.out": "plotspectra --gamma -t <days>",
-    "deposition.out": "plotlightcurves --deposition gamma positron",
+    "deposition.out": "plotlightcurves --deposition gamma betaplus",
 })
 
 

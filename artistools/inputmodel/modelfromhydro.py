@@ -11,6 +11,9 @@ import polars.selectors as cs
 
 from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
+from artistools.constants import geometric_density_to_g_per_cm3
+from artistools.constants import geometric_length_to_km
+from artistools.constants import geometric_time_to_s
 from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g as MSUN
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
@@ -96,7 +99,10 @@ def get_merger_time_geomunits(pathtogriddata: Path) -> float:
             comments = fmergertimefile.readline()
             assert comments.startswith("#")
             mergertime_geomunits = float(fmergertimefile.readline())
-            print(f"Found simulation merger time to be {mergertime_geomunits} ({mergertime_geomunits * 4.926e-6} s) ")
+            print(
+                f"Found simulation merger time to be {mergertime_geomunits}"
+                f" ({mergertime_geomunits * geometric_time_to_s} s)"
+            )
         return mergertime_geomunits
 
     msg = 'Make file "tmerger.txt" with time of merger in geom units'
@@ -121,11 +127,11 @@ def get_snapshot_time_geomunits(pathtogriddata: Path | str) -> tuple[float, floa
             simulation_end_time_geomunits = float(line1.split()[2])
             print(
                 f"Found simulation snapshot time to be {simulation_end_time_geomunits} "
-                f"({simulation_end_time_geomunits * 4.926e-6} s)"
+                f"({simulation_end_time_geomunits * geometric_time_to_s} s)"
             )
 
         mergertime_geomunits = get_merger_time_geomunits(pathtogriddata)
-        print(f"  Time since merger {(simulation_end_time_geomunits - mergertime_geomunits) * 4.926e-6} s")
+        print(f"  Time since merger {(simulation_end_time_geomunits - mergertime_geomunits) * geometric_time_to_s} s")
 
     else:
         exit_with_error("Could not find the snapshot info file that gives the simulation time")
@@ -145,12 +151,11 @@ def read_griddat_file(
     # Get simulation time for ejecta snapshot
     simulation_end_time_geomunits, mergertime_geomunits = get_snapshot_time_geomunits(pathtogriddata)
 
-    factor_position = 1.478  # in km
     with zopen(griddatfilepath) as gridfile:
         ngrid = int(gridfile.readline().split()[0])
         extratime_geomunits = float(gridfile.readline().split()[0])
         xmax = abs(float(gridfile.readline().split()[0]))
-        xmax = (xmax * factor_position) * km_to_cm
+        xmax = (xmax * geometric_length_to_km) * km_to_cm
 
     griddata = read_wsv(griddatfilepath, comment_prefix="#", skip_rows=3).rename(
         {
@@ -161,33 +166,34 @@ def read_griddat_file(
             "posx": "pos_x_min",  # for compatibility with fortran maptogrid script
             "posy": "pos_y_min",
             "posz": "pos_z_min",
-            # an old grid.dat names the electron fraction cellYe and the heating energy Q. Ye and q are the names
-            # everywhere after this point, and q is the column that ARTIS reads from model.txt
+            # an old grid.dat names the electron fraction cellYe, and Ye is the name everywhere after this point
             "cellYe": "Ye",
-            "Q": "q",
         },
         strict=False,
     )
 
+    if "Q" in griddata.columns:
+        print_warning(
+            f"{griddatfilepath} has a Q column. No source gives its time or its unit, thus model.txt omits it"
+        )
+        griddata = griddata.drop("Q")
+
     griddata = griddata.with_columns(
         # griddata in geom units
-        cs.by_name("rho", "Ye", "q", require_all=False).fill_null(0.0)
+        cs.by_name("rho", "Ye", require_all=False).fill_null(0.0)
     ).with_columns(
-        cs.starts_with("pos_") * factor_position * km_to_cm,
-        pl.col("rho") * 6.176e17,  # convert to g/cm³
+        cs.starts_with("pos_") * geometric_length_to_km * km_to_cm, pl.col("rho") * geometric_density_to_g_per_cm3
     )
 
     if ngrid != len(griddata["inputcellid"]):
         exit_with_error(f"grid.dat holds {len(griddata['inputcellid'])} cells, but its header gives {ngrid}")
 
-    t_model_sec = (
-        (simulation_end_time_geomunits - mergertime_geomunits) + extratime_geomunits
-    ) * 4.926e-6  # in seconds
+    t_model_sec = ((simulation_end_time_geomunits - mergertime_geomunits) + extratime_geomunits) * geometric_time_to_s
     # t_model of zero is the merger, but this was not time zero in the NSM simulation time
-    t_mergertime_s = mergertime_geomunits * 4.926e-6
+    t_mergertime_s = mergertime_geomunits * geometric_time_to_s
     vmax = xmax / t_model_sec  # cm/s
 
-    t_model_days = t_model_sec / (24.0 * 3600)  # in days
+    t_model_days = t_model_sec / day_to_s
     print(f"t_model in days {t_model_days} ({t_model_sec} s)")
     corner_vmax = vmax * math.sqrt(3)
     print(
@@ -278,6 +284,11 @@ def add_mass_to_center(griddata: pl.DataFrame, modelmeta: dict[str, t.Any]) -> p
     print(griddata.filter(inhole).select(showcols))
 
     return griddata.drop("inhole")
+
+
+def get_griddata_output_file_names(getcellopacityfromYe: bool) -> tuple[str, ...]:
+    """Return the names of the files that makemodelfromgriddata writes."""
+    return (*MODEL_FILE_NAMES, "Ye.txt", *(("opacity.txt",) if getcellopacityfromYe else ()))
 
 
 def makemodelfromgriddata(
@@ -447,7 +458,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         raise FileNotFoundError(msg)
 
     outputpath = Path(f"artismodel_{args.dimensions}d") if args.outputfile is None else Path(args.outputfile)
-    confirm_overwrite([outputpath], MODEL_FILE_NAMES, force=args.force)
+    confirm_overwrite([outputpath], get_griddata_output_file_names(getcellopacityfromYe=False), force=args.force)
 
     outputpath.mkdir(parents=True, exist_ok=True)
 

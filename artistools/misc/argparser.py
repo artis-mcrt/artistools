@@ -252,6 +252,8 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
 
     # Commands that accept positional arguments between options set this flag.
     wantsintermixed: bool = False
+    # The dest of the positional items that can end with the model path.
+    positionalitemsdest: str | None = None
 
     def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
         """Make the parser. The help of -h starts with a capital letter, as the help of every other argument does.

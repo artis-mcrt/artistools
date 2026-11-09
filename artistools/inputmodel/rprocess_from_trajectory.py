@@ -351,7 +351,7 @@ def scan_trajectory_network_data(traj_root: Path, particleid: int) -> pl.LazyFra
         textsource_size=archivestat.st_size if archivestat is not None else None,
     )
     if pqmetadata is not None:
-        return pl.scan_parquet(parquetpath)
+        return pl.scan_parquet(parquetpath, glob=False)
 
     if archivepath is None:
         msg = f"{traj_root} holds no network data for particle {particleid}"
@@ -392,7 +392,7 @@ def scan_trajectory_network_data(traj_root: Path, particleid: int) -> pl.LazyFra
         print(f"{parquetpath} is stale after the write, because {reason}. This call reads the table in memory.")
         return dftrajectory.lazy()
 
-    return pl.scan_parquet(parquetpath)
+    return pl.scan_parquet(parquetpath, glob=False)
 
 
 def get_trajectory_timesteps(traj_root: Path, particleid: int) -> pl.DataFrame:
@@ -688,6 +688,7 @@ def get_gridparticlecontributions(gridcontribpath: Path | str) -> pl.DataFrame:
             "frac_of_cellmass": pl.Float64,
             "frac_of_cellmass_includemissing": pl.Float64,
         },
+        glob=False,
     )
 
 
@@ -865,18 +866,7 @@ def add_abundancecontributions(
 
     timestart = time.perf_counter()
     print("Merging isotopic abundances into dfmodel...", end="", flush=True)
-    # The trajectories give q at t_model, and an old grid.dat can also give q, at the end of the hydrodynamics run.
-    # The value of the trajectories replaces each column of the model that they also give. A join that keeps both
-    # columns names the second one q_right, which no writer and no dimension reduction reads
-    replacedcols = [col for col in dfnucabundances.columns if col != "inputcellid" and col in dfmodel.columns]
-    if replacedcols:
-        print(f" The trajectory values replace the model columns {replacedcols}...", end="", flush=True)
-    dfmodel = (
-        dfmodel
-        .drop(replacedcols)
-        .join(dfnucabundances, how="left", on="inputcellid", maintain_order="left")
-        .fill_null(0)
-    )
+    dfmodel = dfmodel.join(dfnucabundances, how="left", on="inputcellid", maintain_order="left").fill_null(0)
     print(f" Took {time.perf_counter() - timestart:.1f} seconds")
 
     return dfmodel, get_dfelemabund_from_dfmodel(dfmodel), dfcontribs
@@ -919,7 +909,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         print(f"{wollaeger_profilename} not found. Using rho {rho} g/cm³")
         dfdensities = pl.DataFrame({"mgi": [0], "rho": [rho], "vel_r_max_kmps": [6.0e4]})
 
-    dfdensities = dfdensities.with_columns(inputcellid=pl.col("mgi") + 1)
+    # the first column of a density profile can start at 0 or 1, and abundances.txt below takes the row number
+    dfdensities = dfdensities.with_columns(inputcellid=pl.int_range(1, pl.len() + 1, dtype=pl.Int32))
 
     # write abundances.txt
     dictelemabund = get_elemabund_from_nucabund(dfnucabund)

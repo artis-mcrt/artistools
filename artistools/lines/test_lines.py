@@ -645,6 +645,69 @@ def test_linecontributions_takes_the_nlte_levels_of_each_cell() -> None:
     assert 0.0 < dfcelllines["n_lower_per_cm3"][0] < 0.3
 
 
+def test_linecontributions_inverted_line_has_escape_probability_one() -> None:
+    """ARTIS uses tau = 0 for a population inversion. (1 - exp(-tau)) / tau gave a beta far above 1."""
+    from artistools.lines.linecontributions import get_cell_line_table
+    from artistools.lines.linecontributions import NLTEPOPS_SCHEMA
+
+    dfcells = pl.DataFrame({
+        "modelgridindex": [0, 1],
+        "velocity_kmps": [5000.0, 6000.0],
+        "volume": [1e45, 1e45],
+        "Te": [1e4, 1e4],
+        "nne": [1e8, 1e8],
+        "T_exc": [1e4, 1e4],
+        "nnion_Fe_II": [1e7, 1e7],
+    })
+    levelsofion = {
+        (26, 2): pl.DataFrame({"level": [0, 1], "g": [9.0, 5.0], "energy_ev": [0.0, 2.0], "levelname": ["a", "b"]})
+    }
+    dflines = pl.DataFrame({
+        "Z": [26],
+        "ion_stage": [2],
+        "ion": ["Fe II"],
+        "lambda_angstroms": [6230.0],
+        "lower": [0],
+        "upper": [1],
+        "A_per_s": [1e4],
+        "lower_g": [9.0],
+        "upper_g": [5.0],
+    })
+    # cell 0 has a strong population inversion, and cell 1 has an optically thick line with no inversion
+    dfnltepops = pl.DataFrame(
+        {
+            "modelgridindex": [0, 0, 1, 1],
+            "Z": [26] * 4,
+            "ion_stage": [2] * 4,
+            "level": [0, 1, 0, 1],
+            "n_NLTE": [1.0, 1e7, 1e7, 1.0],
+        },
+        schema=NLTEPOPS_SCHEMA,
+    )
+    dfcelllines = get_cell_line_table(dfcells, dflines, levelsofion, dfnltepops, time_days=1.0).sort("modelgridindex")
+    tau_inverted, tau_thick = dfcelllines["tau_sobolev"].to_list()
+    assert tau_inverted < -20.0
+    assert tau_thick > 20.0
+    assert np.isclose(dfcelllines["escape_probability"][0], 1.0, rtol=1e-12, atol=0.0)
+    assert np.isclose(dfcelllines["escape_probability"][1], -math.expm1(-tau_thick) / tau_thick, rtol=1e-12, atol=0.0)
+
+
+def test_linecontributions_lte_timestep_takes_lte_populations() -> None:
+    """A timestep before the first NLTE timestep has no NLTE rows, and the LTE populations are correct for it.
+
+    The NLTE files of the test model hold only even timesteps from 10. Timestep 51 is an NLTE timestep with no rows,
+    and the LTE populations are wrong for it, thus the command must stop.
+    """
+    from artistools.lines.linecontributions import get_cell_line_inputs
+
+    inputs = get_cell_line_inputs(modelpath, timestep=5, lambdamin=8400.0, lambdamax=8700.0)
+    assert inputs.dfnltepops.is_empty()
+    assert not inputs.dfcells.is_empty()
+
+    with pytest.raises(SystemExit):
+        get_cell_line_inputs(modelpath, timestep=51, lambdamin=8400.0, lambdamax=8700.0)
+
+
 def test_linecontributions_writes_a_file_only_with_the_output_option(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -1308,17 +1371,20 @@ def test_opacity_levels_are_the_levels_that_artis_keeps() -> None:
     """The opacities take only the first nlevelsmax levels of each ion from compositiondata.txt, as ARTIS does.
 
     The partition function summed all 1792 levels of Fe I in adata.txt. ARTIS keeps 500 of them in the classic test
-    model, and the sum of all the levels is 1.97 times the sum of the kept levels at 20000 K.
+    model. The sum of all the levels is 1.97 times the sum of the kept levels at 20000 K. The classic test model
+    sets single_level_top_ion, thus the log of ARTIS gives one level of Fe V and of each other top ion.
     """
     classicmodelpath = at.get_path("testdata") / "test-classicmode_3d"
     adata = at.lines.core.get_opacity_atomic_data(classicmodelpath)
     keptlevelcount_of_element = at.atomic.get_kept_level_counts(classicmodelpath)
+    topionstage_of_element = at.atomic.get_single_level_top_ion_stages(classicmodelpath)
     alllevels = at.atomic.get_levels(classicmodelpath)
     for Z, ion_stage, dflevels in adata.select("Z", "ion_stage", "levels").iter_rows():
         levelcount = alllevels.filter(pl.col("Z") == Z, pl.col("ion_stage") == ion_stage)["levels"].item().height
-        keptlevelcount = keptlevelcount_of_element[Z]
+        keptlevelcount = 1 if ion_stage == topionstage_of_element[Z] else keptlevelcount_of_element[Z]
         assert dflevels.height == (levelcount if keptlevelcount is None else min(keptlevelcount, levelcount))
     assert adata.filter(pl.col("Z") == 26, pl.col("ion_stage") == 1)["levels"].item().height == 500
+    assert adata.filter(pl.col("Z") == 26, pl.col("ion_stage") == 5)["levels"].item().height == 1
 
     # the test model keeps all the levels, because its compositiondata.txt gives -1
     assert at.get_composition_data(modelpath)["nlevelsmax_readin"].to_list() == [-1, -1]

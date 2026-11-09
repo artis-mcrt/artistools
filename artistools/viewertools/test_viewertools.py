@@ -246,17 +246,33 @@ def test_select_y_handler_gives_a_reason_for_no_change() -> None:
 
 
 def test_session_keeps_a_label_that_names_a_folder(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """A --label or a --title with the name of a folder stays a text, and the path of the folder becomes absolute.
+    """A --label, a --title, or a --yscale with the name of a folder stays the same, and a path becomes absolute.
 
-    The legend and the title of a restored window then showed the full path of the folder.
+    The legend and the title of a restored window showed the full path of the folder. --yscale log with a folder
+    log gave a command that the next start rejected.
     """
     monkeypatch.chdir(tmp_path)
     (tmp_path / "model1").mkdir()
-    tokens = ["model1", "-t", "300", "--label", "model1", "default", "--title", "model1", "--ymin=-1", "model1"]
+    tokens = [
+        "model1",
+        "-t",
+        "300",
+        "--yscale",
+        "model1",
+        "--label",
+        "model1",
+        "default",
+        "--title",
+        "model1",
+        "--ymin=-1",
+        "model1",
+    ]
     assert viewerapplication.get_absolute_tokens(tokens) == [
         str(tmp_path / "model1"),
         "-t",
         "300",
+        "--yscale",
+        "model1",
         "--label",
         "model1",
         "default",
@@ -1229,6 +1245,84 @@ def test_series_styles_keep_the_values_after_the_paths() -> None:
         ("--label", ("A", "B", "default", "R")),
     )
     assert viewercore.set_series_rows(rows, ("a", "b"), "a", {"--label": "N"}) == (("--label", ("N", "B", "R")),)
+
+
+def test_series_order_keeps_the_residual_series() -> None:
+    """The residual options give a series by its index, thus each index must follow its series to the new order.
+
+    A new order silently gave the residual panel a different baseline.
+    """
+    move = viewercore.move_series_styles
+    assert move((("--residualbaselineseries", ("1",)),), ("a", "b"), ("b", "a")) == (
+        ("--residualbaselineseries", ("0",)),
+    )
+    # a flag with no value gives the index 0, and a command with --residual alone takes the baseline at index 0
+    assert move((("--residualbaselineseries", ()),), ("a", "b"), ("b", "a")) == (("--residualbaselineseries", ("1",)),)
+    assert move((("--residual", ("0", "2")),), ("a", "b", "c"), ("c", "a", "b")) == (
+        ("--residual", ("1", "0")),
+        ("--residualbaselineseries", ("1",)),
+    )
+    # a removed baseline goes away, a removed series leaves the list, and a series after the paths stays after them
+    assert move((("--residualbaselineseries", ("1",)),), ("a", "b"), ("a",)) == ()
+    assert move((("--residual", ("0", "1")), ("-residuals", ("0",))), ("a", "b"), ("a",)) == (
+        ("--residual", ("0",)),
+        ("-residuals", ("0",)),
+    )
+    assert move((("--residualbaselineseries", ("2",)),), ("a", "b"), ("a", "b", "c")) == (
+        ("--residualbaselineseries", ("3",)),
+    )
+    # the second copy of a path stays the second copy
+    assert move((("--residualbaselineseries", ("1",)),), ("a", "a", "b"), ("b", "a", "a")) == (
+        ("--residualbaselineseries", ("2",)),
+    )
+
+
+def test_viewer_queue_draws_the_waiting_values_after_an_error_of_the_controls() -> None:
+    """An error of the controls at the end of a plot must not stop the plot that waits.
+
+    show_rendered stopped at the error with values in requestedvalues. The queue then started no plot for any later
+    change, and the status bar gave no message.
+    """
+    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)
+    from PySide6 import QtCore
+
+    app = QtCore.QCoreApplication.instance() or QtCore.QCoreApplication([])
+    firstplotcanend = threading.Event()
+    rendered: list[int] = []
+
+    def render(values: int) -> Callable[[], str | None]:
+        rendered.append(values)
+        firstplotcanend.wait(10.0)
+        return lambda: None
+
+    viewer = mock.Mock(values=0, warning="")
+    showvalues = mock.Mock()
+    queue = viewerwindow.DrawQueue(QtCore.QObject(), viewer, mock.Mock(), showvalues, mock.Mock(), render=render)
+
+    def wait_until(is_done: Callable[[], bool]) -> None:
+        deadline = time.perf_counter() + 10.0
+        while not is_done() and time.perf_counter() < deadline:
+            app.processEvents()
+            time.sleep(0.005)
+
+    with mock.patch.object(viewerwindow, "set_plot_busy"), mock.patch.object(viewerwindow, "show_plot_banner"):
+        queue.apply(1)
+        wait_until(lambda: queue.rendering is not None)
+        queue.apply(2)
+        # the queue reads the signal of the new values during the plot, as in a window
+        app.processEvents()
+        queue.rendertimer.stop()
+        firstplotcanend.set()
+        future = queue.rendering
+        assert future is not None
+        future.result(10.0)
+        showvalues.side_effect = ValueError("Invalid value in a control")
+        with pytest.raises(ValueError, match="Invalid value"):
+            queue.show_rendered()
+        showvalues.side_effect = None
+        wait_until(lambda: queue.rendering is None and queue.requestedvalues is None)
+    assert rendered == [1, 2]
+    queue.close()
 
 
 def test_viewer_queue_polls_a_task_that_after_draw_starts() -> None:

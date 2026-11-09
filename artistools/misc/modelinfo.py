@@ -17,7 +17,6 @@ import numpy as np
 import numpy.typing as npt
 import polars as pl
 
-from artistools.constants import day_to_s
 from artistools.constants import h_ev_s
 from artistools.misc.console import print_detail
 from artistools.misc.console import print_warning
@@ -82,6 +81,7 @@ def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[
             has_header=False,
             comment_prefix="#",
             schema={"cellindex": pl.Int32, "modelgridindex": pl.Int32},
+            glob=False,
         )
     assoc_cells: dict[int, list[int]] = dict(
         dfgrid
@@ -99,30 +99,6 @@ def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[
     return assoc_cells, mgi_of_propcells, direct_model_propgrid_map
 
 
-def get_wid_init_at_tmodel(
-    modelpath: Path | str | None = None,
-    ngridpoints: int | None = None,
-    t_model_days: float | None = None,
-    xmax: float | None = None,
-) -> float:
-    """Return the Cartesian cell width [cm] at the model snapshot time."""
-    if ngridpoints is None or t_model_days is None or xmax is None:
-        # Luke: ngridpoint only equals the number of model cells if the model is 3D
-        assert modelpath is not None
-        # artistools.inputmodel imports artistools.misc, thus this import runs at call time
-        from artistools.inputmodel import scan_modeldata
-
-        _, modelmeta = scan_modeldata(modelpath)
-        assert modelmeta["dimensions"] == 3
-        ngridpoints = modelmeta["npts_model"]
-        xmax = modelmeta["vmax_cmps"] * modelmeta["t_model_init_days"] * day_to_s
-    assert ngridpoints is not None
-    ncoordgridx: int = round(ngridpoints ** (1.0 / 3.0))
-
-    assert xmax is not None
-    return 2.0 * xmax / ncoordgridx
-
-
 @clear_at_reload("output")
 @modelpath_cache(maxsize=16)
 @on_model_host
@@ -138,6 +114,7 @@ def get_nu_grid(modelpath: Path) -> npt.NDArray[np.floating]:
             columns=[0],
             new_columns=["nu"],
             extra_columns="ignore",
+            glob=False,
         )
     return specdata["nu"].to_numpy()
 
@@ -459,7 +436,7 @@ def read_runfolder_timesteps(folderpath: Path) -> Sequence[int]:
     # Thus the function reads only a current cache. For a stale cache, it reads the text files
     estimparquetfiles = sorted(Path(folderpath).glob("estimbatch*.out.parquet*"))
     if estimparquetfiles and estimbatch_parquet_is_current(estimparquetfiles[0], folderpath):
-        dfestfile = pl.scan_parquet(estimparquetfiles[0])
+        dfestfile = pl.scan_parquet(estimparquetfiles[0], glob=False)
         return dfestfile.select(pl.col("timestep")).unique().sort("timestep").collect().to_series().to_list()
     # a leftover sibling such as estimators_0000.out.bak sorts before estimators_0000.out.zst, thus
     # the glob alone cannot pick the file. firstexisting_or_none applies the precedence that zopen reads
@@ -624,7 +601,7 @@ def read_rank_outputfiles(
     # a negative cell number selects all cells
     selectedcells: list[int] = cells if all(mgi >= 0 for mgi in cells) else []
     # get_mpiranklist also stops with an error for a cell that is not in the model
-    mpiranks = get_mpiranklist(modelpath, modelgridindex=modelgridindex)
+    mpiranks = get_mpiranklist(modelpath, modelgridindex=modelgridindex, only_ranks_withgridcells=True)
     # a rank whose cells all hold no matter writes no file, and a file of all ranks has no row for its cells
     nonemptycounts = get_nonempty_cellcounts(modelpath)
     ranks_with_matter = [rank for rank in mpiranks if nonemptycounts is None or nonemptycounts.get(rank) != 0]
@@ -746,26 +723,6 @@ def read_rank_file(filepath: Path, line_filter: pl.Expr | None = None) -> pl.Dat
         return None
 
 
-def get_cellsofmpirank(mpirank: int, modelpath: Path | str) -> Iterable[int]:
-    """Return an iterable of the cell numbers processed by a given MPI rank."""
-    npts_model = get_npts_model(modelpath)
-    nprocs = get_nprocs(modelpath)
-
-    assert mpirank < nprocs
-
-    nblock = npts_model // nprocs
-    n_leftover = npts_model % nprocs
-
-    if mpirank < n_leftover:
-        ndo = nblock + 1
-        nstart = mpirank * (nblock + 1)
-    else:
-        ndo = nblock
-        nstart = n_leftover + mpirank * nblock
-
-    return list(range(nstart, nstart + ndo))
-
-
 @modelpath_cache(maxsize=16)
 def scan_rankassignments(modelpath: Path) -> pl.LazyFrame | None:
     """Return the cell-to-MPI-rank assignments, or None when modelgridrankassignments.out is absent."""
@@ -774,7 +731,7 @@ def scan_rankassignments(modelpath: Path) -> pl.LazyFrame | None:
     )
     if filerankassignments is not None:
         with polars_source_open(filerankassignments) as source:
-            return pl.scan_csv(source, has_header=True, separator=" ").rename(
+            return pl.scan_csv(source, has_header=True, separator=" ", glob=False).rename(
                 lambda column_name: column_name.removeprefix("#")
             )
     return None
@@ -868,10 +825,7 @@ def get_ranks_of_cells_in_layout(
 
 def get_mpirankofcell(modelgridindex: int, modelpath: Path | str) -> int:
     """Return the rank number of the MPI process responsible for handling a specified cell's updating and output."""
-    mpirank = int(get_mpiranks_of_cells(modelpath, np.array([modelgridindex], dtype=np.int64))[0])
-    # get_cellsofmpirank knows the blocks of the formula alone, and not modelgridrankassignments.out
-    assert get_rankassignments(modelpath) is not None or modelgridindex in get_cellsofmpirank(mpirank, modelpath)
-    return mpirank
+    return int(get_mpiranks_of_cells(modelpath, np.array([modelgridindex], dtype=np.int64))[0])
 
 
 @dc.dataclass

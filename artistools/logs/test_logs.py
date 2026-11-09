@@ -282,14 +282,16 @@ def test_logsummary_combines_the_summary_of_each_log() -> None:
 
     The combination must give the summary of all the messages: the sums, the bounds, the cells, and the first example.
     """
+    from artistools.logs.core import combine_log_summaries
     from artistools.logs.core import get_log_summary
     from artistools.logs.core import get_logfiles
+    from artistools.logs.core import get_partial_log_summary
     from artistools.logs.core import read_log_messages
-    from artistools.logs.core import summarise_log_messages
 
     logfiles = get_logfiles(modelpath_classic_3d, None)
     assert len(logfiles) > 2
-    dfall = summarise_log_messages(pl.concat([read_log_messages(logfile) for logfile in logfiles]))
+    dfmessages = pl.concat([read_log_messages(logfile) for logfile in logfiles])
+    dfall = combine_log_summaries([get_partial_log_summary(dfmessages)])
     pltest.assert_frame_equal(get_log_summary(logfiles), dfall)
 
 

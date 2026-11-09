@@ -81,11 +81,6 @@ def get_channel_sum_expression(channels: Sequence[str]) -> pl.Expr:
     return pl.sum_horizontal(pl.col(f"{DEPOSITIONPREFIX}{channel}") for channel in channels)
 
 
-def get_deposition_expression(colnames: Sequence[str], channels: Sequence[str] | None) -> pl.Expr:
-    """Return the expression that gives the deposition rate of one cell in erg/s/cm3, for the channels or for all."""
-    return get_channel_sum_expression(select_deposition_channels(colnames, channels))
-
-
 def get_configured_analytic_channels(modelpath: Path | str) -> list[str] | None:
     """Return the deposition channels that hold an analytic rate, from the artisoptions.h of the model, or None.
 
@@ -250,55 +245,18 @@ def check_ye_range(modelpath: Path | str, yerange: tuple[float, float], verbose:
     return cellsinrange, cellswithmatter
 
 
-def aggregate_deposition_rates(
+def get_cell_deposition_rates(
     dfestim: pl.LazyFrame,
-    timesteps: Sequence[int] | None = None,
-    channels: Sequence[str] | None = None,
-    yerange: tuple[float, float] | None = None,
-    configuredanalyticchannels: Sequence[str] | None = None,
-) -> pl.DataFrame:
-    """Return the deposition rate per unit volume, per ion, and per unit mass of each timestep.
+    timesteps: Sequence[int] | None,
+    selectedchannels: Sequence[str],
+    configuredanalyticchannels: Sequence[str] | None,
+) -> pl.LazyFrame:
+    """Return the deposition rate in erg/s of each cell at each timestep, as the sum of the selected channels.
 
-    ARTIS writes the Monte Carlo deposition rate of a timestep into the estimators of the next timestep. It divides that
-    rate by the volume of the timestep that took the energy. Thus the rate of timestep n comes from the rows of timestep
-    n + 1 and from the column volume_prevtimestep. If the selection contains a Monte Carlo channel, the last timestep
-    gets no row, because only a later timestep holds that rate. An analytic channel, see
-    get_analytic_deposition_channels, holds the rate of its own row, and it takes the volume of that row.
-
-    The join on the cell gives one row of one timestep to each cell. Thus the rate, the ion count,
-    the volume, and the mass of a row cover one set of cells.
-
-    An init_Ye range keeps the cells whose init_Ye is inside it. Both ends of the range count.
-
-    configuredanalyticchannels gives the analytic channels from the options of the run, see
-    get_configured_analytic_channels. Without it, a channel that equals its emission_ana_ column in each row is
-    analytic. A Monte Carlo channel can also agree, e.g. when both are zero in the selected rows.
+    A Monte Carlo rate of timestep n comes from the row of timestep n + 1, and an analytic rate from the row of
+    timestep n. Thus a model of Monte Carlo channels gives no row for the last timestep that dfestim holds. The frame
+    must hold the columns volume and volume_prevtimestep. See aggregate_deposition_rates for configuredanalyticchannels.
     """
-    colnames = dfestim.collect_schema().names()
-    if "nntot" not in colnames:
-        msg = (
-            "The estimators of this model hold no number density of the elements, "
-            "thus the command cannot count the ions"
-        )
-        raise ValueError(msg)
-
-    if yerange is not None:
-        # join_cell_modeldata puts an init_ prefix on each column of the model snapshot
-        if "init_Ye" not in colnames:
-            msg = "This model gives no init_Ye of a cell, thus an init_Ye range selects nothing"
-            raise ValueError(msg)
-
-        dfestim = dfestim.filter(pl.col("init_Ye").is_between(yerange[0], yerange[1]))
-
-    selectedchannels = select_deposition_channels(colnames, channels)
-    # the rates, the cells, and the test of the channels read the same columns. On a 3D model of 80 timesteps, one
-    # .collect() of these columns took 1.90 GB, and a lazy query that read them for each branch took 2.29 GB
-    neededcolumns = dict.fromkeys([
-        *("timestep", "modelgridindex", "tmid_days", "mass_g", "volume", "volume_prevtimestep", "nntot"),
-        *(f"{DEPOSITIONPREFIX}{channel}" for channel in selectedchannels),
-        *(f"emission_ana_{channel}" for channel in selectedchannels if f"emission_ana_{channel}" in colnames),
-    ])
-    dfestim = dfestim.select(list(neededcolumns)).collect().lazy()
     if configuredanalyticchannels is not None:
         analyticchannels = [channel for channel in selectedchannels if channel in configuredanalyticchannels]
         # an analytic rate comes from the row of its timestep, and a Monte Carlo rate from the row of the next
@@ -359,6 +317,60 @@ def aggregate_deposition_rates(
     else:
         dfrates = dfrates_analytic.rename({"dep_analytic": "dep_erg_per_s"})
 
+    return dfrates
+
+
+def aggregate_deposition_rates(
+    dfestim: pl.LazyFrame,
+    timesteps: Sequence[int] | None = None,
+    channels: Sequence[str] | None = None,
+    yerange: tuple[float, float] | None = None,
+    configuredanalyticchannels: Sequence[str] | None = None,
+) -> pl.DataFrame:
+    """Return the deposition rate per unit volume, per ion, and per unit mass of each timestep.
+
+    ARTIS writes the Monte Carlo deposition rate of a timestep into the estimators of the next timestep. It divides that
+    rate by the volume of the timestep that took the energy. Thus the rate of timestep n comes from the rows of timestep
+    n + 1 and from the column volume_prevtimestep. If the selection contains a Monte Carlo channel, the last timestep
+    gets no row, because only a later timestep holds that rate. An analytic channel, see
+    get_analytic_deposition_channels, holds the rate of its own row, and it takes the volume of that row.
+
+    The join on the cell gives one row of one timestep to each cell. Thus the rate, the ion count,
+    the volume, and the mass of a row cover one set of cells.
+
+    An init_Ye range keeps the cells whose init_Ye is inside it. Both ends of the range count.
+
+    configuredanalyticchannels gives the analytic channels from the options of the run, see
+    get_configured_analytic_channels. Without it, a channel that equals its emission_ana_ column in each row is
+    analytic. A Monte Carlo channel can also agree, e.g. when both are zero in the selected rows.
+    """
+    colnames = dfestim.collect_schema().names()
+    if "nntot" not in colnames:
+        msg = (
+            "The estimators of this model hold no number density of the elements, "
+            "thus the command cannot count the ions"
+        )
+        raise ValueError(msg)
+
+    if yerange is not None:
+        # join_cell_modeldata puts an init_ prefix on each column of the model snapshot
+        if "init_Ye" not in colnames:
+            msg = "This model gives no init_Ye of a cell, thus an init_Ye range selects nothing"
+            raise ValueError(msg)
+
+        dfestim = dfestim.filter(pl.col("init_Ye").is_between(yerange[0], yerange[1]))
+
+    selectedchannels = select_deposition_channels(colnames, channels)
+    # the rates, the cells, and the test of the channels read the same columns. On a 3D model of 80 timesteps, one
+    # .collect() of these columns took 1.90 GB. A lazy query that read them for each branch took 2.29 GB
+    neededcolumns = dict.fromkeys([
+        *("timestep", "modelgridindex", "tmid_days", "mass_g", "volume", "volume_prevtimestep", "nntot"),
+        *(f"{DEPOSITIONPREFIX}{channel}" for channel in selectedchannels),
+        *(f"emission_ana_{channel}" for channel in selectedchannels if f"emission_ana_{channel}" in colnames),
+    ])
+    dfestim = dfestim.select(list(neededcolumns)).collect().lazy()
+    dfrates = get_cell_deposition_rates(dfestim, timesteps, selectedchannels, configuredanalyticchannels)
+
     # only a cell that holds matter has an ion. The filter also names is_finite, because a NaN
     # number density passes the comparison and gives no count
     dfcells = dfestim.filter(pl.col("nntot") > 0, pl.col("nntot").is_finite()).select(
@@ -387,16 +399,16 @@ def aggregate_deposition_rates(
         .filter(pl.col("raterowcount") > 0)
         .with_columns(
             # a rate in erg divided by erg per eV gives the rate in eV
-            dep_per_volume=pl.col("dep_erg_per_s") / EV_to_erg / pl.col("volume"),
-            dep_per_ion=pl.col("dep_erg_per_s") / EV_to_erg / pl.col("ioncount"),
-            dep_per_mass=pl.col("dep_erg_per_s") / EV_to_erg / pl.col("mass_g"),
+            dep_ev_per_s_per_cm3=pl.col("dep_erg_per_s") / EV_to_erg / pl.col("volume"),
+            dep_ev_per_s_per_ion=pl.col("dep_erg_per_s") / EV_to_erg / pl.col("ioncount"),
+            dep_ev_per_s_per_g=pl.col("dep_erg_per_s") / EV_to_erg / pl.col("mass_g"),
         )
         .select(
             "timestep",
             # the table prints a number, thus a null arrives there as a NaN
             *(
                 pl.col(name).fill_null(float("nan"))
-                for name in ("tmid_days", "dep_per_volume", "dep_per_ion", "dep_per_mass")
+                for name in ("tmid_days", "dep_ev_per_s_per_cm3", "dep_ev_per_s_per_ion", "dep_ev_per_s_per_g")
             ),
             "cellswithnorate",
         )
@@ -504,7 +516,7 @@ def format_deposition_table(
     lines.extend(
         f"{timestep:8d} {tmid_days:10.3f} {dep_per_volume:15.3e} {dep_per_ion:15.3e} {dep_per_mass:15.3e}"
         for timestep, tmid_days, dep_per_volume, dep_per_ion, dep_per_mass in dftable.select(
-            "timestep", "tmid_days", "dep_per_volume", "dep_per_ion", "dep_per_mass"
+            "timestep", "tmid_days", "dep_ev_per_s_per_cm3", "dep_ev_per_s_per_ion", "dep_ev_per_s_per_g"
         ).iter_rows()
     )
 

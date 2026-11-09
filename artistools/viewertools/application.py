@@ -19,7 +19,6 @@ from artistools.viewertools.core import get_command_tokens
 from artistools.viewertools.core import is_flag
 from artistools.viewertools.core import MACOS_BUNDLE_VARIABLE
 from artistools.viewertools.core import run_command_step
-from artistools.viewertools.core import SERIES_STYLE_FLAGS
 from artistools.viewertools.core import ThreadOutput
 
 if t.TYPE_CHECKING:
@@ -577,26 +576,37 @@ def add_session_window(tokens: "Sequence[str]") -> None:
     )
 
 
-# the options that give a text or a style of the plot. Such a value is not a path, also when a folder of the working
-# folder has the same name, e.g. the label run1 of the folder run1
-TEXT_FLAGS: t.Final = frozenset({*SERIES_STYLE_FLAGS, "--title"})
+# the options of the viewers that take a path. A different value is not a path, also when the working folder holds a
+# folder of the same name. An example is the folder log and --yscale log, or the folder run1 and the label run1
+PATH_VALUE_FLAGS: t.Final = frozenset({
+    "--specpath",
+    "--modelpath",
+    "--obsspec",
+    "--refspecfiles",
+    "--reflightcurves",
+    "--plot-hesma-model",
+    "-o",
+    "--outputfile",
+    "--outputpath",
+})
 
 
 def get_absolute_tokens(tokens: "Sequence[str]") -> list[str]:
     """Return the tokens of a command with an absolute path for each path that exists in the working folder.
 
-    An empty token, e.g. the value of --label "", stays empty. Path("") is the working folder, and it exists. A value of
-    an option of TEXT_FLAGS stays the same.
+    A path is a positional word or a value of an option of PATH_VALUE_FLAGS. An empty token, e.g. the value of
+    --label "", stays empty. Path("") is the working folder, and it exists.
     """
     absolutetokens: list[str] = []
-    # the flag of the option that takes the next value. A flag that holds its value, e.g. -ymin=-1, takes no more
+    # the flag of the option that takes the next value, or "" for a positional word. A flag that holds its value, e.g.
+    # -ymin=-1, takes no more
     flag = ""
     for word in tokens:
         if is_flag(word):
             # a session that an older version saved holds the older spellings, e.g. -label
-            flag = "" if "=" in word else get_standard_flag(word)
+            flag = "" if "=" in word or word == "--" else get_standard_flag(word)
             absolutetokens.append(word)
-        elif word and flag not in TEXT_FLAGS and Path(word).exists():
+        elif word and (not flag or flag in PATH_VALUE_FLAGS) and Path(word).exists():
             absolutetokens.append(str(Path(word).absolute()))
         else:
             absolutetokens.append(word)

@@ -27,10 +27,9 @@ def parse_mass_fractions(entries: list[str]) -> list[float]:
     return [0.0 if re.fullmatch(r"[0-9.]+-\d+", entry) else float(entry) for entry in entries]
 
 
-def rd_sn_hydro_data(file: str, reverse: bool = False, quiet: bool = False) -> dict[str, t.Any]:
-    """Read an SN_HYDRO_DATA or SN_HYDRO_FOR_NEXT_MODEL file into a dict of arrays.
+def rd_sn_hydro_data(file: str, quiet: bool = False) -> dict[str, t.Any]:
+    """Read an SN_HYDRO_DATA or SN_HYDRO_FOR_NEXT_MODEL file into a dict of arrays, in order from vmin to vmax.
 
-    Set reverse=True to output vectors from vmin to vmax (CMFGEN's grid moves inward from vmax to vmin).
     Set quiet=True to disable verbose output.
     """
     MAX_POP_DIFF = 1e-5  # maximum absolute difference between sum(isofrac) and corresponding specfrac
@@ -67,24 +66,16 @@ def rd_sn_hydro_data(file: str, reverse: bool = False, quiet: bool = False) -> d
 
         # read in hydro grid vectors
         rad = np.zeros(nd)  # radius grid (10^10 cm)
-        vel = np.zeros(nd)  # velocity (km/s)
-        sigma = np.zeros(nd)  # sigma = dlnV/dlnR-1 (=0 for pure hubble flow)
         temp = np.zeros(nd)  # temperature (10^4 K)
         dens = np.zeros(nd)  # mass density (g/cm^3)
         atomdens = np.zeros(nd)  # atom density (/cm^3)
         ed = np.zeros(nd)  # electron density (/cm^3)
-        rossopac = np.zeros(nd)  # Rossland mean opacity (10^-10 cm^-1)
-        kappa = np.zeros(nd)  # mass absorption coefficient (cm^2/g)
         okhydro = 0
         while okhydro == 0:
             if not line:
                 line = readline_or_stop(f, file, "the mass fractions")
             if "Radius grid" in line:
                 rad = np.fromfile(f, count=nd, sep=" ", dtype=float)
-            elif "Velocity" in line:
-                vel = np.fromfile(f, count=nd, sep=" ", dtype=float)
-            elif "Sigma" in line:
-                sigma = np.fromfile(f, count=nd, sep=" ", dtype=float)
             elif "Temperature" in line:
                 temp = np.fromfile(f, count=nd, sep=" ", dtype=float)
             elif "Density" in line:
@@ -93,10 +84,6 @@ def rd_sn_hydro_data(file: str, reverse: bool = False, quiet: bool = False) -> d
                 atomdens = np.fromfile(f, count=nd, sep=" ", dtype=float)
             elif "Electron density" in line:
                 ed = np.fromfile(f, count=nd, sep=" ", dtype=float)
-            elif "Rosseland mean" in line:
-                rossopac = np.fromfile(f, count=nd, sep=" ", dtype=float)
-            elif "Kappa" in line:
-                kappa = np.fromfile(f, count=nd, sep=" ", dtype=float)
             elif "mass fraction" in line:
                 if 0.0 in {rad[0], temp[0], atomdens[0], ed[0]}:
                     sys.exit("Error reading SN hydro data: R or T is zero")
@@ -185,46 +172,16 @@ def rd_sn_hydro_data(file: str, reverse: bool = False, quiet: bool = False) -> d
         if np.max(relabsdiff) > MAX_POP_DIFF:
             sys.exit(f"ERROR - Maximum relative difference > MAX_POP_DIFF for species {s:s}")
 
-    # reversed vectors if reverse=True
-    if reverse:
-        rad = rad[::-1]
-        vel = vel[::-1]
-        sigma = sigma[::-1]
-        temp = temp[::-1]
-        dens = dens[::-1]
-        atomdens = atomdens[::-1]
-        ed = ed[::-1]
-        rossopac = rossopac[::-1]
-        kappa = kappa[::-1]
-        for i in range(nspec):
-            specfrac[:, i] = specfrac[::-1, i]
-        for i in range(niso):
-            isofrac[:, i] = isofrac[::-1, i]
-        dvol = dvol[::-1]
-        dmass = dmass[::-1]
-
-    # output
-    out: dict[str, t.Any] = {}
-    out["nd"] = nd
-    out["nspec"] = nspec
-    out["niso"] = niso
-    out["time"] = time
-    out["rad"] = rad
-    out["vel"] = vel
-    out["sigma"] = sigma
-    out["temp"] = temp
-    out["dens"] = dens
-    out["atomdens"] = atomdens
-    out["ed"] = ed
-    out["rossopac"] = rossopac
-    out["kappa"] = kappa
-    out["spec"] = spec
-    out["specfrac"] = specfrac
-    out["iso"] = iso
-    out["aiso"] = aiso
-    out["isofrac"] = isofrac
-    out["dvol"] = dvol
-    out["dmass"] = dmass
-
-    # end
-    return out
+    # CMFGEN's grid moves inward from vmax to vmin
+    return {
+        "nd": nd,
+        "time": time,
+        "rad": rad[::-1],
+        "dens": dens[::-1],
+        "spec": spec,
+        "specfrac": specfrac[::-1, :],
+        "iso": iso,
+        "aiso": aiso,
+        "isofrac": isofrac[::-1, :],
+        "dmass": dmass[::-1],
+    }

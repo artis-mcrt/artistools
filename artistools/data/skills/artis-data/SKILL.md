@@ -81,7 +81,7 @@ null_values="nan")`.
 
 `--explain` prints the time steps, the direction bins, and the output file that the arguments select. Then it stops
 before it reads the data. A time or a wavelength can have a unit, e.g. `-t 12h` or `--lambdamin 600nm`. A value with no unit
-is in days or in Angstroms.
+is in days or in Angstroms. The x range of plotspectra takes a number in the unit of `--xunit`.
 
 Without `--quiet`, plotestimators, plotlightcurves, and plotspectra also log one summary line for each drawn series.
 Read these lines before you calculate a value yourself. `--print-data` and `--write-data` also give the same values

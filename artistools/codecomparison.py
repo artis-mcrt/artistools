@@ -193,6 +193,8 @@ def read_reference_estimators(modelpath: str | Path) -> dict[tuple[int, int], t.
                         except ValueError:
                             estimators[tsmgi][f"nnion_{ionstr}"] = math.nan
                         else:
+                            # the format gives n_ion / n_element and no element density. nntot takes its place, thus
+                            # only a ratio of two populations of one element is a physical value
                             ionpop = ionfrac * estimators[tsmgi]["nntot"]
                             if ionpop > 1e-80:
                                 estimators[tsmgi][f"nnion_{ionstr}"] = ionpop

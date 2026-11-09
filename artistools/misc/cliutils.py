@@ -197,7 +197,6 @@ def addarg_modelpath(
     *,
     positional: bool = False,
     multiplepaths: bool = False,
-    required: bool = False,
     default: t.Any = None,
     helptext: str = "Path to ARTIS folder",
 ) -> None:
@@ -210,8 +209,6 @@ def addarg_modelpath(
         parser.add_argument("modelpath", action=KeepGivenPaths, nargs=kwargs.pop("nargs", "?"), **kwargs)
         addarg_pathoption(parser, "-modelpath", "modelpath", multiplepaths=multiplepaths)
     else:
-        if required:
-            kwargs["required"] = True
         parser.add_argument("-modelpath", **kwargs)
 
 
@@ -253,6 +250,7 @@ def addarg_positional_items(
     # a user can write a flag between two items, thus this parser reads the positional arguments intermixed
     if isinstance(parser, SuggestingArgumentParser):
         parser.wantsintermixed = True
+        parser.positionalitemsdest = dest
 
     return parser.add_argument(dest, nargs="*", default=[], metavar=metavar, help=helptext)
 
@@ -1115,6 +1113,10 @@ def print_explanation(
     - the direction bins;
     - the output file.
     """
+    # main of the command removes the model path from the items, and --explain stops the command before main
+    if isinstance(parser, SuggestingArgumentParser) and (itemsdest := parser.positionalitemsdest) is not None:
+        setattr(parsedargs, itemsdest, resolve_positional_modelpath(args, itemsdest))
+
     print_heading("The arguments select these data and files. --explain stops the command before it reads the data")
     for action in parser._actions:  # ruff:ignore[private-member-access]
         if action.dest in {"help", "explain", "quiet", *MODELPATH_DESTS} or not hasattr(args, action.dest):

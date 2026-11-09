@@ -10,6 +10,7 @@ import polars as pl
 
 from artistools.atomic import get_atomic_number
 from artistools.atomic import get_elsymbol
+from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g
 from artistools.inputmodel.core import save_initelemabundances
@@ -56,7 +57,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         isotopesofelem.setdefault(atomic_number, []).append(species)
 
     t_model_init_seconds = 10.0
-    t_model_init_days = t_model_init_seconds / 24 / 60 / 60
+    t_model_init_days = t_model_init_seconds / day_to_s
 
     # the shell masses and radii come from the enclosed mass and velocity of each cell's outer boundary
     dfshells = (
@@ -64,7 +65,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         .with_row_index("cellid", offset=1)  # ARTIS cell ids count from one
         .with_columns(
             m_enc_outer=pl.col("m") * Msun_to_g,  # convert Solar masses to grams
-            v_outer=pl.col("v") * 1e-5,  # convert cm/s to km/s
+            v_outer=pl.col("v") / km_to_cm,
         )
         .with_columns(
             m_shell_grams=pl.col("m_enc_outer") - pl.col("m_enc_outer").shift(1, fill_value=0.0),

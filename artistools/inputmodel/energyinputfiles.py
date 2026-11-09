@@ -17,6 +17,7 @@ from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import scan_modeldata
 from artistools.misc import addarg_action
 from artistools.misc import addarg_darkmode
+from artistools.misc import addarg_data_output
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_force
 from artistools.misc import addarg_modelpath
@@ -24,6 +25,7 @@ from artistools.misc import addarg_output
 from artistools.misc import addarg_show
 from artistools.misc import confirm_overwrite
 from artistools.misc import exit_with_error
+from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import print_saved
 from artistools.misc import read_wsv
@@ -31,6 +33,8 @@ from artistools.misc import require_action
 from artistools.misc import resolve_outputfile
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
+
+ENERGY_FILE_NAMES = ("energydistribution.txt", "energyrate.txt")
 
 
 def cumulative_trapezoid(y: npt.ArrayLike, x: npt.ArrayLike) -> npt.NDArray[np.float64]:
@@ -161,40 +165,32 @@ def rprocess_const_and_powerlaw() -> tuple[pl.DataFrame, float]:
     return dftimes_and_rate, E_tot
 
 
-def energy_from_rprocess_calculation(
-    energy_thermo_data: pl.DataFrame, get_rate: bool = True
-) -> float | tuple[pl.DataFrame, float]:
-    """Integrate a trajectory Qdot to get the total energy [erg/g], and the cumulative rate when get_rate is set."""
+def energy_from_rprocess_calculation(energy_thermo_data: pl.DataFrame) -> tuple[pl.DataFrame, float]:
+    """Integrate a trajectory Qdot to get the cumulative rate and the total energy [erg/g]."""
     energy_thermo_data = energy_thermo_data.filter(pl.col("time/s") <= 1e7)
 
-    skipfirstnrows = 0  # not sure first values look sensible -- check this
-    times = energy_thermo_data["time/s"][skipfirstnrows:]
-    qdot = energy_thermo_data["Qdot"][skipfirstnrows:]
+    times = energy_thermo_data["time/s"]
+    qdot = energy_thermo_data["Qdot"]
 
     cumulative_energy = cumulative_trapezoid(y=qdot, x=times)
     E_tot = float(cumulative_energy[-1])  # erg / g
 
-    if get_rate:
-        print(f"E_tot {E_tot} erg/g")
-        rate = cumulative_energy / E_tot
+    print(f"E_tot {E_tot} erg/g")
+    rate = cumulative_energy / E_tot
 
-        dftimes_and_rate = pl.DataFrame({"times": times / day_to_s, "rate": rate})
-
-        return dftimes_and_rate, E_tot
-
-    return E_tot
+    return pl.DataFrame({"times": times / day_to_s, "rate": rate}), E_tot
 
 
-def plot_energy_rate(modelpath: str | Path, axis: mplax.Axes) -> None:
-    """Plot the analytic nuclear heating power of the whole model against time."""
+def plot_energy_rate(modelpath: str | Path, axis: mplax.Axes) -> pl.DataFrame:
+    """Plot the analytic power of the nuclear heating of the whole model against time, and return the plotted data."""
     times_and_rate, _ = rprocess_const_and_powerlaw()
     lzmodel, modelmeta = scan_modeldata(modelpath)
     Mtot_grams = (
         add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta).select(pl.col("mass_g").sum()).collect().item()
     )
-    axis.plot(
-        times_and_rate["times"], np.array(times_and_rate["nuclear_heating_power"]) * Mtot_grams, color="k", zorder=10
-    )
+    nuclear_heating_power = times_and_rate["nuclear_heating_power"] * Mtot_grams
+    axis.plot(times_and_rate["times"], nuclear_heating_power, color="k", zorder=10)
+    return pl.DataFrame({"time_days": times_and_rate["times"], "nuclear_heating_power": nuclear_heating_power})
 
 
 def get_etot_fromfile(modelpath: str | Path) -> tuple[float, pl.DataFrame]:
@@ -237,6 +233,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_output(parser, kind="file", helptext="Path for the plot of plotrate")
     addarg_force(parser)
     addarg_show(parser)
+    addarg_data_output(parser)
 
     addarg_figscale(parser)
     addarg_darkmode(parser)
@@ -256,11 +253,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         confirm_overwrite([plotfile.parent], [plotfile.name], force=args.force)
         fig, axesgrid = make_frame_figure(args)
         axis = axesgrid[0][0]
-        plot_energy_rate(modelpath, axis)
+        plotteddata = plot_energy_rate(modelpath, axis)
         axis.set_xlabel("time [days]")
         axis.set_ylabel("Nuclear heating power [erg/s]")
         axis.set_xscale("log")
         axis.set_yscale("log")
+        output_data(args, {"": plotteddata}, plotfile)
         save_figure(fig, plotfile, args=args)
 
     elif args.action == "describe":
@@ -276,7 +274,5 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     else:
         if args.trajthermofile is None:
             exit_with_error("fromtrajectory needs --trajthermofile")
-        result = energy_from_rprocess_calculation(read_trajectory_thermo(args.trajthermofile), get_rate=True)
-        assert isinstance(result, tuple)
-        dftimes_and_rate, e_tot = result
+        dftimes_and_rate, e_tot = energy_from_rprocess_calculation(read_trajectory_thermo(args.trajthermofile))
         print(f"E_tot {e_tot:.4e} erg/g over {len(dftimes_and_rate)} times")

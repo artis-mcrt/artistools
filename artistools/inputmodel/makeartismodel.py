@@ -17,7 +17,9 @@ from artistools.inputmodel.core import scan_initelemabundances
 from artistools.inputmodel.core import scan_modeldata
 from artistools.inputmodel.downscale3dgrid import get_downscale_outputfolder
 from artistools.inputmodel.downscale3dgrid import make_downscaled_3d_grid
+from artistools.inputmodel.energyinputfiles import ENERGY_FILE_NAMES
 from artistools.inputmodel.energyinputfiles import make_energy_files
+from artistools.inputmodel.modelfromhydro import get_griddata_output_file_names
 from artistools.inputmodel.modelfromhydro import makemodelfromgriddata
 from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions_or_none
 from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
@@ -110,7 +112,7 @@ def get_dimreduce_outputfolder(outputfile: Path | None, modelpath: Path, ndim_ou
 
 
 def get_model_output_folders(args: argparse.Namespace, modelpath_given: bool) -> dict[str, list[Path]]:
-    """Return the folders that get model.txt, abundances.txt, and gridcontributions.txt, for each action of args."""
+    """Return the folders that get the output files, for each action of args."""
     if args.downscale3dgrid:
         return {
             "downscale3dgrid": [get_downscale_outputfolder(args.modelpath[0], args.outputgridsize, args.outputfile)]
@@ -125,6 +127,8 @@ def get_model_output_folders(args: argparse.Namespace, modelpath_given: bool) ->
         outputfolders["makemodelfromgriddata"] = [
             get_griddata_outputfolder(args.outputfile, args.modelpath, modelpath_given)
         ]
+    if args.makeenergyinputfiles:
+        outputfolders["makeenergyinputfiles"] = [Path(args.outputfile or Path())]
     return outputfolders
 
 
@@ -148,9 +152,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
 
     outputfolders = get_model_output_folders(args, modelpath_given)
-    confirm_overwrite(
-        [folder for folders in outputfolders.values() for folder in folders], MODEL_FILE_NAMES, force=args.force
-    )
+    outputfilenames: dict[str, Sequence[str]] = {
+        "makemodelfromgriddata": get_griddata_output_file_names(args.getcellopacityfromYe),
+        "makeenergyinputfiles": ENERGY_FILE_NAMES,
+    }
+    for action, folders in outputfolders.items():
+        confirm_overwrite(folders, outputfilenames.get(action, MODEL_FILE_NAMES), force=args.force)
 
     if args.downscale3dgrid:
         make_downscaled_3d_grid(
@@ -214,4 +221,4 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
         print(f"Total mass {cellmass_grams.sum() / Msun_to_g} Msun")
 
-        make_energy_files(cellmass_grams, outputpath=args.outputfile or Path())
+        make_energy_files(cellmass_grams, outputpath=outputfolders["makeenergyinputfiles"][0])

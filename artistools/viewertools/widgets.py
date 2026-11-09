@@ -138,6 +138,11 @@ def get_section_header_class() -> "Callable[[str], QtWidgets.QToolButton]":
     return SectionHeader
 
 
+# the patterns of a field of a number in the option table. A QIntValidator or a QDoubleValidator rejects an empty text,
+# and Qt then sends no editingFinished signal, thus the user cannot clear the field
+INT_FIELD_PATTERN: t.Final = r"(?:[-+]?\d+)?"
+FLOAT_FIELD_PATTERN: t.Final = r"(?:[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)?"
+
 # a button that shows one symbol, e.g. "xmark", has no frame. A light background shows under the pointer, as on the
 # small buttons of the apps of macOS. The grey with an alpha suits the light and the dark appearance
 GLYPH_BUTTON_STYLE: t.Final = (
@@ -1316,9 +1321,8 @@ def make_option_table(
                 field.setText(text)
             for field in fields:
                 if action.type in {int, float} and not islist:
-                    validator = QtGui.QDoubleValidator() if action.type is float else QtGui.QIntValidator()
-                    validator.setLocale(QtCore.QLocale.c())
-                    field.setValidator(validator)
+                    pattern = FLOAT_FIELD_PATTERN if action.type is float else INT_FIELD_PATTERN
+                    field.setValidator(QtGui.QRegularExpressionValidator(QtCore.QRegularExpression(pattern), field))
                 if islist:
                     field.setPlaceholderText("values with spaces between them")
                 elif action.default is not None:

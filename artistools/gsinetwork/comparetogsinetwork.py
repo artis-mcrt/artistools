@@ -17,6 +17,7 @@ from artistools.atomic import get_atomic_number
 from artistools.atomic import get_composition_data
 from artistools.constants import amu_g
 from artistools.constants import day_to_s
+from artistools.constants import geometric_time_to_s
 from artistools.constants import Msun_to_g
 from artistools.estimators import scan_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
@@ -37,9 +38,9 @@ from artistools.misc import addarg_output
 from artistools.misc import addarg_show
 from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import exit_with_error
+from artistools.misc import get_artis_option
 from artistools.misc import get_grid_mapping
 from artistools.misc import get_model_name
-from artistools.misc import get_wid_init_at_tmodel
 from artistools.misc import is_in_range
 from artistools.misc import output_data
 from artistools.misc import parallel_map
@@ -61,12 +62,10 @@ def get_abundance_correction_factors(
     modelpath: str | Path,
     modelmeta: dict[str, t.Any],
 ) -> dict[str, float]:
-    """Return the abundance multipliers that ARTIS applies to correct the mass fractions of the cells.
+    """Return the ratio of the mapped mass to the input mass of each nuclide.
 
-    The multipliers correct the mass that the skipped shells lose, and the volume error of the map to a Cartesian
-    grid.
-
-    It is important to follow the same method as artis to get the correct mass fractions.
+    The mapped mass includes the mass that the skipped shells lose, and the volume error of the map to a Cartesian
+    grid. ARTIS (grid.cc) multiplies the initial mass fraction of each nuclide by the inverse of this ratio.
     """
     correction_factors: dict[str, float] = {}
     assoc_cells: dict[int, list[int]] = {}
@@ -97,11 +96,20 @@ def get_abundance_correction_factors(
     if direct_model_propgrid_map:
         lzdfmodel = lzdfmodel.with_columns(n_assoc_cells=pl.lit(1.0))
     else:
-        ncoordgridx = math.ceil(np.cbrt(max(mgi_of_propcells.keys()) + 1))
-        propcellcount = ncoordgridx**3
-        print(f" Inferring a {ncoordgridx}^3 propagation grid from the grid mapping file")
+        # ARTIS writes only the non-empty cells to grid.out, thus the largest cell index can be below the grid size
+        ncoordgridx_text = get_artis_option(modelpath, "CUBOID_NCOORDGRID_X")
+        if ncoordgridx_text is None:
+            ncoordgridx = math.ceil(np.cbrt(max(mgi_of_propcells.keys()) + 1))
+            print_warning(
+                f"No artisoptions.h in {modelpath} gives CUBOID_NCOORDGRID_X. Thus artistools takes a {ncoordgridx}^3"
+                " propagation grid from the largest cell index in grid.out, which is too small if the outer cells are"
+                " empty"
+            )
+        else:
+            ncoordgridx = int(ncoordgridx_text)
+            print(f" The propagation grid has {ncoordgridx}^3 cells, from CUBOID_NCOORDGRID_X in artisoptions.h")
         xmax_tmodel = modelmeta["vmax_cmps"] * modelmeta["t_model_init_days"] * day_to_s
-        wid_init = get_wid_init_at_tmodel(modelpath, propcellcount, modelmeta["t_model_init_days"], xmax_tmodel)
+        wid_init = 2.0 * xmax_tmodel / ncoordgridx
 
         dfpropcellcounts = pl.LazyFrame(
             {
@@ -118,7 +126,10 @@ def get_abundance_correction_factors(
         )
 
         # for spherical models, ARTIS mapping to a cubic grid introduces some errors in the cell volumes
-        lzdfmodel = lzdfmodel.with_columns(mass_g_mapped=10 ** pl.col("logrho") * wid_init**3 * pl.col("n_assoc_cells"))
+        # logrho is Float32, and the product can be more than the largest Float32 value before the density decreases it
+        lzdfmodel = lzdfmodel.with_columns(
+            mass_g_mapped=10 ** pl.col("logrho").cast(pl.Float64) * wid_init**3 * pl.col("n_assoc_cells")
+        )
         modelcolumns = lzdfmodel.collect_schema().names()
         # an arr_strnuc entry is either a nuclide like "Sr89", naming one column, or an element like "Sr",
         # covering every isotope column of that element. Selecting out of modelcolumns keeps the list free of
@@ -136,7 +147,10 @@ def get_abundance_correction_factors(
             factors = (
                 lzdfmodel
                 .select(**{
-                    nucisocol: pl.col(nucisocol).dot(pl.col("mass_g_mapped")) / pl.col(nucisocol).dot(pl.col("mass_g"))
+                    # ARTIS applies no correction to a nuclide with no mass in the model, and 0/0 gives NaN
+                    nucisocol: (
+                        pl.col(nucisocol).dot(pl.col("mass_g_mapped")) / pl.col(nucisocol).dot(pl.col("mass_g"))
+                    ).fill_nan(1.0)
                     for nucisocol in nucisocols
                 })
                 .collect()
@@ -165,6 +179,26 @@ def get_mean_stable_masses_amu(modelpath: str | Path) -> dict[int, float] | None
     except (FileNotFoundError, ValueError):
         return None
     return dict(zip(compositiondata["Z"].to_list(), compositiondata["mass"].to_list(), strict=True))
+
+
+def get_isotope_massfrac_expr(
+    striso: str, estimatorcolumns: Sequence[str], correction_factors: dict[str, float]
+) -> pl.Expr:
+    """Return the mass fraction of an isotope in a cell, without the effect of the map to the propagation grid.
+
+    ARTIS multiplies the initial mass fraction by 1 / factor (grid.cc), then decays that mass (decay.cc). The mass
+    from the decay of a parent nuclide has no such factor. Thus a multiplication of the full value is incorrect
+    for a stable isotope. The scaled initial mass that remains is at most the smaller of init_X / factor and the value.
+    The result is exact for a stable isotope, and for a radioactive nuclide with no parent in the network.
+    """
+    artismassfrac = pl.col(f"nniso_{striso}") * int(striso.lstrip(string.ascii_letters)) * amu_g / pl.col("rho")
+    # ARTIS applies no scale to a nuclide with no mapped mass, and the factor is then zero
+    factor = correction_factors.get(striso) or 1.0
+    # ARTIS adds a decay daughter that model.txt does not hold, and such an isotope has no init_X column
+    if f"init_X_{striso}" not in estimatorcolumns:
+        return artismassfrac
+    scaledinitialmass = pl.min_horizontal(pl.col(f"init_X_{striso}") / factor, artismassfrac)
+    return artismassfrac + scaledinitialmass * (factor - 1.0)
 
 
 def get_artis_abund_sequences(
@@ -211,16 +245,8 @@ def get_artis_abund_sequences(
                     if col.startswith(f"nniso_{strspecies}") and col.removeprefix(f"nniso_{strspecies}").isdigit()
                 ]
             )
-            # ARTIS adds a decay daughter that model.txt does not hold, and such an isotope has no init_X column
-            # and no correction
             isotopemassfrac_exprs = [
-                pl.col(f"nniso_{striso}") * int(striso.lstrip(string.ascii_letters)) * amu_g / pl.col("rho")
-                + (
-                    pl.col(f"init_X_{striso}") * (correction_factors.get(striso, 1.0) - 1.0)
-                    if f"init_X_{striso}" in estimatorcolumns
-                    else pl.lit(0.0)
-                )
-                for striso in speciesisotopes
+                get_isotope_massfrac_expr(striso, estimatorcolumns, correction_factors) for striso in speciesisotopes
             ]
             otherstablecol = f"nniso_{strspecies}_otherstable"
             if not isnuclide and otherstablecol in estimatorcolumns:
@@ -622,7 +648,7 @@ def get_dfcontribsparticledata(
     """Return the pairs of particle and cell for the network particles, and the frame of the particle data."""
     # times in artis are relative to merger, but NSM simulation time started earlier
     mergertime_geomunits = get_merger_time_geomunits(griddata_root)
-    t_mergertime_s = mergertime_geomunits * 4.926e-6
+    t_mergertime_s = mergertime_geomunits * geometric_time_to_s
     arr_time_gsi_s_incpremerger = np.array(arr_time_gsi_days) * day_to_s + t_mergertime_s
 
     dfpartcontrib = (

@@ -8,6 +8,7 @@ import sys
 import tomllib
 import typing as t
 from collections.abc import Callable
+from collections.abc import Generator
 from collections.abc import Iterator
 from pathlib import Path
 from unittest import mock
@@ -586,12 +587,29 @@ def test_unsupported_argument_names_the_replacement(capsys: pytest.CaptureFixtur
     assert "-timestep" not in parser.format_help()
 
 
+def get_example_specs() -> tuple[tuple[str, str, at.commands.CommandSpec], ...]:
+    """Return every example of the tree as (command line, description, spec of the command).
+
+    The help lists no hidden command, thus its examples stay out. A hidden name such as describeinputmodel then does
+    not repeat the examples of its visible name.
+    """
+
+    def walk(tree: at.commands.CommandTree, path: str) -> Generator[tuple[str, str, at.commands.CommandSpec]]:
+        for name, spec in tree.items():
+            if isinstance(spec, dict):
+                yield from walk(spec, f"{path}{name} ")
+            elif not spec.hidden:
+                yield from (
+                    (f"{path}{name} {arguments}".rstrip(), description, spec)
+                    for arguments, description in spec.examples
+                )
+
+    return tuple(walk(at.commands.subcommandtree, ""))
+
+
 @pytest.mark.parametrize(
     ("example", "testfolder", "needs"),
-    [
-        (commandline, spec.exampletestfolder, spec.exampleneeds)
-        for commandline, _, spec in at.commands.get_example_specs()
-    ],
+    [(commandline, spec.exampletestfolder, spec.exampleneeds) for commandline, _, spec in get_example_specs()],
 )
 def test_help_examples_run(
     example: str, testfolder: str | None, needs: tuple[str, ...], tmp_path: Path, monkeypatch: pytest.MonkeyPatch

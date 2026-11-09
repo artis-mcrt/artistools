@@ -32,8 +32,8 @@ from artistools.misc import print_product
 from artistools.misc import print_warning
 
 
-def calculate_model_electron_frac(dfmodel: pl.LazyFrame) -> float:
-    """Calculate the electron fraction of the model from the isotopic composition."""
+def calculate_model_electron_frac(dfmodel: pl.LazyFrame) -> float | None:
+    """Calculate the electron fraction of the model from the isotopic composition, or None with no nuclide mass."""
     exprs_protons = []
     exprs_nucleons = []
     for column in dfmodel.select(cs.matches("X_[A-z]+[0-9]")).collect_schema().names():
@@ -49,12 +49,13 @@ def calculate_model_electron_frac(dfmodel: pl.LazyFrame) -> float:
     globalelectronfrac = (
         dfmodel
         .with_columns(protons=pl.sum_horizontal(exprs_protons), nucleons=pl.sum_horizontal(exprs_nucleons))
-        .select(pl.col("protons").sum() / pl.col("nucleons").sum())
+        .select((pl.col("protons").sum() / pl.col("nucleons").sum()).fill_nan(None))
         .collect()
         .item()
     )
 
-    assert globalelectronfrac is not None
+    if globalelectronfrac is None:
+        return None
     assert 0.0 <= globalelectronfrac <= 1.0
     assert isinstance(globalelectronfrac, float)
     return globalelectronfrac
@@ -146,8 +147,8 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
         if args.isotopes:
             # currently assumes that all isotopes are specified (i.e. not for Type Ia models)
             calcelectronfrac = calculate_model_electron_frac(dfmodel)
-            assert calcelectronfrac is not None
-            print_product(args, f"  {'snapshot Ye':19s} {calcelectronfrac:.3f}")
+            if calcelectronfrac is not None:
+                print_product(args, f"  {'snapshot Ye':19s} {calcelectronfrac:.3f}")
 
     if "q" in dfmodel.collect_schema().names():
         initial_energy = dfmodel.select(pl.col("q").dot(pl.col("mass_g"))).collect().item()
@@ -232,11 +233,11 @@ def print_mapped_masses(
 
     if "q" in dfmodel.collect_schema().names():
         initial_energy_mapped = dfmapped.select(pl.col("q").dot(pl.col("mass_g_mapped"))).collect().item()
+        errortext = f", error {100 * (initial_energy_mapped / initial_energy - 1):.2f}%" if initial_energy > 0.0 else ""
         print_product(
             args,
             f"  {'initial energy':19s} {initial_energy_mapped:.3e} erg (when mapped to"
-            f" {ncoordgridx}^3 cubic grid, error"
-            f" {100 * (initial_energy_mapped / initial_energy - 1):.2f}%)",
+            f" {ncoordgridx}^3 cubic grid{errortext})",
         )
 
     mtot_mapped_msun = dfmapped.select(pl.col("mass_g_mapped").sum()).collect().item() / Msun_to_g
