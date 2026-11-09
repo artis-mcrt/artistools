@@ -326,7 +326,9 @@ def get_option_effects(topic: str, options: Mapping[str, str]) -> list[str]:
                 )
         case "thermalisation":
             scheme = options.get("PARTICLE_THERMALISATION_SCHEME")
-            instant = "INSTANTFULLDEPOSITION" in scheme if scheme is not None else None
+            # an ARTIS from June 2024 to March 2026 names the value INSTANT, and a later ARTIS names the value
+            # INSTANTFULLDEPOSITION
+            instant = "INSTANT" in scheme if scheme is not None else None
             if scheme is None and "INSTANT_PARTICLE_DEPOSITION" in options:
                 instant = options["INSTANT_PARTICLE_DEPOSITION"] == "true"
             if instant is True:

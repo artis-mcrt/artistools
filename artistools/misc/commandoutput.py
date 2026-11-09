@@ -21,6 +21,7 @@ from artistools.misc.console import print_warning
 from artistools.misc.fileio import get_file_copies
 from artistools.misc.fileio import write_text_file_atomic
 from artistools.misc.general import import_optional
+from artistools.misc.parquetcache import get_file_identity
 from artistools.misc.parquetcache import write_parquet_atomic
 
 if t.TYPE_CHECKING:
@@ -125,7 +126,10 @@ def write_data_table(
     """
     suffix = destination.suffix.lower() if isinstance(destination, Path) else ""
     if isinstance(destination, Path) and suffix == ".parquet" and outputformat is None:
-        write_parquet_atomic(dfdata, destination, metadata={"comments": "\n".join(commentlines)})
+        # an output file replaces the file at its path, and the caller already has the permission of the user
+        write_parquet_atomic(
+            dfdata, destination, metadata={"comments": "\n".join(commentlines)}, replaces=get_file_identity(destination)
+        )
         return
     tableformat = outputformat or {".json": "json", ".csv": "csv"}.get(suffix, "text")
 

@@ -975,6 +975,9 @@ def test_emission_plot_data_gives_the_drawn_values(
     for column in [*emissioncolumns, *absorptioncolumns, "flux_plotted.Spectrum"]:
         assert any(np.allclose(drawn, dftable[column].to_numpy(), rtol=1e-6, atol=0) for drawn in drawnlines), column
     assert (dftable[absorptioncolumns[0]] <= 0).all()
+    # emission.out gives the wavelengths from high to low, and the drawn frames give them from low to high.
+    # Each row must hold one wavelength
+    assert np.allclose(dftable["lambda_angstroms"], dftable["x_plotted_angstrom"], rtol=1e-6, atol=0)
 
 
 @mock.patch.object(mplax.Axes, "stackplot", side_effect=mplax.Axes.stackplot, autospec=True)

@@ -1332,7 +1332,9 @@ def add_drawn_emission_columns(
     the contributions, and the table gives the height of each contribution in the stack.
     """
     yplotted = f"{args.yvariable}_plotted"
-    return dfaxisdata.with_columns(
+    # the drawn frames are in the order of x, and dfaxisdata is in the order of the file. x increases with the
+    # wavelength only on a wavelength axis
+    return dfaxisdata.sort("lambda_angstroms", descending=get_xunit(args.xunit).kind != "wavelength").with_columns(
         dfspectotal["x"].alias(f"x_plotted_{args.xunit}"),
         *([] if args.hidenetspectrum else [(dfspectotal["y"] * scalefactor).alias(f"{yplotted}.Spectrum")]),
         *(

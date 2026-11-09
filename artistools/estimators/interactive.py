@@ -984,18 +984,19 @@ class EstimatorViewer:
 
         return render_command(self, values, draw, keep, quiet=quiet)
 
-    def get_fitted_figwidthscale(self, areawidth: float, areaheight: float) -> float:
+    def get_fitted_figwidthscale(self, drawnfigwidthscale: float, areawidth: float, areaheight: float) -> float:
         """Return the --figwidthscale that gives the figure the shape of the plot area.
 
         A colour image keeps its aspect, thus a wider figure only adds space at the sides of the images. The figure of
         the images has the shape of its content at --figwidthscale 1, and the window scales all the figure to the area.
+        drawnfigwidthscale is the --figwidthscale of the figure that self.figsize gives.
         """
         if self.isimage:
             return 1.0
         # each column of subplots shows its own y labels, thus a column after the first adds the width of a label
         ncols = get_subplot_grid(len(self.values.subplots), get_subplots_per_row(self.values.otheroptions))[1]
         marginwidth = ncols * LABELWIDTH_INCHES + RIGHTMARGIN_INCHES
-        return get_fitted_figwidthscale(self.figsize, self.values.figwidthscale, marginwidth, areawidth, areaheight)
+        return get_fitted_figwidthscale(self.figsize, drawnfigwidthscale, marginwidth, areawidth, areaheight)
 
     def get_xlimit_texts(self, low: float, high: float) -> tuple[str, str] | None:
         """Return the --xmin and --xmax texts of two positions on the x axis, or None if the positions have no width."""
