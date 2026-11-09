@@ -26,6 +26,7 @@ from artistools.estimators.core import get_units_string
 from artistools.estimators.core import join_cell_modeldata
 from artistools.estimators.core import scan_estimators
 from artistools.estimators.core import scan_parquet_file
+from artistools.estimators.estimators_classic import has_classic_estimator_format
 from artistools.estimators.plotestimators import add_plot_columns
 from artistools.estimators.plotestimators import addargs
 from artistools.estimators.plotestimators import draw_plot
@@ -143,6 +144,7 @@ from artistools.viewertools.window import finish_viewer_window
 from artistools.viewertools.window import FLAG_LABELS
 from artistools.viewertools.window import get_line_readouts
 from artistools.viewertools.window import make_readout_tag
+from artistools.viewertools.window import queue_shows_values
 from artistools.viewertools.window import reload_models
 from artistools.viewertools.window import render_command
 from artistools.viewertools.window import show_command_sections
@@ -418,10 +420,11 @@ def read_model_data(modelpath: Path, args: argparse.Namespace, ntimesteps: int) 
     if is_remote_path(modelpath):
         return read_remote_model_data(modelpath, args, ntimesteps)
 
-    isartismodel = not args.classicartis and not path_is_codecomparison(modelpath)
+    classicartis = args.classicartis or has_classic_estimator_format(modelpath)
+    isartismodel = not classicartis and not path_is_codecomparison(modelpath)
     batchcaches = get_batch_caches(modelpath) if isartismodel else None
     estimators, modelmeta = join_cell_modeldata(
-        estimators=scan_estimators(modelpath=modelpath, classicartis=args.classicartis, batchcaches=batchcaches),
+        estimators=scan_estimators(modelpath=modelpath, classicartis=classicartis, batchcaches=batchcaches),
         modelpath=modelpath,
     )
     _, estimatorcolumns = add_plot_columns(args, estimators, modelmeta)
@@ -1359,8 +1362,7 @@ def open_window(
         DrawQueue gives the viewer the new values at once, and the old plot stays until the worker draws the new one.
         A mouse action on an old frame then must not change a different subplot or read a different x variable.
         """
-        drawn, values = queue.drawnvalues, viewer.values
-        return (drawn.subplots, drawn.x, drawn.otheroptions) == (values.subplots, values.x, values.otheroptions)
+        return queue_shows_values(queue, lambda values: (values.subplots, values.x, values.otheroptions))
 
     # the queue of the plots needs show_values, which shows the cards, thus the cards find the queue when they run
     show_subplot_section, edit_item_style, set_directives, on_add_series_key, on_add_subplot_key = add_subplot_section(

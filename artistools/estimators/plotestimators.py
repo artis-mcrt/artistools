@@ -53,6 +53,7 @@ from artistools.estimators.core import PREFIX_GROUPS
 from artistools.estimators.core import scan_estimators
 from artistools.estimators.core import summarise_columns
 from artistools.estimators.core import VARIABLES
+from artistools.estimators.estimators_classic import has_classic_estimator_format
 from artistools.estimators.plotitems import DIRECTIVES
 from artistools.estimators.plotitems import get_column_name
 from artistools.estimators.plotitems import get_directive_name
@@ -2978,7 +2979,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help=(
             "Read the estimator format of the classic ARTIS code. A modern run writes the modern"
-            " format, even when it takes the classic options"
+            " format, even when it takes the classic options. The command finds a classic file by itself"
         ),
     )
 
@@ -3424,6 +3425,7 @@ def resolve_plot_args(args: argparse.Namespace) -> tuple[Path, list[int]]:
     resolve_positional_args(args)
     modelpath = Path(args.modelpath)
     require_artis_folder(modelpath)
+    args.classicartis = args.classicartis or has_classic_estimator_format(modelpath)
     resolve_snapshot_arguments(args)
     timestepmin, timestepmax = set_x_and_timesteps(args, modelpath)
     wantslisting = args.listvariables or args.listnuclides

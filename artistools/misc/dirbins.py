@@ -18,21 +18,27 @@ from artistools.misc.console import print_warning
 from artistools.misc.modelinfo import get_vpkt_config
 
 
-def split_multitable_dataframe(res_df: pl.DataFrame | pl.LazyFrame) -> dict[int, pl.LazyFrame]:
-    """Res (angle-resolved) files include a table for each direction bin.
+def split_multitable_dataframe(
+    res_df: pl.DataFrame | pl.LazyFrame, source: Path | str = "the data"
+) -> dict[int, pl.LazyFrame]:
+    """Return each table of a file that repeats its first column, e.g. one table for each direction bin.
 
-    The tables repeat the values of the first column, thus a row count that is not a multiple of the count of
-    those values shows a cut file.
+    A table starts where the first column stops increasing. An old file can round the values differently in each table,
+    thus a count of the different values is not correct. Tables of different lengths show a cut file. source names the
+    file in the error.
     """
     res_df = res_df.lazy()
-    rowcount, nu_points = res_df.select(pl.len(), cs.by_index(0).n_unique()).collect().row(0)
-    if nu_points == 0 or rowcount % nu_points != 0:
-        msg = (
-            f"The data holds {rowcount} rows and {nu_points} different values in its first column, thus its tables"
-            " have different lengths. A cut file gives this"
-        )
+    tablelengths = (
+        res_df
+        .select(tableindex=(cs.by_index(0).cast(pl.Float64).diff() <= 0).fill_null(value=False).cum_sum())
+        .group_by("tableindex", maintain_order=True)
+        .len()
+        .collect()["len"]
+    )
+    if tablelengths.n_unique() != 1:
+        msg = f"The tables have different lengths in {source}, or it holds no table. A cut file gives this"
         raise ValueError(msg)
-    tablecount = rowcount // nu_points
+    nu_points, tablecount = tablelengths[0], tablelengths.len()
 
     # polars 2.0.0rc2 gave incorrect rows for pl.collect_all of several filtered slices of one scan.
     # A filter on the row index read the whole file for each table

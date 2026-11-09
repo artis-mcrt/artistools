@@ -18,11 +18,11 @@ from artistools.constants import c_ang_per_s
 from artistools.constants import km_to_cm
 from artistools.constants import Lsun_to_erg_per_s
 from artistools.constants import megaparsec_to_cm
+from artistools.estimators import get_deposition_channels
 from artistools.estimators import get_estimator_timesteps
 from artistools.estimators import scan_estimators
 from artistools.estimators.deposition import get_cell_deposition_rates
 from artistools.estimators.deposition import get_configured_analytic_channels
-from artistools.estimators.deposition import get_deposition_channels
 from artistools.estimators.deposition import select_deposition_channels
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import scan_modeldata

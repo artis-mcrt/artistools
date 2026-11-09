@@ -12,6 +12,9 @@ from artistools.misc import COMPRESSED_EXTENSIONS
 from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_run_subfolders
+from artistools.misc import get_runfolders
+from artistools.misc import is_remote_path
+from artistools.misc import path_is_codecomparison
 from artistools.misc import print_warning
 from artistools.misc import resolve_modelpath
 from artistools.misc import zopen
@@ -71,6 +74,25 @@ def get_classic_estimator_files(modelpath: Path) -> list[Path]:
     return sorted(
         firstexisting(stem.name, folder=stem.parent, tryzipped=True, search_subfolders=False) for stem in stems
     )
+
+
+def has_classic_estimator_format(modelpath: Path) -> bool:
+    """Return True if the estimator files of the model hold the format of the classic ARTIS code.
+
+    A classic file starts each row with the cell number, and a modern file starts with "timestep". A run folder of a
+    modern run gives timesteps, thus this function opens no file for a modern model.
+    """
+    if is_remote_path(modelpath) or path_is_codecomparison(modelpath) or get_runfolders(modelpath):
+        return False
+    for estimfile in get_classic_estimator_files(modelpath):
+        with zopen(estimfile) as festimators:
+            firstrow = next((row for line in festimators if (row := line.split())), None)
+        if firstrow is not None:
+            isclassic = firstrow[0].isdigit()
+            if isclassic:
+                print(f"{modelpath}: the estimator files hold the format of the classic ARTIS code")
+            return isclassic
+    return False
 
 
 def read_classic_estimators(modelpath: Path) -> dict[tuple[int, int], t.Any] | None:
