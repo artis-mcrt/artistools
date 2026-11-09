@@ -4194,6 +4194,15 @@ def test_dirbin_definitions_refuse_both_averages_for_the_virtual_packet_observer
         )
 
 
+def test_split_multitable_dataframe_takes_tables_that_round_their_first_column_differently() -> None:
+    """A count of the different values gave the wrong table length when two tables rounded a value differently."""
+    tables = dirbins.split_multitable_dataframe(
+        pl.LazyFrame({"nu": ["1.00000", "2.00001", "1.00001", "2.00000"], "f": [1.0, 2.0, 3.0, 4.0]})
+    )
+
+    assert [table.collect()["f"].to_list() for table in tables.values()] == [[1.0, 2.0], [3.0, 4.0]]
+
+
 def test_dirbins_give_a_message_in_place_of_a_bare_assert() -> None:
     """A direct call with a cut table or a bin that no average holds stopped with an AssertionError and no message."""
     with pytest.raises(ValueError, match="tables have different lengths"):

@@ -1860,12 +1860,12 @@ def test_get_emabs_timeblock_count() -> None:
 
     # a row count that is not a whole number of frequency bins is rejected
     dfragged = pl.DataFrame({"col": range(n_nu * n_timesteps + 1)})
-    with pytest.raises(AssertionError, match="not a multiple"):
+    with pytest.raises(ValueError, match="not a multiple"):
         atspectra.get_emabs_timeblock_count(dfragged, n_nu, n_timesteps, "emission.out")
 
     # so is a whole-multiple count that matches neither the plain nor the polarisation layout
     dfwrong = pl.DataFrame({"col": range(n_nu * n_timesteps * 2)})
-    with pytest.raises(AssertionError, match="time blocks per frequency bin"):
+    with pytest.raises(ValueError, match="time blocks per frequency bin"):
         atspectra.get_emabs_timeblock_count(dfwrong, n_nu, n_timesteps, "emission.out")
 
 

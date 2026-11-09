@@ -18,6 +18,7 @@ from artistools.atomic import get_ionstring
 from artistools.atomic import get_levels
 from artistools.constants import EV_to_erg
 from artistools.constants import km_to_cm
+from artistools.estimators import get_deposition_channels
 from artistools.estimators import read_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_mgi_of_velocity_kms
@@ -276,7 +277,7 @@ def get_ntlepton_deposition_rate_density(estim: Mapping[str, t.Any]) -> float | 
     deposition to it. Return None if the estimators give
     no deposition.
     """
-    if "deposition_gamma" in estim:
+    if get_deposition_channels(estim):
         return sum(float(estim.get(f"deposition_{channel}", 0.0)) for channel in NTLEPTON_DEPOSITION_CHANNELS)
 
     return estim.get("total_dep")

@@ -8,6 +8,8 @@ from pathlib import Path
 import polars as pl
 
 from artistools.constants import EV_to_erg
+from artistools.estimators.core import DEPOSITIONPREFIX
+from artistools.estimators.core import get_deposition_channels
 from artistools.estimators.core import scan_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import scan_modeldata
@@ -33,17 +35,7 @@ from artistools.misc import print_saved
 from artistools.misc import print_warning
 from artistools.misc import resolve_table_outputfile
 
-DEPOSITIONPREFIX = "deposition_"
 DEFAULTOUTPUTNAME = "deposition.txt"
-
-
-def get_deposition_channels(colnames: Sequence[str]) -> list[str]:
-    """Return the deposition channels that the estimators of a model give, in alphabetical order.
-
-    The reader of the estimator files keeps the columns in a hash map, thus the order of the columns
-    changes between runs. The sort gives one order to the listing and to each message.
-    """
-    return sorted(name.removeprefix(DEPOSITIONPREFIX) for name in colnames if name.startswith(DEPOSITIONPREFIX))
 
 
 def select_deposition_channels(colnames: Sequence[str], channels: Sequence[str] | None) -> list[str]:

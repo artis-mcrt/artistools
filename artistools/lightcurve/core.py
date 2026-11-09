@@ -49,6 +49,7 @@ from artistools.misc import read_complete_lines
 from artistools.misc import read_wsv
 from artistools.misc import require_reference_data_file
 from artistools.misc import scan_timesteps
+from artistools.misc import split_multitable_dataframe
 from artistools.misc import warn_direction_bin_noise
 from artistools.misc import zopen
 from artistools.packets import scan_packets
@@ -139,14 +140,7 @@ def scan_lightcurve(
                 "luminosity_cmf_Lsun": pl.Float64,
             },
         )
-    # Old ARTIS files can round the times differently in each table. Each table starts where the time restarts.
-    tables = dflc.with_columns(
-        tableindex=(pl.col("time_days").diff() <= 0).fill_null(value=False).cum_sum()
-    ).partition_by("tableindex", include_key=False)
-    if len({table.height for table in tables}) != 1:
-        msg = f"The tables have different lengths in {filepath}. A cut file gives this"
-        raise ValueError(msg)
-    lcdata = {tableindex: table.lazy() for tableindex, table in enumerate(tables)}
+    lcdata = split_multitable_dataframe(dflc, source=filepath)
 
     # a user can name the file, thus an angle-averaged light curve must not hold the tables of the direction bins.
     # An old light_curve.out holds a second table, which repeats the times. A build of ARTIS with one or two

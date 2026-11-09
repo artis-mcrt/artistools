@@ -1183,23 +1183,23 @@ def get_emabs_timeblock_count(dfemabs: pl.DataFrame, n_nu: int, n_timesteps: int
     blocks per timestep instead of one.
     """
     nrows = dfemabs.height
-    assert nrows % n_nu == 0, f"{emabsfilename}: row count {nrows} is not a multiple of the {n_nu} frequency bins"
+    if nrows % n_nu != 0:
+        msg = f"{emabsfilename}: row count {nrows} is not a multiple of the {n_nu} frequency bins"
+        raise ValueError(msg)
 
     n_timeblocks = nrows // n_nu
-    assert n_timeblocks in {n_timesteps, 3 * n_timesteps}, (
-        f"{emabsfilename}: got {n_timeblocks} time blocks per frequency bin, expected {n_timesteps} timesteps"
-        f" or {3 * n_timesteps} for a polarisation file"
-    )
+    if n_timeblocks not in {n_timesteps, 3 * n_timesteps}:
+        msg = (
+            f"{emabsfilename}: got {n_timeblocks} time blocks per frequency bin, expected {n_timesteps} timesteps"
+            f" or {3 * n_timesteps} for a polarisation file"
+        )
+        raise ValueError(msg)
 
     return n_timeblocks
 
 
 def get_emabs_average(
-    dfemabs_of_dbin: Mapping[int, pl.DataFrame],
-    timeblocks_of_dbin: Mapping[int, int],
-    timesteps: range,
-    arr_tdelta: Sequence[float],
-    n_nu: int,
+    dfemabs_of_dbin: Mapping[int, pl.DataFrame], timesteps: range, arr_tdelta: Sequence[float], n_nu: int
 ) -> npt.NDArray[np.float64]:
     """Return f_nu of each column of an emission or absorption file, with the shape (frequency bin, column).
 
@@ -1209,9 +1209,11 @@ def get_emabs_average(
     """
     tdeltas = np.array([arr_tdelta[timestep] for timestep in timesteps], dtype=np.float64)
     total = np.zeros((n_nu, next(iter(dfemabs_of_dbin.values())).width), dtype=np.float64)
-    for dbin, dfemabs in dfemabs_of_dbin.items():
-        # the frequency varies slowest, thus the row of a frequency bin and a timestep is nu * timeblocks + timestep
-        rowindices = np.arange(n_nu)[:, np.newaxis] * timeblocks_of_dbin[dbin] + np.array(timesteps)[np.newaxis, :]
+    for dfemabs in dfemabs_of_dbin.values():
+        # the frequency varies slowest, thus the row of a frequency bin and a timestep is nu * timeblocks + timestep.
+        # Each frame gives its own count, because a polarisation file holds three blocks for each timestep
+        timeblocks = dfemabs.height // n_nu
+        rowindices = np.arange(n_nu)[:, np.newaxis] * timeblocks + np.array(timesteps)[np.newaxis, :]
         rows = dfemabs[rowindices.ravel()].to_numpy().reshape(n_nu, len(timesteps), -1)
         # the float64 weights make einsum sum in float64, with no float64 copy of the float32 rows
         total += np.einsum("t,ntc->nc", tdeltas, rows)
@@ -1341,15 +1343,11 @@ def get_flux_contributions_cached(
 
     emissiondata: dict[int, pl.DataFrame] = {}
     absorptiondata: dict[int, pl.DataFrame] = {}
-    # the row stride of each frame, derived from that frame alone so that emission and absorption (and separate
-    # direction bins) can never pick up each other's value
-    emission_timeblocks: dict[int, int] = {}
-    absorption_timeblocks: dict[int, int] = {}
     maxion: int | None = None
     polarisation_notified = False
 
-    def read_emabs_for_dirbin(filenames: list[str], dbin: int) -> tuple[pl.DataFrame, int]:
-        """Return the emission or absorption dataframe of one direction bin, and its count of time blocks."""
+    def read_emabs_for_dirbin(filenames: list[str], dbin: int) -> pl.DataFrame:
+        """Return the emission or absorption dataframe of one direction bin, after a check of its count of rows."""
         nonlocal polarisation_notified
         if dbin != -1:
             filenames = [x.replace(".out", f"_res_{dbin:02d}.out") for x in filenames]
@@ -1363,7 +1361,7 @@ def get_flux_contributions_cached(
             print("This ARTIS model contains polarisation data")
             polarisation_notified = True
 
-        return dfemabs, ntimeblocks
+        return dfemabs
 
     def check_maxion(maxion_float: float, source: str) -> None:
         """Record MAXION from the first file. Check that each later file gives the same value."""
@@ -1381,25 +1379,21 @@ def get_flux_contributions_cached(
     for dbin in dbinlist:
         if getemission:
             emissionfilenames = ["emission.out", "emissionpol.out"] if use_lastemissiontype else ["emissiontrue.out"]
-            emissiondata[dbin], emission_timeblocks[dbin] = read_emabs_for_dirbin(emissionfilenames, dbin)
+            emissiondata[dbin] = read_emabs_for_dirbin(emissionfilenames, dbin)
             # the column count is one plus twice MAXION times the element count (MIONS in ARTIS sn3d.h)
             check_maxion((emissiondata[dbin].width - 1) / 2.0 / nelements, "emission")
 
         if getabsorption:
-            absorptiondata[dbin], absorption_timeblocks[dbin] = read_emabs_for_dirbin(
-                ["absorption.out", "absorptionpol.out"], dbin
-            )
+            absorptiondata[dbin] = read_emabs_for_dirbin(["absorption.out", "absorptionpol.out"], dbin)
             check_maxion(absorptiondata[dbin].width / nelements, "absorption")
 
     assert maxion is not None
     timesteps = range(timestepmin, timestepmax + 1)
     fnu_emission_of_column = (
-        get_emabs_average(emissiondata, emission_timeblocks, timesteps, arr_tdelta, len(arraynu_full))[nu_select]
-        if getemission
-        else None
+        get_emabs_average(emissiondata, timesteps, arr_tdelta, len(arraynu_full))[nu_select] if getemission else None
     )
     fnu_absorption_of_column = (
-        get_emabs_average(absorptiondata, absorption_timeblocks, timesteps, arr_tdelta, len(arraynu_full))[nu_select]
+        get_emabs_average(absorptiondata, timesteps, arr_tdelta, len(arraynu_full))[nu_select]
         if absorptiondata
         else None
     )

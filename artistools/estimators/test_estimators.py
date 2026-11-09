@@ -2964,6 +2964,14 @@ def test_classicartis_on_a_modern_model_names_the_difference() -> None:
         read_classic_estimators(modelpath_classic_3d)
 
 
+def test_scan_estimators_finds_the_classic_format_with_no_flag() -> None:
+    """A classic model gave a cross join of the cells and the timesteps with no estimator column, and only a warning."""
+    pltest.assert_frame_equal(
+        at.estimators.scan_estimators(modelpath=CLASSIC1DPATH).collect(),
+        at.estimators.scan_estimators(modelpath=CLASSIC1DPATH, classicartis=True).collect(),
+    )
+
+
 def test_classicartis_reads_a_classic_model_through_the_scanner() -> None:
     """The whole path from --classicartis to a dataframe must work for a classic ARTIS model."""
     estimators = at.estimators.scan_estimators(modelpath=CLASSIC1DPATH, classicartis=True).collect()

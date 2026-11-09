@@ -115,7 +115,8 @@ from artistools.viewertools.window import finish_viewer_window
 from artistools.viewertools.window import get_line_readouts
 from artistools.viewertools.window import get_plot_mouse_help_rows
 from artistools.viewertools.window import make_readout_tag
-from artistools.viewertools.window import reload_models
+from artistools.viewertools.window import make_reload_handler
+from artistools.viewertools.window import queue_shows_values
 from artistools.viewertools.window import render_command
 from artistools.viewertools.window import show_command_sections
 from artistools.viewertools.window import start_viewer_window
@@ -1980,17 +1981,11 @@ def open_window(
             newvalues = viewer.select_positions(values, get_nearest_range(grid.validtmids, centre, timestepwidth))
         apply(newvalues)
 
-    def plot_shows_values() -> bool:
-        """Return True if the plot on the screen has the values of the controls.
-
-        DrawQueue gives the viewer the new values immediately, and the old plot stays until the worker draws the new
-        one. A handler that reads the plot, e.g. the y limits or the series, must not put them into different values.
-        """
-        return queue.drawnvalues == viewer.values
+    plot_shows_values = partial(queue_shows_values, queue)
 
     def plot_has_xunit() -> bool:
         """Return True if the x axis of the plot on the screen has the unit of the controls, e.g. during Play."""
-        return queue.drawnvalues.xunit == viewer.values.xunit
+        return queue_shows_values(queue, lambda values: values.xunit)
 
     def set_xlimits(low: float, high: float) -> None:
         # a short number gives a short command, and a text field gives an exact value
@@ -2175,14 +2170,13 @@ def open_window(
         ),
     )
 
-    def on_reload() -> None:
-        """Read the models again, e.g. while ARTIS writes more timesteps, and draw the plot again."""
-
-        def show_reloaded_models() -> None:
-            viewer.load_models(viewer.values.spectra, viewer.values.timegrid)
-            show_model_ranges()
-
-        reload_models(queue, viewer.grid.modelfolders, show_reloaded_models, show_error)
+    on_reload = make_reload_handler(
+        queue,
+        lambda: viewer.grid.modelfolders,
+        lambda: viewer.load_models(viewer.values.spectra, viewer.values.timegrid),
+        show_model_ranges,
+        show_error,
+    )
 
     add_figure_actions = add_window_actions(
         window,

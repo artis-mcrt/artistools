@@ -136,6 +136,25 @@ def reload_models(
         show_error("A different task is in progress. Reload the models after it")
 
 
+def make_reload_handler(
+    queue: "DrawQueue[t.Any]",
+    get_modelfolders: "Callable[[], Sequence[Path | str]]",
+    load_models: "Callable[[], None]",
+    show_model_ranges: "Callable[[], None]",
+    show_error: "Callable[[str], None]",
+) -> "Callable[[], None]":
+    """Return the action that reads the models again, e.g. while ARTIS writes more timesteps, and draws the plot."""
+
+    def on_reload() -> None:
+        def show_reloaded_models() -> None:
+            load_models()
+            show_model_ranges()
+
+        reload_models(queue, get_modelfolders(), show_reloaded_models, show_error)
+
+    return on_reload
+
+
 class ViewerWindow(t.NamedTuple):
     """The parts of a window of a viewer that start_viewer_window makes."""
 
@@ -376,6 +395,19 @@ def draw_values(viewer: "PlotViewer[t.Any]", *, quiet: bool = True) -> str | Non
     The terminal shows the whole error, and the status line shows its first line.
     """
     return viewer.render(viewer.values, quiet=quiet)()
+
+
+def queue_shows_values[ValuesT](
+    queue: "DrawQueue[ValuesT]", get_compared: "Callable[[ValuesT], object] | None" = None
+) -> bool:
+    """Return True if the plot on the screen has the values of the controls.
+
+    The queue gives the viewer the new values at once, and the old plot stays until the worker draws the new one. A
+    handler that reads the plot, e.g. the y limits, must not put them into different values. get_compared selects the
+    part of the values that the handler needs. With None, the comparison takes all the values.
+    """
+    drawn, current = queue.drawnvalues, queue.viewer.values
+    return drawn == current if get_compared is None else get_compared(drawn) == get_compared(current)
 
 
 def apply_values[ValuesT](viewer: "PlotViewer[ValuesT]", values: ValuesT) -> str | None:

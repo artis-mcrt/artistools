@@ -75,6 +75,7 @@ from artistools.rustext import estimparse_textbatches
 from artistools.rustext import estimtimesteps
 
 if t.TYPE_CHECKING:
+    from collections.abc import Iterable
     from collections.abc import Iterator
     from concurrent.futures import Future
 
@@ -524,6 +525,8 @@ SPECIES_COLUMN_PATTERN = r"_(?:n|[A-Z][a-z]{0,2})_[IVX]+$|^nnelement_|^nniso_"
 # The version of the estimator parquet cache format. Increase it for a change that makes an older
 # cache file incorrect, e.g. a new column, a removed column, or a different data type.
 CACHEVERSION = 1
+
+DEPOSITIONPREFIX = "deposition_"
 
 
 def get_textsource_mtimes(folderpath: Path | str) -> dict[int, float]:
@@ -1284,6 +1287,16 @@ def lazyframe_from_estimator_dict(estimators: dict[tuple[int, int], t.Any]) -> p
     ).with_columns(pl.col("timestep").cast(pl.Int32), pl.col("modelgridindex").cast(pl.Int32))
 
 
+def get_deposition_channels(colnames: "Iterable[str]") -> list[str]:
+    """Return the deposition channels that the estimators of a model give, in alphabetical order.
+
+    A channel in this list shows a deposition rate of the cell. A model with no channel gives total_dep from the heating
+    rate alone, thus a calculation of a deposition must test this list and not total_dep. The reader of the estimator
+    files keeps the columns in a hash map, thus the sort gives one order to the listing and to each message.
+    """
+    return sorted(name.removeprefix(DEPOSITIONPREFIX) for name in colnames if name.startswith(DEPOSITIONPREFIX))
+
+
 def add_derived_estimator_columns(pldflazy: pl.LazyFrame) -> pl.LazyFrame:
     """Add quantities derived from the estimator columns that were read from file."""
     colnames = pldflazy.collect_schema().names()
@@ -1291,9 +1304,9 @@ def add_derived_estimator_columns(pldflazy: pl.LazyFrame) -> pl.LazyFrame:
     if "heating_gamma/gamma_dep" in colnames:
         pldflazy = pldflazy.with_columns(gamma_dep=pl.col("heating_gamma") / pl.col("heating_gamma/gamma_dep"))
 
-    if "deposition_gamma" in colnames:
+    if get_deposition_channels(colnames):
         # sum up the gamma, elec, positron, alpha deposition contributions
-        pldflazy = pldflazy.with_columns(total_dep=pl.sum_horizontal(cs.starts_with("deposition_")))
+        pldflazy = pldflazy.with_columns(total_dep=pl.sum_horizontal(cs.starts_with(DEPOSITIONPREFIX)))
     elif "heating_heating_dep/total_dep" in colnames:
         # for older files with no deposition data, take heating part of deposition and heating fraction
         pldflazy = pldflazy.with_columns(total_dep=pl.col("heating_dep") / pl.col("heating_heating_dep/total_dep"))
@@ -1434,6 +1447,10 @@ def scan_estimators(
     else:
         match_timestep = tuple(timestep)
 
+    # estimators_classic imports this module
+    from artistools.estimators.estimators_classic import has_classic_estimator_format
+    from artistools.estimators.estimators_classic import read_classic_estimators
+
     if is_remote_path(modelpath):
         # the host of the model reads the files, and only the rows of each query come back
         return scan_remote_estimators(
@@ -1451,9 +1468,7 @@ def scan_estimators(
 
     if is_codecomparison:
         pldflazy = lazyframe_from_estimator_dict(read_reference_estimators(modelpath))
-    elif classicartis:
-        from artistools.estimators.estimators_classic import read_classic_estimators
-
+    elif classicartis or (not batchcaches and has_classic_estimator_format(modelpath)):
         estimatorsdict = read_classic_estimators(modelpath)
         if estimatorsdict is None:
             msg = (
