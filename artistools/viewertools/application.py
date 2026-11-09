@@ -19,6 +19,7 @@ from artistools.viewertools.core import get_command_tokens
 from artistools.viewertools.core import is_flag
 from artistools.viewertools.core import MACOS_BUNDLE_VARIABLE
 from artistools.viewertools.core import run_command_step
+from artistools.viewertools.core import SERIES_STYLE_FLAGS
 from artistools.viewertools.core import ThreadOutput
 
 if t.TYPE_CHECKING:
@@ -606,10 +607,12 @@ def get_absolute_tokens(tokens: "Sequence[str]") -> list[str]:
             # a session that an older version saved holds the older spellings, e.g. -label
             flag = "" if "=" in word or word == "--" else get_standard_flag(word)
             absolutetokens.append(word)
-        elif word and (not flag or flag in PATH_VALUE_FLAGS) and Path(word).exists():
-            absolutetokens.append(str(Path(word).absolute()))
-        else:
-            absolutetokens.append(word)
+            continue
+        ispath = word and (not flag or flag in PATH_VALUE_FLAGS) and Path(word).exists()
+        absolutetokens.append(str(Path(word).absolute()) if ispath else word)
+        # an option with one value takes no more, thus the next word is positional, e.g. -t 300 mymodel
+        if flag not in PATH_VALUE_FLAGS and flag not in SERIES_STYLE_FLAGS:
+            flag = ""
     return absolutetokens
 
 

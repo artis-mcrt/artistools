@@ -124,7 +124,8 @@ def make_ntstats_plot(ntstatfile: str | Path, args: argparse.Namespace) -> None:
     ax.autoscale(enable=True, axis="both", tight=True)
     outputfilename = Path(ntstatfile).with_suffix(".pdf")
     save_figure(fig, outputfilename, format="pdf", args=args)
-    output_data(args, {"": dfstats}, outputfilename)
+    # the usual name of the data file is the name of the statistics file that this plot reads
+    output_data(args, {"_plotted": dfstats}, outputfilename)
 
 
 def ionpops_for_electronfraction(atomic_number: int, x_e: float, nntot: float) -> dict[tuple[int, int], float]:

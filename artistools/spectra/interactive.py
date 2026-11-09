@@ -881,7 +881,9 @@ class SpectrumViewer:
         # the count applies only to an emission or absorption plot, thus the command of a different plot leaves it
         # out. plotspectra gives a missing count the length of -fixedionlist, or DEFAULT_MAXSERIESCOUNT without a list
         defaultcount = len(values.fixedionlist) if values.fixedionlist else DEFAULT_MAXSERIESCOUNT
-        if (values.showemission or values.showabsorption) and values.maxseriescount != defaultcount:
+        # a count that the user set stays in the command, also if it equals the length of the list
+        countisset = values.maxseriescount != defaultcount or (values.fixedionlist and not values.countfromlist)
+        if (values.showemission or values.showabsorption) and countisset:
             options += ["--maxseriescount", str(values.maxseriescount)]
         if (values.showemission or values.showabsorption) and values.nostack:
             options.append("--nostack")

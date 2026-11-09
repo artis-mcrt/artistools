@@ -266,6 +266,9 @@ def test_session_keeps_a_label_that_names_a_folder(monkeypatch: pytest.MonkeyPat
         "model1",
         "--ymin=-1",
         "model1",
+        "-t",
+        "300",
+        "model1",
     ]
     assert viewerapplication.get_absolute_tokens(tokens) == [
         str(tmp_path / "model1"),
@@ -279,6 +282,9 @@ def test_session_keeps_a_label_that_names_a_folder(monkeypatch: pytest.MonkeyPat
         "--title",
         "model1",
         "--ymin=-1",
+        str(tmp_path / "model1"),
+        "-t",
+        "300",
         str(tmp_path / "model1"),
     ]
 
