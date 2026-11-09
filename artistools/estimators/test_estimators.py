@@ -1,5 +1,6 @@
 import argparse
 import io
+import math
 import os
 import re
 import shutil
@@ -494,6 +495,173 @@ def test_histogram_breaks_the_line_at_a_gap_between_bins() -> None:
     assert np.allclose(line.get_ydata(), [1.0, 1.0, 2.0, 2.0, nan, 3.0, 3.0], equal_nan=True)
     # fill_between makes one polygon for each continuous part of the line
     assert len(ax.collections[0].get_paths()) == 2
+
+
+def get_logscalex_args(**kwargs: t.Any) -> argparse.Namespace:
+    """Return the arguments that get_xlist reads for a plot with --logscalex."""
+    defaults = {"xmin": None, "xmax": None, "xbins": None, "markers": False, "colorbyion": False}
+    return argparse.Namespace(**(defaults | {"modelgridindex": None, "histogram": False, "logscalex": True} | kwargs))
+
+
+def get_log_estimators(xvalues: Sequence[float]) -> pl.LazyFrame:
+    """Return one timestep of estimators with the given x values in the column rho."""
+    return pl.LazyFrame({"timestep": [0] * len(xvalues), "modelgridindex": list(range(len(xvalues))), "rho": xvalues})
+
+
+def test_logscalex_bins_have_equal_widths_in_log_x() -> None:
+    """A log axis needs bins with a constant ratio of the edges, and a centre at the geometric mean of the edges."""
+    args = get_logscalex_args(xbins=3, histogram=True)
+    _, _, _, dfplot, _, xlimits = plotestimators.get_xlist(
+        "rho", get_log_estimators([1.0, 20.0, 300.0, 1000.0]), None, args
+    )
+    dfbins = dfplot.select("xbin_lower", "xbin_upper", "xvalue_binned").unique().sort("xbin_lower").collect()
+
+    assert np.allclose(dfbins["xbin_lower"], [1.0, 10.0, 100.0])
+    assert np.allclose(dfbins["xbin_upper"], [10.0, 100.0, 1000.0])
+    assert np.allclose(dfbins["xvalue_binned"], [10.0**0.5, 10.0**1.5, 10.0**2.5])
+    assert np.allclose(xlimits, (1.0, 1000.0))
+
+
+def test_logscalex_automatic_bins_take_the_largest_interval_in_log_x() -> None:
+    """The automatic bins of a log axis divide ln(x). A linear interval gives one bin to the lowest decades."""
+    args = get_logscalex_args(xbins=-1)
+    plotestimators.get_xlist("rho", get_log_estimators([1.0, 10.0, 100.0, 1000.0, 10000.0, 30000.0]), None, args)
+    assert args.xbins == 4
+
+
+def test_logscalex_bin_centre_of_very_small_x_values() -> None:
+    """The product of the two edges of a bin underflows to zero, and the square root of each edge does not."""
+    args = get_logscalex_args(xbins=1)
+    _, _, _, dfplot, _, _ = plotestimators.get_xlist("rho", get_log_estimators([1.0e-200, 1.0e-180]), None, args)
+    assert np.allclose(dfplot.collect()["xvalue_binned"], 1.0e-190, rtol=1e-9, atol=0.0)
+
+
+def test_logscalex_automatic_bins_of_more_than_308_decades() -> None:
+    """The ratio of the two limits overflows to infinity, and the difference of their logarithms does not."""
+    args = get_logscalex_args(xbins=-1)
+    plotestimators.get_xlist("rho", get_log_estimators([1.0e-200, 1.0e-100, 1.0e200]), None, args)
+    assert args.xbins == 25
+
+
+def test_logscalex_bin_width_of_more_than_308_decades() -> None:
+    """The ratio of the two limits overflows to infinity, and the bin width of the line ends must stay finite."""
+    figuredata = mock.MagicMock(xlimits=(1.0e-200, 1.0e200))
+    _, xbinwidth = plotestimators.get_line_ends(figuredata, argparse.Namespace(x="rho", xbins=2, logscalex=True))
+    assert xbinwidth is not None
+    assert np.isclose(xbinwidth, 200.0 * math.log(10.0))
+
+
+def test_logscalex_leaves_out_x_values_at_or_below_zero(capsys: pytest.CaptureFixture[str]) -> None:
+    """A log axis cannot show zero. The plot leaves out these points, and a cumulative sum still reads them."""
+    args = get_logscalex_args()
+    xlist, _, _, dfplot, dffullrange, xlimits = plotestimators.get_xlist(
+        "rho", get_log_estimators([-1.0, 0.0, 2.0, 8.0]), None, args
+    )
+
+    assert xlist == [2.0, 8.0]
+    assert dfplot.collect().height == 2
+    assert dffullrange.collect().height == 4
+    assert xlimits == (2.0, 8.0)
+    assert "2 of the 4 pairs" in " ".join(capsys.readouterr().err.split())
+
+
+def test_logscalex_ignores_a_limit_at_or_below_zero(capsys: pytest.CaptureFixture[str]) -> None:
+    """A limit at zero is usual on a linear axis. The bins cannot start from it, thus the data give the limit."""
+    args = get_logscalex_args(xmin=0.0, xbins=1)
+    *_, xlimits = plotestimators.get_xlist("rho", get_log_estimators([2.0, 8.0]), None, args)
+
+    assert xlimits == (2.0, 8.0)
+    assert "--xmin" in capsys.readouterr().err
+
+
+def test_logscalex_stops_with_no_x_value_above_zero(capsys: pytest.CaptureFixture[str]) -> None:
+    """The bins and the limits need a value above zero, thus the command gives the reason and the correction."""
+    with pytest.raises(SystemExit):
+        plotestimators.get_xlist("rho", get_log_estimators([-1.0, 0.0]), None, get_logscalex_args())
+    assert "--logscalex" in capsys.readouterr().err
+
+
+def test_logscalex_histogram_limit_keeps_the_cell_with_an_edge_at_zero() -> None:
+    """The inner cell of a model starts at zero. The axis starts at its midpoint, thus the plot keeps that cell.
+
+    The axis started at the next edge above zero, and that limit cut the full inner cell from the plot.
+    """
+    estimators = pl.LazyFrame({
+        "timestep": [0, 0],
+        "modelgridindex": [0, 1],
+        "vel_r_min": [0.0, 1.0e8],
+        "vel_r_mid": [0.5e8, 1.5e8],
+        "vel_r_max": [1.0e8, 2.0e8],
+    })
+    *_, xlimits = plotestimators.get_xlist("velocity", estimators, None, get_logscalex_args(histogram=True))
+    assert np.allclose(xlimits, (500.0, 2000.0), rtol=1e-9, atol=0.0)
+
+
+def test_logscalex_line_ends_at_the_bin_edges_in_log_x() -> None:
+    """The ends of a binned line reach the outer edges of the bins, which are at a constant ratio on a log axis."""
+    dflinepoints = pl.DataFrame({"xvalue_binned": [10.0**0.5, 10.0**1.5], "yvalue_binned": [1.0, 2.0]})
+    extended = plotestimators.extend_line_to_its_ends(
+        dflinepoints, startfromzero=False, xbinwidth=math.log(10.0), logxbins=True
+    )
+    assert np.allclose(extended["xvalue_binned"], [1.0, 10.0**0.5, 10.0**1.5, 100.0])
+
+
+def test_logscalex_line_does_not_start_from_zero() -> None:
+    """A velocity axis starts from zero, and a log axis does not show zero."""
+    figuredata = mock.MagicMock(xlimits=(1.0, 100.0))
+    args = argparse.Namespace(x="velocity", xbins=2, logscalex=True)
+    startfromzero, xbinwidth = plotestimators.get_line_ends(figuredata, args)
+    assert not startfromzero
+    assert xbinwidth is not None
+    assert np.isclose(xbinwidth, math.log(10.0))
+
+
+@mock.patch.object(mplax.Axes, "set_xscale", side_effect=mplax.Axes.set_xscale, autospec=True)
+def test_logscalex_sets_the_scale_of_the_axis(mockxscale: mock.MagicMock, tmp_path: Path) -> None:
+    """The option reaches the axes of the figure."""
+    at.estimators.plot(
+        argsraw=[],
+        modelpath=modelpath_classic_3d,
+        plotlist=[["Te"]],
+        timedays=4,
+        logscalex=True,
+        outputfile=tmp_path / "test_logscalex.pdf",
+    )
+    assert any(call.args[1] == "log" for call in mockxscale.call_args_list)
+
+
+@pytest.mark.parametrize("name", ["xscale", "_xscale"])
+def test_xscale_directive_names_the_figure_option(name: str, capsys: pytest.CaptureFixture[str]) -> None:
+    """The subplots share one x axis, thus xscale= stops the command and names --logscalex.
+
+    The message suggested yscale before, which is a different axis.
+    """
+    with pytest.raises(SystemExit):
+        plotitems.get_directive_name(name)
+    message = " ".join(capsys.readouterr().err.split())
+    assert "--logscalex" in message
+    assert "yscale" not in message
+
+
+def test_logscalex_does_not_apply_to_a_colour_image(capsys: pytest.CaptureFixture[str]) -> None:
+    """The axes of a colour image have negative velocities, thus the image keeps a linear axis and gives a warning."""
+    args = argparse.Namespace(
+        x=None,
+        xbins=None,
+        filtermovingavg=0,
+        filtersavgol=None,
+        markers=False,
+        histogram=False,
+        logscalex=True,
+        slice=None,
+        projection=None,
+        dimensionreduce=2,
+        readonlymgi=None,
+        modelgridindex=None,
+    )
+    plotestimators.resolve_snapshot_arguments(args)
+    assert not args.logscalex
+    assert "--logscalex" in capsys.readouterr().err
 
 
 def test_histogram_of_one_x_value_takes_the_extent_of_the_cell() -> None:

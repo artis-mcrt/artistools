@@ -388,20 +388,25 @@ def get_bin_run_expr() -> pl.Expr:
     )
 
 
-def extend_line_to_its_ends(dflinepoints: pl.DataFrame, startfromzero: bool, xbinwidth: float | None) -> pl.DataFrame:
+def extend_line_to_its_ends(
+    dflinepoints: pl.DataFrame, startfromzero: bool, xbinwidth: float | None, *, logxbins: bool = False
+) -> pl.DataFrame:
     """Return the points of the drawn line, with its first point and its last point repeated at its ends.
 
     A binned line runs through bin middles, thus it stops half a bin short. The value holds across the bin, thus the
     line reaches the outer edges and leaves no gap. The bins of a line can have gaps, thus the space between the last
-    two points does not give the width of a bin. startfromzero takes the line to zero on the left.
+    two points does not give the width of a bin. startfromzero takes the line to zero on the left. With logxbins,
+    xbinwidth is the width of a bin in ln(x).
     """
     xbinned = dflinepoints.get_column("xvalue_binned")
     if xbinwidth and not xbinned.is_empty():
         halfwidth = xbinwidth / 2.0
-        dflinepoints = repeat_endpoint(dflinepoints, xbinned[-1] + halfwidth, atstart=False)
+        lastedge = xbinned[-1] * math.exp(halfwidth) if logxbins else xbinned[-1] + halfwidth
+        dflinepoints = repeat_endpoint(dflinepoints, lastedge, atstart=False)
         # startfromzero takes the line further to the left, thus that end comes below
         if not startfromzero:
-            dflinepoints = repeat_endpoint(dflinepoints, xbinned[0] - halfwidth, atstart=True)
+            firstedge = xbinned[0] * math.exp(-halfwidth) if logxbins else xbinned[0] - halfwidth
+            dflinepoints = repeat_endpoint(dflinepoints, firstedge, atstart=True)
 
     if startfromzero:
         dflinepoints = repeat_endpoint(dflinepoints, 0.0, atstart=True)
@@ -428,13 +433,18 @@ def get_histogram_steps(dflinepoints: pl.DataFrame) -> pl.DataFrame:
 
 
 def get_line_ends(figuredata: "LineFigureData", args: argparse.Namespace) -> tuple[bool, float | None]:
-    """Return whether the lines of the figure start from zero, and the width of each x bin or None."""
+    """Return whether the lines of the figure start from zero, and the width of each x bin or None.
+
+    With --logscalex, the width is in ln(x), and no line starts from zero, because a log axis does not show zero.
+    """
     xvariable = args.x
-    startfromzero = xvariable.startswith("velocity") or xvariable == "beta"
+    logscalex = getattr(args, "logscalex", False)
+    startfromzero = not logscalex and (xvariable.startswith("velocity") or xvariable == "beta")
     # get_xlist divides the range of the x axis into the bins
     xlow, xhigh = figuredata.xlimits
-    xbinwidth = (xhigh - xlow) / args.xbins if args.xbins and xlow is not None and xhigh is not None else None
-    return startfromzero, xbinwidth
+    if not args.xbins or xlow is None or xhigh is None:
+        return startfromzero, None
+    return startfromzero, (math.log(xhigh) - math.log(xlow) if logscalex else xhigh - xlow) / args.xbins
 
 
 def draw_series(
@@ -463,7 +473,7 @@ def draw_series(
     dflinepoints = (
         get_histogram_steps(dflinepoints)
         if "xbin_lower" in dflinepoints.columns
-        else extend_line_to_its_ends(dflinepoints, startfromzero, xbinwidth)
+        else extend_line_to_its_ends(dflinepoints, startfromzero, xbinwidth, logxbins=getattr(args, "logscalex", False))
     )
     xvalues_binned = dflinepoints.get_column("xvalue_binned")
     yvalues_binned = dflinepoints.get_column("yvalue_binned")
@@ -1385,7 +1395,14 @@ def get_xlist(
 
     The x limits are --xmin and --xmax, or else the range of the x values. A histogram with the extent of each cell or
     timestep takes the outer edges of the extents in place of the range.
+
+    With --logscalex, the bins have equal widths in ln(x), and the first frame leaves out each x value at or below zero.
     """
+    logscalex = getattr(args, "logscalex", False)
+    if logscalex:
+        args.xmin = log_axis_limit(args.xmin, logscale=True, argname="-xmin")
+        args.xmax = log_axis_limit(args.xmax, logscale=True, argname="-xmax")
+
     if timestepslist is not None:
         estimators = estimators.filter(pl.col("timestep").is_in(timestepslist))
 
@@ -1418,10 +1435,15 @@ def get_xlist(
     hasxvalue = pl.col("xvalue").is_not_null() & pl.col("xvalue").cast(pl.Float64).is_finite()
     # cells at one x value need a fixed order, because a sum over them can stop between two of them
     fullrangeestimators = estimators.filter(hasxvalue).sort("xvalue", "modelgridindex")
-    xvalues = pl.col("xvalue").filter(hasxvalue)
+    isonaxis = (hasxvalue & (pl.col("xvalue") > 0)) if logscalex else hasxvalue
+    xvalues = pl.col("xvalue").filter(isonaxis)
     # one collect gives the statistics and the unique values. The command line can give the statistics, and then the
     # query leaves them out
-    statexprs: dict[str, pl.Expr] = {"rowcount": pl.len(), "noxvaluecount": (~hasxvalue).sum()}
+    statexprs: dict[str, pl.Expr] = {
+        "rowcount": pl.len(),
+        "noxvaluecount": (~hasxvalue).sum(),
+        "offaxiscount": (hasxvalue & ~isonaxis).sum(),
+    }
     if args.xmin is None:
         statexprs["xmin"] = xvalues.min()
     if args.xmax is None:
@@ -1430,18 +1452,20 @@ def get_xlist(
     # bins would merge the timesteps of a model that has more cells than timesteps, thus only a spatial axis takes them
     if args.xbins is None and xvariable not in TIME_XVARIABLES:
         statexprs["multiple_points_per_xvalue"] = (
-            xvalues.n_unique() * pl.col("timestep").filter(hasxvalue).n_unique() < hasxvalue.sum()
+            xvalues.n_unique() * pl.col("timestep").filter(isonaxis).n_unique() < isonaxis.sum()
         )
     if args.xbins is None or args.xbins < 0:
         # the automatic bins need this. The full sort is small beside a round trip
-        statexprs["xdeltamax"] = xvalues.sort().diff().max()
+        statexprs["xdeltamax"] = (xvalues.log() if logscalex else xvalues).sort().diff().max()
     cellextent = get_cell_x_extent(xvariable, estimators.collect_schema().names()) if args.histogram else None
     if cellextent is not None:
         # the bins with no value of a series stay in the x range, as the x values of a plot with no histogram do
-        statexprs["xextentmin"] = cellextent[0].filter(hasxvalue).min()
-        statexprs["xextentmax"] = cellextent[1].filter(hasxvalue).max()
+        # the inner cell of a model starts at zero, and a log axis does not show zero
+        hasloweredgeonaxis = (isonaxis & (cellextent[0] > 0.0)) if logscalex else isonaxis
+        statexprs["xextentmin"] = cellextent[0].filter(hasloweredgeonaxis).min()
+        statexprs["xextentmax"] = cellextent[1].filter(isonaxis).max()
 
-    inxrange = hasxvalue
+    inxrange = isonaxis
     if args.xmin is not None:
         inxrange &= pl.col("xvalue") >= args.xmin
     if args.xmax is not None:
@@ -1467,6 +1491,17 @@ def get_xlist(
             f"{xstats['noxvaluecount']} of the {xstats['rowcount']} pairs of a cell and a timestep have no finite"
             f" value of {xvariable}, thus the plot leaves them out"
         )
+    if xstats["offaxiscount"] > 0:
+        if xstats["offaxiscount"] == xstats["rowcount"] - xstats["noxvaluecount"]:
+            exit_with_error(
+                f"-x {xvariable} has no value above zero in the timesteps and the cells of the plot,"
+                " thus a log axis cannot show it",
+                "Remove --logscalex, or choose a different -x",
+            )
+        print_warning(
+            f"{xstats['offaxiscount']} of the {xstats['rowcount']} pairs of a cell and a timestep have a value of"
+            f" {xvariable} at or below zero. A log axis cannot show such a value, thus the plot leaves them out"
+        )
 
     xmin = xstats["xmin"] if args.xmin is None else args.xmin
     xmax = xstats["xmax"] if args.xmax is None else args.xmax
@@ -1486,7 +1521,7 @@ def get_xlist(
             print(f"The x values give no interval to bin by ({xdeltamax}). Setting xbins to 25")
             args.xbins = 25
         else:
-            args.xbins = int((xmax - xmin) / xdeltamax)
+            args.xbins = int((math.log(xmax) - math.log(xmin) if logscalex else xmax - xmin) / xdeltamax)
             print(
                 f"Setting xbins to {args.xbins} based on data range [{xmin}, {xmax}]"
                 f" and largest x interval of {xdeltamax}"
@@ -1502,10 +1537,10 @@ def get_xlist(
         # -xbins gives the number of bins, thus the number of edges is one more than that. It gave
         # the number of edges before, thus "-xbins 30" drew 29 bins and the help said 30
         # a range of zero width gives equal edges, and equal edges give an error. Thus one bin holds all the x values
-        xbinedges = np.linspace(xmin, xmax, args.xbins + 1 if xmax > xmin else 2)
+        xbinedges = (np.geomspace if logscalex else np.linspace)(xmin, xmax, args.xbins + 1 if xmax > xmin else 2)
         xlower = xbinedges[:-1]
         xupper = xbinedges[1:]
-        xmids = (xlower + xupper) / 2
+        xmids = np.sqrt(xlower) * np.sqrt(xupper) if logscalex else (xlower + xupper) / 2
         # the function gets only the interior edges. Thus a value at an outer edge goes into the first or the last bin
         xbinindex = get_bin_index_expr(pl.col("xvalue"), xbinedges[1:-1], right_closed=True) + 1
         estimators = (
@@ -1535,8 +1570,12 @@ def get_xlist(
         xlower, xupper, extentsource = cellextent
         print_detail(f"--histogram draws {extentsource}, thus each step gives the value across the full extent")
         estimators = estimators.with_columns(xbin_lower=xlower, xbin_upper=xupper)
+        extentmin = xstats["xextentmin"]
+        # a log axis does not show a lower edge at zero, thus the midpoint of that cell keeps the cell on the axis
+        if logscalex:
+            extentmin = xmin if extentmin is None else min(extentmin, xmin)
         xlimits = (
-            xstats["xextentmin"] if args.xmin is None else args.xmin,
+            extentmin if args.xmin is None else args.xmin,
             xstats["xextentmax"] if args.xmax is None else args.xmax,
         )
 
@@ -2109,7 +2148,10 @@ def get_line_figure_table(figuredata: LineFigureData, args: argparse.Namespace) 
                 ))
             elif series.dflinepoints is not None:
                 dfdrawnline = extend_line_to_its_ends(
-                    series.dflinepoints.with_columns(bin_centre=pl.lit(value=True)), startfromzero, xbinwidth
+                    series.dflinepoints.with_columns(bin_centre=pl.lit(value=True)),
+                    startfromzero,
+                    xbinwidth,
+                    logxbins=getattr(args, "logscalex", False),
                 )
                 dfdrawn.append((
                     "line",
@@ -2804,6 +2846,15 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         ),
     )
 
+    parser.add_argument(
+        "--logscalex",
+        action="store_true",
+        help=(
+            "Use a log scale for the horizontal axis. The x bins then have equal widths in ln(x), and the plot leaves"
+            " out each x value at or below zero"
+        ),
+    )
+
     parser.add_argument("--hidexlabel", action="store_true", help="Hide the bottom horizontal axis label")
 
     parser.add_argument(
@@ -2875,8 +2926,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             "The directive ionpoptype= sets the normalisation of an ion population series to one of "
             f"{', '.join(POPTYPE_YLABELS)}. Give the style of a series after {SERIES_STYLE_MARK} with the keys "
             f"{', '.join(SERIES_STYLE_KEYS)}, e.g. 'Fe II{SERIES_STYLE_MARK}color=C3,linestyle=dashed'. The label "
-            "comes last, and it can hold a comma. The subplots share one horizontal axis, thus --xmin and --xmax set "
-            "that axis for the whole figure"
+            "comes last, and it can hold a comma. The subplots share one horizontal axis, thus --xmin, --xmax, and "
+            "--logscalex set that axis for the whole figure"
         ),
     )
 
@@ -3122,11 +3173,14 @@ def resolve_snapshot_arguments(args: argparse.Namespace) -> None:
                 ("-filtersavgol", bool(args.filtersavgol)),
                 ("--markers", bool(args.markers)),
                 ("--histogram", bool(args.histogram)),
+                ("--logscalex", bool(getattr(args, "logscalex", False))),
             )
             if given
         ]
         if ignored:
             print_warning(f"{', '.join(ignored)} do not apply to a colour image")
+        # the axes of a colour image hold velocities from -vmax to vmax, and a log axis cannot show the negative ones
+        args.logscalex = False
         # a colour image is a snapshot, thus it takes the time range of a plot against the velocity
         args.x = "velocity"
     elif args.x is None:

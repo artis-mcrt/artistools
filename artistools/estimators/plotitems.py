@@ -204,6 +204,13 @@ def get_directive_name(seriestype: str) -> str | None:
             f"share one horizontal axis. Give -{given.lower()} instead, which also drops the data outside"
         )
 
+    if given.lower() == "xscale":
+        exit_with_error(
+            "'xscale' belongs to the whole figure and not to one subplot, because the subplots share one"
+            " horizontal axis",
+            "Give --logscalex for a log scale on the horizontal axis",
+        )
+
     if seriestype.startswith("_") and given.lower() not in DIRECTIVES:
         suggestion = suggest_names(given, DIRECTIVES)
         exit_with_error(
