@@ -115,6 +115,7 @@ from artistools.viewertools.sections import connect_play
 from artistools.viewertools.sections import connect_time_keys
 from artistools.viewertools.sections import get_next_play_time
 from artistools.viewertools.sections import make_figscale_box
+from artistools.viewertools.sections import make_xscale_box
 from artistools.viewertools.sections import read_limit_fields
 from artistools.viewertools.sections import read_selected_range
 from artistools.viewertools.sections import TIME_KEY_HELP_ROWS
@@ -176,6 +177,7 @@ CONTROLLED_DESTS: t.Final = frozenset({
     "xmin",
     "xmax",
     "xbins",
+    "logscalex",
     "markers",
     "histogram",
     "colorbyion",
@@ -254,6 +256,7 @@ class ControlValues:
     x: str
     xmin: str
     xmax: str
+    logscalex: bool
     cells: str
     # the items of each subplot, e.g. ("Te", "TR") or ("populations", "Fe II", "Fe III", "yscale=log")
     subplots: tuple[tuple[str, ...], ...]
@@ -744,6 +747,7 @@ class EstimatorViewer:
             x=xvariable,
             xmin="" if args.xmin is None else format(args.xmin, ".10g"),
             xmax="" if args.xmax is None else format(args.xmax, ".10g"),
+            logscalex=bool(args.logscalex),
             cells="" if args.modelgridindex is None else format_range_list(args.modelgridindex),
             subplots=subplots,
             markers=bool(args.markers),
@@ -823,6 +827,8 @@ class EstimatorViewer:
             tokens += get_option_tokens("--xmin", values.xmin)
         if values.xmax:
             tokens += get_option_tokens("--xmax", values.xmax)
+        if values.logscalex:
+            tokens.append("--logscalex")
         if values.xbins:
             tokens += get_option_tokens("--xbins", values.xbins)
         if values.markers:
@@ -1316,7 +1322,8 @@ def open_window(
     histogramcheck = QtWidgets.QCheckBox("--histogram")
     histogramcheck.setToolTip(helptexts.get("histogram", ""))
     add_row(xgrid, 0, [QtWidgets.QLabel("-x"), xbox, QtWidgets.QLabel("--xbins"), xbinsedit])
-    add_row(xgrid, 1, [xminlabel, xminedit, xmaxlabel, xmaxedit])
+    xscalebox = make_xscale_box(helptexts)
+    add_row(xgrid, 1, [xminlabel, xminedit, xmaxlabel, xmaxedit, QtWidgets.QLabel("x scale:"), xscalebox])
     add_row(xgrid, 2, [markerscheck, colorbyioncheck, histogramcheck])
     smoothingbox = QtWidgets.QComboBox()
     smoothingbox.setMinimumWidth(120)
@@ -1434,6 +1441,7 @@ def open_window(
         widthslider,
         cellslider,
         xbox,
+        xscalebox,
         markerscheck,
         colorbyioncheck,
         histogramcheck,
@@ -1559,6 +1567,7 @@ def open_window(
             edit.setToolTip(helptexts.get(dest, "") + zoomtip + unittip)
         set_edit_text(xminedit, values.xmin)
         set_edit_text(xmaxedit, values.xmax)
+        xscalebox.setCurrentIndex(1 if values.logscalex else 0)
         set_edit_text(xbinsedit, values.xbins)
         # the window hides the output of the plot. Thus the controls show the bins, the markers, and the colours
         # that the plot chose when the command gives no option
@@ -1753,6 +1762,7 @@ def open_window(
                 xbins=xbinsedit.text().strip(),
                 markers=markerscheck.isChecked(),
                 histogram=histogramcheck.isChecked(),
+                logscalex=xscalebox.currentIndex() == 1,
                 colorbyion=colorbyioncheck.isChecked(),
             )
         )
@@ -1980,6 +1990,7 @@ def open_window(
     markerscheck.toggled.connect(on_style)
     colorbyioncheck.toggled.connect(on_style)
     histogramcheck.toggled.connect(on_style)
+    xscalebox.currentIndexChanged.connect(on_style)
     connect_mouse_to_figure = connect_plot_mouse(
         canvas,
         get_frames=lambda: get_plot_frames(viewer.fig),
