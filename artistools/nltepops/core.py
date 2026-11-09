@@ -212,9 +212,8 @@ def read_nltepops(
     if timestep is None:
         timesteps = None
     elif isinstance(timestep, Sequence):
+        # a list of one timestep stays a list, because only a list reads the cells of each run folder that holds it
         timesteps = tuple(sorted({int(ts) for ts in timestep}))
-        # one timestep has one key in the cache, for each form of the argument
-        timesteps = timesteps[0] if len(timesteps) == 1 else timesteps
     else:
         timesteps = int(timestep)
     if isinstance(timesteps, tuple):

@@ -2648,6 +2648,16 @@ def test_read_rank_outputfiles_of_a_timestep_list_equals_the_filter_of_a_full_re
     assert dfnotimestep.schema["nnlevel"] == pl.Float64
 
 
+def test_read_nltepops_of_a_list_of_one_timestep_keeps_the_cells_of_a_restart(tmp_path: Path) -> None:
+    """A list of one timestep must read each run folder, because a later run folder can hold more cells."""
+    write_rank_output_model(tmp_path, {"job0": [(1, 0, 2.0)], "job1": [(1, 0, 9.0), (1, 4, 8.0), (2, 0, 3.0)]})
+
+    dfpops = at.nltepops.read_nltepops(tmp_path, timestep=[1]).sort("modelgridindex")
+
+    assert dfpops["modelgridindex"].to_list() == [0, 4]
+    assert dfpops["nnlevel"].to_list() == [2, 8]
+
+
 @pytest.mark.parametrize("textform", ["rank_file", "compressed_rank_file", "allranks_file"])
 def test_parquet_cache_of_the_rank_text_gives_the_rows_of_the_text(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, textform: str
