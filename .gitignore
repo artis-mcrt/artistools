@@ -69,3 +69,7 @@ plottingscripts/
 
 target
 .antigravitycli
+
+# the Sphinx build. docs/conf.py writes docs/commands.md from subcommandtree at each build
+docs/_build/
+docs/commands.md
