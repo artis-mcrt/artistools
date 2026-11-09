@@ -242,14 +242,15 @@ def show_command_sections[ValuesT: PlotValues](
 
 
 def fit_one_frame_column[ValuesT: PlotValues](
-    viewer: "PlotViewer[ValuesT]", areawidth: float, areaheight: float
+    viewer: "PlotViewer[ValuesT]", drawnfigwidthscale: float, areawidth: float, areaheight: float
 ) -> float:
     """Return the --figwidthscale that gives a figure of one column of frames the shape of the plot area.
 
     The column has the label of one y axis and the right margin beside its frames, e.g. the spectra and the residuals.
+    drawnfigwidthscale is the --figwidthscale of the figure that viewer.figsize gives.
     """
     marginwidth = LABELWIDTH_INCHES + RIGHTMARGIN_INCHES
-    return get_fitted_figwidthscale(viewer.figsize, viewer.values.figwidthscale, marginwidth, areawidth, areaheight)
+    return get_fitted_figwidthscale(viewer.figsize, drawnfigwidthscale, marginwidth, areawidth, areaheight)
 
 
 def finish_viewer_window[ValuesT: PlotValues](
@@ -259,20 +260,25 @@ def finish_viewer_window[ValuesT: PlotValues](
     queue: "DrawQueue[ValuesT]",
     get_session_tokens: "Callable[[], list[str]]",
     on_closed: "Callable[[], None] | None" = None,
-    get_fitted_scale: "Callable[[float, float], float] | None" = None,
+    get_fitted_scale: "Callable[[float, float, float], float] | None" = None,
 ) -> None:
     """Connect the parts that each window of a viewer has, then show the window.
 
     get_session_tokens gives the command that opens the window again at the next start. on_closed runs when the window
-    closes, e.g. to clear the caches of a model. get_fitted_scale gives the --figwidthscale that fills a plot area of
-    a width and a height, and the default is fit_one_frame_column.
+    closes, e.g. to clear the caches of a model. get_fitted_scale takes the --figwidthscale of the drawn figure, the
+    width of the plot area, and the height of the plot area. It gives the --figwidthscale that fills the plot area. The
+    default is fit_one_frame_column.
     """
     window, canvas, plotarea = viewerwindow.window, viewerwindow.canvas, viewerwindow.plotarea
     get_fitted = get_fitted_scale or partial(fit_one_frame_column, viewer)
 
     def fit_figwidthscale() -> None:
         values = viewer.values
-        figwidthscale = get_new_figwidthscale(plotarea, viewer.figsize, values.figwidthscale, get_fitted)
+        # viewer.figsize is the size of the drawn figure, thus the fit takes its scale and not the scale of a later
+        # request. Otherwise each fit during a slow plot gave the next fit an incorrect scale, and the fits did not stop
+        figwidthscale = get_new_figwidthscale(
+            plotarea, viewer.figsize, values.figwidthscale, partial(get_fitted, queue.drawnvalues.figwidthscale)
+        )
         # the window sets the width, thus the change is not undoable, and Undo does not return to an old width
         if figwidthscale is not None:
             queue.apply(dc.replace(values, figwidthscale=figwidthscale), undoable=False)

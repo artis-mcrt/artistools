@@ -500,7 +500,7 @@ def test_interactive_figwidthscale_fills_the_plot_area(
     """The viewer sets --figwidthscale to give the figure the shape of the plot area, and the command shows it."""
     viewer = make_viewer("spectra", [str(modelpath), "-t", "300", "--figwidthscale", "1.5", "--interactive"])
     for areawidth, areaheight in ((1600.0, 500.0), (600.0, 500.0)):
-        figwidthscale = fit_one_frame_column(viewer, areawidth, areaheight)
+        figwidthscale = fit_one_frame_column(viewer, viewer.values.figwidthscale, areawidth, areaheight)
         assert apply_values(viewer, dc.replace(viewer.values, figwidthscale=figwidthscale)) is None
         figwidth, figheight = viewer.fig.get_size_inches()
         # the scale has 2 decimals, thus the shape of the figure differs a little from the shape of the area

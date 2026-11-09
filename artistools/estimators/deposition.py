@@ -90,12 +90,13 @@ def get_configured_analytic_channels(modelpath: Path | str) -> list[str] | None:
     """Return the deposition channels that hold an analytic rate, from the artisoptions.h of the model, or None.
 
     ARTIS always gives the analytic rate for spontaneous fission. It also gives it for the positrons, the electrons,
-    and the alpha particles if PARTICLE_THERMALISATION_SCHEME is INSTANTFULLDEPOSITION. An ARTIS from before June
-    2024 names this option INSTANT_PARTICLE_DEPOSITION, and an ARTIS from before May 2022 has neither option.
+    and the alpha particles if PARTICLE_THERMALISATION_SCHEME is INSTANTFULLDEPOSITION. An ARTIS from June 2024 to March
+    2026 names this value INSTANT. An ARTIS from before June 2024 names this option INSTANT_PARTICLE_DEPOSITION, and an
+    ARTIS from before May 2022 has neither option.
     """
     options = get_artis_options(modelpath)
     if "PARTICLE_THERMALISATION_SCHEME" in options:
-        instantdeposition = "INSTANTFULLDEPOSITION" in options["PARTICLE_THERMALISATION_SCHEME"]
+        instantdeposition = "INSTANT" in options["PARTICLE_THERMALISATION_SCHEME"]
     elif "INSTANT_PARTICLE_DEPOSITION" in options:
         instantdeposition = options["INSTANT_PARTICLE_DEPOSITION"] == "true"
     else:

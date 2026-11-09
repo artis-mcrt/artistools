@@ -659,9 +659,16 @@ def get_init_abundance_plans(
             linelabel = "Fe group"
         else:
             linelabel = speciesstr
-            # an isotope, e.g. Fe52, has a column of its own, and an element takes the column of its symbol
-            speciescolumn = f"{valuetype}{speciesstr}"
-            expr_yvalue = pl.col(speciescolumn if speciescolumn in columnnames else f"{valuetype}{elsymbol}")
+            # an isotope, e.g. Fe52, 52Fe, or Fe_52, has a column of its own, and an element takes the column of its
+            # symbol. An isotope with no column must not take the column of its element under the label of the isotope
+            massnumber = "".join(char for char in speciesstr if char.isdigit())
+            speciescolumn = f"{valuetype}{elsymbol}{massnumber}"
+            if speciescolumn not in columnnames:
+                print_warning(
+                    f"artistools cannot plot {seriestype} for {speciesstr}, because the model holds no {speciescolumn}"
+                )
+                continue
+            expr_yvalue = pl.col(speciescolumn)
 
         series = estimators.with_columns(celltsweight=pl.col("rho") * pl.col("deltavol_deltat"), yvalue=expr_yvalue)
 
@@ -1178,6 +1185,10 @@ def get_multi_ion_series_plans(
 
     ionentries = [entry for entry in ionentries if entry[0] not in nocolumnions]
 
+    if seriestype == "populations" and poptype == "cumulative" and args.xmin is not None:
+        # get_xlist drops the rows outside -xmin and -xmax, thus the sum cannot hold the cells below -xmin
+        print_warning(f"The cumulative population starts at x = {args.xmin}, and it leaves out each cell below that x")
+
     lazyframes = []
     weightnames: list[str] = []
     for (atomic_number, ion_stage), _ in ionentries:
@@ -1212,7 +1223,7 @@ def get_multi_ion_series_plans(
                 # 0/0 gives NaN for a cell that holds none of the element. Make it null. The weighted
                 # mean in get_line_points then drops the cell and does not count it as zero.
                 (expr_yvals / expr_normfactor).fill_nan(None).alias("yvalue"),
-                cs.starts_with("xvalue"),
+                cs.starts_with("xvalue", "xbin_"),
             )
         )
 

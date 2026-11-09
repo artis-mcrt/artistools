@@ -386,6 +386,8 @@ class ReplyUnpickler(pickle.Unpickler):
         """
         import sys
 
+        # a server on Python 3.13 gives a Path the module pathlib._local, and a later Python does not load that module
+        module = "pathlib" if module == "pathlib._local" else module
         loadedmodule = sys.modules.get(module)
         found = None if "." in name or loadedmodule is None else getattr(loadedmodule, name, None)
         if module.split(".", maxsplit=1)[0] in REPLY_MODULES | EXCEPTION_MODULES and found is not None:

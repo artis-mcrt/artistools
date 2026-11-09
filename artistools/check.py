@@ -289,8 +289,9 @@ def check_restarts(modelpath: Path) -> tuple[str, str]:
         loggedcount = get_logged_rank_count(folder)
         if loggedcount is not None:
             logcounts.append((name, loggedcount))
-            # a log of a higher rank of an earlier run can stand in the place of a missing log, thus compare the ranks
-            if missingranks := sorted(set(range(loggedcount)) - set(logranks)):
+            # a log of a higher rank of an earlier run can replace a missing log. Thus compare the ranks.
+            # At the end of a run, the ARTIS script tar_rm_logs.sh deletes each log except the log of rank 0
+            if logranks != [0] and (missingranks := sorted(set(range(loggedcount)) - set(logranks))):
                 incompletelogs.append(
                     f"{name} has no log of the ranks {format_range_list(missingranks)} of its {loggedcount} ranks"
                 )
