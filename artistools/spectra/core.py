@@ -661,6 +661,35 @@ def get_spectrum_filenames(gamma: bool, directionresolved: bool) -> list[str]:
 
 # maxsize is small because this reads eagerly and every cached entry retains a whole spec file. A cached
 # scan would hold only the query plan, thus each collect by a caller would parse the file again.
+def read_complete_spectrum_table(specfilename: Path, has_header: bool = True) -> pl.DataFrame:
+    """Return the String columns of a text file of spectra, with no cut last line.
+
+    sn3d writes the whole file again at each timestep, thus the file can be empty or end with a cut line.
+    """
+    specbytes = read_complete_lines(specfilename, content="spectrum")
+    with polars_error_note(specfilename):
+        # the reader counts the time columns, thus the column of a trailing space on each line must go
+        dfspec = drop_trailing_null_column(
+            pl.read_csv(
+                io.BytesIO(specbytes),
+                separator=" ",
+                has_header=has_header,
+                infer_schema=False,
+                truncate_ragged_lines=True,
+            )
+        )
+
+    if dfspec.is_empty():
+        msg = (
+            f"{specfilename} holds no spectrum after its line of times."
+            " A run that stops while sn3d writes this file gives this"
+        )
+        raise ValueError(msg)
+    raise_if_cut_line(dfspec, specfilename)
+
+    return dfspec
+
+
 @clear_at_reload("output")
 @modelpath_cache(maxsize=2)
 def scan_spec(modelpath: Path, gamma: bool = False) -> pl.LazyFrame:
@@ -675,21 +704,7 @@ def scan_spec(modelpath: Path, gamma: bool = False) -> pl.LazyFrame:
     )
     print(f"Reading {specfilename}")
 
-    # sn3d writes the whole file again at each timestep, thus the file can be empty or end with a cut line
-    specbytes = read_complete_lines(specfilename, content="spectrum")
-    with polars_error_note(specfilename):
-        # scan_spectra counts the time columns, thus the column of a trailing space on each line must go
-        dfspec = drop_trailing_null_column(
-            pl.read_csv(io.BytesIO(specbytes), separator=" ", infer_schema=False, truncate_ragged_lines=True)
-        )
-
-    if dfspec.is_empty():
-        msg = (
-            f"{specfilename} holds no spectrum after its line of times."
-            " A run that stops while sn3d writes this file gives this"
-        )
-        raise ValueError(msg)
-    raise_if_cut_line(dfspec, specfilename)
+    dfspec = read_complete_spectrum_table(specfilename)
 
     return (
         dfspec
@@ -974,9 +989,7 @@ def scan_specpol_res(modelpath: Path) -> dict[int, pl.LazyFrame]:
     """
     specfilename = firstexisting("specpol_res.out", folder=modelpath, tryzipped=True)
     print(f"Reading {specfilename}")
-    alldata = drop_trailing_null_column(
-        pl.scan_csv(polars_source(specfilename), separator=" ", has_header=False, infer_schema=False, glob=False)
-    ).collect()
+    alldata = read_complete_spectrum_table(specfilename, has_header=False)
 
     dirbintables: dict[int, pl.LazyFrame] = {}
     for dirbin, table in split_multitable_dataframe(alldata).items():
@@ -1003,9 +1016,7 @@ def scan_specpol_data(modelpath: Path, dirbin: int = -1) -> dict[str, pl.LazyFra
     if dirbin == -1:
         specfilename = firstexisting("specpol.out", folder=modelpath, tryzipped=True)
         print(f"Reading {specfilename}")
-        specdata = drop_trailing_null_column(
-            pl.scan_csv(polars_source(specfilename), separator=" ", has_header=True, infer_schema=False, glob=False)
-        ).with_columns(pl.all().cast(pl.Float64))
+        specdata = read_complete_spectrum_table(specfilename).lazy().with_columns(pl.all().cast(pl.Float64))
 
         return split_dataframe_stokesparams(specdata)
 

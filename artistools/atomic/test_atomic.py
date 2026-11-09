@@ -575,6 +575,16 @@ def test_get_composition_data_from_outputfile_of_the_test_models() -> None:
         )
 
 
+def test_get_ionstages_from_outputfile_finds_a_log_in_a_run_folder(tmp_path: Path) -> None:
+    """A run on a cluster writes its log into a run folder. A read of classic estimators then stopped."""
+    (tmp_path / "123.slurm").mkdir()
+    (tmp_path / "123.slurm" / "output_0-0.txt").write_text(
+        "[input.c]   element Z = 26\n[input.c]     ion 2 with 3 levels\nend of the list\n", encoding="utf-8"
+    )
+
+    assert at.atomic.get_ionstages_from_outputfile(tmp_path) == {26: [2]}
+
+
 def test_get_composition_data_from_outputfile_refuses_a_log_with_no_list(tmp_path: Path) -> None:
     """A log with no list of the elements gives a message, and not a frame of no elements."""
     (tmp_path / "output_0-0.txt").write_text("start of the log\n", encoding="utf-8")

@@ -795,7 +795,10 @@ def get_ionstages_from_outputfile(modelpath: Path | str) -> dict[int, list[int]]
     """
     elementpattern = re.compile(r"\[(?:input\.c|input|info)\]\s+element (?:Z = |\d+ \(Z=\s*)(\d+)")
     ionpattern = re.compile(r"\[(?:input\.c|input|info)\]\s+(?:ionstage|ion) (\d+)\b")
-    logpath = Path(modelpath, "output_0-0.txt")
+    # a run on a cluster writes its log into a run folder
+    logpath = firstexisting(
+        "output_0-0.txt", folder=modelpath, tryzipped=True, purpose="The log of a run gives the ion stages of a model"
+    )
 
     ionstages_of_element: dict[int, list[int]] = {}
     with zopen(logpath, encoding="utf-8") as foutput:

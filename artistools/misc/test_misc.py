@@ -30,7 +30,6 @@ import artistools as at
 from artistools.estimators import plotestimators
 from artistools.estimators.core import join_cell_modeldata
 from artistools.misc import dirbins
-from artistools.misc import modelinfo
 from artistools.misc import parquetcache
 from artistools.misc import parse_cli_args
 from artistools.misc import remote
@@ -2648,12 +2647,13 @@ def test_read_rank_outputfiles_of_a_timestep_list_equals_the_filter_of_a_full_re
     assert dfnotimestep.schema["nnlevel"] == pl.Float64
 
 
-def test_read_nltepops_of_a_list_of_one_timestep_keeps_the_cells_of_a_restart(tmp_path: Path) -> None:
-    """A list of one timestep must read each run folder, because a later run folder can hold more cells."""
+@pytest.mark.parametrize("timestep", [1, [1]])
+def test_read_nltepops_of_one_timestep_keeps_the_cells_of_a_restart(tmp_path: Path, timestep: int | list[int]) -> None:
+    """A read of one timestep must read each run folder, because a later run folder can hold more cells."""
     # the restart stopped after its repeated timestep, thus its folder owns no timestep
     write_rank_output_model(tmp_path, {"job0": [(1, 0, 2.0)], "job1": [(1, 0, 9.0), (1, 4, 8.0)]})
 
-    dfpops = at.nltepops.read_nltepops(tmp_path, timestep=[1]).sort("modelgridindex")
+    dfpops = at.nltepops.read_nltepops(tmp_path, timestep=timestep).sort("modelgridindex")
 
     assert dfpops["modelgridindex"].to_list() == [0, 4]
     assert dfpops["nnlevel"].to_list() == [2, 8]
@@ -4045,34 +4045,11 @@ def test_get_runfolders_gives_a_repeated_timestep_to_the_earlier_folder(tmp_path
 
     job0, job1 = tmp_path / "job0", tmp_path / "job1"
     assert at.misc.get_runfolders(tmp_path) == [job0, job1]
-    assert at.misc.get_runfolders(tmp_path, timestep=2) == (job0,)
     assert at.misc.get_runfolders(tmp_path, timesteps=[2]) == (job0,)
     assert at.misc.get_runfolders(tmp_path, timesteps=[2, 3]) == (job0, job1)
 
     shutil.rmtree(job0)
-    assert at.misc.get_runfolders(tmp_path, timestep=2) == (job1,)
     assert at.misc.get_runfolders(tmp_path, timesteps=[2]) == (job1,)
-
-
-def test_get_runfolders_of_one_timestep_reads_no_later_folder(tmp_path: Path) -> None:
-    """The earliest folder that holds a timestep keeps it, thus get_runfolders reads no folder after that one."""
-    for foldername, timesteps in (("job0", (0, 1, 2)), ("job1", (2, 3, 4)), ("job2", (4, 5))):
-        (tmp_path / foldername).mkdir()
-        (tmp_path / foldername / "estimators_0000.out").write_text(
-            "".join(f"timestep {timestep} modelgridindex 0\n\n" for timestep in timesteps), encoding="utf-8"
-        )
-
-    with mock.patch.object(modelinfo, "get_runfolder_timesteps", wraps=modelinfo.get_runfolder_timesteps) as mockreader:
-        assert at.misc.get_runfolders(tmp_path, timestep=2) == (tmp_path / "job0",)
-        assert [call.args[0] for call in mockreader.call_args_list] == [tmp_path / "job0"]
-
-        mockreader.reset_mock()
-        assert at.misc.get_runfolders(tmp_path, timestep=99) == ()
-        assert len(mockreader.call_args_list) == 4
-
-        mockreader.reset_mock()
-        assert at.misc.get_runfolders(tmp_path, timesteps=[4]) == (tmp_path / "job1",)
-        assert len(mockreader.call_args_list) == 4
 
 
 def test_replace_outdated_file_locks_a_descriptor_that_can_write(tmp_path: Path) -> None:
