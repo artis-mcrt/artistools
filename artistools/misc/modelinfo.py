@@ -751,7 +751,7 @@ def scan_rank_text_cache(
     """Return a scan of the parquet cache of a run folder, or None if the read must take the text.
 
     A read of some ranks takes the text, because the conversion needs the text of every rank. A read of less text
-    than MIN_TEXT_BYTES_FOR_RANK_CACHE also takes the text, if it has no current cache. A read with no text file, e.g.
+    than MIN_TEXT_BYTES_FOR_RANK_CACHE also takes the text, if the folder has no cache. A read with no text file, e.g.
     of an archived model, takes the cache. Text that is older than the text of the cache cannot replace the cache.
     """
     parquetfilepath = folderpath / cachefilename
@@ -794,9 +794,10 @@ def scan_rank_text_cache(
         textsource_size=textsize if comparesize else None,
     )
     if stalereason is not None:
-        if textsize < MIN_TEXT_BYTES_FOR_RANK_CACHE:
-            return None
         identity_of_stale_file = get_file_identity(parquetfilepath)
+        # a stale cache must not stay at its path, because a read serves it after the text is archived
+        if identity_of_stale_file is None and textsize < MIN_TEXT_BYTES_FOR_RANK_CACHE:
+            return None
         if identity_of_stale_file is not None:
             print(f"  {parquetfilepath} is not a current cache of the text, because {stalereason}")
         print(f"  Write {parquetfilepath} from {len(textfiles)} text files...")

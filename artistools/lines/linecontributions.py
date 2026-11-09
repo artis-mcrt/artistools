@@ -420,7 +420,7 @@ def get_line_summary(dfcelllines: pl.DataFrame) -> pl.DataFrame:
         emission_times_velocity=(emission * pl.col("velocity_kmps")).sum(),
         emission_times_Te=(emission * pl.col("Te")).sum(),
         tau_sobolev_max=pl.col("tau_sobolev").max(),
-        tau_sobolev_max_nan_largest=pl.col("tau_sobolev").max(),
+        tau_sobolev_max_nan_largest=pl.col("tau_sobolev").nan_max(),
         velocity_kmps_at_tau_sobolev_max=pl.col("velocity_kmps").sort_by("tau_sobolev").last(),
         cellcount_tau_sobolev_above_1=(pl.col("tau_sobolev") > 1.0).sum(),
     )

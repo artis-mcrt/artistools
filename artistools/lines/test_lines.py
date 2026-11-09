@@ -223,25 +223,26 @@ def test_running_merge_of_line_summaries_agrees_with_one_merge_of_all_the_batche
     from artistools.lines.linecontributions import get_line_summary
     from artistools.lines.linecontributions import merge_line_summaries
 
-    def get_batch_summary(velocity_kmps: float, tau_sobolev: float | None, source: str | None) -> pl.DataFrame:
-        return get_line_summary(
-            pl.DataFrame(
-                {
-                    "velocity_kmps": [velocity_kmps],
-                    "Te": [5000.0],
-                    "ion": ["Fe II"],
-                    "lambda_angstroms": [7155.0],
-                    "lower": [0],
-                    "upper": [10],
-                    "A_per_s": [0.1],
-                    "n_lower_source": [source],
-                    "n_upper_source": ["LTE"],
-                    "tau_sobolev": [tau_sobolev],
-                    "emission_erg_per_s": [velocity_kmps / 1000.0],
-                },
-                schema_overrides={"n_lower_source": pl.String, "tau_sobolev": pl.Float64},
-            )
+    def get_cell_row(velocity_kmps: float, tau_sobolev: float | None, source: str | None) -> pl.DataFrame:
+        return pl.DataFrame(
+            {
+                "velocity_kmps": [velocity_kmps],
+                "Te": [5000.0],
+                "ion": ["Fe II"],
+                "lambda_angstroms": [7155.0],
+                "lower": [0],
+                "upper": [10],
+                "A_per_s": [0.1],
+                "n_lower_source": [source],
+                "n_upper_source": ["LTE"],
+                "tau_sobolev": [tau_sobolev],
+                "emission_erg_per_s": [velocity_kmps / 1000.0],
+            },
+            schema_overrides={"n_lower_source": pl.String, "tau_sobolev": pl.Float64},
         )
+
+    def get_batch_summary(velocity_kmps: float, tau_sobolev: float | None, source: str | None) -> pl.DataFrame:
+        return get_line_summary(get_cell_row(velocity_kmps, tau_sobolev, source))
 
     batches = [
         get_batch_summary(1000.0, 2.0, "NLTE"),
@@ -255,6 +256,15 @@ def test_running_merge_of_line_summaries_agrees_with_one_merge_of_all_the_batche
         dfrunning = merge_line_summaries(pl.concat([dfrunning, dfbatch]))
 
     pltest.assert_frame_equal(dfrunning, merge_line_summaries(pl.concat(batches)))
+
+    # one batch can hold a NaN and a finite value, and a later batch can hold a larger finite value
+    cellsoffirstbatch = pl.concat([get_cell_row(2000.0, math.nan, "LTE"), get_cell_row(1000.0, 2.0, "LTE")])
+    cellofsecondbatch = get_cell_row(3000.0, 5.0, "LTE")
+    dftwobatches = merge_line_summaries(
+        pl.concat([get_line_summary(cellsoffirstbatch), get_line_summary(cellofsecondbatch)])
+    )
+    assert math.isclose(dftwobatches["velocity_kmps_at_tau_sobolev_max"].item(), 2000.0)
+    pltest.assert_frame_equal(dftwobatches, get_line_summary(pl.concat([cellsoffirstbatch, cellofsecondbatch])))
     assert np.isclose(dfrunning["tau_sobolev_max"].item(), 5.0, rtol=1e-12)
     assert np.isclose(dfrunning["velocity_kmps_at_tau_sobolev_max"].item(), 2000.0, rtol=1e-12)
     assert dfrunning["n_lower_source"].item().to_list() == [None, "LTE", "NLTE", "superlevel"]

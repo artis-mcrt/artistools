@@ -2811,6 +2811,32 @@ def test_parquet_cache_of_the_rank_text_stays_after_a_compression_of_the_text(
     mockreadtext.assert_not_called()
 
 
+def test_stale_parquet_cache_of_the_rank_text_is_replaced_for_small_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """New text below the limit must replace a stale cache, because a read serves the cache after an archive."""
+    from artistools.misc import modelinfo
+
+    monkeypatch.setattr(modelinfo, "MIN_TEXT_BYTES_FOR_RANK_CACHE", 1)
+    write_rank_output_model(tmp_path, {"job0": [(0, 0, 0.5)]})
+    textfile = tmp_path / "job0" / "nlte_0000.out"
+
+    def read_values() -> list[float]:
+        dfrows = modelinfo.read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", cachefilename="nltecache.parquet")
+        return dfrows["nnlevel"].to_list()
+
+    assert read_values() == [0.5]
+
+    newtime = textfile.stat().st_mtime + 1000.0
+    textfile.write_text("timestep modelgridindex nnlevel\n0 0 7.5\n", encoding="utf-8")
+    os.utime(textfile, (newtime, newtime))
+    monkeypatch.setattr(modelinfo, "MIN_TEXT_BYTES_FOR_RANK_CACHE", 10**12)
+    assert read_values() == [7.5]
+
+    textfile.unlink()
+    assert read_values() == [7.5]
+
+
 def test_parquet_cache_of_the_rank_text_stays_for_older_text_of_all_ranks(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
