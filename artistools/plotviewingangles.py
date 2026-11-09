@@ -16,7 +16,6 @@ from artistools.misc import addarg_data_output
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_show
-from artistools.misc import exit_with_error
 from artistools.misc import get_costheta_bins
 from artistools.misc import get_phi_bins
 from artistools.misc import get_viewingdirection_phibincount
@@ -90,65 +89,19 @@ def get_plotted_tables(
     }
 
 
-def viewing_angles_visualisation(
-    modelfile: str,
-    outfile: str | None = None,
-    isomin: float | None = None,
-    isomax: float | None = None,
-    opacity: float = 2.5,
-    surface_count: int = 20,
-    linewidth: float = 2.5,
-    linelength: float = 1.0,
-    show_plot: bool = False,
-    darkmode: bool = False,
-    args: argparse.Namespace | None = None,
-) -> tuple[float, float]:
+def viewing_angles_visualisation(args: argparse.Namespace) -> None:
     """Draw a 3D visualisation of an ARTIS model, with an animation of the direction bins.
 
-    The function returns the density limits of the colour scale, which it calculates when the caller
-    gives none.
-
-    Parameters
-    ----------
-    modelfile : str
-        The path of the ARTIS model.
-    outfile : str
-        The name of the output file. A name that holds "html" gives an html file with the animation.
-    isomin : float
-        The smallest density of the colour scale.
-    isomax : float
-        The largest density of the colour scale.
-    opacity : float
-        The opacity of the isosurfaces.
-    surface_count : int
-        The number of isosurfaces.
-    linewidth : float
-        The width of the direction bin lines.
-    linelength : float
-        The length of the direction bin lines, in units of the size of the box.
-    show_plot : bool
-        True shows the plot after the function saves it.
-    darkmode : bool
-        True gives the plot white text on a black background, or on a transparent background in a PDF or SVG file.
-    args : argparse.Namespace
-        The arguments of the command. --print-data and --write-data give the plotted data as text.
-
-    Returns
-    -------
-    isomin, isomax : float, float
-
+    The minimum and the maximum density of the model are the limits of the colour scale that -isomin and -isomax do
+    not give. --print-data and --write-data give the plotted data as text.
     """
-    if args is not None and getattr(args, "write_data", False) and not outfile:
-        exit_with_error(
-            "--write-data writes the table beside the figure, and without -o the command writes no figure",
-            "Give -o with the name of the figure, e.g. -o viewingangles.html",
-        )
+    outfile = str(args.outputfile)
 
     px = import_optional("plotly.express")
     go = import_optional("plotly.graph_objects")
 
     # the volume holds the density of each cell, thus the model gives the positions and the densities
-    lzmodel, modelmeta = scan_modeldata(modelfile)
+    lzmodel, modelmeta = scan_modeldata(args.modelpath)
     dfmodel = (
         add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
         .select("pos_x_mid", "pos_y_mid", "pos_z_mid", "rho")
@@ -157,19 +110,15 @@ def viewing_angles_visualisation(
     x, y, z = (dfmodel[f"pos_{ax}_mid"].cast(pl.Float64).to_numpy() for ax in ("x", "y", "z"))
     rho = dfmodel["rho"].cast(pl.Float64).to_numpy()
 
-    if isomin is None:
-        isomin = min(rho.flatten())
-    if isomax is None:
-        isomax = max(rho.flatten())
-    assert isomin is not None
-    assert isomax is not None
+    isomin = min(rho.flatten()) if args.isomin is None else args.isomin
+    isomax = max(rho.flatten()) if args.isomax is None else args.isomax
     assert isomin < isomax, "isomin must be smaller than isomax"
 
     # the vectors reach the edge of the box at a line length of one
-    length = max(x.flatten()) * linelength
+    length = max(x.flatten()) * args.linelength
     va = gen_viewing_angle_df(length)
-    if args is not None and (getattr(args, "print_data", False) or getattr(args, "write_data", False)):
-        output_data(args, get_plotted_tables((x, y, z), rho, va), outfile or "plotviewingangles.html")
+    if args.print_data or args.write_data:
+        output_data(args, get_plotted_tables((x, y, z), rho, va), outfile)
 
     fig = px.line_3d(
         va,
@@ -180,7 +129,7 @@ def viewing_angles_visualisation(
         animation_frame="Angle-bin",
         hover_name="Angle-bin",
     )
-    fig.update_traces(line={"width": linewidth})
+    fig.update_traces(line={"width": args.linewidth})
     fig.update_layout(legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1})
 
     fig = fig.add_trace(
@@ -191,8 +140,8 @@ def viewing_angles_visualisation(
             value=rho.flatten(),
             isomin=isomin,
             isomax=isomax,
-            opacity=opacity,  # a small value makes every surface visible through the ones in front of it
-            surface_count=surface_count,  # a large number gives a smooth volume
+            opacity=args.opacity,  # a small value makes every surface visible through the ones in front of it
+            surface_count=args.surface_count,  # a large number gives a smooth volume
             colorbar={"title": "Density (g/cm³)"},
         )
     )
@@ -200,23 +149,20 @@ def viewing_angles_visualisation(
         scene_xaxis_showticklabels=False, scene_yaxis_showticklabels=False, scene_zaxis_showticklabels=False
     )
 
-    if darkmode:
-        istransparent = outfile is not None and Path(outfile).suffix.removeprefix(".") in TRANSPARENT_DARKMODE_FORMATS
+    if args.darkmode:
+        istransparent = Path(outfile).suffix.removeprefix(".") in TRANSPARENT_DARKMODE_FORMATS
         fig.update_layout(template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)" if istransparent else "black")
 
-    if outfile:
-        if outfile.endswith("html"):
-            fig.write_html(outfile, auto_play=False)
-        else:
-            fig.write_image(outfile)
-        print_saved(outfile)
+    if outfile.endswith("html"):
+        fig.write_html(outfile, auto_play=False)
+    else:
+        fig.write_image(outfile)
+    print_saved(outfile)
 
-    if show_plot:
+    if args.show:
         fig.show()
-    if outfile and getattr(args, "open", False):
+    if args.open:
         open_file(outfile)
-
-    return (isomin, isomax)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -254,16 +200,4 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Draw a 3D visualisation of an ARTIS model."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
-    viewing_angles_visualisation(
-        modelfile=str(args.modelpath),
-        outfile=str(args.outputfile),
-        isomin=args.isomin,
-        isomax=args.isomax,
-        opacity=args.opacity,
-        surface_count=args.surface_count,
-        linewidth=args.linewidth,
-        linelength=args.linelength,
-        show_plot=args.show,
-        darkmode=args.darkmode,
-        args=args,
-    )
+    viewing_angles_visualisation(args)

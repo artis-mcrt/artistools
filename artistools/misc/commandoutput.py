@@ -292,7 +292,9 @@ def print_collected_data(args: argparse.Namespace) -> None:
 def resolve_outputfile(outputfile: Path | str | None, defaultoutputfile: Path | str) -> Path:
     """Return the output file path, appending the default filename if outputfile is unset or refers to a folder.
 
-    A path with no file extension is treated as a folder and will be created if it does not exist.
+    This function treats a path with no file extension as a folder, and makes the folder if it does not exist.
+    It also makes the parent folder of a path with a file extension. A command that reads for a long time can then save
+    its file.
     """
     if not outputfile:
         return Path(defaultoutputfile)
@@ -300,6 +302,10 @@ def resolve_outputfile(outputfile: Path | str | None, defaultoutputfile: Path | 
     outputfile = Path(outputfile)
     if outputfile.is_dir() or not outputfile.suffixes:
         return make_output_folder(outputfile, "needs") / defaultoutputfile
+
+    # a field of a template gets its value later, thus the name of the folder is not known here
+    if "{" not in str(outputfile.parent):
+        make_output_folder(outputfile.parent, "needs")
 
     return outputfile
 

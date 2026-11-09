@@ -393,12 +393,47 @@ def test_artis_abundance_of_an_element_takes_every_isotope(tmp_path: Path) -> No
         )
 
     expected_sr88 = 1.0e12 * 88 * amu_g / 1.0e-10
-    expected_sr89 = 3.0e11 * 89 * amu_g / 1.0e-10 + 0.1 * (1.5 - 1.0)
+    expected_sr89 = 3.0e11 * 89 * amu_g / 1.0e-10 + (0.1 / 1.5) * (1.5 - 1.0)
     expected_otherstable = 2.0e12 * 87.62 * amu_g / 1.0e-10
     assert math.isclose(abund_of_mgi[0]["X_Sr88"].item(), expected_sr88, rel_tol=1e-9)
     assert math.isclose(
         abund_of_mgi[0]["X_Sr"].item(), expected_sr88 + expected_sr89 + expected_otherstable, rel_tol=1e-9
     )
+
+
+def test_artis_abundance_removes_the_scale_of_the_map_from_the_initial_mass_that_remains(tmp_path: Path) -> None:
+    """The factor applies to the scaled initial mass in the cell, and not to the mass from a decay.
+
+    ARTIS multiplies an initial mass fraction by 1 / factor, then decays it. An added term that holds the initial
+    mass fraction at each time gave a negative mass fraction for Sr91 after its decay.
+    """
+    from artistools.constants import amu_g
+    from artistools.gsinetwork import comparetogsinetwork
+
+    factor = 0.98
+    rho = 1.0e-10
+
+    def get_nniso(massfrac: float, massnumber: int) -> float:
+        return massfrac * rho / (massnumber * amu_g)
+
+    dfestimators = pl.LazyFrame({
+        "modelgridindex": [0, 0],
+        "timestep": [0, 1],
+        "tmid_days": [1.0, 2.0],
+        "mass_g": [1.0e30, 1.0e30],
+        "rho": [rho, rho],
+        "init_X_Sr91": [0.5, 0.5],
+        "nniso_Sr91": [get_nniso(0.5 / factor, 91), get_nniso(1.0e-12, 91)],
+        "init_X_He4": [0.1, 0.1],
+        "nniso_He4": [get_nniso(0.1 / factor, 4), get_nniso(0.1 / factor + 0.2, 4)],
+    })
+    with mock.patch.object(comparetogsinetwork, "scan_estimators", return_value=dfestimators):
+        abund_of_mgi = comparetogsinetwork.get_artis_abund_sequences(
+            tmp_path, pl.DataFrame({"timestep": [0, 1]}), [0], ["Sr91", "He4"], {"Sr91": factor, "He4": factor}
+        )
+
+    assert abund_of_mgi[0]["X_Sr91"].to_list() == pytest.approx([0.5, 1.0e-12 * factor], rel=1e-9)
+    assert abund_of_mgi[0]["X_He4"].to_list() == pytest.approx([0.1, 0.1 + 0.2], rel=1e-9)
 
 
 def test_artis_abundance_converts_nniso_with_the_atomic_mass_unit(tmp_path: Path) -> None:
@@ -448,7 +483,7 @@ def test_artis_abundance_of_a_model_with_no_compositiondata(tmp_path: Path, caps
         )
 
     expected_sr88 = 1.0e12 * 88 * amu_g / 1.0e-10
-    expected_sr89 = 3.0e11 * 89 * amu_g / 1.0e-10 + 0.1 * (1.5 - 1.0)
+    expected_sr89 = 3.0e11 * 89 * amu_g / 1.0e-10 + (0.1 / 1.5) * (1.5 - 1.0)
     assert math.isclose(abund_of_mgi[0]["X_Sr88"].item(), expected_sr88, rel_tol=1e-9)
     assert math.isclose(abund_of_mgi[0]["X_Sr"].item(), expected_sr88 + expected_sr89, rel_tol=1e-9)
     assert "leaves out the stable isotopes" in capsys.readouterr().err

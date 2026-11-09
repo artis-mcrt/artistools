@@ -15,6 +15,7 @@ from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.core import scan_initelemabundances
 from artistools.inputmodel.core import scan_modeldata
 from artistools.misc import addarg_darkmode
+from artistools.misc import addarg_data_output
 from artistools.misc import addarg_force
 from artistools.misc import addarg_legend
 from artistools.misc import addarg_modelpath
@@ -22,6 +23,7 @@ from artistools.misc import addarg_output
 from artistools.misc import addarg_show
 from artistools.misc import confirm_overwrite
 from artistools.misc import model_path_from_text
+from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
@@ -33,6 +35,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_legend(parser)
     addarg_darkmode(parser)
     addarg_show(parser)
+    addarg_data_output(parser)
     addarg_modelpath(parser, positional=True, default=Path(), helptext="Path of the 3D ARTIS model")
     # the earlier name of the model path
     parser.add_argument("-inputfolder", dest="modelpath", type=model_path_from_text, help=argparse.SUPPRESS)
@@ -62,6 +65,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     if args.pdfoutputfile:
         make_plot(xlist, ylists, args.pdfoutputfile, args)
+
+    dfplotted = pl.DataFrame({"vel_r_max_kmps": xlist, "rho": ylists[0], "X_Ni56": ylists[1], "X_Co56": ylists[2]})
+    output_data(args, {"": dfplotted}, args.pdfoutputfile or Path(args.outputfile, "1dslice.pdf"))
 
 
 def slice_3dmodel(

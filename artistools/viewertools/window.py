@@ -47,8 +47,10 @@ from artistools.viewertools.menus import follow_colour_scheme
 from artistools.viewertools.menus import get_dark_plot_colours
 from artistools.viewertools.menus import set_window_document
 from artistools.viewertools.menus import show_figure_in_canvas
+from artistools.viewertools.sections import make_figscale_box
 from artistools.viewertools.widgets import add_command_section
 from artistools.viewertools.widgets import add_copy_box
+from artistools.viewertools.widgets import add_row
 from artistools.viewertools.widgets import add_section
 from artistools.viewertools.widgets import align_section_labels
 from artistools.viewertools.widgets import fit_canvas
@@ -68,6 +70,7 @@ from artistools.viewertools.widgets import StatusBar
 if t.TYPE_CHECKING:
     from collections.abc import Callable
     from collections.abc import Collection
+    from collections.abc import Mapping
     from collections.abc import Sequence
     from concurrent.futures import Future
 
@@ -225,6 +228,30 @@ def add_command_sections(
         copybuttons=(copybutton, pythoncopybutton),
         statusbar=statusbar,
     )
+
+
+def add_command_sections_with_figscale(
+    viewerwindow: ViewerWindow,
+    viewer: "PlotViewer[t.Any]",
+    helptexts: "Mapping[str, str]",
+    hiddendests: "Collection[str]",
+    on_option_rows: "Callable[[OptionRows], None]",
+) -> "tuple[CommandSections, QtWidgets.QDoubleSpinBox, Callable[[OptionRows], None]]":
+    """Add the sections of add_command_sections, with the box of --figscale in the Figure section.
+
+    Return the sections, the box, and the function that shows the --figscale of the option rows in the box. The values
+    of the viewer must have the field otheroptions.
+    """
+    from PySide6 import QtWidgets
+
+    figscalebox, show_figscale = make_figscale_box(
+        viewer.parser, helptexts, lambda: viewer.values.otheroptions, on_option_rows
+    )
+    sections = add_command_sections(
+        viewerwindow, viewer, viewer.parser, (hiddendests, viewer.values.otheroptions, on_option_rows)
+    )
+    add_row(sections.figuresection.grid, 1, [QtWidgets.QLabel("--figscale"), figscalebox])
+    return sections, figscalebox, show_figscale
 
 
 def show_command_sections[ValuesT: PlotValues](
@@ -657,19 +684,22 @@ class DrawQueue[ValuesT]:
             return
         # the timer stops first, because after_draw or on_done can call run_task, which starts the timer again
         self.rendertimer.stop()
-        if self.rendering is not None:
-            self.show_rendered_plot(self.rendering)
-        elif self.taskfuture is not None:
-            self.end_task(self.taskfuture)
-        # a task waits for the plot in progress, and the newer values of the user wait for the task
-        if self.task is not None and self.taskfuture is None:
-            self.start_task()
-        elif self.task is None and self.requestedvalues is not None:
-            self.start_render()
-        # the spinner stays during a drag, which starts a new plot at the end of each plot
-        if self.rendering is None and self.taskfuture is None:
-            self.busytimer.stop()
-            set_plot_busy(self.window, busy=False)
+        try:
+            if self.rendering is not None:
+                self.show_rendered_plot(self.rendering)
+            elif self.taskfuture is not None:
+                self.end_task(self.taskfuture)
+        finally:
+            # an error of the controls must not stop the queue, because each later change then gives no plot.
+            # A task waits for the plot in progress, and the newer values of the user wait for the task
+            if self.task is not None and self.taskfuture is None:
+                self.start_task()
+            elif self.task is None and self.requestedvalues is not None:
+                self.start_render()
+            # the spinner stays during a drag, which starts a new plot at the end of each plot
+            if self.rendering is None and self.taskfuture is None:
+                self.busytimer.stop()
+                set_plot_busy(self.window, busy=False)
 
     def show_rendered_plot(self, rendering: "Future[Callable[[], str | None]]") -> None:
         """Show the complete plot of the worker thread, or the message of a rejection."""

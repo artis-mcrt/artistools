@@ -511,7 +511,7 @@ def test_histogram_of_one_x_value_takes_the_extent_of_the_cell() -> None:
     args = argparse.Namespace(
         xmin=None, xmax=None, xbins=1, markers=False, colorbyion=False, modelgridindex=None, histogram=True
     )
-    _, _, _, dfplot, xlimits = plotestimators.get_xlist("velocity", estimators, None, args)
+    _, _, _, dfplot, _, xlimits = plotestimators.get_xlist("velocity", estimators, None, args)
     dfedges = dfplot.select("xbin_lower", "xbin_upper").unique().collect()
     assert dfedges.height == 1
     assert np.allclose(dfedges.row(0), (1000.0, 2000.0), rtol=1e-9, atol=0.0)
@@ -3367,15 +3367,19 @@ def test_deposition_rates_read_the_next_timestep() -> None:
     rate_erg_per_s = 1.1e-9 * 2.0 + 2.0e-9 * 4.0 + 1.0e-9 * 1.0
     assert dftable["timestep"].to_list() == [0]
     assert np.isclose(dftable["tmid_days"].item(), 10.0)
-    assert np.isclose(dftable["dep_per_volume"].item(), rate_erg_per_s / at.constants.EV_to_erg / 7.0, rtol=1e-12)
-    assert np.isclose(dftable["dep_per_ion"].item(), rate_erg_per_s / at.constants.EV_to_erg / 105.0, rtol=1e-12)
-    assert np.isclose(dftable["dep_per_mass"].item(), rate_erg_per_s / at.constants.EV_to_erg / 10.0, rtol=1e-12)
+    assert np.isclose(dftable["dep_ev_per_s_per_cm3"].item(), rate_erg_per_s / at.constants.EV_to_erg / 7.0, rtol=1e-12)
+    assert np.isclose(
+        dftable["dep_ev_per_s_per_ion"].item(), rate_erg_per_s / at.constants.EV_to_erg / 105.0, rtol=1e-12
+    )
+    assert np.isclose(dftable["dep_ev_per_s_per_g"].item(), rate_erg_per_s / at.constants.EV_to_erg / 10.0, rtol=1e-12)
     assert dftable["cellswithnorate"].item() == 0
 
     # one channel gives its own rate, and the ion count and the mass do not change
     dfgamma = at.estimators.deposition.aggregate_deposition_rates(dfestim, channels=["gamma"])
     assert np.isclose(
-        dfgamma["dep_per_ion"].item(), (1.0e-9 * 2.0 + 2.0e-9 * 4.0) / at.constants.EV_to_erg / 105.0, rtol=1e-12
+        dfgamma["dep_ev_per_s_per_ion"].item(),
+        (1.0e-9 * 2.0 + 2.0e-9 * 4.0) / at.constants.EV_to_erg / 105.0,
+        rtol=1e-12,
     )
 
 
@@ -3401,12 +3405,14 @@ def test_analytic_deposition_channel_gives_the_rate_of_its_own_timestep() -> Non
     # timestep 0 takes gamma from the row of timestep 1, and alpha from its own row with its own volume
     assert dftable["timestep"].to_list() == [0]
     rate_erg_per_s = 4.0e-9 * 2.0 + 7.0e-10 * 2.0
-    assert np.isclose(dftable["dep_per_volume"].item(), rate_erg_per_s / at.constants.EV_to_erg / 2.0, rtol=1e-12)
+    assert np.isclose(dftable["dep_ev_per_s_per_cm3"].item(), rate_erg_per_s / at.constants.EV_to_erg / 2.0, rtol=1e-12)
 
     # an analytic channel alone needs no later row, thus the last timestep has its rate too
     dfalpha = at.estimators.deposition.aggregate_deposition_rates(dfestim, channels=["alpha"])
     assert dfalpha["timestep"].to_list() == [0, 1]
-    assert np.allclose(dfalpha["dep_per_volume"], np.array([7.0e-10, 6.0e-10]) / at.constants.EV_to_erg, rtol=1e-12)
+    assert np.allclose(
+        dfalpha["dep_ev_per_s_per_cm3"], np.array([7.0e-10, 6.0e-10]) / at.constants.EV_to_erg, rtol=1e-12
+    )
 
     # ARTIS gives an analytic rate for spontaneous fission with each scheme, and a rate of zero made it Monte Carlo
     dffission = dfestim.with_columns(deposition_spfission=pl.lit(0.0), emission_ana_spfission=pl.lit(0.0))
@@ -3434,7 +3440,7 @@ def test_deposition_rate_keeps_a_cell_with_no_row_at_the_next_timestep() -> None
     dftable = at.estimators.deposition.aggregate_deposition_rates(dfestim, channels=["gamma"])
     # the rate of cell 1 at timestep 0 is not known, thus the sum is not known, and the count names the cell
     assert dftable["timestep"].to_list() == [0]
-    assert np.isnan(dftable["dep_per_volume"].item())
+    assert np.isnan(dftable["dep_ev_per_s_per_cm3"].item())
     assert dftable["cellswithnorate"].item() == 1
 
 
@@ -3486,7 +3492,7 @@ def test_analytic_deposition_channels_come_from_the_options_of_the_run(tmp_path:
     )
     # a Monte Carlo channel takes the rate of timestep 0 from the row of timestep 1, with the volume of timestep 0
     assert dfalpha["timestep"].to_list() == [0]
-    assert np.isclose(dfalpha["dep_per_volume"].item(), 6.0e-10 / at.constants.EV_to_erg, rtol=1e-12)
+    assert np.isclose(dfalpha["dep_ev_per_s_per_cm3"].item(), 6.0e-10 / at.constants.EV_to_erg, rtol=1e-12)
 
     # a restart with Monte Carlo alpha deposition gives the rows of its run a rate that is not the analytic rate, and
     # the analytic rule of artisoptions.h took it as the rate of its own timestep
@@ -3513,7 +3519,7 @@ def test_analytic_deposition_channels_come_from_the_options_of_the_run(tmp_path:
     ):
         dfrates = deposition.get_deposition_rates(tmp_path, timesteps=[0], channels=["alpha"])
     assert dfrates["timestep"].to_list() == [0]
-    assert np.isclose(dfrates["dep_per_volume"].item(), 7.1e-10 / at.constants.EV_to_erg, rtol=1e-12)
+    assert np.isclose(dfrates["dep_ev_per_s_per_cm3"].item(), 7.1e-10 / at.constants.EV_to_erg, rtol=1e-12)
 
     # gamma needs the row of timestep 1, and the check of the analytic alpha read that row too and stopped the command
     dfwithgamma = dfmixed.with_columns(deposition_gamma=pl.Series([0.0, 4.0e-9]))
@@ -3521,7 +3527,9 @@ def test_analytic_deposition_channels_come_from_the_options_of_the_run(tmp_path:
         dfwithgamma, timesteps=[0], channels=["gamma", "alpha"], configuredanalyticchannels=["spfission", "alpha"]
     )
     rate_erg_per_s = 4.0e-9 * 2.0 + 7.1e-10 * 2.0
-    assert np.isclose(dfgammaalpha["dep_per_volume"].item(), rate_erg_per_s / at.constants.EV_to_erg / 2.0, rtol=1e-12)
+    assert np.isclose(
+        dfgammaalpha["dep_ev_per_s_per_cm3"].item(), rate_erg_per_s / at.constants.EV_to_erg / 2.0, rtol=1e-12
+    )
 
 
 def test_deposition_rates_from_the_estimator_files(
@@ -3544,15 +3552,19 @@ def test_deposition_rates_from_the_estimator_files(
 
     assert dftable["timestep"].to_list() == [54]
     assert np.isclose(
-        dftable["dep_per_volume"].item(), rate_erg_per_s / at.constants.EV_to_erg / row54["volume"].item(), rtol=1e-6
+        dftable["dep_ev_per_s_per_cm3"].item(),
+        rate_erg_per_s / at.constants.EV_to_erg / row54["volume"].item(),
+        rtol=1e-6,
     )
     assert np.isclose(
-        dftable["dep_per_ion"].item(),
+        dftable["dep_ev_per_s_per_ion"].item(),
         rate_erg_per_s / at.constants.EV_to_erg / (row54["nntot"].item() * row54["volume"].item()),
         rtol=1e-6,
     )
     assert np.isclose(
-        dftable["dep_per_mass"].item(), rate_erg_per_s / at.constants.EV_to_erg / row54["mass_g"].item(), rtol=1e-6
+        dftable["dep_ev_per_s_per_g"].item(),
+        rate_erg_per_s / at.constants.EV_to_erg / row54["mass_g"].item(),
+        rtol=1e-6,
     )
 
 
@@ -3590,15 +3602,19 @@ def test_deposition_selects_the_cells_of_a_ye_range() -> None:
     dflowye = at.estimators.deposition.aggregate_deposition_rates(dfestim, yerange=(0.0, 0.2))
     rate_erg_per_s = 1.0e-9 * 2.0
     assert dflowye["timestep"].to_list() == [0]
-    assert np.isclose(dflowye["dep_per_volume"].item(), rate_erg_per_s / at.constants.EV_to_erg / 2.0, rtol=1e-12)
-    assert np.isclose(dflowye["dep_per_ion"].item(), rate_erg_per_s / at.constants.EV_to_erg / 20.0, rtol=1e-12)
-    assert np.isclose(dflowye["dep_per_mass"].item(), rate_erg_per_s / at.constants.EV_to_erg / 3.0, rtol=1e-12)
+    assert np.isclose(dflowye["dep_ev_per_s_per_cm3"].item(), rate_erg_per_s / at.constants.EV_to_erg / 2.0, rtol=1e-12)
+    assert np.isclose(
+        dflowye["dep_ev_per_s_per_ion"].item(), rate_erg_per_s / at.constants.EV_to_erg / 20.0, rtol=1e-12
+    )
+    assert np.isclose(dflowye["dep_ev_per_s_per_g"].item(), rate_erg_per_s / at.constants.EV_to_erg / 3.0, rtol=1e-12)
 
     # a range that holds both cells gives the same rates as a selection of every cell
     dfbothcells = at.estimators.deposition.aggregate_deposition_rates(dfestim, yerange=(0.0, 0.4))
     pltest.assert_frame_equal(dfbothcells, at.estimators.deposition.aggregate_deposition_rates(dfestim))
     assert np.isclose(
-        dfbothcells["dep_per_mass"].item(), (1.0e-9 * 2.0 + 2.0e-9 * 4.0) / at.constants.EV_to_erg / 8.0, rtol=1e-12
+        dfbothcells["dep_ev_per_s_per_g"].item(),
+        (1.0e-9 * 2.0 + 2.0e-9 * 4.0) / at.constants.EV_to_erg / 8.0,
+        rtol=1e-12,
     )
 
     # a frame of a model that gives no init_Ye must give a message, and not the error of the query engine
@@ -3622,7 +3638,7 @@ def test_deposition_ye_range_needs_a_model_with_ye(
     lines = [line for line in outfile.read_text(encoding="utf-8").splitlines() if not line.startswith("# ")]
     assert lines[0].endswith("in 1 of 1 cells with matter, with an init_Ye of 0.25 to 0.35")
     assert float(lines[3].split()[3]) == pytest.approx(
-        at.estimators.deposition.get_deposition_rates(modeldir, [54])["dep_per_ion"].item(), rel=1e-3
+        at.estimators.deposition.get_deposition_rates(modeldir, [54])["dep_ev_per_s_per_ion"].item(), rel=1e-3
     )
     assert "1 of 1 cells with matter (100.0%) have an init_Ye of 0.25 to 0.35" in capsys.readouterr().out
 
@@ -3652,10 +3668,10 @@ def test_deposition_ye_range_drops_a_cell_of_a_model(
 
     # the outer cell of a low density holds most of the volume and little of the mass. Thus the inner
     # cell alone gives a rate per unit mass that is far below the rate of both cells.
-    assert dflowye["dep_per_mass"].item() < dfbothcells["dep_per_mass"].item() / 2.0
+    assert dflowye["dep_ev_per_s_per_g"].item() < dfbothcells["dep_ev_per_s_per_g"].item() / 2.0
 
     # each cell gives the same rate per unit volume and holds the same ions, thus those two do not move
-    for name in ("dep_per_volume", "dep_per_ion"):
+    for name in ("dep_ev_per_s_per_cm3", "dep_ev_per_s_per_ion"):
         assert np.isclose(dflowye[name].item(), dfbothcells[name].item(), rtol=1e-6)
 
     # a range that holds every cell must give the rates of every cell
@@ -3690,14 +3706,16 @@ def test_deposition_names_the_channels_of_the_model() -> None:
     dfcell = pl.LazyFrame({"deposition_gamma": [1.0], "deposition_positron": [2.0]})
 
     # no channel of its own means every channel of the model
-    expr = at.estimators.deposition.get_deposition_expression(colnames, None)
+    channels = at.estimators.deposition.select_deposition_channels(colnames, None)
+    expr = at.estimators.deposition.get_channel_sum_expression(channels)
     assert np.isclose(dfcell.select(expr).collect().item(), 3.0)
 
-    expr = at.estimators.deposition.get_deposition_expression(colnames, ["deposition_gamma"])
+    channels = at.estimators.deposition.select_deposition_channels(colnames, ["deposition_gamma"])
+    expr = at.estimators.deposition.get_channel_sum_expression(channels)
     assert np.isclose(dfcell.select(expr).collect().item(), 1.0)
 
     with pytest.raises(ValueError, match=re.escape("no deposition rate of alpha. It holds gamma, positron")):
-        at.estimators.deposition.get_deposition_expression(colnames, ["alpha"])
+        at.estimators.deposition.select_deposition_channels(colnames, ["alpha"])
 
 
 def test_deposition_timeselection_takes_a_list_and_a_range() -> None:
@@ -3736,7 +3754,9 @@ def test_deposition_writes_a_table(
     assert values[0] == pytest.approx(54)
     # the table gives four digits, thus the value in the file has less precision
     assert np.isclose(
-        values[3], at.estimators.deposition.get_deposition_rates(modeldir, [54])["dep_per_ion"].item(), rtol=1e-3
+        values[3],
+        at.estimators.deposition.get_deposition_rates(modeldir, [54])["dep_ev_per_s_per_ion"].item(),
+        rtol=1e-3,
     )
 
     # the file of the next timestep holds the rate, thus the timestep that -timestep last names gives none
@@ -4537,7 +4557,7 @@ def test_time_axis_takes_no_automatic_bins() -> None:
     args = argparse.Namespace(
         xmin=None, xmax=None, xbins=None, markers=False, colorbyion=False, modelgridindex=None, histogram=False
     )
-    xlist, _, timesteps, dfplot, _ = plotestimators.get_xlist("time", estimators, None, args)
+    xlist, _, timesteps, dfplot, _, _ = plotestimators.get_xlist("time", estimators, None, args)
     assert args.xbins is None
     assert xlist == list(tmids)
     assert timesteps == [0, 1, 2]
@@ -4670,7 +4690,7 @@ def get_bin_value(seriestype: str, poptype: str, columns: dict[str, list[float]]
         **columns,
     })
     args = argparse.Namespace(classicartis=True, colorbyion=False)
-    (plan,) = get_multi_ion_series_plans({}, seriestype, ["Fe II"], estimators, modelpath, poptype, args)
+    (plan,) = get_multi_ion_series_plans({}, seriestype, ["Fe II"], estimators, estimators, modelpath, poptype, args)
     return float(get_line_points(plan.dfseries, args).collect()["yvalue_binned"].item())
 
 
@@ -5041,3 +5061,94 @@ def test_default_plotitem_keeps_estimator_columns_named_like_elements() -> None:
     # initabundances/initmasses come from the input model file, so they must not be gated on estimator columns
     assert get_default_plotitem_skip_reason([["initabundances", ["Sr", "Ni_stable"]]], estimatorcolumns) is None
     assert get_default_plotitem_skip_reason([["initmasses", ["Sr", "Ni_56"]]], estimatorcolumns) is None
+
+
+def test_averageexcitation_spreads_the_superlevel_over_the_kept_levels(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The superlevel holds the levels that ARTIS keeps, thus a level above nlevelsmax takes no part."""
+    keptlevelcount = 80
+
+    def get_kept_level_counts_of_fe(_modelpath: Path | str) -> dict[int, int | None]:
+        return {26: keptlevelcount}
+
+    monkeypatch.setattr(at.estimators.core, "get_kept_level_counts", get_kept_level_counts_of_fe)
+
+    Texc = 20000.0
+    levelcount = 21
+    dfpops = pl.LazyFrame({
+        "Z": 26,
+        "ion_stage": 2,
+        "timestep": 0,
+        "modelgridindex": 0,
+        "level": [*range(levelcount), -1],
+        "n_NLTE": [1.0, *([0.0] * (levelcount - 1)), 1.0],
+    }).with_columns(pl.col("level").cast(pl.Int64))
+    dftexc = pl.LazyFrame({"timestep": [0], "modelgridindex": [0], "T_exc": [Texc]})
+    avgexc = (
+        at.estimators
+        .get_averageexcitation(modelpath, 26, 2, dftexc, dfnltepops=dfpops)
+        .collect()["averageexcitation"]
+        .item()
+    )
+
+    ionlevels = (
+        at.atomic.get_levels(modelpath).filter((pl.col("Z") == 26) & (pl.col("ion_stage") == 2))["levels"].item()
+    )
+    dfsuperlevel = (
+        ionlevels
+        .head(keptlevelcount)
+        .tail(keptlevelcount - levelcount)
+        .with_columns(boltzfac=at.atomic.get_boltzmann_factor_expr(pl.col("g"), pl.col("energy_ev"), pl.lit(Texc)))
+    )
+    meanenergy_superlevel = (dfsuperlevel["energy_ev"] * dfsuperlevel["boltzfac"]).sum() / dfsuperlevel[
+        "boltzfac"
+    ].sum()
+    # the ground level has an energy of zero, and the two populations are equal
+    assert avgexc == pytest.approx(0.5 * (ionlevels["energy_ev"][0] + meanenergy_superlevel), rel=1e-9, abs=0.0)
+
+
+def test_cumulative_population_does_not_change_with_the_x_range() -> None:
+    """The cumulative count at an x starts at the centre of the model, thus -xmin must not change it.
+
+    The rows below -xmin left the frame before the sum, thus the value at 2000 km/s was 2 and not 3 with -xmin 1500.
+    """
+    from artistools.estimators.plotestimators import get_line_points
+    from artistools.estimators.plotestimators import get_multi_ion_series_plans
+    from artistools.estimators.plotestimators import get_xlist
+
+    def get_values(xmin: float | None) -> list[float]:
+        estimators = pl.LazyFrame({
+            "timestep": [0, 0, 0],
+            "modelgridindex": [0, 1, 2],
+            "vel_r_mid": np.array([1000.0, 2000.0, 3000.0]) * at.constants.km_to_cm,
+            "volume": [1.0, 1.0, 1.0],
+            "deltavol_deltat": [1.0, 1.0, 1.0],
+            "tmid_days": [1.0, 1.0, 1.0],
+            "nnion_Fe_II": [1.0, 2.0, 4.0],
+            "nnelement_Fe": [1.0, 2.0, 4.0],
+        })
+        args = argparse.Namespace(
+            xmin=xmin,
+            xmax=None,
+            xbins=None,
+            markers=False,
+            colorbyion=False,
+            modelgridindex=None,
+            histogram=False,
+            classicartis=True,
+            x="velocity",
+        )
+        _, _, _, dfinrange, dffullrange, _ = get_xlist("velocity", estimators, None, args)
+        (plan,) = get_multi_ion_series_plans(
+            {}, "populations", ["Fe II"], dfinrange, dffullrange, modelpath, "cumulative", args
+        )
+        return get_line_points(plan.dfseries, args).collect()["yvalue_binned"].to_list()
+
+    assert np.allclose(get_values(None), [1.0, 3.0, 7.0], rtol=1e-12, atol=0.0)
+    assert np.allclose(get_values(1500.0), [3.0, 7.0], rtol=1e-12, atol=0.0)
+
+
+def test_units_of_a_column_of_tellurium_are_not_kelvin() -> None:
+    """The element tellurium has the symbol of the electron temperature Te."""
+    assert at.estimators.get_units("nnelement_Te") == at.estimators.get_units("nnelement_Fe")
+    assert at.estimators.get_units("init_X_Te") == at.estimators.get_units("init_X_Fe")
+    assert at.estimators.get_units("em_Te") == "K"

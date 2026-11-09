@@ -117,7 +117,14 @@ def scan_timesteps(modelpath: Path) -> pl.LazyFrame:
         with polars_source_open(tsfilepath) as source:
             return (
                 pl
-                .scan_csv(source, has_header=True, separator=" ")
+                .scan_csv(
+                    source,
+                    has_header=True,
+                    separator=" ",
+                    glob=False,
+                    # ARTIS writes a time with %g, thus 100 rows of whole days inferred an integer column
+                    schema_overrides=dict.fromkeys(("tstart_days", "tmid_days", "twidth_days"), pl.Float64),
+                )
                 .rename(lambda column_name: column_name.removeprefix("#"))
                 # the estimators give the timestep as Int32. Thus a join with them needs no cast of the keys
                 .with_columns(
@@ -461,6 +468,10 @@ def get_time_range(
                 timestepmin = timestep
                 break
 
+        # without the clamp, a range can lie inside the half of the last timestep that is after its mid time
+        if timestepmin is None and not clamp_to_timesteps and float(timemin) <= tends[-1]:
+            timestepmin = len(tmids) - 1
+
         if timestepmin is None:
             msg = f"Time min {timemin} is greater than all timesteps ({tstarts[0]} to {tends[-1]})"
             raise ValueError(msg)
@@ -472,6 +483,10 @@ def get_time_range(
         for timestep, tmid in enumerate(tmids):
             if tmid <= float(timemax):
                 timestepmax = timestep
+
+        # without the clamp, a range can lie inside the half of the first timestep that is before its mid time
+        if timestepmax is None and not clamp_to_timesteps and float(timemax) >= tstarts[0]:
+            timestepmax = 0
 
         if timestepmax is None:
             msg = f"Time max {timemax} is less than all timesteps ({tstarts[0]} to {tends[-1]})"

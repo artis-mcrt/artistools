@@ -153,7 +153,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             os.dup2(nullfd, sys.stdout.fileno())
         os.close(nullfd)
         raise SystemExit(1) from None
-    except (AssertionError, ImportError, OSError, ValueError) as exc:
+    except (AssertionError, EOFError, ImportError, OSError, ValueError) as exc:
         if os.environ.get("ARTISTOOLS_TRACEBACK"):
             raise
         # a bad argument, a missing or incomplete input file, a read-only model folder, a server that stopped, or an
@@ -199,7 +199,8 @@ def get_context_notes(exc: BaseException) -> list[str]:
 
 def get_error_help(exc: BaseException) -> str:
     """Return the help line for an error that comes from an input file that ends too early, or an empty string."""
-    return TRUNCATED_FILE_HELP if isinstance(exc, OSError) and "unexpected end of file" in str(exc) else ""
+    istruncated = isinstance(exc, EOFError) or (isinstance(exc, OSError) and "unexpected end of file" in str(exc))
+    return TRUNCATED_FILE_HELP if istruncated else ""
 
 
 def get_polars_panic() -> type[BaseException]:

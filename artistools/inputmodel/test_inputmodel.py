@@ -1503,9 +1503,7 @@ def test_energyfiles_from_trajectory(trajectory_copy: Path) -> None:
     dfthermo = at.inputmodel.energyinputfiles.read_trajectory_thermo(thermofile)
     assert dfthermo["time/s"].to_numpy().min() >= 1.0, "the unphysical sub-second Qdot values must be dropped"
 
-    result = at.inputmodel.energyinputfiles.energy_from_rprocess_calculation(dfthermo, get_rate=True)
-    assert isinstance(result, tuple)
-    dftimes_and_rate, e_tot = result
+    dftimes_and_rate, e_tot = at.inputmodel.energyinputfiles.energy_from_rprocess_calculation(dfthermo)
     assert e_tot > 0.0
     assert dftimes_and_rate["rate"].max() == pytest.approx(1.0)
 
@@ -2275,8 +2273,8 @@ def test_griddat_reader_renames_the_cellye_column_of_an_old_grid() -> None:
     assert "cellYe" not in griddata.columns
 
 
-def test_griddat_reader_renames_the_q_column_of_an_old_grid(tmp_path: Path) -> None:
-    """An old grid.dat names the heating energy Q, and the reader gives q, which save_modeldata writes."""
+def test_griddat_reader_omits_the_q_column_of_an_old_grid(tmp_path: Path) -> None:
+    """An old grid.dat can have a Q column with no known time or unit, thus the model must not get it as q."""
     from artistools.inputmodel.modelfromhydro import read_griddat_file
 
     kilonovapath = at.get_path("testdata") / "kilonova"
@@ -2289,7 +2287,7 @@ def test_griddat_reader_renames_the_q_column_of_an_old_grid(tmp_path: Path) -> N
 
     griddata, _t_model, _t_merger, _vmax, _modelmeta = read_griddat_file(tmp_path)
 
-    assert "q" in griddata.columns
+    assert "q" not in griddata.columns
     assert "Q" not in griddata.columns
 
 
@@ -2681,6 +2679,25 @@ def test_scan_modeldata_1d_with_one_cell_uses_the_fast_reader(
 
     assert "Using fast method" in capsys.readouterr().out
     assert dfmodel.collect()["vel_r_max_kmps"].to_list() == pytest.approx([1000.0])
+
+
+def test_scan_modeldata_reads_an_extra_space_in_a_later_line(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A later line with a double space must give the same values as the other lines.
+
+    The fast reader tests only the first two data lines. A double space later gave a null and moved the values.
+    """
+    (tmp_path / "model.txt").write_text(
+        "3\n1.0\n1 1000.0 -5.0 1.0 0.5 0.0 0.0 0.0\n2 2000.0 -6.0 1.0 0.5 0.0 0.0 0.0\n"
+        "3  3000.0 -7.0 1.0 0.5 0.0 0.0 0.0\n",
+        encoding="utf-8",
+    )
+
+    dfmodel, _ = at.inputmodel.scan_modeldata(tmp_path)
+
+    assert "Using fast method" not in capsys.readouterr().out
+    assert dfmodel.collect()["logrho"].to_list() == pytest.approx([-5.0, -6.0, -7.0])
 
 
 @pytest.mark.parametrize(
@@ -3276,10 +3293,10 @@ def test_make1dmodelfromcone_keeps_ye_q_and_tracercount(tmp_path: Path) -> None:
 def test_makeartismodelfromparticlegridmap_trajectory_q_replaces_the_grid_q(
     tmp_path: Path, trajectory_copy: Path
 ) -> None:
-    """The q of the trajectories replaces the Q column of an old grid.dat.
+    """The model takes the q of the trajectories, and the Q column of an old grid.dat has no effect.
 
-    A join kept both columns, thus the model held the grid.dat value and the reduction to 1D stopped at the
-    column q_right.
+    The reader gave that column as q. A join then kept both columns, thus the model held the grid.dat value and
+    the reduction to 1D stopped at the column q_right.
     """
     gridfolderpath = tmp_path / "grid"
     shutil.copytree(
@@ -3507,6 +3524,20 @@ def test_from_e2e_model_main(
     for filename in ("dyn_abunds.txt.zst", "dyn_model_notrescaled.txt.zst", "dyn_model_rescaled.txt.zst"):
         assert (tmp_path / "interpolated" / filename).is_file(), filename
     assert not list(workingfolder.iterdir())
+
+    # the replacement with no --interpolate stopped at a duplicate column, and a Float32 cell volume then gave rho = NaN
+    at.inputmodel.from_e2e_model.main(
+        argsraw=[
+            *gridargs3d,
+            "-replacedyn",
+            str(tmp_path / "dyn3d"),
+            "--globaldynscale",
+            "-o",
+            str(tmp_path / "replaced"),
+        ]
+    )
+    lzreplaced, _ = at.inputmodel.scan_modeldata(tmp_path / "replaced", printwarningsonly=True)
+    assert lzreplaced.select(pl.col("rho").is_finite().all()).collect().item()
 
     for filename in at.inputmodel.core.MODEL_FILE_NAMES:
         (tmp_path / "interpolated" / f"{filename}.zst").unlink(missing_ok=True)

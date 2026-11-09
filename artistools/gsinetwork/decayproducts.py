@@ -25,12 +25,14 @@ from artistools.inputmodel.rprocess_from_trajectory import get_network_timesteps
 from artistools.inputmodel.rprocess_from_trajectory import get_trajectory_timestepfiles_nuc_abund
 from artistools.inputmodel.rprocess_from_trajectory import get_trajectory_timesteps
 from artistools.misc import addarg_darkmode
+from artistools.misc import addarg_data_output
 from artistools.misc import addarg_figscale
 from artistools.misc import addarg_legend
 from artistools.misc import addarg_output
 from artistools.misc import addarg_show
 from artistools.misc import exit_with_error
 from artistools.misc import get_file_identity
+from artistools.misc import output_data
 from artistools.misc import parallel_map
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
@@ -51,6 +53,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_legend(parser)
     addarg_darkmode(parser)
     addarg_show(parser)
+    addarg_data_output(parser)
     parser.add_argument(
         "-trajectoryroot",
         "-trajroot",
@@ -140,6 +143,7 @@ def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
             comment_prefix="#",
             has_header=False,
             new_columns=["A", "Z", "Q[MeV]", "Egamma[MeV]", "Eelec[MeV]", "Eneutrino[MeV]", "tau[s]"],
+            glob=False,
         )
         .filter(pl.col("Q[MeV]") > 0.0)
         .with_columns(pl.col(pl.Int32).cast(pl.Int64))
@@ -212,6 +216,7 @@ def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
         comment_prefix="#",
         has_header=False,
         new_columns=["A", "Z", "Q[MeV]", "Egamma[MeV]", "Eelec[MeV]", "Eneutrino[MeV]", "tau[s]", "source"],
+        glob=False,
     )
     return append_electroncapture_betaplus_nuclei(ensdf_betaminus, nuc_dataset)
 
@@ -623,4 +628,19 @@ def plot_decay_powers(
         ax.set_xscale("log")
     axes[-1].set_xlabel("Time [days]")
 
+    output_data(
+        args,
+        {
+            "": pl.DataFrame({
+                "time_days": arr_t_day,
+                "gamma_fraction": decay_powers["abundweighted_gamma"] / decay_powers["abundweighted_gammanuelec"],
+                "electron_fraction": decay_powers["abundweighted_elec"] / decay_powers["abundweighted_gammanuelec"],
+                "neutrino_fraction": decay_powers["abundweighted_nu"] / decay_powers["abundweighted_gammanuelec"],
+                "Qdot": decay_powers["Qdot"],
+                "abundweighted_gammanuelec": decay_powers["abundweighted_gammanuelec"],
+                "abundweighted_Qdot": decay_powers["abundweighted_Qdot"],
+            })
+        },
+        outfilepath,
+    )
     save_figure(fig, outfilepath, args=args)

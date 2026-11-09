@@ -149,7 +149,7 @@ def scan_modelfile_text(
         except ValueError:
             msg = f"In {filename}, the line after the cell count must give the time of the model in days, not {line!r}"
             raise ValueError(msg) from None
-        t_model_init_seconds = modelmeta["t_model_init_days"] * 24 * 60 * 60
+        t_model_init_seconds = modelmeta["t_model_init_days"] * day_to_s
 
         line = fmodel.readline()
         # if the next line is a single float then the model is 2D or 3D (vmax)
@@ -221,11 +221,9 @@ def scan_modelfile_text(
         assert (ncols_line_even + ncols_line_odd) == len(columns)
         onelinepercellformat = False
 
+    dfmodelfast: pl.DataFrame | None = None
     if onelinepercellformat and all(has_single_space_separators(line) for line in (data_line_even, data_line_odd)):
-        if not printwarningsonly:
-            print("  Using fast method polars.read_csv (requires one line per cell and single space delimiters)")
-
-        dfmodel = pl.read_csv(
+        dfmodelfast = pl.read_csv(
             polars_source(filename),
             separator=" ",
             new_columns=columns,
@@ -239,7 +237,16 @@ def scan_modelfile_text(
             # a header comment can hold one quotation mark, e.g. 5" model. A reader that takes it as a quote
             # skips the rows to the next quotation mark, and the data lines then go with the header
             quote_char=None,
-        ).lazy()
+            glob=False,
+        )
+        # the test of the separators reads two lines. An extra space in a later line gives a null and moves the values
+        if dfmodelfast.null_count().sum_horizontal().item() > 0:
+            dfmodelfast = None
+
+    if dfmodelfast is not None:
+        if not printwarningsonly:
+            print("  Using fast method polars.read_csv (requires one line per cell and single space delimiters)")
+        dfmodel = dfmodelfast.lazy()
 
     else:
         # a cell of dfmodelraw can span two lines. One read of the full file and a slice after it
@@ -487,7 +494,7 @@ def scan_parquet_cache(
     # scan_parquet resolves its schema from the same footer that gave the metadata. Thus the check
     # above already rejects a damaged file, and this code needs no further check
     try:
-        df = pl.scan_parquet(parquetfilepath)
+        df = pl.scan_parquet(parquetfilepath, glob=False)
     except (pl.exceptions.PolarsError, OSError) as exc:
         print(f"Could not read {parquetfilepath} ({type(exc).__name__}: {exc}). Will regenerate.")
         return None
@@ -578,27 +585,22 @@ def get_text_source_cached(
         return read_text_source()
 
     print(f"Saving {parquetfilepath}")
-    try:
-        write_parquet_atomic(
-            df,
-            parquetfilepath,
-            replaces=outdatedparquet,
-            metadata={
-                "creationtimeutc": str(dt.datetime.now(dt.UTC)),
-                "cacheversion": str(CACHEVERSION),
-                "textsource_mtime": str(textsource_mtime),
-            }
-            | extrametadata,
-        )
-    except PermissionError as exc:
-        # a command that only reads a model must also operate on a folder that the user cannot write
-        print(f"  Could not write {parquetfilepath} ({exc}). The next read parses the text file again.")
-        return df, extrametadata
+    write_parquet_atomic(
+        df,
+        parquetfilepath,
+        replaces=outdatedparquet,
+        metadata={
+            "creationtimeutc": str(dt.datetime.now(dt.UTC)),
+            "cacheversion": str(CACHEVERSION),
+            "textsource_mtime": str(textsource_mtime),
+        }
+        | extrametadata,
+    )
 
     print("  Done.")
     del df
     gc.collect()
-    return pl.scan_parquet(parquetfilepath), extrametadata
+    return pl.scan_parquet(parquetfilepath, glob=False), extrametadata
 
 
 def get_model_text_folder(modelpath: Path | str) -> Path:
@@ -669,7 +671,7 @@ def get_spatial_scales(modelpath: Path) -> tuple[float, float, str]:
             smallest, largest = min(rcylwidth, zwidth), math.hypot(rcylwidth, zwidth)
             gridtext = (
                 f"The 2D model has a grid of n_rcyl x n_z = {ncoordgridrcyl} x {ncoordgridz} cells, with {vmaxtext}."
-                " The cylindrical radius rcyl is from 0 to vmax, and z is from --vmax to vmax. The cell widths are"
+                " The cylindrical radius rcyl is from 0 to vmax, and z is from -vmax to vmax. The cell widths are"
                 f" width_rcyl = vmax / n_rcyl = {rcylwidth / km_to_cm:.0f} km/s and"
                 f" width_z = 2 vmax / n_z = {zwidth / km_to_cm:.0f} km/s"
             )
@@ -683,7 +685,7 @@ def get_spatial_scales(modelpath: Path) -> tuple[float, float, str]:
             smallest, largest = min(cellwidths), math.hypot(*cellwidths)
             gridshape = " x ".join(str(modelmeta[f"ncoordgrid{axis}"]) for axis in "xyz")
             gridtext = (
-                f"The 3D model has a grid of {gridshape} cells from --vmax to vmax, with {vmaxtext}. The cell widths"
+                f"The 3D model has a grid of {gridshape} cells from -vmax to vmax, with {vmaxtext}. The cell widths"
                 " width_x, width_y, and width_z are 2 vmax / n for n cells on that axis"
             )
             scaletext = (
@@ -1342,6 +1344,7 @@ def read_onespace_abundances(textfilepath: Path, ncolumns: int) -> pl.DataFrame 
             schema={col: pl.Int32 if col == "inputcellid" else pl.Float32 for col in colnames},
             # read_wsv gives null and not NaN for these tokens, thus this reader must do the same
             null_values=["nan", "NaN", "-nan", "-NaN", "NA", "N/A", "null", "NULL"],
+            glob=False,
         )
     except pl.exceptions.ComputeError:
         return None
@@ -1486,7 +1489,8 @@ def dimension_reduce_model(
     outputdimensions: int,
     dfelabundances: pl.DataFrame | pl.LazyFrame | None = None,
     dfgridcontributions: pl.DataFrame | None = None,
-    modelmeta: dict[str, t.Any] | None = None,
+    *,
+    modelmeta: dict[str, t.Any],
     **kwargs: t.Any,
 ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame, dict[str, t.Any]]:
     """Convert a 3D Cartesian grid model to a 1D spherical model or a 2D cylindrical model.
@@ -1498,9 +1502,6 @@ def dimension_reduce_model(
 
     dfmodel = dfmodel.lazy()
 
-    if modelmeta is None:
-        modelmeta = {}
-
     modelmeta_out = {k: v for k, v in modelmeta.items() if not k.startswith(("ncoord", "wid_init"))}
 
     assert all(
@@ -1509,7 +1510,7 @@ def dimension_reduce_model(
 
     modelmeta_out |= kwargs  # add any extra keyword arguments to modelmeta
 
-    t_model_init_seconds = modelmeta["t_model_init_days"] * 24 * 60 * 60
+    t_model_init_seconds = modelmeta["t_model_init_days"] * day_to_s
     vmax = modelmeta["vmax_cmps"]
     xmax = vmax * t_model_init_seconds
 

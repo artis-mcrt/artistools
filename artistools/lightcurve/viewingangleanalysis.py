@@ -31,7 +31,6 @@ from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import match_closest_time
 from artistools.misc import output_data
 from artistools.misc import path_is_file
-from artistools.misc import print_saved
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import resolve_modelpath
@@ -146,33 +145,32 @@ def get_viewing_angle_data_filename(band_name: str, modelname: str) -> str:
     return f"{get_filename_part(band_name)}band_{get_filename_part(modelname)}_viewing_angle_data.txt"
 
 
+def write_fit_table(args: argparse.Namespace, dftable: pl.DataFrame, datafile: Path, outputformat: str | None) -> None:
+    """Write a table of the light curve fits, which a flag of its own asks for and not --write-data."""
+    output_data(
+        argparse.Namespace(**(vars(args) | {"write_data": True, "print_data": False, "output_format": outputformat})),
+        {"": dftable},
+        datafile,
+    )
+
+
 def save_viewing_angle_data_for_plotting(
     band_name: str, modelname: str, dirbins: Sequence[int], args: argparse.Namespace
 ) -> None:
     """Write one model's per-direction-bin peak magnitude, rise time, and decline rate to a text file."""
     if args.save_viewing_angle_peakmag_risetime_delta_m15_to_file:
         # the first column names the direction bin of each row, thus a later plot needs no -plotviewingangle
-        columns: list[Sequence[float]] = [
-            list(dirbins),
-            args.band_peakmag_polyfit,
-            args.band_risetime_polyfit,
-            args.band_deltam15_polyfit,
-        ]
-        header = "dirbin peak_mag_polyfit risetime_polyfit deltam15_polyfit"
+        columns: dict[str, Sequence[float]] = {
+            "dirbin": list(dirbins),
+            "peak_mag_polyfit": args.band_peakmag_polyfit,
+            "risetime_polyfit": args.band_risetime_polyfit,
+            "deltam15_polyfit": args.band_deltam15_polyfit,
+        }
         if args.include_delta_m40:
-            columns.append(args.band_deltam40_polyfit)
-            header += " deltam40_polyfit"
+            columns["deltam40_polyfit"] = args.band_deltam40_polyfit
         datafile = get_viewing_angle_data_folder(args) / get_viewing_angle_data_filename(band_name, modelname)
-        np.savetxt(
-            datafile,
-            np.column_stack(columns),
-            delimiter=" ",
-            fmt=["%d", *["%.18e"] * (len(columns) - 1)],
-            header=header,
-            comments="",
-        )
-        # two models of one name give files with the names of their folders, thus the log gives each name
-        print_saved(datafile)
+        # the scatter plots and hesma_scripts read this file as text, thus it stays text for each --output-format
+        write_fit_table(args, pl.DataFrame(columns), datafile, outputformat=None)
 
     elif wants_angle_averaged_data(args) and band_name == (args.filter[0] if args.filter else "lightcurve"):
         # the angle-averaged writers index these lists by model, thus the first band alone gives one entry
@@ -190,22 +188,20 @@ def save_viewing_angle_data_for_plotting(
 def write_viewing_angle_data(band_name: str, modelnames: list[str], args: argparse.Namespace) -> None:
     """Write the angle-averaged peak magnitude, rise time, and decline rate of every model to a text file."""
     if wants_angle_averaged_data(args):
-        np.savetxt(
+        write_fit_table(
+            args,
+            pl.DataFrame({
+                "object": modelnames,
+                f"{band_name}_band_risetime": np.ravel(args.band_risetime_angle_averaged_polyfit),
+                f"{band_name}_band_peakmag": np.ravel(args.band_peakmag_angle_averaged_polyfit),
+                f"{band_name}_band_deltam15": np.ravel(args.band_delta_m15_angle_averaged_polyfit),
+            }),
             get_viewing_angle_data_folder(args)
             / (
                 f"{get_filename_part(band_name)}band_{get_filename_part(modelnames[0])}"
                 "_angle_averaged_all_models_data.txt"
             ),
-            np.c_[
-                modelnames,
-                args.band_risetime_angle_averaged_polyfit,
-                args.band_peakmag_angle_averaged_polyfit,
-                args.band_delta_m15_angle_averaged_polyfit,
-            ],
-            delimiter=" ",
-            fmt="%s",
-            header=f"object {band_name}_band_risetime {band_name}_band_peakmag {band_name}_band_deltam15 ",
-            comments="",
+            outputformat=args.output_format,
         )
 
 
@@ -499,7 +495,7 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
     datanames = get_viewing_angle_data_names(modelpaths)
     for ii, modelname in enumerate(modelnames):
         datafilename = datafolder / get_viewing_angle_data_filename(key, datanames[ii])
-        viewing_angle_plot_data = read_wsv(datafilename)
+        viewing_angle_plot_data = read_wsv(datafilename, comment_prefix="#")
 
         band_peak_mag_viewing_angles = viewing_angle_plot_data["peak_mag_polyfit"].cast(pl.Float64).to_numpy()
         band_delta_m15_viewing_angles = viewing_angle_plot_data["deltam15_polyfit"].cast(pl.Float64).to_numpy()
@@ -640,7 +636,7 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
         datafilename = get_viewing_angle_data_folder(args) / get_viewing_angle_data_filename(
             bands[0], datanames[modelnumber]
         )
-        viewing_angle_plot_data = read_wsv(datafilename)
+        viewing_angle_plot_data = read_wsv(datafilename, comment_prefix="#")
         data = {f"{bands[0]}max": viewing_angle_plot_data["peak_mag_polyfit"].cast(pl.Float64).to_numpy()}
         data[f"time_{bands[0]}max"] = viewing_angle_plot_data["risetime_polyfit"].cast(pl.Float64).to_numpy()
 
@@ -869,7 +865,7 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
         plotkwargs, _ = get_viewinganglecolor_for_colorbar(angleindex, scaledmap, plotkwargs, args)
 
         # scan_lightcurve derives the erg/s column, so it does not have to be converted here again
-        brightness = lcdata.filter(pl.col("time_days") == timetoplot).select("luminosity_erg/s").item(0, 0)
+        brightness = lcdata.sort((pl.col("time_days") - timetoplot).abs()).item(0, "luminosity_erg/s")
         costhetaindex, phiindex = divmod(angleindex, nphibins)
         xvalues = phiindex if args.colorbarcostheta else costhetaindex
 
@@ -878,7 +874,7 @@ def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Names
 
     axis.set_xticks(ticks=np.arange(len(xlabels)), labels=xlabels, rotation=30, ha="right")
 
-    make_colorbar_viewingangles(scaledmap, args, fig, axis)
+    make_colorbar_viewingangles(scaledmap, args, ax=axis, fig=fig)
 
     axis.set_xlabel("Angle bin")
     axis.set_ylabel("erg/s")

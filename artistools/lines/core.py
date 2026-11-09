@@ -15,6 +15,9 @@ from artistools.atomic import get_ionstring
 from artistools.atomic import get_kept_level_counts
 from artistools.atomic import get_kept_levels
 from artistools.atomic import get_levels
+from artistools.atomic import get_single_level_top_ion_stages
+from artistools.constants import angstroms_per_cm
+from artistools.constants import c_ang_per_s
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import h_erg_s
@@ -174,7 +177,7 @@ def get_opacity_lines(
                 pl.col("lower").is_between(0, dflevels.height - 1),
                 pl.col("upper").is_between(0, dflevels.height - 1),
             )
-            .with_columns(nu_trans=1e8 * C_cm_per_s / (pl.col("lambda_angstroms")))
+            .with_columns(nu_trans=c_ang_per_s / (pl.col("lambda_angstroms")))
             .with_columns(B_ul=C_cm_per_s**2 / 2 / h_erg_s / pl.col("nu_trans").pow(3) * pl.col("A"))
             .with_columns(B_lu=pl.col("upper_g") / pl.col("lower_g") * pl.col("B_ul"))
             .select(
@@ -274,7 +277,7 @@ def get_planck_mean_opacities(dfbinnedopacities: pl.DataFrame) -> pl.DataFrame:
         dfbinnedopacities
         .lazy()
         .filter(pl.col("T_exc") > 0.0)
-        .with_columns(lambda_cm_bin_mid=pl.col("lambda_angstroms_bin_mid") * 1e-8)
+        .with_columns(lambda_cm_bin_mid=pl.col("lambda_angstroms_bin_mid") / angstroms_per_cm)
         .with_columns(
             planckfactor=(
                 (pl.col("lambda_cm_bin_mid").pow(-5))
@@ -389,8 +392,9 @@ def get_opacity_atomic_data(modelpath: Path | str) -> pl.DataFrame:
     """Return the levels that ARTIS keeps and the transitions of each ion, with the columns that the opacities need.
 
     ARTIS keeps the first nlevelsmax_readin levels of each ion from compositiondata.txt, or all the levels for a
-    negative value. The partition function then sums only the kept levels. get_opacity_lines() drops each line to a
-    level that ARTIS does not keep.
+    negative value. With the option SINGLE_LEVEL_TOP_ION, ARTIS keeps only the first level of the top ion of each
+    element. The partition function then sums only the kept levels. get_opacity_lines() drops each line to a level
+    that ARTIS does not keep.
     """
     # get_opacity_lines() needs the statistical weights as well as the wavelength, and
     # add_transition_columns() drops each derived column that this call does not request
@@ -399,9 +403,14 @@ def get_opacity_atomic_data(modelpath: Path | str) -> pl.DataFrame:
     )
 
     keptlevelcount_of_element = get_kept_level_counts(modelpath)
+    singleleveltopion_of_element = get_single_level_top_ion_stages(modelpath)
+    if singleleveltopion_of_element:
+        print("  ARTIS keeps one level and no lines of each top ion (SINGLE_LEVEL_TOP_ION in artisoptions.h)")
     keptlevels = [
-        get_kept_levels(dflevels, keptlevelcount_of_element.get(Z))
-        for Z, dflevels in zip(adata["Z"], adata["levels"], strict=True)
+        dflevels.head(1)
+        if singleleveltopion_of_element.get(Z) == ion_stage
+        else get_kept_levels(dflevels, keptlevelcount_of_element.get(Z))
+        for Z, ion_stage, dflevels in zip(adata["Z"], adata["ion_stage"], adata["levels"], strict=True)
     ]
     return adata.with_columns(pl.Series("levels", keptlevels, dtype=pl.Object))
 

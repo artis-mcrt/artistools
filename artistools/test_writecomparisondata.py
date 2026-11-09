@@ -1,4 +1,6 @@
 import math
+from collections.abc import Callable
+from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
@@ -24,8 +26,8 @@ def test_writecomparisondata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
         argsraw=[], modelpath=Path(), outputpath=tmp_path, selected_timesteps=list(range(99)), force=True
     )
 
+    # the test model holds no deposition_ column, thus the export writes no edep file
     assert sorted(path.name for path in tmp_path.iterdir()) == [
-        "edep_testmodel_artisnebular.txt",
         "ionfrac_co_testmodel_artisnebular.txt",
         "ionfrac_fe_testmodel_artisnebular.txt",
         "phys_testmodel_artisnebular.txt",
@@ -176,26 +178,69 @@ def test_writecomparisondata_keeps_a_tiny_ion_fraction(tmp_path: Path) -> None:
     assert float(datalines[0].split()[2]) == pytest.approx(expected, rel=1e-4, abs=0.0)
 
 
-def test_writecomparisondata_edep_takes_the_next_timestep(tmp_path: Path) -> None:
-    """ARTIS writes the deposition of timestep n into the estimators of timestep n + 1.
+def write_edep_of_model_with_deposition(
+    tmp_path: Path, copy_model_inputs: Callable[[Path, Path, Sequence[str]], None], timestep: int
+) -> list[float]:
+    """Write the deposition of one timestep for a copy of the test model. The gamma rate follows the timestep.
+
+    Return the numbers of the single row of the file.
+    """
+    from artistools.writecomparisondata import write_edep
+
+    modeldir = tmp_path / "modelwithdeposition"
+    modeldir.mkdir(exist_ok=True)
+    copy_model_inputs(modelpath, modeldir, [])
+    lines = []
+    currenttimestep = 0
+    for line in (modelpath / "estimators_0000.out").read_text(encoding="utf-8").splitlines():
+        lines.append(line)
+        if line.startswith("timestep "):
+            currenttimestep = int(line.split()[1])
+            lines.append(f"deposition: gamma {(currenttimestep + 1) * 1e-10:.3e} positron 1.0e-10")
+    (modeldir / "estimators_0000.out").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    dfestimators = pl.DataFrame(
+        {"modelgridindex": [0], "vel_r_mid": [1.0e9], "timestep": [timestep]},
+        schema={"modelgridindex": pl.Int32, "vel_r_mid": pl.Float64, "timestep": pl.Int32},
+    )
+    outfile = tmp_path / f"edep_{timestep}.txt"
+    write_edep(modeldir, [timestep], dfestimators, outfile)
+    (datafields,) = (line.split() for line in outfile.read_text(encoding="utf-8").splitlines() if line[0] != "#")
+    return [float(field) for field in datafields]
+
+
+def test_writecomparisondata_edep_takes_the_next_timestep(
+    tmp_path: Path, copy_model_inputs: Callable[[Path, Path, Sequence[str]], None]
+) -> None:
+    """ARTIS writes the Monte Carlo deposition of timestep n into the estimators of timestep n + 1.
 
     The edep file took the row of timestep n, thus it gave the deposition of the timestep before, and it
     disagreed with the lbol_edep file of the same export by about 5 % at 200 days.
     """
-    at.writecomparisondata.main(argsraw=[], modelpath=modelpath, outputpath=tmp_path, selected_timesteps=[50])
-
-    datalines = [
-        line for line in (tmp_path / "edep_testmodel_artisnebular.txt").read_text().splitlines() if line[0] != "#"
-    ]
-    nextrow = at.scan_estimators(modelpath=modelpath, timestep=(51,)).select("total_dep").collect()
-    assert float(datalines[0].split()[1]) == pytest.approx(nextrow.item(), rel=1e-4, abs=0.0)
+    _, deposition = write_edep_of_model_with_deposition(tmp_path, copy_model_inputs, 50)
+    # the row of timestep 51 gives a gamma rate of 52e-10, and the two channels give the sum
+    assert deposition == pytest.approx(53.0e-10, rel=1e-3, abs=0.0)
 
     # ARTIS wrote no timestep after the last one, thus the file gives zero there and the export goes on
     lasttimestep = len(at.get_timestep_times(modelpath)) - 1
-    at.writecomparisondata.main(
-        argsraw=[], modelpath=modelpath, outputpath=tmp_path, selected_timesteps=[lasttimestep], force=True
+    _, deposition = write_edep_of_model_with_deposition(tmp_path, copy_model_inputs, lasttimestep)
+    assert deposition == pytest.approx(0.0, abs=0.0)
+
+
+def test_write_edep_needs_the_deposition_estimators(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A model with no deposition_ column gets no edep file.
+
+    artistools derives total_dep from the heating rate. On the classic-mode model that gave NaN in 87 of 695 rows.
+    The sum was 985 times below the Edep of the lbol_edep file of the same export.
+    """
+    from artistools.writecomparisondata import write_edep
+
+    dfestimators = pl.DataFrame(
+        {"modelgridindex": [0], "vel_r_mid": [1.0e9], "timestep": [20]},
+        schema={"modelgridindex": pl.Int32, "vel_r_mid": pl.Float64, "timestep": pl.Int32},
     )
-    datalines = [
-        line for line in (tmp_path / "edep_testmodel_artisnebular.txt").read_text().splitlines() if line[0] != "#"
-    ]
-    assert float(datalines[0].split()[1]) == pytest.approx(0.0, abs=0.0)
+    outfile = tmp_path / "edep.txt"
+    write_edep(modelpath_classic_3d, [20], dfestimators, outfile)
+
+    assert not outfile.exists()
+    assert "hold no deposition_ column" in " ".join(capsys.readouterr().err.split())

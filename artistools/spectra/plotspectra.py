@@ -522,7 +522,12 @@ def plot_reference_spectrum(
 
     # the reported flux covers the range that the user asked for, thus it takes the rows inside it
     inrange = specdata.filter(pl.col("lambda_angstroms").is_between(lambda_min, lambda_max))
-    print_integrated_flux(inrange["f_lambda"], inrange["lambda_angstroms"])
+    if inrange.is_empty():
+        print_warning(
+            f"{filepath} has no point from {lambda_min:.1f} to {lambda_max:.1f} Å, thus it has no integrated flux"
+        )
+    else:
+        print_integrated_flux(inrange["f_lambda"], inrange["lambda_angstroms"])
 
     # the drawn line keeps the nearest row outside each bound, so that it reaches the edge of the axes
     # instead of stopping at the last point inside the range
@@ -2875,8 +2880,11 @@ def resolve_plot_args(args: argparse.Namespace) -> None:
             for rangemin, rangemax in resolvedranges
             if math.isfinite(rangemin) and math.isfinite(rangemax)
         ]
-        if finiteranges:
+        # each model selects its timesteps from a bound that the user gave. The union of the clamped ranges of
+        # all the models can hold a timestep of one model that this bound excludes
+        if finiteranges and args.timemin is None:
             args.timemin = min(rangemin for rangemin, _ in finiteranges)
+        if finiteranges and args.timemax is None:
             args.timemax = max(rangemax for _, rangemax in finiteranges)
 
     if args.residuals is not None and args.residualbaselineseries is None:

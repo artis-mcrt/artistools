@@ -21,6 +21,7 @@ import numpy as np
 import numpy.typing as npt
 import polars as pl
 
+from artistools.constants import c_ang_per_s
 from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
@@ -486,6 +487,10 @@ def readfile_text(packetsfiletext: Path | str, column_names: list[str]) -> pl.Da
         "pol_dirz": pl.Float32,
         "sampled_absorption_freq": pl.Float32,
         "sampled_absorption_type": pl.Int32,
+        "sampled_em_posx": pl.Float32,
+        "sampled_em_posy": pl.Float32,
+        "sampled_em_posz": pl.Float32,
+        "sampled_em_time": pl.Float32,
         "sampled_emissiontype": pl.Int32,
         "scat_count": pl.Int32,
         "stokes1": pl.Float32,
@@ -514,6 +519,7 @@ def readfile_text(packetsfiletext: Path | str, column_names: list[str]) -> pl.Da
             extra_columns="ignore",
             infer_schema_length=20000,
             schema_overrides=dtype_overrides,
+            glob=False,
         )
 
     except Exception:
@@ -578,6 +584,7 @@ def read_virtual_packets_text_file(vpacketsfiletext: Path | str, column_names: l
             schema=schema,
             extra_columns="ignore",
             raise_if_empty=False,
+            glob=False,
         )
 
     dfvpackets = drop_trailing_null_column(dfvpackets)
@@ -1036,7 +1043,7 @@ def scan_virtual_packets(modelpath: str | Path, maxpacketfiles: int | None = Non
     print_parquet_size(vpacketparquetfiles)
 
     # add some extra columns to imitate the real packets
-    dfpackets = pl.scan_parquet(vpacketparquetfiles).with_columns(
+    dfpackets = pl.scan_parquet(vpacketparquetfiles, glob=False).with_columns(
         type_id=type_ids["TYPE_ESCAPE"], escape_type_id=type_ids["TYPE_RPKT"]
     )
 
@@ -1067,7 +1074,7 @@ def scan_packets(
     # originated_from_particlenotgamma as an integer, and an older ARTIS names it originated_from_positron. A cache
     # keeps the names and the types of its text file, because a different cache needs a new cache version, and
     # every older cache must then have a new conversion
-    pldfpackets = pl.scan_parquet(packetsparquetfiles).rename(
+    pldfpackets = pl.scan_parquet(packetsparquetfiles, glob=False).rename(
         {"stokes2": "stokes_q", "stokes3": "stokes_u", "originated_from_positron": "originated_from_particlenotgamma"},
         strict=False,
     )
@@ -1369,8 +1376,7 @@ def get_vpkt_in_spectrum_range_expr(obsdirindex: int, lambda_ranges: Sequence[tu
     # ARTIS uses open intervals in nu_rf_is_in_spectrum_range()
     nu_rf = pl.col(f"dir{obsdirindex}_nu_rf")
     return pl.any_horizontal([
-        (nu_rf > CLIGHT * 1e8 / lambdamax) & (nu_rf < CLIGHT * 1e8 / lambdamin)
-        for lambdamin, lambdamax in lambda_ranges
+        (nu_rf > c_ang_per_s / lambdamax) & (nu_rf < c_ang_per_s / lambdamin) for lambdamin, lambdamax in lambda_ranges
     ])
 
 

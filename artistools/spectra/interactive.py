@@ -83,7 +83,6 @@ from artistools.viewertools.sections import connect_play
 from artistools.viewertools.sections import connect_time_keys
 from artistools.viewertools.sections import DirectionChoice
 from artistools.viewertools.sections import get_next_play_time
-from artistools.viewertools.sections import make_figscale_box
 from artistools.viewertools.sections import make_select_y_handler
 from artistools.viewertools.sections import make_xscale_box
 from artistools.viewertools.sections import make_yscale_box
@@ -108,7 +107,7 @@ from artistools.viewertools.widgets import make_segmented_control
 from artistools.viewertools.widgets import ROW_SPACING
 from artistools.viewertools.widgets import set_edit_text
 from artistools.viewertools.widgets import show_status_note
-from artistools.viewertools.window import add_command_sections
+from artistools.viewertools.window import add_command_sections_with_figscale
 from artistools.viewertools.window import connect_plot_mouse
 from artistools.viewertools.window import DrawQueue
 from artistools.viewertools.window import finish_viewer_window
@@ -228,6 +227,8 @@ class ControlValues:
     showabsorption: bool
     groupby: str | None
     maxseriescount: int
+    # True if the command gave --fixedionlist and no --maxseriescount, and the user did not change the count
+    countfromlist: bool
     nostack: bool
     deltax: str
     deltalogx: str
@@ -353,6 +354,7 @@ def set_packet_type(values: ControlValues, *, gamma: bool) -> ControlValues:
         ymax="",
         groupby=None,
         fixedionlist=(),
+        countfromlist=False,
     )
 
 
@@ -605,12 +607,14 @@ def get_plot_python_code(viewer: "SpectrumViewer") -> str:
 def remove_series_lock(values: ControlValues) -> ControlValues:
     """Return the values with no --fixedionlist.
 
-    plotspectra gives a missing --maxseriescount the length of --fixedionlist. A count equal to that length thus came
-    from the list, and without the list the count is the default count.
+    plotspectra gives a missing --maxseriescount the length of --fixedionlist. Without the list, such a count is the
+    default count, and a count that the user set stays.
     """
-    fromlist = bool(values.fixedionlist) and values.maxseriescount == len(values.fixedionlist)
     return dc.replace(
-        values, fixedionlist=(), maxseriescount=DEFAULT_MAXSERIESCOUNT if fromlist else values.maxseriescount
+        values,
+        fixedionlist=(),
+        countfromlist=False,
+        maxseriescount=DEFAULT_MAXSERIESCOUNT if values.countfromlist else values.maxseriescount,
     )
 
 
@@ -650,6 +654,10 @@ def read_timestep_grid(spectra: "Sequence[str | Path]", timegrid: str, *, plotin
             modeltimes_of_path[str(path)] = modeltimes
             modelfoldertimes.append((modelfolder, modeltimes))
             timebounds = [max(timebounds[0], modeltimes.validstart), min(timebounds[1], modeltimes.validend)]
+    # models with no shared valid times gave a start after the end, which the sliders cannot show
+    if timebounds[0] >= timebounds[1]:
+        gridtimes = next(times for folder, times in modelfoldertimes if folder == gridfolder)
+        timebounds = [gridtimes.validstart, gridtimes.validend]
     twidths = get_timestep_times(gridfolder, loc="delta")
     # a different model clamps the time of a timestep to its own timestep, which can be longer and can end
     # outside the valid times of that model. Thus each model tests the time of each timestep
@@ -702,6 +710,8 @@ class SpectrumViewer:
         # with --notimeclamp, a range of days keeps its bounds, and a single time or a timestep reads a whole timestep
         givesdaysrange = args.timemin is not None or (args.timedays is not None and "-" in args.timedays)
         giventimedays: str | None = args.timedays
+        # resolve_plot_args gives a missing count the length of -fixedionlist
+        countfromlist = bool(args.fixedionlist) and args.maxseriescount is None
         resolve_plot_args(args)
         check_viewer_args(args)
         self.args = args
@@ -762,6 +772,7 @@ class SpectrumViewer:
             # None is the default grouping, thus a -groupby that names the default gives None as well
             groupby=None if givengroupby == get_default_groupby(gamma=bool(args.gamma)) else givengroupby,
             maxseriescount=args.maxseriescount,
+            countfromlist=countfromlist,
             nostack=bool(args.nostack),
             deltax="" if args.deltax is None else format(args.deltax, ".10g"),
             deltalogx=(
@@ -870,7 +881,9 @@ class SpectrumViewer:
         # the count applies only to an emission or absorption plot, thus the command of a different plot leaves it
         # out. plotspectra gives a missing count the length of -fixedionlist, or DEFAULT_MAXSERIESCOUNT without a list
         defaultcount = len(values.fixedionlist) if values.fixedionlist else DEFAULT_MAXSERIESCOUNT
-        if (values.showemission or values.showabsorption) and values.maxseriescount != defaultcount:
+        # a count that the user set stays in the command, also if it equals the length of the list
+        countisset = values.maxseriescount != defaultcount or (values.fixedionlist and not values.countfromlist)
+        if (values.showemission or values.showabsorption) and countisset:
             options += ["--maxseriescount", str(values.maxseriescount)]
         if (values.showemission or values.showabsorption) and values.nostack:
             options.append("--nostack")
@@ -1581,19 +1594,10 @@ def open_window(
     def on_option_rows(rows: OptionRows, undoable: bool = True) -> None:
         apply(dc.replace(viewer.values, otheroptions=rows), undoable=undoable)
 
-    figscalebox, show_figscale = make_figscale_box(
-        viewer.parser, helptexts, lambda: viewer.values.otheroptions, on_option_rows
-    )
-    commandsections = add_command_sections(
-        viewerwindow,
-        viewer,
-        viewer.parser,
-        (CONTROLLED_DESTS | TABLE_EXCLUDED_DESTS, viewer.values.otheroptions, on_option_rows),
+    commandsections, figscalebox, show_figscale = add_command_sections_with_figscale(
+        viewerwindow, viewer, helptexts, CONTROLLED_DESTS | TABLE_EXCLUDED_DESTS, on_option_rows
     )
     figuresection, statusbar = commandsections.figuresection, commandsections.statusbar
-    # the figure scale is a property of the figure, thus it goes in the Figure section with the format and the
-    # resolution
-    add_row(figuresection.grid, 1, [QtWidgets.QLabel("--figscale"), figscalebox])
 
     signalwidgets: list[QtWidgets.QWidget] = [
         figscalebox,
@@ -2086,7 +2090,7 @@ def open_window(
         apply(values)
 
     def on_count(count: int) -> None:
-        apply(dc.replace(viewer.values, maxseriescount=count))
+        apply(dc.replace(viewer.values, maxseriescount=count, countfromlist=False))
 
     def apply_bins(binmode: str, width: str) -> None:
         """Apply a bin mode of the bins box, and the width of the bin mode --deltax or --deltalogx."""

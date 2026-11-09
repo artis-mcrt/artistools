@@ -719,7 +719,7 @@ def scan_spec_res(modelpath: Path, gamma: bool = False) -> dict[int, pl.LazyFram
 
     print(f"Reading {specfilename} (in scan_spec_res)")
     res_specdata_in = drop_trailing_null_column(
-        pl.read_csv(polars_source(specfilename), separator=" ", has_header=False, infer_schema=False).lazy()
+        pl.read_csv(polars_source(specfilename), separator=" ", has_header=False, infer_schema=False, glob=False).lazy()
     )
 
     res_specdata = split_multitable_dataframe(res_specdata_in)
@@ -768,7 +768,7 @@ def read_emission_absorption_file_cached(emabsfilename: Path, filestate: tuple[i
     print(f" Reading {emabsfilename} ({filesize / 1024 / 1024:.2f} MiB)")
 
     dfemabs = pl.scan_csv(
-        polars_source(emabsfilename), separator=" ", has_header=False, infer_schema_length=0
+        polars_source(emabsfilename), separator=" ", has_header=False, infer_schema_length=0, glob=False
     ).with_columns(pl.all().cast(pl.Float32, strict=True))
 
     return drop_trailing_null_column(dfemabs).collect()
@@ -895,7 +895,7 @@ def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
         print(f"Reading rank {mpirank} filename {vspecpolpath}")
 
         vspecpol_data_alldirs = drop_trailing_null_column(
-            pl.read_csv(polars_source(vspecpolpath), separator=" ", has_header=False)
+            pl.read_csv(polars_source(vspecpolpath), separator=" ", has_header=False, glob=False)
         )
 
         vspecpol_data = {k: v.collect() for k, v in split_multitable_dataframe(vspecpol_data_alldirs).items()}
@@ -975,7 +975,7 @@ def scan_specpol_res(modelpath: Path) -> dict[int, pl.LazyFrame]:
     specfilename = firstexisting("specpol_res.out", folder=modelpath, tryzipped=True)
     print(f"Reading {specfilename}")
     alldata = drop_trailing_null_column(
-        pl.scan_csv(polars_source(specfilename), separator=" ", has_header=False, infer_schema=False)
+        pl.scan_csv(polars_source(specfilename), separator=" ", has_header=False, infer_schema=False, glob=False)
     ).collect()
 
     dirbintables: dict[int, pl.LazyFrame] = {}
@@ -1004,7 +1004,7 @@ def scan_specpol_data(modelpath: Path, dirbin: int = -1) -> dict[str, pl.LazyFra
         specfilename = firstexisting("specpol.out", folder=modelpath, tryzipped=True)
         print(f"Reading {specfilename}")
         specdata = drop_trailing_null_column(
-            pl.scan_csv(polars_source(specfilename), separator=" ", has_header=True, infer_schema=False)
+            pl.scan_csv(polars_source(specfilename), separator=" ", has_header=True, infer_schema=False, glob=False)
         ).with_columns(pl.all().cast(pl.Float64))
 
         return split_dataframe_stokesparams(specdata)
@@ -1037,7 +1037,7 @@ def scan_vspecpol_data(modelpath: Path, vspecindex: int) -> dict[str, pl.LazyFra
         specfilename = firstexisting(f"vspecpol_total-{vspecindex}.out", folder=modelpath, tryzipped=True)
 
     print(f"Reading {specfilename}")
-    specdata = pl.read_csv(polars_source(specfilename), separator=" ", has_header=True)
+    specdata = pl.read_csv(polars_source(specfilename), separator=" ", has_header=True, glob=False)
 
     return split_dataframe_stokesparams(specdata)
 
@@ -1208,6 +1208,55 @@ def get_emabs_average(
     return total / (tdeltas.sum() * len(dfemabs_of_dbin))
 
 
+# the emission files and the spectrum files round each value to a few digits. On the test model, the sum of the series
+# of emissiontrue.out differs from spec.out by 5e-8 of the flux
+MIN_NOTSET_FLUX_FRACTION: t.Final = 1e-5
+
+
+def get_notset_thermal_emission(
+    modelpath: Path,
+    series: Sequence[FluxSeries],
+    arraynu: npt.NDArray[np.floating],
+    nu_select: npt.NDArray[np.bool_],
+    timestepmin: int,
+    timestepmax: int,
+    directionbin: int | None,
+    average_over_phi: bool,
+    average_over_theta: bool,
+) -> npt.NDArray[np.float64] | None:
+    """Return the f_nu of the packets with no thermal emission record, or None if the spectrum holds no such flux.
+
+    ARTIS adds a packet to emissiontrue.out only if the packet has a thermal emission record. Thus the series of that
+    file can sum to less than the spectrum. A plot from the packets gives these packets the series NOT SET. This
+    function calculates the series NOT SET as the spectrum minus the sum of the series of that file.
+    """
+    spectrumbin = -1 if directionbin is None else directionbin
+    dfspectrum = scan_spectra(
+        modelpath,
+        timestepmin,
+        timestepmax,
+        average_over_theta=average_over_theta,
+        average_over_phi=average_over_phi,
+        directionbins=[spectrumbin],
+    ).get(spectrumbin)
+    if dfspectrum is None:
+        return None
+
+    fnu_spectrum: npt.NDArray[np.float64] = (
+        dfspectrum.select("nu", pl.col("f_nu").cast(pl.Float64)).collect().sort("nu")["f_nu"].to_numpy()[nu_select]
+    )
+    fnu_notset = fnu_spectrum - np.sum([fnu_emission for _, fnu_emission, _ in series], axis=0)
+    notsetfraction = float(np.trapezoid(fnu_notset, x=arraynu) / np.trapezoid(fnu_spectrum, x=arraynu))
+    if notsetfraction <= MIN_NOTSET_FLUX_FRACTION:
+        return None
+
+    print(
+        f"  {100 * notsetfraction:.1f}% of the flux has no column in emissiontrue.out, because these packets have no"
+        " thermal emission record. The series NOT SET holds the spectrum minus the sum of the other series."
+    )
+    return fnu_notset
+
+
 @clear_at_reload("output")
 @lru_cache(maxsize=4)
 @on_model_host
@@ -1228,7 +1277,7 @@ def get_flux_contributions_cached(
 ) -> tuple[list[FluxSeries], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
     """Return the label, the emitted f_nu, and the absorbed f_nu of each series, with the nu and wavelength arrays.
 
-    The absorbed f_nu is None for a series without an absorption column, i.e. bound-free and free-free. With
+    The absorbed f_nu is None for a series without an absorption column, i.e. bound-free, free-free, and NOT SET. With
     maxseriescount, merge_other_flux_series puts the small series into one "Other" series. A 3D kilonova model has 647
     series, and a remote model sends each one through ssh. get_flux_contributions applies the filter, because a filter
     function has no stable hash. Thus the cache serves each plot of the viewer, whatever filter the plot gives.
@@ -1377,6 +1426,21 @@ def get_flux_contributions_cached(
                     linelabel = f"{get_ionstring(elementlist['Z'][elementindex], ion_stage)} {emissiontypeclass}"
 
                 series.append((linelabel, array_fnu_emission, array_fnu_absorption))
+
+    if getemission and not use_lastemissiontype:
+        fnu_notset = get_notset_thermal_emission(
+            modelpath,
+            series,
+            arraynu,
+            nu_select,
+            timestepmin,
+            timestepmax,
+            directionbin,
+            average_over_phi,
+            average_over_theta,
+        )
+        if fnu_notset is not None:
+            series.append(("NOT SET", fnu_notset, None))
 
     if maxseriescount is not None:
         series = merge_other_flux_series(series, arraynu, maxseriescount, fixedionlist)
@@ -1676,7 +1740,7 @@ def get_default_radialvelocity_shells(
 
 
 def get_default_lineofsightvelocity_shells(modelpath: Path | str) -> tuple[list[float], t.Literal["kmps", "c"]]:
-    """Return the edges [km/s] of 10 equal shells from --vmax to vmax, plus one shell to each corner, and the unit.
+    """Return the edges [km/s] of 10 equal shells from -vmax to vmax, one shell to each corner, and the unit.
 
     A positive velocity along the line of sight is motion toward the observer.
     """

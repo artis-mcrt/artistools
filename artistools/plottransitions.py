@@ -18,9 +18,11 @@ from artistools.atomic import get_elsymbol
 from artistools.atomic import get_ionstring
 from artistools.atomic import get_levels
 from artistools.atomic import get_lte_partfunc
+from artistools.constants import angstroms_per_nm
 from artistools.constants import C_cm_per_s
 from artistools.constants import hc_in_ev_cm
 from artistools.constants import km_to_cm
+from artistools.constants import me_c_over_8pi2_e2_s_per_angstrom2
 from artistools.estimators import read_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import scan_modeldata
@@ -48,6 +50,7 @@ from artistools.misc import print_heading
 from artistools.misc import print_warning
 from artistools.misc import require_reference_data_file
 from artistools.misc import resolve_outputfile
+from artistools.misc import zopen
 from artistools.nltepops import read_nltepops
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
@@ -82,7 +85,7 @@ def get_kurucz_transitions(
     translist = []
     ionsfound: list[tuple[int, int]] = []
     wantedions = None if ionlist is None else set(ionlist)
-    with require_reference_data_file("gfall.dat", "data", "Kurucz line list").open(encoding="utf-8") as fnist:
+    with zopen(require_reference_data_file("gfall.dat", "data", "Kurucz line list"), encoding="utf-8") as fnist:
         for line in fnist:
             row = line.split()
             if len(row) >= 24:
@@ -92,7 +95,7 @@ def get_kurucz_transitions(
                 if (Z, ion_stage) not in ionsfound:
                     ionsfound.append((Z, ion_stage))
                 # gfall.dat is fixed-width: wavelength in nm is F11.4 (columns 0-10) and loggf is F7.3 (columns 11-17)
-                lambda_angstroms = float(line[:11]) * 10
+                lambda_angstroms = float(line[:11]) * angstroms_per_nm
                 loggf = float(line[11:18])
                 # gfall.dat does not order the two levels by energy, thus the sort finds the lower level.
                 # A negative energy marks a predicted level, and its absolute value is the energy
@@ -101,7 +104,9 @@ def get_kurucz_transitions(
                     (hc_in_ev_cm * abs(float(line[52:64])), 2 * float(line[64:70]) + 1),
                 ])
                 fij = (10**loggf) / lower_statweight
-                A = fij / (1.49919e-16 * upper_statweight / lower_statweight * lambda_angstroms**2)
+                A = fij / (
+                    me_c_over_8pi2_e2_s_per_angstrom2 * upper_statweight / lower_statweight * lambda_angstroms**2
+                )
                 translist.append(
                     KuruczTransitionTuple(
                         Z,
@@ -136,7 +141,7 @@ def get_nist_transitions(filename: Path | str) -> pl.DataFrame:
         upper_statweight: float
 
     translist = []
-    with require_reference_data_file(filename, "data", "NIST line list").open(encoding="utf-8") as fnist:
+    with zopen(require_reference_data_file(filename, "data", "NIST line list"), encoding="utf-8") as fnist:
         for line in fnist:
             row = line.split("|")
             if len(row) == 17 and "-" in row[5]:
@@ -192,7 +197,7 @@ def generate_ion_spectrum(
         offsets = np.arange(left, right) - centre_index[lineindex]
         yvalues[left:right] += (
             flux[lineindex]
-            * np.exp(-((offsets * plot_resolution / sigma_angstroms[lineindex]) ** 2))
+            * np.exp(-0.5 * (offsets * plot_resolution / sigma_angstroms[lineindex]) ** 2)
             / sigma_angstroms[lineindex]
         )
 
@@ -680,11 +685,17 @@ def print_ionisation_table(cell: CellConditions, depcoeffs: Mapping[tuple[int, i
     """Print the ionisation fractions of iron and of nickel, beside two departure coefficients."""
     estimators = cell.estimators
 
+    def get_ratio(numeratorkey: str, denominatorkey: str) -> float:
+        """Return the ratio of two estimators, or NaN for a cell or a model with no such ion or element."""
+        denominator = estimators.get(denominatorkey, 0.0)
+        return estimators.get(numeratorkey, 0.0) / denominator if denominator > 0.0 else np.nan
+
     def get_strionfracs(atomic_number: int, ion_stages: Sequence[int]) -> tuple[str, str]:
         elsym = get_elsymbol(atomic_number)
         est_ionfracs = [
-            estimators[f"nnion_{get_ionstring(atomic_number, ion_stage, sep='_', style='spectral')}"]
-            / estimators[f"nnelement_{elsym}"]
+            get_ratio(
+                f"nnion_{get_ionstring(atomic_number, ion_stage, sep='_', style='spectral')}", f"nnelement_{elsym}"
+            )
             for ion_stage in ion_stages
         ]
         ionfracs_str = " ".join([f"{pop:6.0e}" if pop < 0.01 else f"{pop:6.2f}" for pop in est_ionfracs])
@@ -709,8 +720,8 @@ def print_ionisation_table(cell: CellConditions, depcoeffs: Mapping[tuple[int, i
         f"{cell.velocity:5.0f} km/s({cell.modelgridindex})      {departure((26, 2), 5)}                   "
         f"{departure((28, 2), 0)}        "
         f"{est_fe_ionfracs_str}   /  {est_ni_ionfracs_str}      {estimators['Te']:.0f}    "
-        f"{estimators['nnion_Fe_III'] / estimators['nnion_Fe_II']:.2f}          "
-        f"{estimators['nnion_Ni_III'] / estimators['nnion_Ni_II']:5.2f}"
+        f"{get_ratio('nnion_Fe_III', 'nnion_Fe_II'):.2f}          "
+        f"{get_ratio('nnion_Ni_III', 'nnion_Ni_II'):5.2f}"
     )
 
 

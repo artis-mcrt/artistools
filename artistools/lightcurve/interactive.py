@@ -63,7 +63,6 @@ from artistools.viewertools.menus import ViewerCommand
 from artistools.viewertools.sections import add_direction_section
 from artistools.viewertools.sections import add_y_limits_row
 from artistools.viewertools.sections import DirectionChoice
-from artistools.viewertools.sections import make_figscale_box
 from artistools.viewertools.sections import make_select_y_handler
 from artistools.viewertools.sections import make_xscale_box
 from artistools.viewertools.sections import make_yscale_box
@@ -86,7 +85,7 @@ from artistools.viewertools.widgets import parse_command_tokens
 from artistools.viewertools.widgets import set_edit_text
 from artistools.viewertools.widgets import set_note_text
 from artistools.viewertools.widgets import show_status_note
-from artistools.viewertools.window import add_command_sections
+from artistools.viewertools.window import add_command_sections_with_figscale
 from artistools.viewertools.window import connect_plot_mouse
 from artistools.viewertools.window import DrawQueue
 from artistools.viewertools.window import finish_viewer_window
@@ -809,18 +808,10 @@ def open_window(
     def on_option_rows(rows: OptionRows, undoable: bool = True) -> None:
         apply(dc.replace(viewer.values, otheroptions=rows), undoable=undoable)
 
-    figscalebox, show_figscale = make_figscale_box(
-        viewer.parser, helptexts, lambda: viewer.values.otheroptions, on_option_rows
-    )
-    commandsections = add_command_sections(
-        viewerwindow,
-        viewer,
-        viewer.parser,
-        (CONTROLLED_DESTS | TABLE_EXCLUDED_DESTS, viewer.values.otheroptions, on_option_rows),
+    commandsections, figscalebox, show_figscale = add_command_sections_with_figscale(
+        viewerwindow, viewer, helptexts, CONTROLLED_DESTS | TABLE_EXCLUDED_DESTS, on_option_rows
     )
     figuresection, statusbar = commandsections.figuresection, commandsections.statusbar
-    # the figure scale is a property of the figure, thus it goes in the Figure section, as in the spectrum viewer
-    add_row(figuresection.grid, 1, [QtWidgets.QLabel("--figscale"), figscalebox])
 
     signalwidgets: list[QtWidgets.QWidget] = [
         figscalebox,
