@@ -1217,6 +1217,35 @@ def test_conversion_drops_an_incomplete_last_timestep(
     assert lasttimestep not in get_runfolder_timesteps(tmp_path)
 
 
+def test_first_scan_of_a_timestep_reads_the_run_folder_of_the_restart(
+    tmp_path: Path,
+    get_cell_texts: Callable[[str], list[str]],
+    write_zstd_frames: Callable[[Path, Sequence[str]], None],
+    copy_model_inputs: Callable[[Path, Path, Sequence[str]], None],
+) -> None:
+    """A run that stopped while it wrote a timestep leaves that timestep to the next run.
+
+    The scan selected the first run from its text, and the conversion then dropped the timestep. The first scan gave no
+    rows, and a second identical scan gave the rows of the next run.
+    """
+    copy_model_inputs(modelpath, tmp_path, [])
+    celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
+
+    def get_job_text(timesteps: Sequence[int], lastcells: Sequence[int]) -> list[str]:
+        return [
+            relabel_cell(celltexts[timestep], modelgridindex)
+            for timestep in timesteps
+            for modelgridindex in (lastcells if timestep == timesteps[-1] else (0, 1))
+        ]
+
+    for jobname, jobtexts in (("job0", get_job_text((0, 1, 2), (0,))), ("job1", get_job_text((2, 3), (0, 1)))):
+        (tmp_path / jobname).mkdir()
+        write_zstd_frames(tmp_path / jobname / "estimators_allranks.out.zst", jobtexts)
+
+    dfestim = at.estimators.scan_estimators(tmp_path, timestep=2).collect()
+    assert sorted(dfestim["modelgridindex"].to_list()) == [0, 1]
+
+
 def test_a_column_of_a_dropped_timestep_stays_in_the_cache(
     tmp_path: Path,
     get_cell_texts: Callable[[str], list[str]],
