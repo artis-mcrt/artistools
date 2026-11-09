@@ -2933,8 +2933,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             "The directive ionpoptype= sets the normalisation of an ion population series to one of "
             f"{', '.join(POPTYPE_YLABELS)}. Give the style of a series after {SERIES_STYLE_MARK} with the keys "
             f"{', '.join(SERIES_STYLE_KEYS)}, e.g. 'Fe II{SERIES_STYLE_MARK}color=C3,linestyle=dashed'. The label "
-            "comes last, and it can hold a comma. The subplots share one horizontal axis, thus --xmin and --xmax set "
-            "that axis for the whole figure"
+            "comes last, and it can hold a comma. The subplots share one horizontal axis, thus --xmin, --xmax, and "
+            "--logscalex set that axis for the whole figure"
         ),
     )
 

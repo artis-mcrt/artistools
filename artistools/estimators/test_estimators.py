@@ -605,6 +605,19 @@ def test_logscalex_sets_the_scale_of_the_axis(mockxscale: mock.MagicMock, tmp_pa
     assert any(call.args[1] == "log" for call in mockxscale.call_args_list)
 
 
+@pytest.mark.parametrize("name", ["xscale", "_xscale"])
+def test_xscale_directive_names_the_figure_option(name: str, capsys: pytest.CaptureFixture[str]) -> None:
+    """The subplots share one x axis, thus xscale= stops the command and names --logscalex.
+
+    The message suggested yscale before, which is a different axis.
+    """
+    with pytest.raises(SystemExit):
+        plotitems.get_directive_name(name)
+    message = " ".join(capsys.readouterr().err.split())
+    assert "--logscalex" in message
+    assert "yscale" not in message
+
+
 def test_logscalex_does_not_apply_to_a_colour_image(capsys: pytest.CaptureFixture[str]) -> None:
     """The axes of a colour image have negative velocities, thus the image keeps a linear axis and gives a warning."""
     args = argparse.Namespace(
