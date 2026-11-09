@@ -1,6 +1,0 @@
-timestep timedays subplot series points velocity_kmps value value_min value_max bin_centre
-ts054 299.81d-300.82d 0 Te line 0.0 5776.6201171875 5776.62 5776.62 false
-ts054 299.81d-300.82d 0 Te line 4000.0 5776.6201171875 5776.62 5776.62 true
-
-timestep timedays series subplot point_count value_count velocity_kmps_min velocity_kmps_max value_min velocity_kmps_at_value_min value_max velocity_kmps_at_value_max value_mean method units empty_bin_count
-ts054 299.81d-300.82d Te 0 1 1 4000.0 4000.0 5776.6201171875 4000.0 5776.6201171875 4000.0 5776.6201171875 "cell volume times time step duration" K 0

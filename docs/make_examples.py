@@ -1,7 +1,7 @@
 """Run the commands of examples.md on the test model and write the outputs to docs/examples.
 
-The build of the site needs no test data, thus the repository holds the outputs. Run this script after a change to an
-output. It needs the folder tests/data/testmodel, which tests/data/setuptestdata.sh makes.
+Read the Docs runs this script before each build. Run it before a local build, because the page needs these files.
+It needs the folder tests/data/testmodel, which tests/data/setuptestdata.sh makes.
 """
 
 import subprocess  # ruff:ignore[suspicious-subprocess-import]
@@ -32,7 +32,7 @@ def run_artistools(arguments: list[str]) -> str:
     return subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
         [sys.executable, "-m", "artistools", *arguments],
         cwd=MODEL_FOLDER,
-        capture_output=True,
+        stdout=subprocess.PIPE,
         encoding="utf-8",
         check=True,
     ).stdout

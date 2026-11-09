@@ -20,6 +20,10 @@ build:
         install:
             - CARGO_PROFILE_RELEASE_OPT_LEVEL=0 CARGO_PROFILE_RELEASE_CODEGEN_UNITS=256 UV_PROJECT_ENVIRONMENT="${READTHEDOCS_VIRTUALENV_PATH}" uv sync
               --frozen --python 3.14 --no-default-groups --group docs
+        # The repository holds no plot file, thus each build makes the example outputs from the test model.
+        pre_build:
+            - cd tests/data && bash setuptestdata.sh
+            - ${READTHEDOCS_VIRTUALENV_PATH}/bin/python docs/make_examples.py
 
 sphinx:
     configuration: docs/conf.py

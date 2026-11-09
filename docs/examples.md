@@ -1,7 +1,7 @@
 # Example outputs
 
 This page shows the output of some common commands. Each command runs in the model folder of the test model, which is a 1D
-model with one cell. The script `docs/make_examples.py` makes these outputs. The [commands page](commands.md) gives
+model with one cell. Each build of this site runs the script `docs/make_examples.py`, which makes these outputs. The [commands page](commands.md) gives
 the arguments of each command.
 
 ## Plots
