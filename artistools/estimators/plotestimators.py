@@ -444,7 +444,7 @@ def get_line_ends(figuredata: "LineFigureData", args: argparse.Namespace) -> tup
     xlow, xhigh = figuredata.xlimits
     if not args.xbins or xlow is None or xhigh is None:
         return startfromzero, None
-    return startfromzero, (math.log(xhigh / xlow) if logscalex else xhigh - xlow) / args.xbins
+    return startfromzero, (math.log(xhigh) - math.log(xlow) if logscalex else xhigh - xlow) / args.xbins
 
 
 def draw_series(
@@ -1531,7 +1531,7 @@ def get_xlist(
             print(f"The x values give no interval to bin by ({xdeltamax}). Setting xbins to 25")
             args.xbins = 25
         else:
-            args.xbins = int((math.log(xmax / xmin) if logscalex else xmax - xmin) / xdeltamax)
+            args.xbins = int((math.log(xmax) - math.log(xmin) if logscalex else xmax - xmin) / xdeltamax)
             print(
                 f"Setting xbins to {args.xbins} based on data range [{xmin}, {xmax}]"
                 f" and largest x interval of {xdeltamax}"
@@ -1550,7 +1550,7 @@ def get_xlist(
         xbinedges = (np.geomspace if logscalex else np.linspace)(xmin, xmax, args.xbins + 1 if xmax > xmin else 2)
         xlower = xbinedges[:-1]
         xupper = xbinedges[1:]
-        xmids = np.sqrt(xlower * xupper) if logscalex else (xlower + xupper) / 2
+        xmids = np.sqrt(xlower) * np.sqrt(xupper) if logscalex else (xlower + xupper) / 2
         # the function gets only the interior edges. Thus a value at an outer edge goes into the first or the last bin
         xbinindex = get_bin_index_expr(pl.col("xvalue"), xbinedges[1:-1], right_closed=True) + 1
         estimators = (
@@ -1580,9 +1580,12 @@ def get_xlist(
         xlower, xupper, extentsource = cellextent
         print_detail(f"--histogram draws {extentsource}, thus each step gives the value across the full extent")
         estimators = estimators.with_columns(xbin_lower=xlower, xbin_upper=xupper)
-        # with --logscalex, a single inner cell has no lower edge above zero
+        extentmin = xstats["xextentmin"]
+        # a log axis does not show a lower edge at zero, thus the midpoint of that cell keeps the cell on the axis
+        if logscalex:
+            extentmin = xmin if extentmin is None else min(extentmin, xmin)
         xlimits = (
-            xmin if args.xmin is not None or xstats["xextentmin"] is None else xstats["xextentmin"],
+            extentmin if args.xmin is None else args.xmin,
             xstats["xextentmax"] if args.xmax is None else args.xmax,
         )
 

@@ -529,6 +529,28 @@ def test_logscalex_automatic_bins_take_the_largest_interval_in_log_x() -> None:
     assert args.xbins == 4
 
 
+def test_logscalex_bin_centre_of_very_small_x_values() -> None:
+    """The product of the two edges of a bin underflows to zero, and the square root of each edge does not."""
+    args = get_logscalex_args(xbins=1)
+    _, _, _, dfplot, _, _ = plotestimators.get_xlist("rho", get_log_estimators([1.0e-200, 1.0e-180]), None, args)
+    assert np.allclose(dfplot.collect()["xvalue_binned"], 1.0e-190, rtol=1e-9, atol=0.0)
+
+
+def test_logscalex_automatic_bins_of_more_than_308_decades() -> None:
+    """The ratio of the two limits overflows to infinity, and the difference of their logarithms does not."""
+    args = get_logscalex_args(xbins=-1)
+    plotestimators.get_xlist("rho", get_log_estimators([1.0e-200, 1.0e-100, 1.0e200]), None, args)
+    assert args.xbins == 25
+
+
+def test_logscalex_bin_width_of_more_than_308_decades() -> None:
+    """The ratio of the two limits overflows to infinity, and the bin width of the line ends must stay finite."""
+    figuredata = mock.MagicMock(xlimits=(1.0e-200, 1.0e200))
+    _, xbinwidth = plotestimators.get_line_ends(figuredata, argparse.Namespace(x="rho", xbins=2, logscalex=True))
+    assert xbinwidth is not None
+    assert np.isclose(xbinwidth, 200.0 * math.log(10.0))
+
+
 def test_logscalex_leaves_out_x_values_at_or_below_zero(capsys: pytest.CaptureFixture[str]) -> None:
     """A log axis cannot show zero. The plot leaves out these points, and a cumulative sum still reads them."""
     args = get_logscalex_args()
@@ -559,8 +581,11 @@ def test_logscalex_stops_with_no_x_value_above_zero(capsys: pytest.CaptureFixtur
     assert "--logscalex" in capsys.readouterr().err
 
 
-def test_logscalex_histogram_limit_skips_the_edge_at_zero() -> None:
-    """The inner cell of a model starts at zero, thus the axis starts at the lowest edge above zero."""
+def test_logscalex_histogram_limit_keeps_the_cell_with_an_edge_at_zero() -> None:
+    """The inner cell of a model starts at zero. The axis starts at its midpoint, thus the plot keeps that cell.
+
+    The axis started at the next edge above zero, and that limit cut the full inner cell from the plot.
+    """
     estimators = pl.LazyFrame({
         "timestep": [0, 0],
         "modelgridindex": [0, 1],
@@ -569,7 +594,7 @@ def test_logscalex_histogram_limit_skips_the_edge_at_zero() -> None:
         "vel_r_max": [1.0e8, 2.0e8],
     })
     *_, xlimits = plotestimators.get_xlist("velocity", estimators, None, get_logscalex_args(histogram=True))
-    assert np.allclose(xlimits, (1000.0, 2000.0), rtol=1e-9, atol=0.0)
+    assert np.allclose(xlimits, (500.0, 2000.0), rtol=1e-9, atol=0.0)
 
 
 def test_logscalex_line_ends_at_the_bin_edges_in_log_x() -> None:
