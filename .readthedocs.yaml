@@ -16,8 +16,10 @@ build:
             - asdf global uv latest
         create_environment:
             - uv venv --python 3.14 "${READTHEDOCS_VIRTUALENV_PATH}"
+        # An optimised compile of polars took more than the limit of 900 s for a build. The site needs only the help text.
         install:
-            - UV_PROJECT_ENVIRONMENT="${READTHEDOCS_VIRTUALENV_PATH}" uv sync --frozen --python 3.14 --no-default-groups --group docs
+            - CARGO_PROFILE_RELEASE_OPT_LEVEL=0 CARGO_PROFILE_RELEASE_CODEGEN_UNITS=256 UV_PROJECT_ENVIRONMENT="${READTHEDOCS_VIRTUALENV_PATH}" uv sync
+              --frozen --python 3.14 --no-default-groups --group docs
 
 sphinx:
     configuration: docs/conf.py
