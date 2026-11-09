@@ -9,6 +9,8 @@
 
 Artistools is collection of plotting, analysis, and file format conversion tools for the [ARTIS](https://github.com/artis-mcrt/artis) radiative transfer code.
 
+The documentation is at [artistools.readthedocs.io](https://artistools.readthedocs.io). It gives [each command](https://artistools.readthedocs.io/en/latest/commands.html) and [some example outputs](https://artistools.readthedocs.io/en/latest/examples.html).
+
 ## Installation
 Requires Python >= 3.13. A free-threaded Python requires version 3.15 or later, e.g. Python 3.15t.
 

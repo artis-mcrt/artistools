@@ -90,8 +90,16 @@ dev = [
     "types-tqdm>=4.70.0.20261102",
     "vulture>=2.16",
 ]
+docs = [
+    "furo>=2025.12.19",
+    "myst-parser>=5.1.0",
+    "sphinx>=9.2.0",
+    "sphinx-copybutton>=0.5.2",
+    "sphinxcontrib-programoutput>=0.20",
+]
 
 [project.urls]
+Documentation = "https://artistools.readthedocs.io"
 Repository = "https://github.com/artis-mcrt/artistools"
 Issues = "https://github.com/artis-mcrt/artistools/issues"
 
@@ -350,6 +358,8 @@ unfixable = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+# Sphinx runs docs/conf.py as a script, and a developer runs docs/make_examples.py, thus the folder is not a package
+"docs/*.py" = ["implicit-namespace-package"]
 # Test names describe the case already; a docstring restating them is noise. A test can write compressed
 # files and start processes, because it tests the readers of such files and the work in several processes
 "**/test_*.py" = [
