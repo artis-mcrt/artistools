@@ -8,6 +8,7 @@ import typing as t
 import warnings
 from collections.abc import Callable
 from collections.abc import Iterable
+from collections.abc import Iterator
 from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
@@ -24,14 +25,20 @@ from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import firstexisting_or_none
 from artistools.misc.fileio import natural_sort_key
+from artistools.misc.fileio import normalised_lines
 from artistools.misc.fileio import polars_source_open
 from artistools.misc.fileio import read_wsv
 from artistools.misc.fileio import readnoncommentline
+from artistools.misc.fileio import without_compressed_extension
 from artistools.misc.fileio import zopen
 from artistools.misc.modelpaths import clear_at_reload
 from artistools.misc.modelpaths import modelpath_cache
 from artistools.misc.modelpaths import path_is_codecomparison
 from artistools.misc.modelpaths import resolve_modelpath
+from artistools.misc.parquetcache import get_file_identity
+from artistools.misc.parquetcache import read_parquet_cache_metadata
+from artistools.misc.parquetcache import temporary_parts_folder
+from artistools.misc.parquetcache import write_parquet_atomic
 from artistools.misc.remote import check_local_path
 from artistools.misc.remote import is_remote_path
 from artistools.misc.remote import on_model_host
@@ -576,17 +583,214 @@ def get_rank_outputfiles(folderpath: Path, filenameformat: str) -> dict[int, Pat
 # the number of lines of a rank file that give the types of its columns when a filter keeps no row
 FIRST_LINES_FOR_TYPES = 100
 
+# A read of less text than this size takes the text, thus only a large model gets a cache. At 1e7 lines/s, 1 GiB of
+# text takes about 3 s to read
+MIN_TEXT_BYTES_FOR_RANK_CACHE = 1024**3
+
+RANK_CACHE_VERSION = 1
+
+# The conversion holds this count of rows of the text in memory, which is about 1.7 GB for seven columns
+TEXT_BATCH_ROWS = 30_000_000
+
+# For the NLTE populations of 7 GB of text, level 9 took 6.5 s and level 13 took 32 s, and each cache was 1.33 GB
+RANK_CACHE_ZSTD_LEVEL = 9
+
+
+def get_folder_text_files(
+    folderpath: Path, filenameformat: str, ranks_with_matter: Sequence[int], selectscells: bool
+) -> tuple[list[Path], list[int]]:
+    """Return the text files of a read of a run folder, and each rank with no text in it.
+
+    A read of some cells takes the files of their ranks. A read of all cells takes the file of all ranks, unless a
+    file of a rank is newer. A missing file of a rank also selects the file of all ranks.
+    """
+    prefix, suffix = re.split(r"\{mpirank[^}]*\}", filenameformat)
+    rankfiles = get_rank_outputfiles(folderpath, filenameformat)
+    missingranks = [rank for rank in ranks_with_matter if rank not in rankfiles]
+    allranksfile = firstexisting_or_none(
+        f"{prefix}allranks{suffix}", folder=folderpath, tryzipped=True, search_subfolders=False
+    )
+    if allranksfile is not None and (
+        missingranks
+        or (
+            not selectscells
+            and max((rankfiles[rank].stat().st_mtime for rank in ranks_with_matter), default=0.0)
+            <= allranksfile.stat().st_mtime
+        )
+    ):
+        return [allranksfile], []
+    if missingranks:
+        return [], missingranks
+    return [rankfiles[rank] for rank in ranks_with_matter], []
+
+
+def read_rank_file_rows(filepath: Path, line_filter: pl.Expr | None = None) -> pl.DataFrame | None:
+    """Return the rows of a rank file with the standard names and key types, or None for an empty file."""
+    dffile = read_rank_file(filepath, line_filter=line_filter)
+    if dffile is None:
+        return None
+    return dffile.rename({"ionstage": "ion_stage"}, strict=False).with_columns(
+        pl.col("modelgridindex").cast(pl.Int64), pl.col("timestep").cast(pl.Int64)
+    )
+
+
+def iter_allranks_text_batches(textfile: Path, partsfolder: Path) -> Iterator[pl.DataFrame]:
+    """Yield the rows of a file of all ranks in batches. The file can be larger than the memory."""
+    batchpath = partsfolder / "text_batch.txt"
+    dfheader: pl.DataFrame | None = None
+    for dflines in normalised_lines(textfile).collect_batches(chunk_size=TEXT_BATCH_ROWS):
+        if dflines.is_empty():
+            continue
+        dftext = dflines if dfheader is None else pl.concat([dfheader, dflines])
+        dfheader = dftext.head(1)
+        dftext.write_csv(batchpath, include_header=False, quote_style="never")
+        if (dfbatch := read_rank_file_rows(batchpath)) is not None:
+            yield dfbatch
+    batchpath.unlink(missing_ok=True)
+
+
+def iter_text_batches(textfiles: Sequence[Path], partsfolder: Path) -> Iterator[pl.DataFrame]:
+    """Yield the rows of the text files of a run folder in batches of about TEXT_BATCH_ROWS rows."""
+    if len(textfiles) == 1 and "allranks" in textfiles[0].name:
+        yield from iter_allranks_text_batches(textfiles[0], partsfolder)
+        return
+
+    pending: list[pl.DataFrame] = []
+    pendingrows = 0
+    for textfile in textfiles:
+        dffile = read_rank_file_rows(textfile)
+        if dffile is None or dffile.is_empty():
+            continue
+        pending.append(dffile)
+        pendingrows += dffile.height
+        if pendingrows >= TEXT_BATCH_ROWS:
+            yield pl.concat(pending, how="vertical_relaxed")
+            pending.clear()
+            pendingrows = 0
+    if pending:
+        yield pl.concat(pending, how="vertical_relaxed")
+
+
+def convert_rank_text_to_parquet(
+    textfiles: Sequence[Path],
+    parquetfilepath: Path,
+    metadata: dict[str, str],
+    textstate: tuple[float, int],
+    replaces: tuple[int, int] | None,
+) -> bool:
+    """Write the rows of the text files to a parquet cache in the order of the timesteps and the cells.
+
+    The memory holds one batch of the text or one timestep. The sort is stable, thus the rows of one cell keep the
+    order of the text. The function returns False if the text holds no row, and it then writes no cache.
+    """
+    with temporary_parts_folder(parquetfilepath) as partsfolder:
+        partsoftimestep: dict[int, list[Path]] = {}
+        dfnorows: pl.DataFrame | None = None
+        for dfbatch in iter_text_batches(textfiles, partsfolder):
+            dfnorows = pl.concat(
+                [dfbatch.clear()] if dfnorows is None else [dfnorows, dfbatch.clear()], how="vertical_relaxed"
+            )
+            for (timestep,), dftimestep in dfbatch.partition_by("timestep", maintain_order=True, as_dict=True).items():
+                assert isinstance(timestep, int)
+                parts = partsoftimestep.setdefault(timestep, [])
+                parts.append(partsfolder / f"ts{timestep:08d}_part{len(parts):06d}.parquet")
+                dftimestep.write_parquet(parts[-1], compression="lz4")
+
+        if dfnorows is None:
+            return False
+
+        sortedparts: list[Path] = []
+        for timestep in sorted(partsoftimestep):
+            sortedparts.append(partsfolder / f"ts{timestep:08d}.parquet")
+            pl.concat([pl.read_parquet(part).cast(dfnorows.schema) for part in partsoftimestep[timestep]]).sort(
+                "modelgridindex", maintain_order=True
+            ).write_parquet(sortedparts[-1], compression="lz4")
+            for part in partsoftimestep[timestep]:
+                part.unlink()
+
+        if get_rank_text_state(textfiles) != textstate:
+            # a job that still runs changed the text, thus this stamp makes the next read convert the text again
+            print_warning(f"The text of {parquetfilepath.parent} changed during the conversion")
+            metadata = {**metadata, "textsource_mtime": "0.0"}
+
+        write_parquet_atomic(
+            pl.scan_parquet(sortedparts, glob=False),
+            parquetfilepath,
+            metadata=metadata,
+            replaces=replaces,
+            compression_level=RANK_CACHE_ZSTD_LEVEL,
+        )
+    return True
+
+
+def get_rank_text_state(textfiles: Sequence[Path]) -> tuple[float, int]:
+    """Return the newest modification time and the total size of the text files."""
+    filestats = [textfile.stat() for textfile in textfiles]
+    return max(filestat.st_mtime for filestat in filestats), sum(filestat.st_size for filestat in filestats)
+
+
+def scan_rank_text_cache(
+    folderpath: Path,
+    filenameformat: str,
+    cachefilename: str,
+    allranks_with_matter: Sequence[int],
+    selectedfiles: Sequence[Path],
+) -> pl.LazyFrame | None:
+    """Return a scan of the parquet cache of a run folder, or None if the read must take the text.
+
+    A read of some ranks takes the text, because the conversion needs the text of every rank. A read of less text
+    than MIN_TEXT_BYTES_FOR_RANK_CACHE also takes the text.
+    """
+    textfiles, missingranks = get_folder_text_files(
+        folderpath, filenameformat, allranks_with_matter, selectscells=False
+    )
+    readstext_of_all_ranks = list(selectedfiles) == textfiles or len(selectedfiles) == len(allranks_with_matter)
+    if missingranks or not textfiles or not readstext_of_all_ranks:
+        return None
+
+    textsource_mtime, textsize = get_rank_text_state(textfiles)
+    if textsize < MIN_TEXT_BYTES_FOR_RANK_CACHE:
+        return None
+
+    parquetfilepath = folderpath / cachefilename
+    # the stamp names the form of the text, because a file of all ranks and the files of the ranks have the same time
+    textsource = without_compressed_extension(textfiles[0]).name
+    _, stalereason = read_parquet_cache_metadata(
+        parquetfilepath, RANK_CACHE_VERSION, textsource_mtime, textsource=textsource
+    )
+    if stalereason is not None:
+        identity_of_stale_file = get_file_identity(parquetfilepath)
+        if identity_of_stale_file is not None:
+            print(f"  {parquetfilepath} is not a current cache of the text, because {stalereason}")
+        print(f"  Write {parquetfilepath} from {len(textfiles)} text files...")
+        metadata = {
+            "cacheversion": str(RANK_CACHE_VERSION),
+            "textsource": textsource,
+            "textsource_mtime": str(textsource_mtime),
+        }
+        if not convert_rank_text_to_parquet(
+            textfiles, parquetfilepath, metadata, (textsource_mtime, textsize), identity_of_stale_file
+        ):
+            return None
+
+    return pl.scan_parquet(parquetfilepath)
+
 
 def read_rank_outputfiles(
     modelpath: Path | str,
     filenameformat: str,
-    timestep: int | None = None,
+    timestep: int | Sequence[int] | None = None,
     modelgridindex: int | Sequence[int] | None = None,
+    cachefilename: str | None = None,
 ) -> pl.DataFrame:
     """Read the output files of each MPI rank, e.g. radfield_{mpirank:04d}.out, in the run folders into one DataFrame.
 
-    Each row of the files starts with the timestep and the model grid cell. A timestep, a model grid cell, or a
-    sequence of cells selects the rows, and a negative value selects all of them.
+    Each row of the files starts with the timestep and the cell. One or more timesteps and one or more cells select the
+    rows, and a negative value selects all of them.
+
+    cachefilename names a parquet cache in each run folder. A read of the text of all ranks in a run folder converts the
+    text one time. A later read selects the rows from the cache. The rows of the cache have the order of the timesteps
+    and the cells. Thus the rows of a large read can have a different order from the text.
 
     With the option WRITE_COMBINED_ALLRANK_OUT_FILES, ARTIS writes the rows of all ranks into one file of a run
     folder, e.g. radfield_allranks.out. The script scripts/combine_allrank_out_files.py of ARTIS makes the same file
@@ -600,6 +804,9 @@ def read_rank_outputfiles(
     cells: list[int] = [modelgridindex] if isinstance(modelgridindex, int) else list(modelgridindex or [])
     # a negative cell number selects all cells
     selectedcells: list[int] = cells if all(mgi >= 0 for mgi in cells) else []
+    timesteps: list[int] = [timestep] if isinstance(timestep, int) else list(timestep or [])
+    # a negative timestep selects all timesteps
+    selectedtimesteps: list[int] = timesteps if all(ts >= 0 for ts in timesteps) else []
     # get_mpiranklist also stops with an error for a cell that is not in the model
     mpiranks = get_mpiranklist(modelpath, modelgridindex=modelgridindex, only_ranks_withgridcells=True)
     # a rank whose cells all hold no matter writes no file, and a file of all ranks has no row for its cells
@@ -610,8 +817,17 @@ def read_rank_outputfiles(
         msg = f"{cellstext} no matter. ARTIS writes no {filefamily} data for a cell with no matter"
         raise ValueError(msg)
 
-    runfolders = get_runfolders(modelpath, timestep=timestep)
-    if not runfolders and timestep is not None and timestep >= 0 and (allfolders := get_runfolders(modelpath)):
+    runfolders: Sequence[Path]
+    if timestep is None or isinstance(timestep, int):
+        runfolders = get_runfolders(modelpath, timestep=timestep)
+    else:
+        # a sequence of timesteps gives the rows of a read of all timesteps. A timestep that no run folder holds gives
+        # no row, and the empty result still has the types of the columns
+        allfolders = get_runfolders(modelpath)
+        runfolders = [
+            folder for folder in allfolders if not set(get_runfolder_timesteps(folder)).isdisjoint(selectedtimesteps)
+        ] or allfolders
+    if not runfolders and isinstance(timestep, int) and timestep >= 0 and (allfolders := get_runfolders(modelpath)):
         heldtimesteps = sorted({ts for folder in allfolders for ts in get_runfolder_timesteps(folder)})
         msg = (
             f"No run folder of {modelpath} holds timestep {timestep}. The estimator files of the run folders give "
@@ -620,22 +836,12 @@ def read_rank_outputfiles(
         raise ValueError(msg)
 
     filepathsofeachfolder: list[list[Path]] = []
+    folders_with_text: list[Path] = []
     for folderpath in runfolders:
-        rankfiles = get_rank_outputfiles(folderpath, filenameformat)
-        missingranks = [rank for rank in ranks_with_matter if rank not in rankfiles]
-        allranksfile = firstexisting_or_none(
-            f"{prefix}allranks{suffix}", folder=folderpath, tryzipped=True, search_subfolders=False
+        folderfilepaths, missingranks = get_folder_text_files(
+            folderpath, filenameformat, ranks_with_matter, selectscells=bool(selectedcells)
         )
-        if allranksfile is not None and (
-            missingranks
-            or (
-                not selectedcells
-                and max((rankfiles[rank].stat().st_mtime for rank in ranks_with_matter), default=0.0)
-                <= allranksfile.stat().st_mtime
-            )
-        ):
-            filepathsofeachfolder.append([allranksfile])
-        elif missingranks:
+        if missingranks:
             # the rank handles a cell that holds matter, thus the file is missing. firstexisting
             # names every compressed form that it looked for
             firstexisting(
@@ -644,8 +850,9 @@ def read_rank_outputfiles(
                 tryzipped=True,
                 search_subfolders=False,
             )
-        elif ranks_with_matter:
-            filepathsofeachfolder.append([rankfiles[rank] for rank in ranks_with_matter])
+        elif folderfilepaths:
+            filepathsofeachfolder.append(folderfilepaths)
+            folders_with_text.append(folderpath)
 
     if not filepathsofeachfolder:
         msg = f"No {filefamily} files found in {modelpath}"
@@ -655,8 +862,8 @@ def read_rank_outputfiles(
     # memory of a read small. The filter keeps the header line, which starts with "timestep modelgridindex"
     leadingfields = pl.col("line").str.extract_groups(r"^[ \t]*(?<timestep>[^ \t]+)[ \t]+(?<cell>[^ \t]+)")
     rowconditions: list[pl.Expr] = []
-    if timestep is not None and timestep >= 0:
-        rowconditions.append(leadingfields.struct.field("timestep") == str(timestep))
+    if selectedtimesteps:
+        rowconditions.append(leadingfields.struct.field("timestep").is_in([str(ts) for ts in selectedtimesteps]))
     if selectedcells:
         rowconditions.append(leadingfields.struct.field("cell").is_in([str(mgi) for mgi in selectedcells]))
     line_filter = (
@@ -666,21 +873,42 @@ def read_rank_outputfiles(
     )
 
     def read_file(filepath: Path, folderindex: int, line_filter: pl.Expr | None) -> pl.DataFrame | None:
-        dffile = read_rank_file(filepath, line_filter=line_filter)
-        if dffile is None:
-            return None
-        return dffile.rename({"ionstage": "ion_stage"}, strict=False).with_columns(
-            pl.col("modelgridindex").cast(pl.Int64),
-            pl.col("timestep").cast(pl.Int64),
-            pl.lit(folderindex, dtype=pl.Int32).alias("folderindex"),
-        )
+        dffile = read_rank_file_rows(filepath, line_filter=line_filter)
+        return None if dffile is None else dffile.with_columns(pl.lit(folderindex, dtype=pl.Int32).alias("folderindex"))
 
-    dfsoffiles = [
-        dffile
-        for folderindex, folderfilepaths in enumerate(filepathsofeachfolder)
-        for filepath in folderfilepaths
-        if (dffile := read_file(filepath, folderindex, line_filter)) is not None
+    allranks_with_matter: Sequence[int] = ()
+    if cachefilename is not None:
+        allranks_with_matter = [
+            rank
+            for rank in get_mpiranklist(modelpath, only_ranks_withgridcells=True)
+            if nonemptycounts is None or nonemptycounts.get(rank) != 0
+        ]
+    cacheconditions: list[pl.Expr] = [
+        *([pl.col("timestep").is_in(selectedtimesteps)] if selectedtimesteps else []),
+        *([pl.col("modelgridindex").is_in(selectedcells)] if selectedcells else []),
     ]
+
+    dfsoffiles: list[pl.DataFrame] = []
+    for folderindex, (folderpath, folderfilepaths) in enumerate(
+        zip(folders_with_text, filepathsofeachfolder, strict=True)
+    ):
+        cachescan = (
+            None
+            if cachefilename is None
+            else scan_rank_text_cache(folderpath, filenameformat, cachefilename, allranks_with_matter, folderfilepaths)
+        )
+        if cachescan is not None:
+            dfsoffiles.append(
+                (cachescan.filter(cacheconditions) if cacheconditions else cachescan)
+                .with_columns(pl.lit(folderindex, dtype=pl.Int32).alias("folderindex"))
+                .collect()
+            )
+            continue
+        dfsoffiles.extend(
+            dffile
+            for filepath in folderfilepaths
+            if (dffile := read_file(filepath, folderindex, line_filter)) is not None
+        )
     if not dfsoffiles:
         msg = f"Each {filefamily} file of {modelpath} is empty"
         raise ValueError(msg)

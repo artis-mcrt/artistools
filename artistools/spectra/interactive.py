@@ -68,6 +68,7 @@ from artistools.viewertools.core import model_has_direction_data
 from artistools.viewertools.core import move_series_styles
 from artistools.viewertools.core import OptionRows
 from artistools.viewertools.core import parse_viewer_tokens
+from artistools.viewertools.core import read_finite_number
 from artistools.viewertools.core import run_command_step
 from artistools.viewertools.core import SERIES_STYLE_FLAGS
 from artistools.viewertools.core import SLIDER_STEPS
@@ -513,18 +514,6 @@ def get_shortest_decimal(low: float, high: float, *, roundup: bool) -> str:
         if (low <= float(text) < high) if roundup else (low < float(text) <= high):
             return text
     return format_days(high if not roundup else low)
-
-
-def read_finite_number(text: str) -> float:
-    """Return the number of a text, and raise ValueError for a text that is not a finite number, e.g. "nan".
-
-    float() reads "nan" and "inf", and a count of timesteps of such a width raised an error with no message.
-    """
-    value = float(text)
-    if not math.isfinite(value):
-        msg = f"{text} is not a finite number"
-        raise ValueError(msg)
-    return value
 
 
 def get_snapped_timedays_argument(

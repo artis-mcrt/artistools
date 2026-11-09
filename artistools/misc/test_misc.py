@@ -1685,7 +1685,7 @@ def test_server_protocol_changes_with_the_readers(package_modules: list[Path]) -
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (12, "fe478c0da62b763d"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (13, "e47a5102121b8df6"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )
@@ -2627,6 +2627,75 @@ def test_read_rank_outputfiles_drops_the_repeated_timestep_of_a_restart(tmp_path
 
     # the earlier folder holds no row for cell 4, thus the row of the later folder stays
     assert dfout.filter(timestep=1, modelgridindex=4)["nnlevel"].item() == 8
+
+
+def test_read_rank_outputfiles_of_a_timestep_list_equals_the_filter_of_a_full_read(tmp_path: Path) -> None:
+    """A list of timesteps must give the rows of a read of all timesteps, and also for a restart."""
+    from artistools.misc.modelinfo import read_rank_outputfiles
+
+    write_rank_output_model(
+        tmp_path, {"job0": [(0, 0, 1.0), (1, 0, 2.0)], "job1": [(1, 0, 9.0), (1, 4, 8.0), (2, 0, 3.0)]}
+    )
+    filename = "nlte_{mpirank:04d}.out"
+    for timesteps in ([0, 2], [1, 2], [1, 7]):
+        pltest.assert_frame_equal(
+            read_rank_outputfiles(tmp_path, filename, timestep=timesteps),
+            read_rank_outputfiles(tmp_path, filename).filter(pl.col("timestep").is_in(timesteps)),
+        )
+
+    dfnotimestep = read_rank_outputfiles(tmp_path, filename, timestep=[6, 7])
+    assert dfnotimestep.is_empty()
+    assert dfnotimestep.schema["nnlevel"] == pl.Float64
+
+
+@pytest.mark.parametrize("textform", ["rank_file", "compressed_rank_file", "allranks_file"])
+def test_parquet_cache_of_the_rank_text_gives_the_rows_of_the_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, textform: str
+) -> None:
+    """The cache must give the rows of the text for each selection and for a restart, and a new text must replace it."""
+    from artistools.misc.modelinfo import read_rank_outputfiles
+
+    monkeypatch.setattr("artistools.misc.modelinfo.MIN_TEXT_BYTES_FOR_RANK_CACHE", 1)
+    write_rank_output_model(
+        tmp_path,
+        {
+            "job0": [(0, cell, cell + 0.5) for cell in range(3)] + [(1, 0, 2.0)],
+            "job1": [(1, 0, 9.0), (1, 4, 8.0), (2, 2, 3.0), (2, 0, 4.0)],
+        },
+    )
+    if textform == "compressed_rank_file":
+        for rankfile in tmp_path.glob("job*/nlte_0000.out"):
+            with gzip.open(rankfile.with_suffix(".out.gz"), "wb") as fout:
+                fout.write(rankfile.read_bytes())
+            rankfile.unlink()
+    elif textform == "allranks_file":
+        for rankfile in tmp_path.glob("job*/nlte_0000.out"):
+            rankfile.rename(rankfile.with_name("nlte_allranks.out"))
+
+    filename = "nlte_{mpirank:04d}.out"
+    cachename = "nltecache.parquet"
+    sortkeys = ["timestep", "modelgridindex", "nnlevel"]
+    for timestep, cells in ((None, None), (1, None), ([0, 2], None), (None, 2), (1, [0, 4])):
+        pltest.assert_frame_equal(
+            read_rank_outputfiles(
+                tmp_path, filename, timestep=timestep, modelgridindex=cells, cachefilename=cachename
+            ).sort(sortkeys),
+            read_rank_outputfiles(tmp_path, filename, timestep=timestep, modelgridindex=cells).sort(sortkeys),
+        )
+    assert (tmp_path / "job0" / cachename).is_file()
+    assert (tmp_path / "job1" / cachename).is_file()
+
+    # a text that a new job writes must replace the rows of the cache
+    textfile = next((tmp_path / "job0").glob("nlte_*.out*"))
+    newtext = "timestep modelgridindex nnlevel\n0 0 77.5\n"
+    if textform == "compressed_rank_file":
+        with gzip.open(textfile, "wb") as fout:
+            fout.write(newtext.encode())
+    else:
+        textfile.write_text(newtext, encoding="utf-8")
+    os.utime(textfile, (textfile.stat().st_atime, textfile.stat().st_mtime + 100.0))
+    dfnew = read_rank_outputfiles(tmp_path, filename, timestep=0, cachefilename=cachename)
+    assert dfnew["nnlevel"].to_list() == [77.5]
 
 
 def write_allranks_nlte_file(modelpath: Path, mtime: float) -> Path:

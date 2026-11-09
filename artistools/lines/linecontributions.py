@@ -149,9 +149,9 @@ def get_boltzmann_factors(
 
 
 def get_ion_populations(
-    dfcells: pl.DataFrame, levels: pl.DataFrame, neededlevels: Sequence[int], dfnltepops: pl.DataFrame, nnioncolumn: str
+    dfcells: pl.DataFrame, levels: pl.DataFrame, neededframe: pl.DataFrame, dfnltepops: pl.DataFrame, nnioncolumn: str
 ) -> pl.DataFrame:
-    """Return the population of each needed level of one ion in each cell, as calculate_levelpop() of ARTIS gives it.
+    """Return the population of each level of neededframe of one ion in each cell, as calculate_levelpop() of ARTIS.
 
     A cell with no NLTE row of the ion takes the LTE populations of the nnion_ estimator at T_exc. ARTIS writes no
     NLTE row of an element that has no NLTE solution in a cell, e.g. an element that fell back to LTE. A cell with
@@ -162,7 +162,6 @@ def get_ion_populations(
     - for a level above the NLTE levels of an ion with no superlevel, the ground-level population times
       g / g_0 exp(-(E - E_0) / k T_exc).
     """
-    neededframe = levels.filter(pl.col("level").is_in(neededlevels))
     isnltecell = pl.col("modelgridindex").is_in(dfnltepops["modelgridindex"].unique().implode())
     framesofcells = []
     if not (dfltecells := dfcells.filter(~isnltecell)).is_empty():
@@ -297,11 +296,32 @@ def get_nlte_ion_populations_below_level(
     return pl.concat(framesoflevels)
 
 
+def get_ion_population_inputs(
+    dflines: pl.DataFrame, levelsofion: dict[tuple[int, int], pl.DataFrame], dfnltepops: pl.DataFrame
+) -> list[tuple[tuple[int, int], pl.DataFrame, pl.DataFrame]]:
+    """Return the ion, the levels of its lines, and its NLTE rows, for each ion with a line in dflines.
+
+    This work takes the same time for each batch of cells, thus get_cell_line_batches() does it one time.
+    """
+    nltepopsofion = dfnltepops.partition_by("Z", "ion_stage", as_dict=True)
+    ioninputs = []
+    for (Z, ion_stage), dfionlines in dflines.group_by("Z", "ion_stage", maintain_order=True):
+        assert isinstance(Z, int)
+        assert isinstance(ion_stage, int)
+        neededlevels = pl.concat([dfionlines["lower"], dfionlines["upper"]]).unique().implode()
+        ioninputs.append((
+            (Z, ion_stage),
+            levelsofion[Z, ion_stage].filter(pl.col("level").is_in(neededlevels)),
+            nltepopsofion.get((Z, ion_stage), dfnltepops.clear()),
+        ))
+    return ioninputs
+
+
 def get_cell_line_table(
     dfcells: pl.DataFrame,
     dflines: pl.DataFrame,
     levelsofion: dict[tuple[int, int], pl.DataFrame],
-    dfnltepops: pl.DataFrame,
+    ioninputs: Sequence[tuple[tuple[int, int], pl.DataFrame, pl.DataFrame]],
     time_days: float,
 ) -> pl.DataFrame:
     """Return one row for each cell and line, with the level populations, tau_sobolev, and the emission.
@@ -311,16 +331,12 @@ def get_cell_line_table(
     """
     time_s = time_days * day_to_s
     popframes = []
-    for (Z, ion_stage), dfionlines in dflines.group_by("Z", "ion_stage", maintain_order=True):
-        assert isinstance(Z, int)
-        assert isinstance(ion_stage, int)
-        neededlevels = sorted({*dfionlines["lower"].to_list(), *dfionlines["upper"].to_list()})
-        dfionpops = dfnltepops.filter((pl.col("Z") == Z) & (pl.col("ion_stage") == ion_stage))
+    for (Z, ion_stage), neededframe, dfionpops in ioninputs:
         popframes.append(
             get_ion_populations(
                 dfcells,
                 levelsofion[Z, ion_stage],
-                neededlevels,
+                neededframe,
                 dfionpops.filter(pl.col("modelgridindex").is_in(dfcells["modelgridindex"].implode())),
                 f"nnion_{get_ionstring(Z, ion_stage, sep='_')}",
             ).with_columns(pl.lit(Z, dtype=pl.Int64).alias("Z"), pl.lit(ion_stage, dtype=pl.Int64).alias("ion_stage"))
@@ -392,7 +408,8 @@ def get_cell_line_table(
 def get_line_summary(dfcelllines: pl.DataFrame) -> pl.DataFrame:
     """Return one row for each line, with the sums and the maxima over the cells of one batch.
 
-    get_line_summary_of_batches() combines the batches, then it divides the sums by the emission to give the means.
+    merge_line_summaries() combines the batches. get_line_summary_of_batches() then divides the sums by the emission to
+    give the means.
     """
     emission = pl.col("emission_erg_per_s").fill_nan(None).fill_null(0.0)
     return dfcelllines.group_by(LINEKEYS, maintain_order=True).agg(
@@ -403,34 +420,42 @@ def get_line_summary(dfcelllines: pl.DataFrame) -> pl.DataFrame:
         emission_times_velocity=(emission * pl.col("velocity_kmps")).sum(),
         emission_times_Te=(emission * pl.col("Te")).sum(),
         tau_sobolev_max=pl.col("tau_sobolev").max(),
+        tau_sobolev_max_nan_largest=pl.col("tau_sobolev").max(),
         velocity_kmps_at_tau_sobolev_max=pl.col("velocity_kmps").sort_by("tau_sobolev").last(),
         cellcount_tau_sobolev_above_1=(pl.col("tau_sobolev") > 1.0).sum(),
     )
 
 
-def get_line_summary_of_batches(dfsummaries: Sequence[pl.DataFrame]) -> pl.DataFrame:
-    """Combine the line summaries of the batches of cells, and give the fraction of the emission of each line.
+def merge_line_summaries(dfsummaries: pl.DataFrame) -> pl.DataFrame:
+    """Return one row for each line from the rows of get_line_summary(). The result can merge with a later batch.
+
+    A later row with the same tau_sobolev_max keeps the velocity of the first row, thus the order of the merges does
+    not change the velocity. max() skips a NaN and a sort takes NaN as the largest value, thus the velocity must see
+    the NaN of an earlier batch.
+    """
+    return dfsummaries.group_by(LINEKEYS, maintain_order=True).agg(
+        pl.col("n_lower_source").explode().unique().sort(),
+        pl.col("n_upper_source").explode().unique().sort(),
+        pl.col("emission_erg_per_s").sum(),
+        pl.col("emission_times_velocity").sum(),
+        pl.col("emission_times_Te").sum(),
+        pl.col("tau_sobolev_max").max(),
+        pl.col("tau_sobolev_max_nan_largest").nan_max(),
+        pl.col("velocity_kmps_at_tau_sobolev_max").sort_by("tau_sobolev_max_nan_largest").last(),
+        pl.col("cellcount_tau_sobolev_above_1").sum(),
+    )
+
+
+def get_line_summary_of_batches(dfmerged: pl.DataFrame) -> pl.DataFrame:
+    """Return the summary of the merged line summaries of the batches, with the fraction of the emission of each line.
 
     A line with more than one method of its level populations, e.g. NLTE in one cell and LTE in a different cell,
     gives the methods with a "/" between them.
     """
     emission = pl.col("emission_erg_per_s")
     return (
-        pl
-        .concat(dfsummaries)
-        .group_by(LINEKEYS, maintain_order=True)
-        .agg(
-            *(
-                pl.col(column).explode().unique().sort().str.join("/")
-                for column in ("n_lower_source", "n_upper_source")
-            ),
-            emission.sum(),
-            pl.col("emission_times_velocity").sum(),
-            pl.col("emission_times_Te").sum(),
-            pl.col("velocity_kmps_at_tau_sobolev_max").sort_by("tau_sobolev_max").last(),
-            pl.col("tau_sobolev_max").max(),
-            pl.col("cellcount_tau_sobolev_above_1").sum(),
-        )
+        dfmerged
+        .with_columns(pl.col("n_lower_source", "n_upper_source").list.join("/"))
         .with_columns(
             # with no emission in the selected cells, a fraction has no value
             emission_fraction=pl.when(emission.sum() > 0.0).then(emission / emission.sum()),
@@ -757,6 +782,7 @@ def get_cell_line_batches(inputs: CellLineInputs) -> Iterator[pl.DataFrame]:
 
     The ions with a line in the range set the size of a batch, because only these ions get populations.
     """
+    ioninputs = get_ion_population_inputs(inputs.dflines, inputs.levelsofion, inputs.dfnltepops)
     ionswithlines = set(inputs.dflines.select("Z", "ion_stage").unique().iter_rows())
     maxlevelcount = max(levels.height for ion, levels in inputs.levelsofion.items() if ion in ionswithlines)
     cellsperbatch = max(1, ROWSPERBATCH // max(inputs.dflines.height, maxlevelcount))
@@ -765,7 +791,7 @@ def get_cell_line_batches(inputs: CellLineInputs) -> Iterator[pl.DataFrame]:
             inputs.dfcells.slice(firstcell, cellsperbatch),
             inputs.dflines,
             inputs.levelsofion,
-            inputs.dfnltepops,
+            ioninputs,
             inputs.time_days,
         )
 
@@ -797,14 +823,17 @@ def get_line_contributions(
     The method and the assumptions go to the log.
     """
     celltables = []
-    summaries = []
+    dfmerged: pl.DataFrame | None = None
     inputs = get_cell_line_inputs(modelpath, timestep, lambdamin, lambdamax, ions, exctemperature, taumin=taumin)
     for dfcelllines in get_cell_line_batches(inputs):
-        summaries.append(get_line_summary(dfcelllines))
+        dfbatchsummary = get_line_summary(dfcelllines)
+        # a list of the summaries of all the batches grows with the number of cells, and their merge does not
+        dfmerged = dfbatchsummary if dfmerged is None else merge_line_summaries(pl.concat([dfmerged, dfbatchsummary]))
         if percell:
             celltables.append(dfcelllines)
 
-    dfsummary = get_line_summary_of_batches(summaries)
+    assert dfmerged is not None
+    dfsummary = get_line_summary_of_batches(dfmerged)
     warn_about_line_summary(dfsummary)
     return pl.concat(celltables) if percell else dfsummary
 
@@ -840,10 +869,11 @@ def get_line_velocity_profiles(
     tau_sobolev of 0. A cell outside the bins is in the summary, but not in a bin.
     """
     velocitybin = get_velocity_bin_index_expr(pl.col("velocity_kmps"), velocityedges_kmps)
-    summaries = []
+    dfmerged: pl.DataFrame | None = None
     alllinesbins = []
     for dfcelllines in get_cell_line_batches(inputs):
-        summaries.append(get_line_summary(dfcelllines))
+        dfbatchsummary = get_line_summary(dfcelllines)
+        dfmerged = dfbatchsummary if dfmerged is None else merge_line_summaries(pl.concat([dfmerged, dfbatchsummary]))
         alllinesbins.append(
             dfcelllines
             .lazy()
@@ -853,7 +883,8 @@ def get_line_velocity_profiles(
             .agg(pl.col("emission_erg_per_s").fill_nan(None).fill_null(0.0).sum())
             .collect()
         )
-    dfsummary = get_line_summary_of_batches(summaries)
+    assert dfmerged is not None
+    dfsummary = get_line_summary_of_batches(dfmerged)
     warn_about_line_summary(dfsummary)
     dfalllines = pl.concat(alllinesbins).group_by("velocitybin").agg(pl.col("emission_erg_per_s").sum())
 

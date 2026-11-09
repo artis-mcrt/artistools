@@ -185,12 +185,16 @@ def add_lte_pops(
     )
 
 
+# the parquet cache of the NLTE text of a run folder. This name does not match the glob nlte_*.out* of the text files
+NLTE_CACHE_FILENAME = "nltepops_allranks.out.parquet"
+
+
 def read_nltepops(
     modelpath: str | Path,
-    timestep: int | np.integer | None = None,
+    timestep: int | np.integer | Sequence[int | np.integer] | None = None,
     modelgridindex: int | np.integer | Sequence[int | np.integer] | None = None,
 ) -> pl.DataFrame:
-    """Read in NLTE populations from a model for a particular timestep and one or more cells.
+    """Read the NLTE populations of a model for one or more timesteps and one or more cells.
 
     A figure of several subplots reads the same populations for each one, and a window reads them again for each of
     its plots. Thus the last reads stay in memory. Do not change the frame that this function returns.
@@ -204,7 +208,19 @@ def read_nltepops(
         cells = int(modelgridindex)
     # read_rank_outputfiles reads all the timesteps for a negative timestep, and all the cells for a negative cell or
     # an empty list
-    selectstimestep = timestep is not None and timestep >= 0
+    timesteps: int | tuple[int, ...] | None
+    if timestep is None:
+        timesteps = None
+    elif isinstance(timestep, Sequence):
+        timesteps = tuple(sorted({int(ts) for ts in timestep}))
+        # one timestep has one key in the cache, for each form of the argument
+        timesteps = timesteps[0] if len(timesteps) == 1 else timesteps
+    else:
+        timesteps = int(timestep)
+    if isinstance(timesteps, tuple):
+        selectstimestep = len(timesteps) > 0 and all(ts >= 0 for ts in timesteps)
+    else:
+        selectstimestep = timesteps is not None and timesteps >= 0
     if isinstance(cells, int):
         selectscells = cells >= 0
     else:
@@ -215,7 +231,7 @@ def read_nltepops(
             " the timesteps and cells of a remote model can be several GB"
         )
         raise ValueError(msg)
-    return read_nltepops_cached(resolve_modelpath(modelpath), None if timestep is None else int(timestep), cells)
+    return read_nltepops_cached(resolve_modelpath(modelpath), timesteps, cells)
 
 
 # a window reads the levels of one cell for its menu, and a cache of one read would then drop the frame of the plot.
@@ -223,10 +239,18 @@ def read_nltepops(
 @clear_at_reload("estimators")
 @lru_cache(maxsize=2)
 @on_model_host
-def read_nltepops_cached(modelpath: Path, timestep: int | None, cells: int | tuple[int, ...] | None) -> pl.DataFrame:
+def read_nltepops_cached(
+    modelpath: Path, timestep: int | tuple[int, ...] | None, cells: int | tuple[int, ...] | None
+) -> pl.DataFrame:
     """Read the NLTE populations of the model at an absolute path. One read of a large model takes minutes."""
     modelgridindex = list(cells) if isinstance(cells, tuple) else cells
-    return read_rank_outputfiles(modelpath, "nlte_{mpirank:04d}.out", timestep=timestep, modelgridindex=modelgridindex)
+    return read_rank_outputfiles(
+        modelpath,
+        "nlte_{mpirank:04d}.out",
+        timestep=list(timestep) if isinstance(timestep, tuple) else timestep,
+        modelgridindex=modelgridindex,
+        cachefilename=NLTE_CACHE_FILENAME,
+    )
 
 
 def has_nlte_populations(modelpath: Path | str) -> bool:

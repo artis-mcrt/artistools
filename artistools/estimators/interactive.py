@@ -103,6 +103,7 @@ from artistools.viewertools.core import keep_figwidthscale
 from artistools.viewertools.core import make_parser
 from artistools.viewertools.core import OptionRows
 from artistools.viewertools.core import parse_viewer_tokens
+from artistools.viewertools.core import read_finite_number
 from artistools.viewertools.core import run_command_step
 from artistools.viewertools.core import set_row_values
 from artistools.viewertools.menus import add_default_options
@@ -1616,7 +1617,7 @@ def open_window(
         # a later plot can show new text in the field only when the field has no edit of the user
         timeedit.setModified(False)
         try:
-            days = float(timeedit.text())
+            days = read_finite_number(timeedit.text())
         except ValueError:
             show_error("Give a number of days for the time")
             return
@@ -1631,7 +1632,7 @@ def open_window(
         tminedit.setModified(False)
         tmaxedit.setModified(False)
         try:
-            firstdays, lastdays = float(tminedit.text()), float(tmaxedit.text())
+            firstdays, lastdays = read_finite_number(tminedit.text()), read_finite_number(tmaxedit.text())
         except ValueError:
             show_error("Give a number of days for the first and the last time")
             return

@@ -509,7 +509,7 @@ def readfile_text(packetsfiletext: Path | str, column_names: list[str]) -> pl.Da
         "type_id": pl.Int32,
     }
 
-    try:
+    with polars_error_note(packetsfiletext):
         dfpackets = pl.read_csv(
             polars_source(packetsfiletext),
             separator=" ",
@@ -521,10 +521,6 @@ def readfile_text(packetsfiletext: Path | str, column_names: list[str]) -> pl.Da
             schema_overrides=dtype_overrides,
             glob=False,
         )
-
-    except Exception:
-        print(f"Error occurred in file {packetsfiletext}")
-        raise
 
     dfpackets = drop_trailing_null_column(dfpackets)
     raise_if_cut_line(dfpackets, packetsfiletext)
@@ -607,6 +603,10 @@ CACHEVERSION = 1
 
 # the number of ranks in each parquet cache of the packets
 RANKS_PER_BATCH: t.Final = 100
+
+# the number of rank files that a conversion reads at one time. 100 files of 5 MB (.zst) took 12.6 s with one thread,
+# 4.5 s with 4 threads, 3.6 s with 8 threads, and 3.7 s with 14 threads
+PACKET_READ_THREADS: t.Final = 8
 
 
 def find_packets_textsources(
@@ -815,6 +815,8 @@ def get_packets_rankbatch_parquetfile(
             )
 
     if conversion_needed:
+        from concurrent.futures import ThreadPoolExecutor
+
         time_start_load = time.perf_counter()
         print(f"  Generating {parquetfilepath.relative_to(modelpath)}...")
 
@@ -840,15 +842,22 @@ def get_packets_rankbatch_parquetfile(
 
         ftextreader = read_virtual_packets_text_file if virtual else readfile_text
 
-        with get_progress_class()(total=len(text_file_paths), desc="Reading packet files", unit="file") as progressbar:
+        def read_lazyframe(text_file_path: Path) -> pl.LazyFrame:
+            return ftextreader(text_file_path, column_names=column_names).lazy()
 
-            def read_with_progress(text_file_path: Path) -> pl.LazyFrame:
-                frame = ftextreader(text_file_path, column_names=column_names).lazy()
-                progressbar.update(1)
-                return frame
-
+        # each reader releases the GIL and a process would copy each frame back, thus the code uses threads.
+        # map gives the results in the order of the ranks, thus the order of the rows does not change
+        with ThreadPoolExecutor(max_workers=PACKET_READ_THREADS) as executor:
             pldf_batch = pl.concat(
-                (read_with_progress(text_file_path) for text_file_path in text_file_paths), how="vertical"
+                list(
+                    get_progress_class()(
+                        executor.map(read_lazyframe, text_file_paths),
+                        total=len(text_file_paths),
+                        desc="Reading packet files",
+                        unit="file",
+                    )
+                ),
+                how="vertical",
             )
 
         assert pldf_batch is not None
