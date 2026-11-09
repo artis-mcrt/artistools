@@ -24,6 +24,7 @@ from artistools.misc.console import print_warning
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import firstexisting_or_none
+from artistools.misc.fileio import get_text_compression
 from artistools.misc.fileio import natural_sort_key
 from artistools.misc.fileio import normalised_lines
 from artistools.misc.fileio import polars_source_open
@@ -36,6 +37,7 @@ from artistools.misc.modelpaths import modelpath_cache
 from artistools.misc.modelpaths import path_is_codecomparison
 from artistools.misc.modelpaths import resolve_modelpath
 from artistools.misc.parquetcache import get_file_identity
+from artistools.misc.parquetcache import MTIME_TOLERANCE_S
 from artistools.misc.parquetcache import rankbatch_parquet_staleness
 from artistools.misc.parquetcache import read_parquet_cache_metadata
 from artistools.misc.parquetcache import temporary_parts_folder
@@ -749,8 +751,8 @@ def scan_rank_text_cache(
     """Return a scan of the parquet cache of a run folder, or None if the read must take the text.
 
     A read of some ranks takes the text, because the conversion needs the text of every rank. A read of less text
-    than MIN_TEXT_BYTES_FOR_RANK_CACHE also takes the text. A read with no text file, e.g. of an archived model, takes
-    the cache.
+    than MIN_TEXT_BYTES_FOR_RANK_CACHE also takes the text, if it has no current cache. A read with no text file, e.g.
+    of an archived model, takes the cache. Text that is older than the text of the cache cannot replace the cache.
     """
     parquetfilepath = folderpath / cachefilename
     if not selectedfiles:
@@ -773,15 +775,27 @@ def scan_rank_text_cache(
         return None
 
     textsource_mtime, textsize = get_rank_text_state(textfiles)
-    if textsize < MIN_TEXT_BYTES_FOR_RANK_CACHE:
-        return None
+    # older text cannot hold newer data, e.g. an old file of all ranks after a user archives the file of a rank
+    pqmetadata = read_parquet_cache_metadata(parquetfilepath, RANK_CACHE_VERSION, None)[0]
+    if pqmetadata is not None and textsource_mtime < float(pqmetadata["textsource_mtime"]) - MTIME_TOLERANCE_S:
+        print_warning(f"The text in {folderpath} is older than the text of {cachefilename}. The read uses the cache")
+        return pl.scan_parquet(parquetfilepath, glob=False)
 
     # the stamp names the form of the text, because a file of all ranks and the files of the ranks have the same time
     textsource = without_compressed_extension(textfiles[0]).name
+    textcompression = get_text_compression(textfiles)
+    # a compression keeps the time of the text and changes its size, thus only the same compression can compare sizes
+    comparesize = pqmetadata is not None and pqmetadata.get("textsource_compression") == textcompression
     _, stalereason = read_parquet_cache_metadata(
-        parquetfilepath, RANK_CACHE_VERSION, textsource_mtime, textsource=textsource, textsource_size=textsize
+        parquetfilepath,
+        RANK_CACHE_VERSION,
+        textsource_mtime,
+        textsource=textsource,
+        textsource_size=textsize if comparesize else None,
     )
     if stalereason is not None:
+        if textsize < MIN_TEXT_BYTES_FOR_RANK_CACHE:
+            return None
         identity_of_stale_file = get_file_identity(parquetfilepath)
         if identity_of_stale_file is not None:
             print(f"  {parquetfilepath} is not a current cache of the text, because {stalereason}")
@@ -791,6 +805,7 @@ def scan_rank_text_cache(
             "textsource": textsource,
             "textsource_mtime": str(textsource_mtime),
             "textsource_size": str(textsize),
+            "textsource_compression": textcompression,
         }
         if not convert_rank_text_to_parquet(
             textfiles, parquetfilepath, metadata, (textsource_mtime, textsize), identity_of_stale_file

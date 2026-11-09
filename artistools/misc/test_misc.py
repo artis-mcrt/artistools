@@ -2778,6 +2778,65 @@ def test_parquet_cache_of_the_rank_text_warns_of_newer_text_with_absent_ranks(
     assert "uses the cache as it is" in capsys.readouterr().err
 
 
+def test_parquet_cache_of_the_rank_text_stays_after_a_compression_of_the_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A compression keeps the time of the text and changes its size, thus the cache must stay in use."""
+    from artistools.misc import modelinfo
+
+    monkeypatch.setattr(modelinfo, "MIN_TEXT_BYTES_FOR_RANK_CACHE", 1)
+    write_rank_output_model(tmp_path, {"job0": [(0, cell, cell + 0.5) for cell in range(3)]})
+    textfile = tmp_path / "job0" / "nlte_0000.out"
+
+    def read_values() -> list[float]:
+        dfrows = modelinfo.read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", cachefilename="nltecache.parquet")
+        return dfrows.sort("modelgridindex")["nnlevel"].to_list()
+
+    assert read_values() == [0.5, 1.5, 2.5]
+
+    filestat = textfile.stat()
+    compressedfile = textfile.with_name(f"{textfile.name}.gz")
+    compressedfile.write_bytes(gzip.compress(textfile.read_bytes()))
+    os.utime(compressedfile, (filestat.st_atime, filestat.st_mtime))
+    textfile.unlink()
+
+    # the compressed text can be below the limit of the size, and the cache must still serve the read
+    monkeypatch.setattr(modelinfo, "MIN_TEXT_BYTES_FOR_RANK_CACHE", 10**12)
+    with (
+        mock.patch.object(modelinfo, "convert_rank_text_to_parquet") as mockconvert,
+        mock.patch.object(modelinfo, "read_rank_file_rows") as mockreadtext,
+    ):
+        assert read_values() == [0.5, 1.5, 2.5]
+    mockconvert.assert_not_called()
+    mockreadtext.assert_not_called()
+
+
+def test_parquet_cache_of_the_rank_text_stays_for_older_text_of_all_ranks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An old file of all ranks must not replace the cache after a user archives the file of a rank."""
+    from artistools.misc import modelinfo
+
+    monkeypatch.setattr(modelinfo, "MIN_TEXT_BYTES_FOR_RANK_CACHE", 1)
+    write_rank_output_model(tmp_path, {"job0": [(0, cell, cell + 0.5) for cell in range(2)]})
+    runfolder = tmp_path / "job0"
+    # line 22 of input.txt gives the number of MPI processes
+    (tmp_path / "input.txt").write_text("\n".join(["0"] * 21 + ["2"]) + "\n", encoding="utf-8")
+    rankone = runfolder / "nlte_0001.out"
+    rankone.write_text("timestep modelgridindex nnlevel\n0 3 3.5\n0 4 4.5\n", encoding="utf-8")
+
+    def read_values() -> list[float]:
+        dfrows = modelinfo.read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", cachefilename="nltecache.parquet")
+        return dfrows.sort("modelgridindex")["nnlevel"].to_list()
+
+    assert read_values() == [0.5, 1.5, 3.5, 4.5]
+
+    rankone.unlink()
+    write_allranks_nlte_file(runfolder, mtime=2000.0)
+
+    assert read_values() == [0.5, 1.5, 3.5, 4.5]
+
+
 def write_allranks_nlte_file(modelpath: Path, mtime: float) -> Path:
     """Write the nlte file of all ranks for timestep 0 of the model of write_rank_output_model, with other values."""
     allranksfile = modelpath / "nlte_allranks.out"

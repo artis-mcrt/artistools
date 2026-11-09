@@ -56,6 +56,17 @@ def with_compressed_extension(filename: Path | str, ext: str) -> Path:
     return Path(str(filename) if str(filename).endswith(ext) else str(filename) + ext)
 
 
+def get_text_compression(textfiles: Sequence[Path]) -> str:
+    """Return the compression suffixes of the text of a parquet cache, e.g. ".zst", or "" for plain text.
+
+    A user can compress the text after the conversion, and zstd keeps the time of the file. The size of the text then
+    changes, and its data stays the same. Thus a cache compares its stamp of the size only with a text of the same
+    compression. The files of the ranks can have different compressions, e.g. during a compression of the model
+    folder, and the result then holds each one.
+    """
+    return ",".join(sorted({file.suffix if file.suffix in COMPRESSED_EXTENSIONS else "" for file in textfiles}))
+
+
 def without_compressed_extension(filepath: Path) -> Path:
     """Return the path without its compression extension, e.g. model.txt for model.txt.zst."""
     return filepath.with_suffix("") if filepath.suffix in COMPRESSED_EXTENSIONS else filepath

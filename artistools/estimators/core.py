@@ -44,7 +44,6 @@ from artistools.inputmodel import scan_modeldata
 from artistools.inputmodel.slice1dfromconein3dmodel import get_profile_along_axis
 from artistools.inputmodel.slice1dfromconein3dmodel import make_cone
 from artistools.misc import clear_at_reload
-from artistools.misc import COMPRESSED_EXTENSIONS
 from artistools.misc import contiguous_runs
 from artistools.misc import exit_with_error
 from artistools.misc import firstexisting_or_none
@@ -57,6 +56,7 @@ from artistools.misc import get_parquet_cache_name
 from artistools.misc import get_rank_outputfiles
 from artistools.misc import get_runfolder_timesteps
 from artistools.misc import get_runfolders
+from artistools.misc import get_text_compression
 from artistools.misc import get_velocity_label
 from artistools.misc import is_remote_path
 from artistools.misc import mtime_matches_stamp
@@ -626,7 +626,7 @@ def allranks_textsource_change(
     # change only in a text with the same compression as the stamp
     textfiles = [textfile] if textfile is not None else [filestat.path for filestat in rankfile_stats.values()]
     stampedcompression = pqmetadata.get("textsource_compression")
-    if stampedcompression is not None and stampedcompression != get_estimator_textcompression(textfiles):
+    if stampedcompression is not None and stampedcompression != get_text_compression(textfiles):
         return None
     textbytes = (
         textfile.stat().st_size if textfile is not None else sum(filestat.size for filestat in rankfile_stats.values())
@@ -894,17 +894,6 @@ def get_estimator_textsize(textfiles: Sequence[Path]) -> int:
     return sum(file.stat().st_size for file in textfiles)
 
 
-def get_estimator_textcompression(textfiles: Sequence[Path]) -> str:
-    """Return the compression suffixes of the estimator text, e.g. ".zst", or "" for plain text.
-
-    A user can compress the text after the conversion, and zstd keeps the time of the file. The size of the text then
-    changes, and its data stays the same. Thus the cache compares its stamp of the size only with a text of the same
-    compression. The files of the ranks can have different compressions, e.g. during a compression of the model
-    folder, and the result then holds each one.
-    """
-    return ",".join(sorted({file.suffix if file.suffix in COMPRESSED_EXTENSIONS else "" for file in textfiles}))
-
-
 def convert_unchanged_text_to_parts(
     state: "EstimatorBatchState", partsfolder: Path
 ) -> tuple[TimestepParts, "EstimatorBatchState", list[Path], int]:
@@ -1001,7 +990,7 @@ def write_estimator_cache(
             # a job that still runs can add to the text after the read, within the tolerance of the cache stamp.
             # The size of the text then shows the change, see allranks_textsource_change()
             "textsource_size": str(textsize),
-            "textsource_compression": get_estimator_textcompression(textfiles),
+            "textsource_compression": get_text_compression(textfiles),
         }
         if state.allranks
         else {"batch_rank_min": str(min(state.mpiranks)), "batch_rank_max": str(max(state.mpiranks))}
