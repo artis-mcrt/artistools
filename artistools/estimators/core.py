@@ -1666,12 +1666,16 @@ def convert_selected_estimator_batches(
     incomplete last timestep, and a later run folder then holds that timestep. Thus the selection runs again after a
     conversion until it finds no new run folder.
     """
+    batchcaches: list[EstimatorBatchCache] = []
     seenrunfolders: set[Path] = set()
     while True:
         states = get_estimator_batch_states(modelpath, match_modelgridindex, match_timestep)
+        if not states:
+            # a conversion can drop each timestep of a model. The caches of that conversion hold the empty result
+            return batchcaches
         batchcaches = convert_estimator_batch_caches(modelpath, states, verbose)
         runfolders = {state.runfolder for state in states}
-        if match_timestep is None or not any(state.rebuild for state in states) or runfolders <= seenrunfolders:
+        if not any(state.rebuild for state in states) or runfolders <= seenrunfolders:
             return batchcaches
         seenrunfolders |= runfolders
 

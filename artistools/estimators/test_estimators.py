@@ -1217,8 +1217,13 @@ def test_conversion_drops_an_incomplete_last_timestep(
     assert lasttimestep not in get_runfolder_timesteps(tmp_path)
 
 
+@pytest.mark.parametrize(
+    ("restarttimesteps", "scantimestep"), [((2, 3), 2), ((2,), None)], ids=["one_timestep", "all_timesteps"]
+)
 def test_first_scan_of_a_timestep_reads_the_run_folder_of_the_restart(
     tmp_path: Path,
+    restarttimesteps: Sequence[int],
+    scantimestep: int | None,
     get_cell_texts: Callable[[str], list[str]],
     write_zstd_frames: Callable[[Path, Sequence[str]], None],
     copy_model_inputs: Callable[[Path, Path, Sequence[str]], None],
@@ -1238,11 +1243,14 @@ def test_first_scan_of_a_timestep_reads_the_run_folder_of_the_restart(
             for modelgridindex in (lastcells if timestep == timesteps[-1] else (0, 1))
         ]
 
-    for jobname, jobtexts in (("job0", get_job_text((0, 1, 2), (0,))), ("job1", get_job_text((2, 3), (0, 1)))):
+    for jobname, jobtexts in (
+        ("job0", get_job_text((0, 1, 2), (0,))),
+        ("job1", get_job_text(restarttimesteps, (0, 1))),
+    ):
         (tmp_path / jobname).mkdir()
         write_zstd_frames(tmp_path / jobname / "estimators_allranks.out.zst", jobtexts)
 
-    dfestim = at.estimators.scan_estimators(tmp_path, timestep=2).collect()
+    dfestim = at.estimators.scan_estimators(tmp_path, timestep=scantimestep).collect().filter(pl.col("timestep") == 2)
     assert sorted(dfestim["modelgridindex"].to_list()) == [0, 1]
 
 
