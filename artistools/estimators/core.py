@@ -1125,8 +1125,8 @@ def get_remote_estimator_schema(
     text files. A check of a large model on Lustre takes 0.7 s for 3842 text files.
     """
     if source.batchcaches is None and not source.classicartis and not path_is_codecomparison(modelpath):
-        states = get_estimator_batch_states(modelpath, source.cells, source.timesteps)
-        source = source._replace(batchcaches=tuple(convert_estimator_batch_caches(modelpath, states, verbose=False)))
+        batchcaches = convert_selected_estimator_batches(modelpath, source.cells, source.timesteps, verbose=False)
+        source = source._replace(batchcaches=tuple(batchcaches))
     estimators, modelmeta = get_remote_source_query(modelpath, source)
     return estimators.clear().collect(), modelmeta, source
 
@@ -1657,6 +1657,29 @@ def convert_estimator_batch_caches(
     return batchcaches
 
 
+def convert_selected_estimator_batches(
+    modelpath: Path, match_modelgridindex: Sequence[int] | None, match_timestep: Sequence[int] | None, verbose: bool
+) -> list[EstimatorBatchCache]:
+    """Return the caches of a selection of cells and timesteps, after the conversion of the stale batches.
+
+    get_estimator_batch_states selects the run folders from the timesteps of the text. A conversion can drop an
+    incomplete last timestep, and a later run folder then holds that timestep. Thus the selection runs again after a
+    conversion until it finds no new run folder.
+    """
+    batchcaches: list[EstimatorBatchCache] = []
+    seenrunfolders: set[Path] = set()
+    while True:
+        states = get_estimator_batch_states(modelpath, match_modelgridindex, match_timestep)
+        if not states:
+            # a conversion can drop each timestep of a model. The caches of that conversion hold the empty result
+            return batchcaches
+        batchcaches = convert_estimator_batch_caches(modelpath, states, verbose)
+        runfolders = {state.runfolder for state in states}
+        if not any(state.rebuild for state in states) or runfolders <= seenrunfolders:
+            return batchcaches
+        seenrunfolders |= runfolders
+
+
 def select_estimator_batch_caches(
     modelpath: Path,
     batchcaches: Sequence[EstimatorBatchCache],
@@ -1696,9 +1719,7 @@ def scan_artis_estimators(
         # the cache of all the estimators replaces them. The scan thus checks the caches of the model again
         batchcaches = None
     selectedcaches = (
-        convert_estimator_batch_caches(
-            modelpath, get_estimator_batch_states(modelpath, match_modelgridindex, match_timestep), verbose
-        )
+        convert_selected_estimator_batches(modelpath, match_modelgridindex, match_timestep, verbose)
         if batchcaches is None
         else select_estimator_batch_caches(modelpath, batchcaches, match_modelgridindex, match_timestep)
     )
