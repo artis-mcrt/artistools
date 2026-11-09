@@ -1377,3 +1377,18 @@ def test_card_state_follows_its_subplot() -> None:
     assert subplotcards.get_moved_rows(before, (("Te",), ("TR", "yscale=log"), ("nne",)), {1}) == {1}
     # the change removes the subplot of the row
     assert not subplotcards.get_moved_rows(before, before[1:], {0})
+
+
+def test_estimators_viewer_gives_the_log_x_axis(make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+    """The control of the x scale gives --logscalex, and the command opens a window with the same scale."""
+    viewer = make_viewer("estimators", [str(modelpath_classic_3d), "-timestep", "10", "--interactive"])
+    assert not viewer.values.logscalex
+    assert viewer.fig.axes[0].get_xscale() == "linear"
+
+    assert apply_values(viewer, dc.replace(viewer.values, logscalex=True)) is None
+    assert viewer.fig.axes[0].get_xscale() == "log"
+    assert "--logscalex" in viewer.get_command()
+
+    again = make_viewer("estimators", [*shlex.split(viewer.get_command())[2:], "--interactive"])
+    assert again.values.logscalex
+    assert again.get_command() == viewer.get_command()
