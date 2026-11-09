@@ -63,6 +63,9 @@ if t.TYPE_CHECKING:
 defaultoutputfile = "plottransitions_cell{cell:05d}_ts{timestep:03d}_{timedays:.2f}d.pdf"
 
 
+ASSUMED_A_PER_S_OF_NIST_LINE = 1e8
+
+
 def get_kurucz_transitions(
     ionlist: Sequence[tuple[int, int]] | None = None,
 ) -> tuple[pl.DataFrame, list[tuple[int, int]]]:
@@ -141,6 +144,7 @@ def get_nist_transitions(filename: Path | str) -> pl.DataFrame:
         upper_statweight: float
 
     translist = []
+    assumedcount = 0
     with zopen(require_reference_data_file(filename, "data", "NIST line list"), encoding="utf-8") as fnist:
         for line in fnist:
             row = line.split("|")
@@ -151,7 +155,11 @@ def get_nist_transitions(filename: Path | str) -> pl.DataFrame:
                     lambda_angstroms = float(row[1])
                 else:
                     continue
-                A = float(row[3]) if row[3].strip() else 1e8
+                if row[3].strip():
+                    A = float(row[3])
+                else:
+                    A = ASSUMED_A_PER_S_OF_NIST_LINE
+                    assumedcount += 1
                 lower_energy_ev, upper_energy_ev = (float(x.strip(" []")) for x in row[5].split("-"))
                 lower_statweight, upper_statweight = (float(x.strip()) for x in row[12].split("-"))
                 translist.append(
@@ -159,6 +167,12 @@ def get_nist_transitions(filename: Path | str) -> pl.DataFrame:
                         lambda_angstroms, A, lower_energy_ev, upper_energy_ev, lower_statweight, upper_statweight
                     )
                 )
+
+    if assumedcount > 0:
+        print_warning(
+            f"{filename}: {assumedcount} of {len(translist)} lines have no A value in the NIST list. The command"
+            f" assumes A = {ASSUMED_A_PER_S_OF_NIST_LINE:g} per second for these lines"
+        )
 
     return pl.DataFrame(translist, orient="row", schema=list(NISTTransitionTuple._fields))
 

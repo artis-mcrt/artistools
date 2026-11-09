@@ -485,9 +485,7 @@ def get_run_subfolders(modelpath: Path | str) -> tuple[Path, ...]:
     )
 
 
-def get_runfolders(
-    modelpath: Path | str, timestep: int | None = None, timesteps: Sequence[int] | None = None
-) -> Sequence[Path]:
+def get_runfolders(modelpath: Path | str, timesteps: Sequence[int] | None = None) -> Sequence[Path]:
     """Get a list of folders containing ARTIS output files from a modelpath, optionally with a timestep restriction.
 
     Without a timestep, the list holds each folder whose estimator files give at least one timestep. A restarted run
@@ -495,21 +493,14 @@ def get_runfolders(
     hold, as in scan_estimators. A folder with no earlier folder keeps its first timestep, e.g. a model whose first run
     folder is gone.
     """
-    singletimestep = timestep if timesteps is None and timestep is not None and timestep > -1 else None
     ownedtimesteps_of_folder: dict[Path, set[int]] = {}
     earliertimesteps: set[int] = set()
     for folderpath in get_run_subfolders(modelpath):
         foldertimesteps = get_runfolder_timesteps(folderpath)
-        # the earliest folder that holds a timestep keeps it, thus a later folder cannot change the result
-        if singletimestep is not None and singletimestep in foldertimesteps:
-            return (folderpath,)
         ownedtimesteps_of_folder[folderpath] = set(foldertimesteps) - earliertimesteps
         earliertimesteps.update(foldertimesteps)
 
-    if singletimestep is not None:
-        return ()
-
-    if timesteps is not None and (len(timesteps) > 0 or (timestep is not None and timestep > -1)):
+    if timesteps is not None and len(timesteps) > 0:
         return tuple(
             folderpath for folderpath, owned in ownedtimesteps_of_folder.items() if not owned.isdisjoint(timesteps)
         )
@@ -858,30 +849,28 @@ def read_rank_outputfiles(
         msg = f"{cellstext} no matter. ARTIS writes no {filefamily} data for a cell with no matter"
         raise ValueError(msg)
 
-    runfolders: Sequence[Path]
-    if isinstance(timestep, int) and timestep >= 0:
-        runfolders = get_runfolders(modelpath, timestep=timestep)
-    else:
-        # a restart that stopped after its repeated timestep owns no timestep, but it can hold a cell that the earlier
-        # folder never wrote. Thus each folder that holds a selected timestep counts, and the rows decide below
-        heldtimesteps_of_folder = {
-            folder: heldtimesteps
-            for folder in get_run_subfolders(modelpath)
-            if (heldtimesteps := set(get_runfolder_timesteps(folder)))
-        }
-        # a timestep that no run folder holds gives no row, and the empty result still has the types of the columns
-        runfolders = [
-            folder
-            for folder, heldtimesteps in heldtimesteps_of_folder.items()
-            if not selectedtimesteps or not heldtimesteps.isdisjoint(selectedtimesteps)
-        ] or list(heldtimesteps_of_folder)
-    if not runfolders and isinstance(timestep, int) and timestep >= 0 and (allfolders := get_runfolders(modelpath)):
-        heldtimesteps = sorted({ts for folder in allfolders for ts in get_runfolder_timesteps(folder)})
+    # a restart that repeats a timestep can hold a cell that the earlier folder never wrote. Thus each folder that holds
+    # a selected timestep counts, and the rows decide below
+    heldtimesteps_of_folder = {
+        folder: heldtimesteps
+        for folder in get_run_subfolders(modelpath)
+        if (heldtimesteps := set(get_runfolder_timesteps(folder)))
+    }
+    runfolders = [
+        folder
+        for folder, heldtimesteps in heldtimesteps_of_folder.items()
+        if not selectedtimesteps or not heldtimesteps.isdisjoint(selectedtimesteps)
+    ]
+    if not runfolders and isinstance(timestep, int) and heldtimesteps_of_folder:
+        alltimesteps = set().union(*heldtimesteps_of_folder.values())
         msg = (
             f"No run folder of {modelpath} holds timestep {timestep}. The estimator files of the run folders give "
-            f"timesteps {heldtimesteps[0]} to {heldtimesteps[-1]}"
+            f"timesteps {min(alltimesteps)} to {max(alltimesteps)}"
         )
         raise ValueError(msg)
+    # a timestep of a list that no run folder holds gives no row, and the empty result still has the types of the
+    # columns
+    runfolders = runfolders or list(heldtimesteps_of_folder)
 
     filepathsofeachfolder: list[list[Path]] = []
     folders_with_text: list[Path] = []

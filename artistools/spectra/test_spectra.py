@@ -1547,7 +1547,8 @@ def test_write_data_puts_reference_spectra_in_their_own_table(
     )
     assert (tmp_path / "refonly.pdf").is_file()
     assert not (tmp_path / "refonly.txt").exists()
-    pltest.assert_frame_equal(read_data_file(tmp_path / "refonly_references.txt"), dfreferences)
+    # the default absolute tolerance of 1e-8 is larger than every flux
+    pltest.assert_frame_equal(read_data_file(tmp_path / "refonly_references.txt"), dfreferences, abs_tol=0.0)
 
     # the filter curves of --showfilterfunctions have their own wavelength grids, and no table held them
     at.spectra.plot(
@@ -2797,6 +2798,22 @@ def test_scan_spec_follows_the_working_folder(tmp_path: Path, monkeypatch: pytes
 
     monkeypatch.chdir(tmp_path / "modelB")
     assert atspectra.scan_spec(Path()).collect()["10.0"].item() == pytest.approx(2.0)
+
+
+def test_scan_specpol_data_of_a_cut_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A cut specpol.out must lose only its last line, and a short line must stop the read. It gave null values."""
+    fulltext = (at.get_path("testdata") / "vspecpolmodel" / "specpol.out").read_bytes()
+    specpath = tmp_path / "specpol.out"
+
+    specpath.write_bytes(fulltext[:-7])
+    dfstokes = at.spectra.scan_specpol_data(dirbin=-1, modelpath=tmp_path)["U"].collect()
+    assert "ends with a cut line" in capsys.readouterr().err
+    assert dfstokes.height == fulltext.count(b"\n") - 2
+    assert dfstokes.null_count().sum_horizontal().item() == 0
+
+    specpath.write_bytes(fulltext[:-40] + b"\n")
+    with pytest.raises(ValueError, match="a line with fewer values than the header"):
+        at.spectra.scan_specpol_data(dirbin=-1, modelpath=tmp_path)
 
 
 def test_scan_spec_of_a_cut_or_empty_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
