@@ -275,6 +275,26 @@ def test_packets_cache_goes_stale_when_any_rank_file_changes(tmp_path: Path) -> 
     assert np.isclose(get_stamp(), textfiles[0].stat().st_mtime, rtol=0.0, atol=1e-3)
 
 
+def test_cut_rank_file_of_a_batch_gives_an_error_that_names_the_file(tmp_path: Path) -> None:
+    """A cut .xz file gives a polars panic, which is not an Exception, and the error must name the rank file."""
+    import lzma
+
+    from artistools.packets.core import get_packets_rankbatch_parquetfile
+
+    sourcedir = at.get_path("testdata") / "test-classicmode_3d" / "packets"
+    for rank in (0, 1):
+        with at.zopen(sourcedir / f"packets00_{rank:04d}.out.zst", mode="rb") as sourcefile:
+            compressed = lzma.compress(sourcefile.read())
+        (tmp_path / f"packets00_{rank:04d}.out.xz").write_bytes(compressed)
+    cutfile = tmp_path / "packets00_0001.out.xz"
+    cutfile.write_bytes(cutfile.read_bytes()[: cutfile.stat().st_size // 2])
+
+    with pytest.raises(pl.exceptions.PanicException) as excinfo:
+        get_packets_rankbatch_parquetfile(tmp_path, batch_mpiranks=[0, 1], batchindex=0, virtual=False)
+
+    assert any(str(cutfile) in note for note in excinfo.value.__notes__ or [])
+
+
 def test_virtual_packets_file_with_no_data_lines_gives_no_rows(tmp_path: Path) -> None:
     """ARTIS writes a line only for a virtual packet that escapes, thus the file of a rank can hold only the header.
 

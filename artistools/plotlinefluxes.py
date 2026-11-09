@@ -270,9 +270,6 @@ def get_line_luminosities_from_pops(
     ionlist = [(feature.atomic_number, feature.ion_stage) for feature in emfeatures]
     adata = get_levels(modelpath, ionlist=tuple(ionlist), get_transitions=True)
 
-    # one read gives the populations of every ion, thus each feature filters this frame
-    dfnltepops_allions = read_nltepops(modelpath)
-
     shell_volumes_at_1s = get_shell_volumes_at_1s(modeldata, modelmeta["t_model_init_days"] * day_to_s)
     if modelmeta["dimensions"] == 1:
         print_detail(
@@ -287,6 +284,9 @@ def get_line_luminosities_from_pops(
         "timestep": timesteps,
         "t_sec_cubed": [(timedays * day_to_s) ** 3 for timedays in arr_tmid],
     })
+
+    # one read gives the populations of every ion in the time bins, thus each feature filters this frame
+    dfnltepops_allions = read_nltepops(modelpath, timestep=sorted(set(timesteps)))
 
     dictlcdata = {"time": arr_tmid}
     for feature in emfeatures:
@@ -340,6 +340,72 @@ def get_line_luminosities_from_pops(
     return pl.DataFrame(dictlcdata)
 
 
+def raise_no_population_error(timestep: int, level: int) -> t.NoReturn:
+    """Stop with the message for a line that has no population in any cell at one time."""
+    msg = (
+        f"The NLTE populations hold no value of the upper level {level} at timestep {timestep} in any cell."
+        " ARTIS writes the populations of the NLTE levels alone, at the timesteps of its NLTE output. Give"
+        " --timebins-tstart and --timebins-tend that hold such timesteps, and features of lines with an NLTE"
+        " upper level"
+    )
+    raise ValueError(msg)
+
+
+def sum_line_luminosities_of_cells(
+    dfnltepops: pl.DataFrame,
+    dflines: pl.DataFrame,
+    dftimes: pl.DataFrame,
+    shell_volumes_at_1s: npt.NDArray[np.floating],
+) -> npt.NDArray[np.floating]:
+    """Return the luminosity of the lines at each time for a 2D or 3D model. A cell with no data adds zero.
+
+    The sum over the cells for each timestep and level comes first, thus the memory holds no row for each time, line,
+    and cell. The arguments are those of sum_line_luminosities.
+    """
+    dtypes = dfnltepops.schema
+    dfcellvolumes = pl.DataFrame({
+        "modelgridindex": pl.Series(range(len(shell_volumes_at_1s)), dtype=dtypes["modelgridindex"]),
+        "volume_at_1s": shell_volumes_at_1s,
+    })
+    dflevelsums = (
+        dfnltepops
+        .lazy()
+        .filter(pl.col("n_NLTE").is_not_null())
+        .join(dfcellvolumes.lazy(), on="modelgridindex", how="inner")
+        .group_by("timestep", "level")
+        .agg(n_times_volume_at_1s=(pl.col("n_NLTE") * pl.col("volume_at_1s")).sum(), cellswithdata=pl.len())
+        .collect()
+    )
+    dfluminosity = (
+        dftimes
+        .with_columns(pl.col("timestep").cast(dtypes["timestep"]))
+        .join(dflines.with_columns(pl.col("level").cast(dtypes["level"])), how="cross")
+        .join(dflevelsums, on=["timestep", "level"], how="left")
+        .sort("timeindex", "lineindex")
+    )
+
+    for timestep, level, cellswithdata in dfluminosity.select("timestep", "level", "cellswithdata").iter_rows():
+        if cellswithdata is None:
+            raise_no_population_error(timestep, level)
+        if cellswithdata < len(shell_volumes_at_1s):
+            print(
+                f"No data for {len(shell_volumes_at_1s) - cellswithdata} of {len(shell_volumes_at_1s)} cells at"
+                f" timestep {timestep} and level {level} (expected for empty cells)"
+            )
+
+    dftimeluminosity = (
+        dfluminosity
+        .with_columns(
+            luminosity=pl.col("delta_ergs") * pl.col("A") * pl.col("n_times_volume_at_1s") * pl.col("t_sec_cubed")
+        )
+        .group_by("timeindex", maintain_order=True)
+        .agg(pl.col("luminosity").sum())
+    )
+    lumdata = np.zeros(dftimes.height, dtype=float)
+    lumdata[dftimeluminosity["timeindex"].to_numpy()] = dftimeluminosity["luminosity"].to_numpy()
+    return lumdata
+
+
 def sum_line_luminosities(
     dfnltepops: pl.DataFrame,
     dflines: pl.DataFrame,
@@ -360,6 +426,9 @@ def sum_line_luminosities(
     shell gives no volume. The cells of a 2D or 3D model have no radial order. Thus each cell with data counts its
     own volume, and a cell with no data counts nothing.
     """
+    if not fillshellgaps:
+        return sum_line_luminosities_of_cells(dfnltepops, dflines, dftimes, shell_volumes_at_1s)
+
     keydtypes = {colname: dfnltepops.schema[colname] for colname in ("timestep", "level", "modelgridindex")}
     dfshells = pl.DataFrame({
         "modelgridindex": pl.Series(range(len(shell_volumes_at_1s)), dtype=keydtypes["modelgridindex"]),
@@ -377,11 +446,7 @@ def sum_line_luminosities(
         .with_columns(
             shell_volume=pl.col("shell_volume_at_1s") * pl.col("t_sec_cubed"),
             # the empty shells in front of a shell with data belong to its volume segment
-            volumesegment=(
-                hasdata.cast(pl.Int32).cum_sum().shift(1, fill_value=0).over("timeindex", "lineindex")
-                if fillshellgaps
-                else pl.col("modelgridindex").cast(pl.Int32)
-            ),
+            volumesegment=hasdata.cast(pl.Int32).cum_sum().shift(1, fill_value=0).over("timeindex", "lineindex"),
         )
         .with_columns(effective_volume=pl.col("shell_volume").cum_sum().over("timeindex", "lineindex", "volumesegment"))
     )
@@ -396,14 +461,7 @@ def sum_line_luminosities(
         print(f"No data for cells {modelgridindices.to_list()} (expected for empty cells)")
 
     if not (nocelldata := emptycells.filter(pl.col("emptycellcount") >= len(shell_volumes_at_1s))).is_empty():
-        timestep, level = nocelldata.select("timestep", "level").row(0)
-        msg = (
-            f"The NLTE populations hold no value of the upper level {level} at timestep {timestep} in any cell."
-            " ARTIS writes the populations of the NLTE levels alone, at the timesteps of its NLTE output. Give"
-            " --timebins-tstart and --timebins-tend that hold such timesteps, and features of lines with an NLTE"
-            " upper level"
-        )
-        raise ValueError(msg)
+        raise_no_population_error(*nocelldata.select("timestep", "level").row(0))
 
     # a cumulative sum adds the terms in the order of the lines and the cells, as a loop does
     dfluminosity = (

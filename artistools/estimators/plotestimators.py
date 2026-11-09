@@ -759,16 +759,6 @@ def get_average_ionisation_plans(
     return plans
 
 
-def read_nltepops_of_estimators(modelpath: str | Path, timesteps: Sequence[int], cells: Sequence[int]) -> pl.DataFrame:
-    """Return the NLTE populations of the timesteps and the cells of the plot.
-
-    A read of every rank, timestep, and cell needs about 5e9 rows for a 3D model of 1e5 cells and 100 timesteps,
-    although a snapshot plot uses one timestep. read_nltepops reads one timestep or every timestep.
-    """
-    dfnltepops = read_nltepops(modelpath, timestep=timesteps[0] if len(timesteps) == 1 else None, modelgridindex=cells)
-    return dfnltepops.filter(pl.col("timestep").is_in(timesteps))
-
-
 def get_average_excitation_plans(
     settings: SubplotSettings,
     params: Sequence[str],
@@ -786,7 +776,7 @@ def get_average_excitation_plans(
     dftexc = estimators.select("timestep", "modelgridindex", T_exc=pl.col("Te"))
 
     # one read serves every series of the subplot
-    dfnltepops_allions = read_nltepops_of_estimators(modelpath, timestepslist, mgilist)
+    dfnltepops_allions = read_nltepops(modelpath, timestep=timestepslist, modelgridindex=mgilist)
 
     plans = []
     for paramvalue in params:
@@ -908,7 +898,7 @@ def get_levelpop_plans(
     )
 
     # one read serves every series of the subplot
-    dfnltepops_allions = read_nltepops_of_estimators(modelpath, timestepslist, mgilist)
+    dfnltepops_allions = read_nltepops(modelpath, timestep=timestepslist, modelgridindex=mgilist)
 
     plans = []
     for paramvalue in params:

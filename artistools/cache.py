@@ -43,7 +43,7 @@ if t.TYPE_CHECKING:
 # the names of the caches that the readers write: the input model, the line list, the estimators, and the batches of
 # the packets and the virtual packets. A file of a different name, e.g. science.out.parquet, belongs to the user
 CACHE_BASENAME: t.Final = (
-    r"(?:model\.txt|abundances\.txt|linelist\.out|estimators_allranks\.out|estimbatch\d+_\d+_\d+\.out"
+    r"(?:model\.txt|abundances\.txt|linelist\.out|estimators_allranks\.out|nltepops_allranks\.out|estimbatch\d+_\d+_\d+\.out"
     r"|v?packetsbatch\d+_\d+_\d+\.out)\.parquet"
 )
 

@@ -116,7 +116,9 @@ def test_line_populations_take_the_boltzmann_factor_of_the_ground_level_with_no_
     dfcells = pl.DataFrame({"modelgridindex": [0, 1], "T_exc": [5000.0, 10000.0]})
     levels = pl.DataFrame({"level": [0, 1, 2], "g": [2.0, 4.0, 6.0], "energy_ev": [0.0, 1.0, 2.0]})
     dfnltepops = pl.DataFrame({"modelgridindex": [0, 1, 0, 1], "level": [0, 0, 1, 1], "n_NLTE": [10.0, 20.0, 3.0, 4.0]})
-    dfpops = at.lines.linecontributions.get_ion_populations(dfcells, levels, [1, 2], dfnltepops, "nnion_X_II")
+    dfpops = at.lines.linecontributions.get_ion_populations(
+        dfcells, levels, levels.filter(pl.col("level").is_in([1, 2])), dfnltepops, "nnion_X_II"
+    )
     dflevel2 = dfpops.filter(pl.col("level") == 2).sort("modelgridindex")
     assert dflevel2["population_source"].unique().to_list() == ["Boltzmann from the ground level"]
     expected = np.array([10.0, 20.0]) * 3.0 * np.exp(-2.0 / at.constants.K_B_ev_per_K / np.array([5000.0, 10000.0]))
@@ -135,7 +137,9 @@ def test_line_summary_gives_the_velocity_of_the_largest_tau_with_a_cell_that_has
         "level": [0, 0, 1, 1, -1],
         "n_NLTE": [10.0, 20.0, 3.0, 4.0, 1.0],
     })
-    dfpops = at.lines.linecontributions.get_ion_populations(dfcells, levels, [2], dfnltepops, "nnion_X_II")
+    dfpops = at.lines.linecontributions.get_ion_populations(
+        dfcells, levels, levels.filter(pl.col("level").is_in([2])), dfnltepops, "nnion_X_II"
+    )
     assert dfpops.filter(pl.col("modelgridindex") == 1)["population"].to_list() == [None]
 
     dfsummary = get_line_summary(
@@ -164,7 +168,9 @@ def test_line_populations_of_a_cell_with_no_nlte_row_take_the_lte_populations() 
     dfcells = pl.DataFrame({"modelgridindex": [0, 1], "T_exc": [5000.0, 8000.0], "nnion_X_II": [100.0, 200.0]})
     levels = pl.DataFrame({"level": [0, 1], "g": [2.0, 4.0], "energy_ev": [0.0, 1.0]})
     dfnltepops = pl.DataFrame({"modelgridindex": [0, 0], "level": [0, 1], "n_NLTE": [90.0, 10.0]})
-    dfpops = at.lines.linecontributions.get_ion_populations(dfcells, levels, [0, 1], dfnltepops, "nnion_X_II")
+    dfpops = at.lines.linecontributions.get_ion_populations(
+        dfcells, levels, levels.filter(pl.col("level").is_in([0, 1])), dfnltepops, "nnion_X_II"
+    )
     dfcell1 = dfpops.filter(pl.col("modelgridindex") == 1).sort("level")
     assert dfcell1["population_source"].to_list() == ["LTE", "LTE"]
     boltzmann = np.array([2.0, 4.0 * np.exp(-1.0 / at.constants.K_B_ev_per_K / 8000.0)])
@@ -176,6 +182,7 @@ def test_line_summary_joins_the_cells_of_a_line_with_different_population_method
     """A line with NLTE populations in one cell and LTE populations in another gave two rows of the summary."""
     from artistools.lines.linecontributions import get_line_summary
     from artistools.lines.linecontributions import get_line_summary_of_batches
+    from artistools.lines.linecontributions import merge_line_summaries
 
     def get_cell_table(modelgridindex: int, source: str, emission: float) -> pl.DataFrame:
         return pl.DataFrame({
@@ -193,14 +200,74 @@ def test_line_summary_joins_the_cells_of_a_line_with_different_population_method
             "emission_erg_per_s": [emission],
         })
 
-    dfsummary = get_line_summary_of_batches([
-        get_line_summary(get_cell_table(0, "NLTE", 1.0)),
-        get_line_summary(get_cell_table(1, "LTE", 3.0)),
-    ])
+    dfsummary = get_line_summary_of_batches(
+        merge_line_summaries(
+            pl.concat([
+                get_line_summary(get_cell_table(0, "NLTE", 1.0)),
+                get_line_summary(get_cell_table(1, "LTE", 3.0)),
+            ])
+        )
+    )
     assert dfsummary.height == 1
     assert dfsummary["n_lower_source"].item() == "LTE/NLTE"
     assert dfsummary["emission_erg_per_s"].item() == 4
     assert np.isclose(dfsummary["velocity_kmps_emission_mean"].item(), 1750.0, rtol=1e-12)
+
+
+def test_running_merge_of_line_summaries_agrees_with_one_merge_of_all_the_batches() -> None:
+    """A merge of one batch at a time gives the same row as one merge of all the batches.
+
+    A sort takes NaN as the largest value, but max() skips it. Thus the velocity at the largest tau_sobolev must see the
+    NaN of an earlier batch. A tie must keep the velocity of the first batch.
+    """
+    from artistools.lines.linecontributions import get_line_summary
+    from artistools.lines.linecontributions import merge_line_summaries
+
+    def get_cell_row(velocity_kmps: float, tau_sobolev: float | None, source: str | None) -> pl.DataFrame:
+        return pl.DataFrame(
+            {
+                "velocity_kmps": [velocity_kmps],
+                "Te": [5000.0],
+                "ion": ["Fe II"],
+                "lambda_angstroms": [7155.0],
+                "lower": [0],
+                "upper": [10],
+                "A_per_s": [0.1],
+                "n_lower_source": [source],
+                "n_upper_source": ["LTE"],
+                "tau_sobolev": [tau_sobolev],
+                "emission_erg_per_s": [velocity_kmps / 1000.0],
+            },
+            schema_overrides={"n_lower_source": pl.String, "tau_sobolev": pl.Float64},
+        )
+
+    def get_batch_summary(velocity_kmps: float, tau_sobolev: float | None, source: str | None) -> pl.DataFrame:
+        return get_line_summary(get_cell_row(velocity_kmps, tau_sobolev, source))
+
+    batches = [
+        get_batch_summary(1000.0, 2.0, "NLTE"),
+        get_batch_summary(2000.0, math.nan, "LTE"),
+        get_batch_summary(3000.0, 5.0, None),
+        get_batch_summary(4000.0, 5.0, "LTE"),
+        get_batch_summary(5000.0, None, "superlevel"),
+    ]
+    dfrunning = batches[0]
+    for dfbatch in batches[1:]:
+        dfrunning = merge_line_summaries(pl.concat([dfrunning, dfbatch]))
+
+    pltest.assert_frame_equal(dfrunning, merge_line_summaries(pl.concat(batches)))
+
+    # one batch can hold a NaN and a finite value, and a later batch can hold a larger finite value
+    cellsoffirstbatch = pl.concat([get_cell_row(2000.0, math.nan, "LTE"), get_cell_row(1000.0, 2.0, "LTE")])
+    cellofsecondbatch = get_cell_row(3000.0, 5.0, "LTE")
+    dftwobatches = merge_line_summaries(
+        pl.concat([get_line_summary(cellsoffirstbatch), get_line_summary(cellofsecondbatch)])
+    )
+    assert math.isclose(dftwobatches["velocity_kmps_at_tau_sobolev_max"].item(), 2000.0)
+    pltest.assert_frame_equal(dftwobatches, get_line_summary(pl.concat([cellsoffirstbatch, cellofsecondbatch])))
+    assert np.isclose(dfrunning["tau_sobolev_max"].item(), 5.0, rtol=1e-12)
+    assert np.isclose(dfrunning["velocity_kmps_at_tau_sobolev_max"].item(), 2000.0, rtol=1e-12)
+    assert dfrunning["n_lower_source"].item().to_list() == [None, "LTE", "NLTE", "superlevel"]
 
 
 def test_plotlinecontributions_bins_the_cells_of_each_line_by_velocity(
@@ -539,6 +606,7 @@ def test_taumin_keeps_a_line_whose_lower_level_is_above_the_nlte_levels() -> Non
     can be above n_ion. The earlier bound n_l <= n_ion left out such a line, although its tau_sobolev reached -taumin.
     """
     from artistools.lines.linecontributions import get_cell_line_table
+    from artistools.lines.linecontributions import get_ion_population_inputs
     from artistools.lines.linecontributions import get_lines_that_can_reach_tau
     from artistools.lines.linecontributions import NLTEPOPS_SCHEMA
 
@@ -574,7 +642,9 @@ def test_taumin_keeps_a_line_whose_lower_level_is_above_the_nlte_levels() -> Non
     dfnltepops = pl.DataFrame(
         {"modelgridindex": [0], "Z": [26], "ion_stage": [2], "level": [0], "n_NLTE": [0.9]}, schema=NLTEPOPS_SCHEMA
     )
-    dfcelllines = get_cell_line_table(dfcells, dflines, levelsofion, dfnltepops, time_days=1.0)
+    dfcelllines = get_cell_line_table(
+        dfcells, dflines, levelsofion, get_ion_population_inputs(dflines, levelsofion, dfnltepops), time_days=1.0
+    )
     assert dfcelllines["n_lower_per_cm3"].item() > dfcells["nnion_Fe_II"].item()
     tau = dfcelllines["tau_sobolev"].item()
     dfkept = get_lines_that_can_reach_tau(dflines, dfcells, levelsofion, {(26, 2)}, tau, time_days=1.0)
@@ -595,6 +665,7 @@ def test_linecontributions_takes_the_nlte_levels_of_each_cell() -> None:
     population for a level of its superlevel, and the line had no tau_sobolev in that cell.
     """
     from artistools.lines.linecontributions import get_cell_line_table
+    from artistools.lines.linecontributions import get_ion_population_inputs
     from artistools.lines.linecontributions import NLTEPOPS_SCHEMA
 
     dfcells = pl.DataFrame({
@@ -636,7 +707,9 @@ def test_linecontributions_takes_the_nlte_levels_of_each_cell() -> None:
         },
         schema=NLTEPOPS_SCHEMA,
     )
-    dfcelllines = get_cell_line_table(dfcells, dflines, levelsofion, dfnltepops, time_days=1.0).sort("modelgridindex")
+    dfcelllines = get_cell_line_table(
+        dfcells, dflines, levelsofion, get_ion_population_inputs(dflines, levelsofion, dfnltepops), time_days=1.0
+    ).sort("modelgridindex")
     assert dfcelllines["n_lower_source"].to_list() == ["superlevel", "NLTE"]
     assert dfcelllines["n_upper_source"].to_list() == ["superlevel", "superlevel"]
     assert dfcelllines["n_lower_per_cm3"].null_count() == 0
@@ -648,6 +721,7 @@ def test_linecontributions_takes_the_nlte_levels_of_each_cell() -> None:
 def test_linecontributions_inverted_line_has_escape_probability_one() -> None:
     """ARTIS uses tau = 0 for a population inversion. (1 - exp(-tau)) / tau gave a beta far above 1."""
     from artistools.lines.linecontributions import get_cell_line_table
+    from artistools.lines.linecontributions import get_ion_population_inputs
     from artistools.lines.linecontributions import NLTEPOPS_SCHEMA
 
     dfcells = pl.DataFrame({
@@ -684,7 +758,9 @@ def test_linecontributions_inverted_line_has_escape_probability_one() -> None:
         },
         schema=NLTEPOPS_SCHEMA,
     )
-    dfcelllines = get_cell_line_table(dfcells, dflines, levelsofion, dfnltepops, time_days=1.0).sort("modelgridindex")
+    dfcelllines = get_cell_line_table(
+        dfcells, dflines, levelsofion, get_ion_population_inputs(dflines, levelsofion, dfnltepops), time_days=1.0
+    ).sort("modelgridindex")
     tau_inverted, tau_thick = dfcelllines["tau_sobolev"].to_list()
     assert tau_inverted < -20.0
     assert tau_thick > 20.0

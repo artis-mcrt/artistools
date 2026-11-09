@@ -827,6 +827,18 @@ def get_first_line(errortext: str) -> str:
     return errorline.removeprefix("error: ") if errorline is not None else REJECTED_MESSAGE
 
 
+def read_finite_number(text: str) -> float:
+    """Return the number of a text. Raise ValueError if the number is not finite, e.g. "nan".
+
+    float() reads "nan" and "inf", and a count of timesteps of such a width raised an error with no message.
+    """
+    value = float(text)
+    if not math.isfinite(value):
+        msg = f"{text} is not a finite number"
+        raise ValueError(msg)
+    return value
+
+
 def get_nearest_range_start(tmids: "Sequence[float]", centre: float, width: int) -> int:
     """Return the first index of the range of width timesteps that has its centre nearest to the given time.
 
