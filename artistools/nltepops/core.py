@@ -259,4 +259,6 @@ def has_nlte_populations(modelpath: Path | str) -> bool:
     A rank whose cells all hold no matter writes no file, thus the file of any rank counts. The search also reads the
     run folders of the model, e.g. job_from_ts0000. The host of a remote model gives the answer.
     """
-    return folder_holds_match(Path(modelpath), "**/nlte_*.out*")
+    return folder_holds_match(Path(modelpath), "**/nlte_*.out*") or folder_holds_match(
+        Path(modelpath), f"**/{NLTE_CACHE_FILENAME}"
+    )

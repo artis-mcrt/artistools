@@ -2698,6 +2698,41 @@ def test_parquet_cache_of_the_rank_text_gives_the_rows_of_the_text(
     assert dfnew["nnlevel"].to_list() == [77.5]
 
 
+def test_parquet_cache_of_the_rank_text_follows_the_state_of_the_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A change during a conversion, a change inside the tolerance, and archived text must give the correct rows."""
+    from artistools.misc import modelinfo
+
+    monkeypatch.setattr(modelinfo, "MIN_TEXT_BYTES_FOR_RANK_CACHE", 1)
+    write_rank_output_model(tmp_path, {"job0": [(0, cell, cell + 0.5) for cell in range(3)]})
+    cachefile = tmp_path / "job0" / "nltecache.parquet"
+    textfile = tmp_path / "job0" / "nlte_0000.out"
+
+    def read_rows() -> pl.DataFrame:
+        return modelinfo.read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", cachefilename=cachefile.name).sort(
+            "timestep", "modelgridindex"
+        )
+
+    with mock.patch.object(modelinfo, "get_rank_text_state", side_effect=[(1.0, 1), (2.0, 1)]):
+        assert read_rows()["nnlevel"].to_list() == [0.5, 1.5, 2.5]
+    assert not cachefile.exists()
+
+    assert read_rows().height == 3
+    assert cachefile.is_file()
+
+    # an append that keeps the time of the file changes only the size
+    mtime = textfile.stat().st_mtime
+    with textfile.open("a", encoding="utf-8") as ftext:
+        ftext.write("1 0 8.5\n")
+    os.utime(textfile, (mtime, mtime))
+    dfappended = read_rows()
+    assert dfappended["nnlevel"].to_list() == [0.5, 1.5, 2.5, 8.5]
+
+    textfile.unlink()
+    pltest.assert_frame_equal(read_rows(), dfappended)
+
+
 def write_allranks_nlte_file(modelpath: Path, mtime: float) -> Path:
     """Write the nlte file of all ranks for timestep 0 of the model of write_rank_output_model, with other values."""
     allranksfile = modelpath / "nlte_allranks.out"

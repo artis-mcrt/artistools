@@ -681,7 +681,7 @@ def convert_rank_text_to_parquet(
     """Write the rows of the text files to a parquet cache in the order of the timesteps and the cells.
 
     The memory holds one batch of the text or one timestep. The sort is stable, thus the rows of one cell keep the
-    order of the text. The function returns False if the text holds no row, and it then writes no cache.
+    order of the text. The function returns False if the text holds no row or changed, and it then writes no cache.
     """
     with temporary_parts_folder(parquetfilepath) as partsfolder:
         partsoftimestep: dict[int, list[Path]] = {}
@@ -709,9 +709,11 @@ def convert_rank_text_to_parquet(
                 part.unlink()
 
         if get_rank_text_state(textfiles) != textstate:
-            # a job that still runs changed the text, thus this stamp makes the next read convert the text again
-            print_warning(f"The text of {parquetfilepath.parent} changed during the conversion")
-            metadata = {**metadata, "textsource_mtime": "0.0"}
+            # a job that still runs changed the text, thus the batches can come from different states of the text
+            print_warning(
+                f"The text of {parquetfilepath.parent} changed during the conversion. This read takes the text"
+            )
+            return False
 
         write_parquet_atomic(
             pl.scan_parquet(sortedparts, glob=False),
@@ -729,6 +731,13 @@ def get_rank_text_state(textfiles: Sequence[Path]) -> tuple[float, int]:
     return max(filestat.st_mtime for filestat in filestats), sum(filestat.st_size for filestat in filestats)
 
 
+def rank_text_cache_is_readable(folderpath: Path, cachefilename: str | None) -> bool:
+    """Return True if a run folder holds a parquet cache of the current format, without a check against the text."""
+    if cachefilename is None:
+        return False
+    return read_parquet_cache_metadata(folderpath / cachefilename, RANK_CACHE_VERSION, None)[1] is None
+
+
 def scan_rank_text_cache(
     folderpath: Path,
     filenameformat: str,
@@ -739,8 +748,13 @@ def scan_rank_text_cache(
     """Return a scan of the parquet cache of a run folder, or None if the read must take the text.
 
     A read of some ranks takes the text, because the conversion needs the text of every rank. A read of less text
-    than MIN_TEXT_BYTES_FOR_RANK_CACHE also takes the text.
+    than MIN_TEXT_BYTES_FOR_RANK_CACHE also takes the text. A read with no text file, e.g. of an archived model, takes
+    the cache.
     """
+    parquetfilepath = folderpath / cachefilename
+    if not selectedfiles:
+        return pl.scan_parquet(parquetfilepath, glob=False)
+
     textfiles, missingranks = get_folder_text_files(
         folderpath, filenameformat, allranks_with_matter, selectscells=False
     )
@@ -752,11 +766,10 @@ def scan_rank_text_cache(
     if textsize < MIN_TEXT_BYTES_FOR_RANK_CACHE:
         return None
 
-    parquetfilepath = folderpath / cachefilename
     # the stamp names the form of the text, because a file of all ranks and the files of the ranks have the same time
     textsource = without_compressed_extension(textfiles[0]).name
     _, stalereason = read_parquet_cache_metadata(
-        parquetfilepath, RANK_CACHE_VERSION, textsource_mtime, textsource=textsource
+        parquetfilepath, RANK_CACHE_VERSION, textsource_mtime, textsource=textsource, textsource_size=textsize
     )
     if stalereason is not None:
         identity_of_stale_file = get_file_identity(parquetfilepath)
@@ -767,13 +780,14 @@ def scan_rank_text_cache(
             "cacheversion": str(RANK_CACHE_VERSION),
             "textsource": textsource,
             "textsource_mtime": str(textsource_mtime),
+            "textsource_size": str(textsize),
         }
         if not convert_rank_text_to_parquet(
             textfiles, parquetfilepath, metadata, (textsource_mtime, textsize), identity_of_stale_file
         ):
             return None
 
-    return pl.scan_parquet(parquetfilepath)
+    return pl.scan_parquet(parquetfilepath, glob=False)
 
 
 def read_rank_outputfiles(
@@ -841,7 +855,10 @@ def read_rank_outputfiles(
         folderfilepaths, missingranks = get_folder_text_files(
             folderpath, filenameformat, ranks_with_matter, selectscells=bool(selectedcells)
         )
-        if missingranks:
+        if missingranks and rank_text_cache_is_readable(folderpath, cachefilename):
+            filepathsofeachfolder.append([])
+            folders_with_text.append(folderpath)
+        elif missingranks:
             # the rank handles a cell that holds matter, thus the file is missing. firstexisting
             # names every compressed form that it looked for
             firstexisting(
