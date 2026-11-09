@@ -6,7 +6,7 @@ workflows:
     '.github/workflows/benchmark.yml':
         - 'actions/checkout@v7.0.1'
         - 'astral-sh/setup-uv@v10.3.3'
-        - 'codspeedhq/action@v5.6.1'
+        - 'codspeedhq/action@v5.6.3'
         - 'swatinem/rust-cache@v2.9.3'
     '.github/workflows/copilot-setup-steps.yml':
         - 'actions/checkout@v7.0.1'
@@ -59,9 +59,9 @@ dependencies:
         commit: 'sha1-68559e99cc807c1eb7e9238fd43a15bba460eec2'
         owner_id: 115962839
         repo_id: 846733598
-    'codspeedhq/action@v5.6.1':
-        ref: 'v5.6.1'
-        commit: 'sha1-61efe07e57e55bedeab750c434504de272a56e8c'
+    'codspeedhq/action@v5.6.3':
+        ref: 'v5.6.3'
+        commit: 'sha1-af75f77f17a054769abefaa42fe8dc2975469b5f'
         owner_id: 116658140
         repo_id: 561699778
         uses:
