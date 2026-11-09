@@ -36,6 +36,7 @@ from artistools.misc.modelpaths import modelpath_cache
 from artistools.misc.modelpaths import path_is_codecomparison
 from artistools.misc.modelpaths import resolve_modelpath
 from artistools.misc.parquetcache import get_file_identity
+from artistools.misc.parquetcache import rankbatch_parquet_staleness
 from artistools.misc.parquetcache import read_parquet_cache_metadata
 from artistools.misc.parquetcache import temporary_parts_folder
 from artistools.misc.parquetcache import write_parquet_atomic
@@ -753,6 +754,15 @@ def scan_rank_text_cache(
     """
     parquetfilepath = folderpath / cachefilename
     if not selectedfiles:
+        if remainingfiles := list(get_rank_outputfiles(folderpath, filenameformat).values()):
+            stalereason = rankbatch_parquet_staleness(
+                parquetfilepath, RANK_CACHE_VERSION, get_rank_text_state(remainingfiles)[0], textsource_complete=False
+            )
+            if stalereason is not None:
+                print_warning(
+                    f"{parquetfilepath} is not a current cache of the text, because {stalereason}. The files of some"
+                    " ranks are absent, thus artistools cannot convert the text again and it uses the cache as it is"
+                )
         return pl.scan_parquet(parquetfilepath, glob=False)
 
     textfiles, missingranks = get_folder_text_files(
@@ -832,15 +842,22 @@ def read_rank_outputfiles(
         raise ValueError(msg)
 
     runfolders: Sequence[Path]
-    if timestep is None or isinstance(timestep, int):
+    if isinstance(timestep, int) and timestep >= 0:
         runfolders = get_runfolders(modelpath, timestep=timestep)
     else:
-        # a sequence of timesteps gives the rows of a read of all timesteps. A timestep that no run folder holds gives
-        # no row, and the empty result still has the types of the columns
-        allfolders = get_runfolders(modelpath)
+        # a restart that stopped after its repeated timestep owns no timestep, but it can hold a cell that the earlier
+        # folder never wrote. Thus each folder that holds a selected timestep counts, and the rows decide below
+        heldtimesteps_of_folder = {
+            folder: heldtimesteps
+            for folder in get_run_subfolders(modelpath)
+            if (heldtimesteps := set(get_runfolder_timesteps(folder)))
+        }
+        # a timestep that no run folder holds gives no row, and the empty result still has the types of the columns
         runfolders = [
-            folder for folder in allfolders if not set(get_runfolder_timesteps(folder)).isdisjoint(selectedtimesteps)
-        ] or allfolders
+            folder
+            for folder, heldtimesteps in heldtimesteps_of_folder.items()
+            if not selectedtimesteps or not heldtimesteps.isdisjoint(selectedtimesteps)
+        ] or list(heldtimesteps_of_folder)
     if not runfolders and isinstance(timestep, int) and timestep >= 0 and (allfolders := get_runfolders(modelpath)):
         heldtimesteps = sorted({ts for folder in allfolders for ts in get_runfolder_timesteps(folder)})
         msg = (

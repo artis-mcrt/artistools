@@ -2650,12 +2650,14 @@ def test_read_rank_outputfiles_of_a_timestep_list_equals_the_filter_of_a_full_re
 
 def test_read_nltepops_of_a_list_of_one_timestep_keeps_the_cells_of_a_restart(tmp_path: Path) -> None:
     """A list of one timestep must read each run folder, because a later run folder can hold more cells."""
-    write_rank_output_model(tmp_path, {"job0": [(1, 0, 2.0)], "job1": [(1, 0, 9.0), (1, 4, 8.0), (2, 0, 3.0)]})
+    # the restart stopped after its repeated timestep, thus its folder owns no timestep
+    write_rank_output_model(tmp_path, {"job0": [(1, 0, 2.0)], "job1": [(1, 0, 9.0), (1, 4, 8.0)]})
 
     dfpops = at.nltepops.read_nltepops(tmp_path, timestep=[1]).sort("modelgridindex")
 
     assert dfpops["modelgridindex"].to_list() == [0, 4]
     assert dfpops["nnlevel"].to_list() == [2, 8]
+    pltest.assert_frame_equal(at.nltepops.read_nltepops(tmp_path).sort("modelgridindex"), dfpops)
 
 
 @pytest.mark.parametrize("textform", ["rank_file", "compressed_rank_file", "allranks_file"])
@@ -2741,6 +2743,39 @@ def test_parquet_cache_of_the_rank_text_follows_the_state_of_the_text(
 
     textfile.unlink()
     pltest.assert_frame_equal(read_rows(), dfappended)
+
+
+def test_parquet_cache_of_the_rank_text_warns_of_newer_text_with_absent_ranks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A read that must use the cache must warn when a file of a rank that remains is newer than the cache."""
+    from artistools.misc import modelinfo
+
+    monkeypatch.setattr(modelinfo, "MIN_TEXT_BYTES_FOR_RANK_CACHE", 1)
+    write_rank_output_model(tmp_path, {"job0": [(0, cell, cell + 0.5) for cell in range(2)]})
+    runfolder = tmp_path / "job0"
+    # line 22 of input.txt gives the number of MPI processes
+    (tmp_path / "input.txt").write_text("\n".join(["0"] * 21 + ["2"]) + "\n", encoding="utf-8")
+    rankzero = runfolder / "nlte_0000.out"
+    rankone = runfolder / "nlte_0001.out"
+    rankone.write_text("timestep modelgridindex nnlevel\n0 3 3.5\n0 4 4.5\n", encoding="utf-8")
+
+    def read_values() -> list[float]:
+        dfrows = modelinfo.read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", cachefilename="nltecache.parquet")
+        return dfrows.sort("modelgridindex")["nnlevel"].to_list()
+
+    assert read_values() == [0.5, 1.5, 3.5, 4.5]
+    assert (runfolder / "nltecache.parquet").is_file()
+
+    rankone.unlink()
+    capsys.readouterr()
+    assert read_values() == [0.5, 1.5, 3.5, 4.5]
+    assert "uses the cache as it is" not in capsys.readouterr().err
+
+    newtime = rankzero.stat().st_mtime + 1000.0
+    os.utime(rankzero, (newtime, newtime))
+    assert read_values() == [0.5, 1.5, 3.5, 4.5]
+    assert "uses the cache as it is" in capsys.readouterr().err
 
 
 def write_allranks_nlte_file(modelpath: Path, mtime: float) -> Path:
