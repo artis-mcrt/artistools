@@ -2837,6 +2837,29 @@ def test_stale_parquet_cache_of_the_rank_text_is_replaced_for_small_text(
     assert read_values() == [7.5]
 
 
+def test_parquet_cache_conversion_of_a_file_of_all_ranks_with_no_rows_gives_an_empty_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A new file of all ranks that holds only its header must give no rows, and the read must not stop."""
+    from artistools.misc import modelinfo
+
+    monkeypatch.setattr(modelinfo, "MIN_TEXT_BYTES_FOR_RANK_CACHE", 1)
+    write_rank_output_model(tmp_path, {"job0": [(0, 0, 0.5)]})
+    textfile = tmp_path / "job0" / "nlte_0000.out"
+
+    def read_rows() -> pl.DataFrame:
+        return modelinfo.read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", cachefilename="nltecache.parquet")
+
+    assert read_rows()["nnlevel"].to_list() == [0.5]
+
+    allranksfile = tmp_path / "job0" / "nlte_allranks.out"
+    allranksfile.write_text("timestep modelgridindex nnlevel\n", encoding="utf-8")
+    newtime = textfile.stat().st_mtime + 1000.0
+    os.utime(allranksfile, (newtime, newtime))
+
+    assert read_rows().is_empty()
+
+
 def test_parquet_cache_of_the_rank_text_stays_for_older_text_of_all_ranks(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

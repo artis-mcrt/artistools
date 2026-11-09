@@ -699,7 +699,8 @@ def convert_rank_text_to_parquet(
                 parts.append(partsfolder / f"ts{timestep:08d}_part{len(parts):06d}.parquet")
                 dftimestep.write_parquet(parts[-1], compression="lz4")
 
-        if dfnorows is None:
+        # a file that holds only the header gives a batch with no rows, thus the test of the batches is not sufficient
+        if dfnorows is None or not partsoftimestep:
             return False
 
         sortedparts: list[Path] = []
