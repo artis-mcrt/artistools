@@ -1556,20 +1556,18 @@ def test_dimension_reduction_logs_the_mass_outside_the_output_grid(capsys: pytes
     assert np.isclose(float(match[1]) * at.constants.Msun_to_g, mass_g_in - mass_g_out, rtol=1e-3)
 
 
-def test_snapshot_electron_fraction_counts_the_free_neutrons() -> None:
-    """A free neutron (X_n1) counts as a nucleon but not as a proton.
-
-    The reader took "n" as nitrogen, or left the neutrons out.
-    """
+def test_snapshot_electron_fraction_leaves_out_the_free_neutrons() -> None:
+    """A free neutron (X_n1 or X_N1) is not in the sum, and a nitrogen nuclide in lower case (X_n14) is."""
     from artistools.inputmodel.describeinputmodel import calculate_model_electron_frac
 
-    dfmodel = pl.LazyFrame({"X_n1": [0.5], "X_He4": [0.5], "mass_g": [1.0]})
-    assert calculate_model_electron_frac(dfmodel) == pytest.approx(0.25)
-    # only the mass number 1 gives the neutron, in each case of the name
-    for column, electronfrac in (("X_n14", 0.5), ("X_N14", 0.5), ("X_N1", 0.0)):
-        assert calculate_model_electron_frac(pl.LazyFrame({column: [1.0], "mass_g": [1.0]})) == pytest.approx(
-            electronfrac
-        )
+    for neutroncolumn in ("X_n1", "X_N1"):
+        dfmodel = pl.LazyFrame({neutroncolumn: [0.5], "X_He4": [0.25], "X_Li7": [0.25], "mass_g": [1.0]})
+        assert calculate_model_electron_frac(dfmodel) == pytest.approx((0.25 * 2 / 4 + 0.25 * 3 / 7) / 0.5)
+        assert calculate_model_electron_frac(pl.LazyFrame({neutroncolumn: [1.0], "mass_g": [1.0]})) is None
+
+    for nitrogencolumn in ("X_n14", "X_N14"):
+        dfmodel = pl.LazyFrame({nitrogencolumn: [1.0], "mass_g": [1.0]})
+        assert calculate_model_electron_frac(dfmodel) == pytest.approx(0.5)
 
 
 def test_energyfiles_from_trajectory(trajectory_copy: Path) -> None:

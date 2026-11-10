@@ -36,12 +36,14 @@ from artistools.misc import print_warning
 def calculate_model_electron_frac(dfmodel: pl.LazyFrame) -> float | None:
     """Calculate the electron fraction of the model from the isotopic composition, or None with no nuclide mass.
 
-    The free neutrons (X_n1) have no protons, but they count as nucleons.
+    The sum leaves out the free neutrons (X_n1), because ARTIS does not decay them and keeps no abundance of them.
     """
     exprs_protons = []
     exprs_nucleons = []
     for column in dfmodel.select(cs.matches("X_[A-z]+[0-9]")).collect_schema().names():
         atomic_number, mass_number = get_z_a_nucname(column)
+        if atomic_number == 0:
+            continue
         exprs_protons.append(atomic_number / (mass_number * amu_g) * pl.col(column) * pl.col("mass_g"))
         exprs_nucleons.append(1 / amu_g * pl.col(column) * pl.col("mass_g"))
 
@@ -149,8 +151,8 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
         if args.isotopes and (calcelectronfrac := calculate_model_electron_frac(dfmodel)) is not None:
             print_product(
                 args,
-                f"  {'snapshot Ye':19s} {calcelectronfrac:.3f} (protons / nucleons of the nuclides, with the free"
-                " neutrons)",
+                f"  {'snapshot Ye':19s} {calcelectronfrac:.3f} (protons / nucleons of the nuclides, without the"
+                " free neutrons)",
             )
 
     if "q" in dfmodel.collect_schema().names():
