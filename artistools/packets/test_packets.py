@@ -319,6 +319,21 @@ def test_virtual_packets_file_with_no_data_lines_gives_no_rows(tmp_path: Path) -
     assert dfvpkt.schema["emissiontype"] == pl.Int32
 
 
+@pytest.mark.parametrize("virtual", [False, True])
+def test_read_of_absent_packets_makes_no_cache_folder(tmp_path: Path, virtual: bool) -> None:
+    """A read of the packets of a model with no packets files gives an error and leaves the model folder as it was.
+
+    The reader made the folder packets or vpackets before it searched for the text files. The viewer then found the
+    empty folder vpackets, and it enabled the observers of the virtual packets for a model that had none.
+    """
+    from artistools.packets.core import get_packets_rankbatch_parquetfile
+
+    with pytest.raises(FileNotFoundError):
+        get_packets_rankbatch_parquetfile(tmp_path, batch_mpiranks=[0], batchindex=0, virtual=virtual)
+
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_a_packets_file_with_a_cut_line_stops_the_conversion(tmp_path: Path) -> None:
     """A file that ARTIS or a copy still writes ends in a cut line, and its cache must not keep the partial data.
 

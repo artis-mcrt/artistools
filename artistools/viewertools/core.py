@@ -262,7 +262,9 @@ def model_has_direction_data(
         if vpktpattern and folder_holds_match(modelfolder, vpktpattern):
             return True
         virtualfile = firstexisting_or_none(get_packets_textfilename(0, virtual=True), folder=modelfolder)
-        return frompackets and (virtualfile is not None or folder_holds_match(modelfolder, "vpackets*"))
+        return frompackets and (
+            virtualfile is not None or folder_holds_match(modelfolder, "vpackets/vpacketsbatch*.parquet*")
+        )
     if firstexisting_or_none(list(resfilenames), folder=modelfolder, tryzipped=True) is not None:
         return True
     return frompackets and has_packets_files(modelfolder)
