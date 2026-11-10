@@ -112,11 +112,15 @@ class FluxContributionTuple(t.NamedTuple):
 
 
 def timeshift_fluxscale_co56law(scaletoreftime: float | None, spectime: float) -> float:
-    """Return the factor that scales a spectrum to scaletoreftime assuming Co56 decay, or 1.0 when unset."""
+    """Return the factor that scales a spectrum to scaletoreftime with the Co56 decay law, or 1.0 for None.
+
+    The flux follows exp(-t / tau), where tau is the mean life of Co56. This applies after the decay of Ni56, thus
+    the time of the spectrum must be more than 150 days.
+    """
     if scaletoreftime is not None:
-        # Co56 decay flux scaling
         assert spectime > 150
-        return math.exp(spectime / 113.7) / math.exp(scaletoreftime / 113.7)
+        co56_meanlife_days = constants.co56_halflife_days / math.log(2)
+        return math.exp((spectime - scaletoreftime) / co56_meanlife_days)
 
     return 1.0
 

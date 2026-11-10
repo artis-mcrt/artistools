@@ -24,6 +24,7 @@ from matplotlib.lines import Line2D
 
 from artistools.codecomparison import read_reference_spectra
 from artistools.constants import c_ang_per_s
+from artistools.constants import co56_halflife_days
 from artistools.constants import megaparsec_to_cm
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_darkmode
@@ -505,7 +506,11 @@ def plot_reference_spectrum(
 
     if scaletoreftime is not None:
         timefactor = timeshift_fluxscale_co56law(scaletoreftime, float(metadata["t"]))
-        print_detail(f"Scaled from time {metadata['t']} to {scaletoreftime}, factor {timefactor} by the Co56 decay law")
+        print_detail(
+            f"Scaled the flux from {metadata['t']} d to {scaletoreftime} d with the factor {timefactor:.4f}. The flux"
+            f" follows the decay of Co56, which has a half-life of {co56_halflife_days} d (Junde, Su & Dong 2011,"
+            " Nuclear Data Sheets, 112, 1513-1645, doi:10.1016/j.nds.2011.04.004)"
+        )
         specdata = specdata.with_columns(f_lambda=pl.col("f_lambda") * timefactor)
         label += f" * {timefactor:.2f}"
 

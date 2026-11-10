@@ -23,6 +23,7 @@ from artistools.atomic import get_z_a_nucname
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
+from artistools.constants import Msun_to_g
 from artistools.misc import exit_with_error
 from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
@@ -833,6 +834,14 @@ def scan_local_modeldata(
 
     if get_elemabundances:
         abundancedata = scan_initelemabundances(modelpath, printwarningsonly=printwarningsonly)
+        # an inner join drops a cell that abundances.txt does not give, and each mass then leaves that cell out
+        missingcellcount = dfmodel.join(abundancedata, how="anti", on="inputcellid").select(pl.len()).collect().item()
+        if missingcellcount:
+            msg = (
+                f"abundances.txt gives no abundances for {missingcellcount} of the {modelmeta['npts_model']} cells of"
+                f" {textfilepath}. The two files must give the same cells"
+            )
+            raise ValueError(msg)
         dfmodel = dfmodel.join(abundancedata, how="inner", on="inputcellid", maintain_order="left")
 
     dfmodel = dfmodel.with_columns(pl.col("inputcellid").sub(firstinputcellid).alias("modelgridindex"))
@@ -1571,19 +1580,30 @@ def dimension_reduce_model(
     col_vel_r = pl.col("vel_rcyl_mid") if outputdimensions == 2 else pl.col("vel_r_mid")
     # the bins are closed on the left, because the centre cell of an odd grid has a mid-point velocity of zero.
     # A bin that is closed on the right puts that cell below the first bin, and the filter then drops its mass
-    dfmodel_out = dfmodel_out.with_columns(get_bin_index_expr(col_vel_r, vel_r_bins).alias("out_n_r")).filter(
-        pl.col("out_n_r").is_between(0, ncoordgridr - 1)
+    dfmodel_out = dfmodel_out.with_columns(get_bin_index_expr(col_vel_r, vel_r_bins).alias("out_n_r"))
+    isinoutputgrid = pl.col("out_n_r").is_between(0, ncoordgridr - 1)
+    if outputdimensions == 2:
+        dfmodel_out = dfmodel_out.with_columns(get_bin_index_expr(pl.col("vel_z_mid"), vel_z_bins).alias("out_n_z"))
+        isinoutputgrid &= pl.col("out_n_z").is_between(0, ncoordgridz - 1)
+    isinoutputgrid = isinoutputgrid.fill_null(value=False)
+
+    # the radial bins end at vmax, and the corners of a Cartesian grid reach sqrt(3) * vmax
+    mass_g_total, mass_g_outside = (
+        dfmodel_out
+        .select(total=pl.col("mass_g").sum(), outside=pl.col("mass_g").filter(~isinoutputgrid).sum())
+        .collect()
+        .row(0)
     )
+    if mass_g_outside > 0:
+        print_detail(
+            f"The {outputdimensions}D grid ends at vmax = {vmax / km_to_cm:.0f} km/s. The cells of the input model"
+            f" outside this grid hold {mass_g_outside / Msun_to_g:.3e} Msun, which is"
+            f" {mass_g_outside / mass_g_total * 100:.3g}% of the mass. The output model leaves these cells out"
+        )
+    dfmodel_out = dfmodel_out.filter(isinoutputgrid)
 
     if outputdimensions == 2:
-        dfmodel_out = (
-            dfmodel_out
-            .with_columns(get_bin_index_expr(pl.col("vel_z_mid"), vel_z_bins).alias("out_n_z"))
-            .filter(
-                pl.col("out_n_r").is_between(0, ncoordgridr - 1) & (pl.col("out_n_z").is_between(0, ncoordgridz - 1))
-            )
-            .with_columns(mgiout=pl.col("out_n_z") * ncoordgridr + pl.col("out_n_r"))
-        )
+        dfmodel_out = dfmodel_out.with_columns(mgiout=pl.col("out_n_z") * ncoordgridr + pl.col("out_n_r"))
     else:
         assert outputdimensions in {0, 1}
         dfmodel_out = dfmodel_out.with_columns(mgiout=pl.col("out_n_r"))

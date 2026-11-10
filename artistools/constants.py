@@ -27,6 +27,10 @@ Mbol_sun = 4.74  # Absolute bolometric magnitude of the Sun
 day_to_s = 86400.0  # Day [s]
 hour_to_s = 3600.0  # Hour [s]
 
+# Half-life of the Co56 ground state [d].
+# Source: Junde, Su & Dong (2011), Nuclear Data Sheets, 112, 1513-1645, doi:10.1016/j.nds.2011.04.004.
+co56_halflife_days = 77.236
+
 angstroms_per_cm = 1e8  # Centimetre [Angstrom]
 angstroms_per_micron = 1e4  # Micrometre [Angstrom]
 angstroms_per_nm = 10.0  # Nanometre [Angstrom]

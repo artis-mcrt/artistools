@@ -2760,6 +2760,17 @@ def test_plotspectra_normalised_log_axis_keeps_room_above_the_peak() -> None:
     plt.close(fig)
 
 
+def test_co56_flux_scale_uses_the_half_life_of_the_constants() -> None:
+    """A shift by one half-life of Co56 changes the flux by a factor of two.
+
+    Before this correction, the law used a mean life of 113.7 d.
+    """
+    halflife = at.constants.co56_halflife_days
+    assert atspectra.timeshift_fluxscale_co56law(300.0, 300.0 + halflife) == pytest.approx(2.0)
+    assert atspectra.timeshift_fluxscale_co56law(300.0 + halflife, 300.0) == pytest.approx(0.5)
+    assert atspectra.timeshift_fluxscale_co56law(None, 300.0) == pytest.approx(1.0)
+
+
 def test_spectraemissionplot_takes_the_label_of_the_model_after_a_reference(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

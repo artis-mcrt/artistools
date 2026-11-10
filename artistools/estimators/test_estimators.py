@@ -4732,6 +4732,24 @@ def test_projection_is_the_mean_of_each_line_of_cells() -> None:
     assert np.isnan(grid[0, 0])
 
 
+def test_image_of_a_mass_fraction_takes_the_mass_weight_of_the_line_plot() -> None:
+    """A pixel of a mass fraction or Ye is a mean with the cell masses as weights, as the line plot gives.
+
+    The pixel took the volume alone, thus an image and a line of the same cells gave different means.
+    """
+    estimators = pl.LazyFrame({
+        "deltavol_deltat": [1.0, 1.0],
+        "rho": [1.0, 9.0],
+        "init_X_Fe": [0.1, 0.5],
+        "Te": [1000.0, 3000.0],
+    })
+    columns = estimators.collect_schema().names()
+    panels = plotestimators.get_image_panels([["init_X_Fe", "Te"]], columns, "absolute")
+    massfraction, temperature = estimators.select(plotestimators.get_panel_means(panels)).collect().row(0)
+    assert massfraction == pytest.approx((0.1 * 1.0 + 0.5 * 9.0) / 10.0)
+    assert temperature == pytest.approx(2000.0)
+
+
 def test_time_axis_takes_no_automatic_bins() -> None:
     """A plot against time gives one point for each timestep, and the mean of the cells of the timestep gives its value.
 

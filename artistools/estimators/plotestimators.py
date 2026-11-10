@@ -1368,8 +1368,7 @@ def get_series_plans(
         settings["ylabel"] = serieslabel + units_string
         linelabel = None
 
-    # a mass fraction and Ye are quantities for each unit of mass, thus the mean uses the cell masses as weights
-    ismassquantity = variablename.startswith("init_X_") or variablename in {"Ye", "init_Ye"}
+    ismassquantity = is_quantity_per_unit_mass(variablename)
     series = estimators.with_columns(
         celltsweight=pl.col("rho") * pl.col("deltavol_deltat") if ismassquantity else pl.col("deltavol_deltat"),
         yvalue=colexpr,
@@ -2284,6 +2283,14 @@ def get_ion_panel_columns(
     return columns
 
 
+def is_quantity_per_unit_mass(variablename: str) -> bool:
+    """Return True for a mass fraction or Ye, which a mean must weight with the cell masses.
+
+    The line of a variable and the pixel of a colour image take the same weight, thus one function gives the rule.
+    """
+    return variablename.startswith("init_X_") or variablename in {"Ye", "init_Ye"}
+
+
 def get_image_panels(plotlist: list[list[t.Any]], estimatorcolumns: Collection[str], poptype: str) -> list[ImagePanel]:
     """Return one panel for each variable and each ion of the plot list.
 
@@ -2304,6 +2311,8 @@ def get_image_panels(plotlist: list[list[t.Any]], estimatorcolumns: Collection[s
             if isinstance(plotitem, pl.Expr):
                 colname = plotitem.meta.output_name()
                 columns.append((plotitem, colname, f"{get_varname_formatted(colname)}{get_units_string(colname)}"))
+                if is_quantity_per_unit_mass(colname):
+                    weights[colname] = pl.col("rho")
             elif isinstance(plotitem, str):
                 if plotitem not in estimatorcolumns:
                     exit_with_error(
@@ -2313,6 +2322,8 @@ def get_image_panels(plotlist: list[list[t.Any]], estimatorcolumns: Collection[s
                     )
                 label = f"{get_varname_formatted(plotitem)}{get_units_string(plotitem)}"
                 columns.append((pl.col(plotitem), plotitem, label))
+                if is_quantity_per_unit_mass(plotitem):
+                    weights[plotitem] = pl.col("rho")
             elif get_directive_name(plotitem[0]) is not None:
                 continue
             elif is_ionseriestype(plotitem[0], estimatorcolumns, plotitem[1]):
@@ -3041,8 +3052,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         choices=["x", "y", "z"],
         help=(
             "Show each variable as a colour image of the mean along this axis of a 3D model, e.g. --projection z gives"
-            " an image in x and y. Each pixel is the mean over one line of cells along the axis, with the volume"
-            " times the timestep duration as the weight"
+            " an image in x and y. Each pixel is the mean over one line of cells along the axis. A pixel takes the"
+            " weight of the line plot, which is the volume times the timestep duration. For a mass fraction or Ye,"
+            " the weight also has a factor of the density. For an ion, the weight also has a factor of the number"
+            " density"
         ),
     )
 
