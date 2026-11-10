@@ -945,21 +945,18 @@ def test_get_atomic_number_and_elsymbol() -> None:
     assert at.get_atomic_number("X_Fe") == 26
     assert at.get_atomic_number("UnknownXYZ") == -1
 
-    # ARTIS matches a nuclide name with its case: "n" is the neutron and "N" is nitrogen. A title-case lookup gave
-    # nitrogen for the neutron
-    assert at.get_atomic_number("X_n1") == 0
-    assert at.get_atomic_number("X_n") == 0
-    assert at.get_atomic_number("n14") == 0
-    assert at.get_z_a_nucname("X_n1") == (0, 1)
-    assert at.get_z_a_nucname("n1") == (0, 1)
-    assert at.get_z_a_nucname("n14") == (0, 14)
-    assert at.get_atomic_number("X_N") == 7
-    assert at.get_atomic_number("X_N14") == 7
-    assert at.get_z_a_nucname("X_N14") == (7, 14)
-    assert at.get_z_a_nucname("N1") == (7, 1)
-    # a symbol with no mass number that is not a mass fraction column is not case sensitive
-    assert at.get_atomic_number("n") == 7
-    assert at.get_atomic_number("N") == 7
+    # the neutron is not an element, thus a name with no mass number is nitrogen in each case
+    for name in ("n", "N", "X_n", "X_N"):
+        assert at.get_atomic_number(name) == 7
+    # only the mass number 1 gives the neutron
+    for name in ("n1", "N1", "X_n1", "X_N1", "nniso_n1"):
+        assert at.get_z_a_nucname(name) == (0, 1)
+    for name in ("n14", "N14", "X_n14", "X_N14"):
+        assert at.get_z_a_nucname(name) == (7, 14)
+    # a nuclide cannot have a mass number below its atomic number
+    for name in ("N3", "X_n6", "Fe25"):
+        with pytest.raises(ValueError, match="below its atomic number"):
+            at.get_z_a_nucname(name)
     assert at.get_ion_tuple("nII") == (7, 2)
 
     # a symbol that the caller gave in the wrong case still resolves

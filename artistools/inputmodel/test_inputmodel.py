@@ -1565,9 +1565,11 @@ def test_snapshot_electron_fraction_counts_the_free_neutrons() -> None:
 
     dfmodel = pl.LazyFrame({"X_n1": [0.5], "X_He4": [0.5], "mass_g": [1.0]})
     assert calculate_model_electron_frac(dfmodel) == pytest.approx(0.25)
-    # ARTIS matches the name with its case, thus X_n14 is a neutron column and X_N14 is nitrogen
-    assert calculate_model_electron_frac(pl.LazyFrame({"X_n14": [1.0], "mass_g": [1.0]})) == pytest.approx(0.0)
-    assert calculate_model_electron_frac(pl.LazyFrame({"X_N14": [1.0], "mass_g": [1.0]})) == pytest.approx(0.5)
+    # only the mass number 1 gives the neutron, in each case of the name
+    for column, electronfrac in (("X_n14", 0.5), ("X_N14", 0.5), ("X_N1", 0.0)):
+        assert calculate_model_electron_frac(pl.LazyFrame({column: [1.0], "mass_g": [1.0]})) == pytest.approx(
+            electronfrac
+        )
 
 
 def test_energyfiles_from_trajectory(trajectory_copy: Path) -> None:
@@ -3460,8 +3462,8 @@ def test_plotinitialcomposition_rejects_a_column_or_a_model_that_it_cannot_plot(
 def test_shen2018_nitrogen_in_lower_case_is_no_neutron() -> None:
     """The names of a Shen et al. 2018 file are in lower case, thus n14 is nitrogen and only n and n1 are the neutron.
 
-    get_atomic_number reads a lower-case "n" with a mass number as the neutron, as ARTIS does. The nitrogen columns
-    then went to the atomic number 0, and the written abundance of nitrogen was zero.
+    A rule that read the case of the name gave the atomic number 0 to the nitrogen columns, and the written abundance
+    of nitrogen was zero.
     """
     from artistools.inputmodel.shen2018 import get_nuclide_atomic_number
 

@@ -837,15 +837,19 @@ def get_z_a_nucname(nucname: str) -> tuple[int, int]:
     """Return the atomic number and the mass number of a nuclide name.
 
     For example, 'Pb208', 'X_Pb208', and 'nniso_Pb208' each give (82, 208).
+    A mass number below the atomic number gives a ValueError.
     """
     if "_" in nucname:
         nucname = nucname.split("_")[1]
 
-    # the mass number stays on the name, because get_atomic_number then matches "n" and "N" with their case
+    # the mass number stays on the name, because it separates the neutron (n1) from nitrogen (N14)
     z = get_atomic_number(nucname)
     assert z >= 0, f"{nucname} does not start with an element symbol"
 
     a = int(nucname.lower().lstrip(string.ascii_lowercase))
+    if a < z:
+        msg = f"The nuclide {nucname} has a mass number of {a}, which is below its atomic number of {z}"
+        raise ValueError(msg)
 
     return z, a
 
@@ -930,17 +934,15 @@ def get_elsymbols_df() -> pl.LazyFrame:
 def get_atomic_number(elsymbol: str) -> int:
     """Return the atomic number of an element symbol, or -1 if it is not an element symbol.
 
-    The neutron has the atomic number 0. ARTIS matches the name of a nuclide with its case (get_nucstring_z in
-    decay.cc): "n" is the neutron and "N" is nitrogen. The same rule applies here to a mass fraction column, e.g.
-    X_n and X_N, and to a name with a mass number, e.g. n1 and N14. A symbol with no mass number that is not such a
-    column is not case sensitive, thus a user can write "n" or "fe".
+    The symbol is not case sensitive, e.g. "fe" and X_FE are iron. The neutron has the atomic number 0, and only the
+    mass number 1 separates it from nitrogen:
+
+    - n1, N1, X_n1, and X_N1 are the neutron;
+    - each other name is nitrogen, e.g. "n", X_N, n14, and X_N14, because the neutron is not an element.
     """
     assert elsymbol is not None
-    ismassfractioncolumn = elsymbol.startswith("X_")
     name = elsymbol.removeprefix("X_").split("_")[0].split("-")[0]
-
-    hasmassnumber = name[-1:].isdigit()
-    if name.rstrip(string.digits) == "n" and (ismassfractioncolumn or hasmassnumber):
+    if name.title() == "N1":
         return 0
 
     # a dict lookup, because this is called once per column name in some loops
