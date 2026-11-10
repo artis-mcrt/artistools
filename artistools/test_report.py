@@ -166,3 +166,14 @@ def test_report_of_model_with_no_estimators_names_each_error(
     assert '<img src="Te_timestep' not in page
     assert page.count('<p class="error">This part of the report failed:') == 4
     assert page.rstrip().endswith("</html>")
+
+
+def test_report_part_with_a_polars_panic_gives_an_error_line() -> None:
+    """A truncated compressed file gives a panic of polars, which is no Exception, and it stopped the full page."""
+    from artistools.report import run_captured
+
+    def read_truncated_file() -> None:
+        msg = "EOFError"
+        raise pl.exceptions.PanicException(msg)
+
+    assert run_captured(read_truncated_file)[:2] == (None, "PanicException: EOFError")

@@ -210,7 +210,12 @@ def plot_hesma_peakmag_dm15_dm40(pathtofiles: Path | str, args: argparse.Namespa
     axis = axesgrid[0][0]
     plottedtables = []
     # the folder can also hold the viewing angle files that widthluminosity reads, and a figure of an earlier command
-    for filepath in sorted(Path(pathtofiles).glob("*_width-luminosity.dat")):
+    filepaths = sorted(Path(pathtofiles).glob("*_width-luminosity.dat"))
+    if not filepaths:
+        exit_with_error(
+            f"{pathtofiles} holds no *_width-luminosity.dat file", "Make the files with the widthluminosity action"
+        )
+    for filepath in filepaths:
         print(f"Reading {filepath}")
         dfwidthlum = read_wsv(filepath)
         axis.scatter(dfwidthlum["dm15"], dfwidthlum["peakmag"], label=filepath.stem)

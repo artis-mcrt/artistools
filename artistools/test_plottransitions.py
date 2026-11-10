@@ -130,3 +130,20 @@ def test_plottransitions_writes_the_drawn_values(
         )
         assert np.allclose(dfseries["lambda_angstroms"].to_numpy(), drawnx, rtol=1e-12, atol=0.0)
         assert np.allclose(dfseries["f_lambda_arbitrary"].to_numpy(), drawny, rtol=1e-12, atol=0.0)
+
+
+def test_normalised_spectrum_of_an_ion_with_no_line_stays_zero(tmp_path: Path) -> None:
+    """An ion with no line in the x range has a spectrum of zeros, and --normalised divided it by zero."""
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        at.plottransitions.main(
+            argsraw=[],
+            modelpath=modelpath,
+            timedays=300,
+            normalised=True,
+            xmin=7140,
+            xmax=7170,
+            outputfile=tmp_path / "trans.pdf",
+        )

@@ -579,6 +579,10 @@ def test_the_positional_items_read_the_folder_last(monkeypatch: pytest.MonkeyPat
     assert args.modelpath == Path("mymodel")
     assert args.items == ["Te", "TR"]
 
+    # host:model and host:~/model name one remote model, and the comparison gave "two different models"
+    args = argparse.Namespace(items=["Te", "testhost:model"], modelpath=Path("testhost:model"))
+    assert at.misc.resolve_positional_modelpath(args, "items") == ["Te"]
+
     # no folder at the end leaves every item, and the working folder stays the default
     args = parse(["Te", "TR"])
     assert args.modelpath == Path()

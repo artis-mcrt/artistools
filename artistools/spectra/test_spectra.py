@@ -2760,6 +2760,22 @@ def test_plotspectra_normalised_log_axis_keeps_room_above_the_peak() -> None:
     plt.close(fig)
 
 
+def test_spectraemissionplot_takes_the_label_of_the_model_after_a_reference(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A reference spectrum before the model gave the model the label of the reference."""
+    at.spectra.plot(
+        argsraw=[],
+        specpath=["2010lp_20110928_fors2.txt", modelpath_classic_3d],
+        label=["REFLABEL", "MODELLABEL"],
+        showemission=True,
+        timemin=4,
+        timemax=6.5,
+        outputfile=tmp_path / "emission_after_reference.pdf",
+    )
+    assert "'MODELLABEL': Timesteps" in capsys.readouterr().out
+
+
 @mock.patch("artistools.spectra.core.get_flux_contributions_from_packets")
 def test_spectraemissionplot_forwards_the_velocity_ranges(mockgetcontributions: mock.MagicMock, tmp_path: Path) -> None:
     """The velocity range arguments must reach the packet reader that selects the contributions."""
