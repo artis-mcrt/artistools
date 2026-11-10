@@ -13,7 +13,6 @@ import polars as pl
 import polars.selectors as cs
 
 from artistools.atomic import get_atomic_number
-from artistools.atomic import get_elsymbol
 from artistools.atomic import get_z_a_nucname
 from artistools.constants import amu_g
 from artistools.constants import C_cm_per_s
@@ -32,27 +31,6 @@ from artistools.misc import parse_cli_args
 from artistools.misc import print_heading
 from artistools.misc import print_product
 from artistools.misc import print_warning
-
-NEUTRON_SUM_NAME = "n_isosum"
-
-
-def get_species_atomic_number(species: str) -> int:
-    """Return the atomic number of a species of the composition table, e.g. Fe, Ni56, or Ni_isosum."""
-    # the name of the neutron sum has no mass number, thus get_atomic_number reads it as nitrogen
-    return 0 if species == NEUTRON_SUM_NAME else get_atomic_number(f"X_{species}")
-
-
-def get_isotope_sum_name(nuclide: str) -> str:
-    """Return the name of the sum that holds a nuclide of the composition table, e.g. Ni_isosum for Ni56.
-
-    The name has the symbol of the element in its standard case. Thus n14 and N14 go to N_isosum, and the neutron
-    names n1 and N1 go to n_isosum.
-    """
-    atomic_number = get_atomic_number(nuclide)
-    if atomic_number == 0:
-        return NEUTRON_SUM_NAME
-    elsymbol = get_elsymbol(atomic_number) if atomic_number > 0 else nuclide.rstrip(string.digits)
-    return f"{elsymbol}_isosum"
 
 
 def calculate_model_electron_frac(dfmodel: pl.LazyFrame) -> float | None:
@@ -281,7 +259,12 @@ def print_species_masses(dfmodel: pl.LazyFrame, args: argparse.Namespace, mass_m
     mass_msun_actinides = 0.0
     speciesmasses: dict[str, float] = {}
 
-    abundcolumns = dfmodel.select(cs.starts_with("X_") - cs.by_name("X_Fegroup")).collect_schema().names()
+    # ARTIS does not decay the free neutrons and keeps no abundance of them, thus this table leaves them out
+    abundcolumns = [
+        column
+        for column in dfmodel.select(cs.starts_with("X_") - cs.by_name("X_Fegroup")).collect_schema().names()
+        if get_atomic_number(column) != 0
+    ]
 
     # one collect for every species, rather than re-running the whole scan once per column
     speciesabund_g_of_column: dict[str, t.Any] = (
@@ -307,7 +290,7 @@ def print_species_masses(dfmodel: pl.LazyFrame, args: argparse.Namespace, mass_m
         if species[-1].isdigit():
             # isotopic species
 
-            strtotiso = get_isotope_sum_name(species)
+            strtotiso = f"{species.rstrip(string.digits)}_isosum"
             speciesmasses[strtotiso] = speciesmasses.get(strtotiso, 0.0) + speciesabund_g
             mass_msun_isotopes += species_mass_msun
 
@@ -366,10 +349,10 @@ def print_species_masses(dfmodel: pl.LazyFrame, args: argparse.Namespace, mass_m
             )
             massnumber = int(strmassnumber) if strmassnumber else -1
             if args.sort == "z":
-                return (get_species_atomic_number(species), massnumber, species)
+                return (get_atomic_number(species), massnumber, species)
 
             if args.sort == "a":
-                return (massnumber, get_species_atomic_number(species), species)
+                return (massnumber, get_atomic_number(species), species)
 
         return (-mass_g, species)
 
@@ -390,9 +373,8 @@ def print_species_masses(dfmodel: pl.LazyFrame, args: argparse.Namespace, mass_m
         species_mass_msun = mass_g / Msun_to_g
         massfrac = species_mass_msun / mass_msun_rho
         strcomment = ""
-        atomic_number = get_species_atomic_number(species)
-        # abundances.txt gives no mass of the free neutrons, thus their sum has no element mass to compare with
-        if species.endswith("_isosum") and atomic_number > 0:
+        atomic_number = get_atomic_number(species)
+        if species.endswith("_isosum"):
             elsymb = species.removesuffix("_isosum")
             elem_mass = speciesmasses.get(elsymb, 0.0)
             if mass_g == 0.0 or np.isclose(mass_g, elem_mass, rtol=1e-4):

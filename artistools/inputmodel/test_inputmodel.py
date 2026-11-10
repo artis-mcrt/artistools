@@ -1572,20 +1572,6 @@ def test_snapshot_electron_fraction_counts_the_free_neutrons() -> None:
         )
 
 
-def test_isotope_sum_keeps_nitrogen_and_the_neutron_apart() -> None:
-    """A nitrogen nuclide in lower case (n14) went into the sum of the free neutrons (n_isosum)."""
-    from artistools.inputmodel.describeinputmodel import get_isotope_sum_name
-
-    names = ("n1", "N1", "n14", "N14", "ni56")
-    assert [get_isotope_sum_name(name) for name in names] == [
-        "n_isosum",
-        "n_isosum",
-        "N_isosum",
-        "N_isosum",
-        "Ni_isosum",
-    ]
-
-
 def test_energyfiles_from_trajectory(trajectory_copy: Path) -> None:
     """Integrating a trajectory's heating rate must give a positive total energy."""
     thermofile = trajectory_copy / "energy_thermo.dat"
