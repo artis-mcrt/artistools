@@ -945,16 +945,21 @@ def test_get_atomic_number_and_elsymbol() -> None:
     assert at.get_atomic_number("X_Fe") == 26
     assert at.get_atomic_number("UnknownXYZ") == -1
 
-    # the free neutron is "n1", and a title-case lookup gave nitrogen for it
+    # ARTIS matches a nuclide name with its case: "n" is the neutron and "N" is nitrogen. A title-case lookup gave
+    # nitrogen for the neutron
     assert at.get_atomic_number("X_n1") == 0
+    assert at.get_atomic_number("X_n") == 0
+    assert at.get_atomic_number("n14") == 0
     assert at.get_z_a_nucname("X_n1") == (0, 1)
     assert at.get_z_a_nucname("n1") == (0, 1)
-    # a symbol is not case sensitive, thus every other "n" is nitrogen
-    assert at.get_atomic_number("n") == 7
-    assert at.get_atomic_number("N") == 7
+    assert at.get_z_a_nucname("n14") == (0, 14)
+    assert at.get_atomic_number("X_N") == 7
     assert at.get_atomic_number("X_N14") == 7
     assert at.get_z_a_nucname("X_N14") == (7, 14)
-    assert at.get_z_a_nucname("n14") == (7, 14)
+    assert at.get_z_a_nucname("N1") == (7, 1)
+    # a symbol with no mass number that is not a mass fraction column is not case sensitive
+    assert at.get_atomic_number("n") == 7
+    assert at.get_atomic_number("N") == 7
     assert at.get_ion_tuple("nII") == (7, 2)
 
     # a symbol that the caller gave in the wrong case still resolves

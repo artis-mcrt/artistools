@@ -1565,6 +1565,8 @@ def test_snapshot_electron_fraction_counts_the_free_neutrons() -> None:
 
     dfmodel = pl.LazyFrame({"X_n1": [0.5], "X_He4": [0.5], "mass_g": [1.0]})
     assert calculate_model_electron_frac(dfmodel) == pytest.approx(0.25)
+    # ARTIS matches the name with its case, thus X_n14 is a neutron column and X_N14 is nitrogen
+    assert calculate_model_electron_frac(pl.LazyFrame({"X_n14": [1.0], "mass_g": [1.0]})) == pytest.approx(0.0)
     assert calculate_model_electron_frac(pl.LazyFrame({"X_N14": [1.0], "mass_g": [1.0]})) == pytest.approx(0.5)
 
 

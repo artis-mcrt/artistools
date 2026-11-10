@@ -41,8 +41,8 @@ def calculate_model_electron_frac(dfmodel: pl.LazyFrame) -> float | None:
     exprs_nucleons = []
     for column in dfmodel.select(cs.matches("X_[A-z]+[0-9]")).collect_schema().names():
         species = column.removeprefix("X_")
-        # the full name goes to get_atomic_number, because "n1" is the neutron and "n" alone is nitrogen
-        atomic_number = get_atomic_number(species)
+        # the column name goes to get_atomic_number, which matches "n" and "N" with their case, as ARTIS does
+        atomic_number = get_atomic_number(column)
         mass_number = float(species.removeprefix(species.rstrip(string.digits)))
         exprs_protons.append(atomic_number / (mass_number * amu_g) * pl.col(column) * pl.col("mass_g"))
         exprs_nucleons.append(1 / amu_g * pl.col(column) * pl.col("mass_g"))
@@ -261,11 +261,7 @@ def print_species_masses(dfmodel: pl.LazyFrame, args: argparse.Namespace, mass_m
     mass_msun_actinides = 0.0
     speciesmasses: dict[str, float] = {}
 
-    # the loop below reads a name without its mass number, and "n" is then nitrogen and not the neutron. Thus the
-    # masses of the species leave out the free neutrons, and only the snapshot Ye counts them
-    abundcolumns = (
-        dfmodel.select(cs.starts_with("X_") - cs.by_name("X_Fegroup") - cs.starts_with("X_n")).collect_schema().names()
-    )
+    abundcolumns = dfmodel.select(cs.starts_with("X_") - cs.by_name("X_Fegroup")).collect_schema().names()
 
     # one collect for every species, rather than re-running the whole scan once per column
     speciesabund_g_of_column: dict[str, t.Any] = (
@@ -286,7 +282,8 @@ def print_species_masses(dfmodel: pl.LazyFrame, args: argparse.Namespace, mass_m
 
         species_mass_msun = speciesabund_g / Msun_to_g
 
-        atomic_number = get_atomic_number(species.rstrip(string.digits))
+        # the column name keeps X_n (the neutron) and X_N (nitrogen) apart, as ARTIS does
+        atomic_number = get_atomic_number(column)
 
         if species[-1].isdigit():
             # isotopic species
@@ -351,10 +348,10 @@ def print_species_masses(dfmodel: pl.LazyFrame, args: argparse.Namespace, mass_m
             )
             massnumber = int(strmassnumber) if strmassnumber else -1
             if args.sort == "z":
-                return (get_atomic_number(species), massnumber, species)
+                return (get_atomic_number(f"X_{species}"), massnumber, species)
 
             if args.sort == "a":
-                return (massnumber, get_atomic_number(species), species)
+                return (massnumber, get_atomic_number(f"X_{species}"), species)
 
         return (-mass_g, species)
 
@@ -375,8 +372,9 @@ def print_species_masses(dfmodel: pl.LazyFrame, args: argparse.Namespace, mass_m
         species_mass_msun = mass_g / Msun_to_g
         massfrac = species_mass_msun / mass_msun_rho
         strcomment = ""
-        atomic_number = get_atomic_number(species)
-        if species.endswith("_isosum"):
+        atomic_number = get_atomic_number(f"X_{species}")
+        # abundances.txt gives no mass of the free neutrons, thus their sum has no element mass to compare with
+        if species.endswith("_isosum") and atomic_number > 0:
             elsymb = species.removesuffix("_isosum")
             elem_mass = speciesmasses.get(elsymb, 0.0)
             if mass_g == 0.0 or np.isclose(mass_g, elem_mass, rtol=1e-4):

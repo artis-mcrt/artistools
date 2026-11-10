@@ -4,7 +4,6 @@ import argparse
 import gc
 import math
 import posixpath
-import string
 import tarfile
 import time
 import typing as t
@@ -70,7 +69,7 @@ def get_dfelemabund_from_dfmodel(dfmodel: pl.DataFrame) -> pl.DataFrame:
     isoabundcolnames = [
         colname for colname in dfmodel.collect_schema().names() if colname.startswith("X_") and colname[-1].isdigit()
     ]
-    atomic_numbers = [get_atomic_number(colname[2:].rstrip(string.digits)) for colname in isoabundcolnames]
+    atomic_numbers = [get_atomic_number(colname) for colname in isoabundcolnames]
 
     elemisotopes: dict[int, list[str]] = {k: [] for k in set(atomic_numbers)}
 

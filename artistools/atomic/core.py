@@ -841,7 +841,7 @@ def get_z_a_nucname(nucname: str) -> tuple[int, int]:
     if "_" in nucname:
         nucname = nucname.split("_")[1]
 
-    # the mass number stays on the name, because it tells the free neutron "n1" from nitrogen
+    # the mass number stays on the name, because get_atomic_number then matches "n" and "N" with their case
     z = get_atomic_number(nucname)
     assert z >= 0, f"{nucname} does not start with an element symbol"
 
@@ -928,13 +928,19 @@ def get_elsymbols_df() -> pl.LazyFrame:
 
 
 def get_atomic_number(elsymbol: str) -> int:
-    """Return the atomic number of an element symbol, or -1 if it is not an element symbol."""
+    """Return the atomic number of an element symbol, or -1 if it is not an element symbol.
+
+    The neutron has the atomic number 0. ARTIS matches the name of a nuclide with its case (get_nucstring_z in
+    decay.cc): "n" is the neutron and "N" is nitrogen. The same rule applies here to a mass fraction column, e.g.
+    X_n and X_N, and to a name with a mass number, e.g. n1 and N14. A symbol with no mass number that is not such a
+    column is not case sensitive, thus a user can write "n" or "fe".
+    """
     assert elsymbol is not None
+    ismassfractioncolumn = elsymbol.startswith("X_")
     name = elsymbol.removeprefix("X_").split("_")[0].split("-")[0]
 
-    # only "n1" is the free neutron. A symbol is not case sensitive, thus "n", "n14", and "nII" are
-    # nitrogen. No isotope of nitrogen has a mass number of 1
-    if name == "n1":
+    hasmassnumber = name[-1:].isdigit()
+    if name.rstrip(string.digits) == "n" and (ismassfractioncolumn or hasmassnumber):
         return 0
 
     # a dict lookup, because this is called once per column name in some loops
