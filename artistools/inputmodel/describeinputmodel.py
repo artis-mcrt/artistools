@@ -13,6 +13,7 @@ import polars as pl
 import polars.selectors as cs
 
 from artistools.atomic import get_atomic_number
+from artistools.atomic import get_elsymbol
 from artistools.atomic import get_z_a_nucname
 from artistools.constants import amu_g
 from artistools.constants import C_cm_per_s
@@ -39,6 +40,19 @@ def get_species_atomic_number(species: str) -> int:
     """Return the atomic number of a species of the composition table, e.g. Fe, Ni56, or Ni_isosum."""
     # the name of the neutron sum has no mass number, thus get_atomic_number reads it as nitrogen
     return 0 if species == NEUTRON_SUM_NAME else get_atomic_number(f"X_{species}")
+
+
+def get_isotope_sum_name(nuclide: str) -> str:
+    """Return the name of the sum that holds a nuclide of the composition table, e.g. Ni_isosum for Ni56.
+
+    The name has the symbol of the element in its standard case. Thus n14 and N14 go to N_isosum, and the neutron
+    names n1 and N1 go to n_isosum.
+    """
+    atomic_number = get_atomic_number(nuclide)
+    if atomic_number == 0:
+        return NEUTRON_SUM_NAME
+    elsymbol = get_elsymbol(atomic_number) if atomic_number > 0 else nuclide.rstrip(string.digits)
+    return f"{elsymbol}_isosum"
 
 
 def calculate_model_electron_frac(dfmodel: pl.LazyFrame) -> float | None:
@@ -293,8 +307,7 @@ def print_species_masses(dfmodel: pl.LazyFrame, args: argparse.Namespace, mass_m
         if species[-1].isdigit():
             # isotopic species
 
-            # X_n1 and X_N1 are both the neutron, thus their sum must not go to the sum of nitrogen (N_isosum)
-            strtotiso = NEUTRON_SUM_NAME if atomic_number == 0 else f"{species.rstrip(string.digits)}_isosum"
+            strtotiso = get_isotope_sum_name(species)
             speciesmasses[strtotiso] = speciesmasses.get(strtotiso, 0.0) + speciesabund_g
             mass_msun_isotopes += species_mass_msun
 
