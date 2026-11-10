@@ -6,7 +6,6 @@
 .cache
 .coverage*
 coverage.xml
-*.pyc
 *.swp
 *.tmp
 .tags
@@ -18,7 +17,6 @@ coverage.xml
 __pycache__/
 *.py[cod]
 *$py.class
-coverage.xml
 .*_cache/
 
 *.so
@@ -64,7 +62,6 @@ artistools/data/lightcurves/SNsample/*.txt
 
 *.pdf
 
-plottingscripts/*
 plottingscripts/
 
 target

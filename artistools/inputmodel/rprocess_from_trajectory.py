@@ -897,7 +897,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     particleid = args.particleid
     print(f"Trajectory particle id {particleid}")
     dfnucabund, t_model_init_seconds = get_trajectory_timestepfile_nuc_abund(traj_root, particleid, "tday_nz-plane")
-    dfnucabund = dfnucabund.filter(pl.col("Z") >= 1).with_columns(radioactive=pl.lit(value=True))
+    dfnucabund = dfnucabund.filter(pl.col("Z") >= 1)
 
     t_model_init_days = t_model_init_seconds / day_to_s
 
@@ -930,7 +930,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         "X_Co57": 0.0,
     }
 
-    for row in dfnucabund.filter(pl.col("radioactive")).iter_rows(named=True):
+    for row in dfnucabund.iter_rows(named=True):
         A = row["N"] + row["Z"]
         rowdict[f"X_{get_elsymbol(row['Z'])}{A}"] = row["massfrac"]
 

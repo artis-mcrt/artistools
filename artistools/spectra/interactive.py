@@ -15,7 +15,6 @@ import numpy as np
 import polars as pl
 
 from artistools.misc import exit_with_error
-from artistools.misc import firstexisting_or_none
 from artistools.misc import get_artis_model_folders
 from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_model_name
@@ -33,6 +32,7 @@ from artistools.spectra.core import convert_angstroms_to_unit
 from artistools.spectra.core import convert_unit_to_angstroms
 from artistools.spectra.core import EmissionEvent
 from artistools.spectra.core import get_x_quantity_label
+from artistools.spectra.core import has_gamma_spec_file
 from artistools.spectra.core import REFERENCE_SPECTRA_FOLDER
 from artistools.spectra.plotspectra import addargs
 from artistools.spectra.plotspectra import DEFAULT_MAXSERIESCOUNT
@@ -367,9 +367,9 @@ def has_gamma_spectrum(modelfolders: "Sequence[Path]") -> bool:
     reads the packets of all the model folders. Thus a model folder with gamma_spec.out alone and a model folder
     with packets alone give no plot. A model folder can keep only the parquet cache of its packets.
     """
-    return all(
-        firstexisting_or_none("gamma_spec.out", folder=modelfolder) is not None for modelfolder in modelfolders
-    ) or all(has_packets_files(modelfolder) for modelfolder in modelfolders)
+    return all(has_gamma_spec_file(modelfolder) for modelfolder in modelfolders) or all(
+        has_packets_files(modelfolder) for modelfolder in modelfolders
+    )
 
 
 class ModelTimes(t.NamedTuple):
@@ -1558,7 +1558,9 @@ def open_window(
             kind,
             ("spec_res.out", "specpol_res.out"),
             "vspecpol*",
-            frompackets=viewer.values.datasource == "packets",
+            # the data source Auto also reads the packets files for some options, e.g. --deltax
+            frompackets=viewer.values.datasource == "packets"
+            or (viewer.values.datasource == "auto" and get_auto_reason(viewer, viewer.values) is not None),
         ),
     )
     for box in (countbox, binwidthbox):
@@ -1757,7 +1759,8 @@ def open_window(
             (absorptioncheck, absorption, "showabsorption"),
         ):
             checkbox.setEnabled(reason is None)
-            checkbox.setToolTip(reason or helptexts.get(dest, ""))
+            # show_flag_labels gave each tooltip its flag, and a new tooltip must keep it
+            checkbox.setToolTip(reason or f"{helptexts.get(dest, '')} (--{dest})")
 
     def add_time_grid_parts(row: SeriesRow) -> SeriesRow:
         """Give the row of a model the times of the model, and the mark of the model that gives the time controls."""

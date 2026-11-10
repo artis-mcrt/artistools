@@ -1684,7 +1684,7 @@ def test_server_protocol_changes_with_the_readers(package_modules: list[Path]) -
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (15, "e47a5102121b8df6"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (16, "69e24cb9f926002e"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )
@@ -1875,6 +1875,9 @@ def test_model_readers_of_a_remote_model_run_on_the_server(tmp_path: Path) -> No
             rowcalls = [call for call in mockcall.call_args_list if call.args[2] == "read_modeldata_rows_on_host"]
             assert [call.args[3][2] for call in rowcalls] == [["inputcellid"]]
             remoteinputparams = at.get_inputparams(remotepath)
+            # these readers opened host:path on this host, and check_local_path then stopped plotnltepops
+            remotecounts = (at.misc.get_npts_model(remotepath), at.misc.get_nprocs(remotepath))
+            remotegridmapping = at.misc.get_grid_mapping(str(remotepath))
             dfremotenltepops = at.nltepops.read_nltepops(remotepath, timestep=40, modelgridindex=0)
             remoteoptions = at.misc.get_artis_options(Path(f"testhost:{optionsfolder}"))
             # a str path stayed on this host, and the missing local folder then gave no options and no error
@@ -1901,6 +1904,8 @@ def test_model_readers_of_a_remote_model_run_on_the_server(tmp_path: Path) -> No
     pltest.assert_frame_equal(dfremotemodel, dflocalmodel.collect(), abs_tol=0.0)
     assert remotemodelmeta == localmodelmeta
     assert remoteinputparams == at.get_inputparams(modelpath)
+    assert remotecounts == (at.misc.get_npts_model(modelpath), at.misc.get_nprocs(modelpath))
+    assert remotegridmapping == at.misc.get_grid_mapping(modelpath)
     pltest.assert_frame_equal(
         dfremotenltepops, at.nltepops.read_nltepops(modelpath, timestep=40, modelgridindex=0), abs_tol=0.0
     )
@@ -4499,6 +4504,26 @@ def test_explain_reads_no_packets_and_gives_the_timesteps(capsys: pytest.Capture
     assert "-xmin = 3000.0" in stdout
     assert f"Model: {modelfolder}" in stdout
     assert "Time: timesteps" in stdout
+
+
+def test_explain_gives_the_timesteps_of_each_time_of_a_list(capsys: pytest.CaptureFixture[str]) -> None:
+    """The deposition command takes a list of times, and --explain reported an error for such a list."""
+    from artistools.__main__ import main
+
+    main(argsraw=["deposition", str(at.get_path("testartismodel")), "-t", "300,330", "--explain"])
+    timelines = [line.strip() for line in capsys.readouterr().out.splitlines() if "Time:" in line]
+    assert [line.split(",")[0] for line in timelines] == ["Time: timesteps 54 to 54", "Time: timesteps 82 to 82"]
+
+
+def test_moving_average_of_a_capped_opacity_has_its_own_description() -> None:
+    """The pattern of the capped opacity also matched its moving average, and gave "capped at 1_movingaverage"."""
+    from artistools.misc.columns import get_column_description
+
+    assert get_column_description("linebinned_cap1_movingaverage_cm2_per_g") == (
+        "the moving average over the wavelength of the opacity linebinned_cap1",
+        "cm^2/g",
+    )
+    assert "capped at 1," in str(get_column_description("linebinned_cap1_cm2_per_g"))
 
 
 def test_explain_takes_the_model_folder_from_the_end_of_the_items(capsys: pytest.CaptureFixture[str]) -> None:

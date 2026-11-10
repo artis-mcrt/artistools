@@ -1289,7 +1289,7 @@ def read_linelistfile(filepath: Path) -> pl.DataFrame:
                     .otherwise(pl.lit(value=True))
                     .alias("rowiscomplete"),
                 )
-                .collect(engine="streaming")
+                .collect()
             )
         except pl.exceptions.InvalidOperationError as exc:
             msg = (

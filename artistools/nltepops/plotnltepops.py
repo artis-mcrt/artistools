@@ -1144,9 +1144,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-ion_stages", help="Ion stage range, 1 is neutral, 2 is 1+")
 
-    parser.add_argument(
-        "-levels", type=int, nargs="+", help="Choose levels to plot"
-    )  # currently only for x axis = time
+    parser.add_argument("-levels", type=int, nargs="+", help="Choose levels to plot")
 
     parser.add_argument("-maxlevel", default=-1, type=int, help="Maximum level to plot")
 

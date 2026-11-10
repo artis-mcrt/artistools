@@ -474,7 +474,7 @@ def select_dirbins(alldirbins: list[int], requested: Sequence[int] | None) -> li
 
 @modelpath_cache(maxsize=16)
 def get_escape_surface_gamma(modelpath: Path) -> float:
-    """Return the Lorentz factor correction at the outer model boundary.
+    """Return sqrt(1 - beta^2) at the outer model boundary, which is the inverse of the Lorentz factor.
 
     The cache takes the absolute path, thus a change of the working folder gives the new model.
     """
@@ -659,8 +659,6 @@ def get_spectrum_filenames(gamma: bool, directionresolved: bool) -> list[str]:
     return ["spec_res.out", "specpol_res.out"] if directionresolved else ["spec.out", "specpol.out"]
 
 
-# maxsize is small because this reads eagerly and every cached entry retains a whole spec file. A cached
-# scan would hold only the query plan, thus each collect by a caller would parse the file again.
 def read_complete_spectrum_table(specfilename: Path, has_header: bool = True) -> pl.DataFrame:
     """Return the String columns of a text file of spectra, with no cut last line.
 
@@ -690,6 +688,8 @@ def read_complete_spectrum_table(specfilename: Path, has_header: bool = True) ->
     return dfspec
 
 
+# maxsize is small because this reads eagerly and every cached entry retains a whole spec file. A cached
+# scan would hold only the query plan, thus each collect by a caller would parse the file again.
 @clear_at_reload("output")
 @modelpath_cache(maxsize=2)
 def scan_spec(modelpath: Path, gamma: bool = False) -> pl.LazyFrame:

@@ -71,11 +71,9 @@ def test_hesma_width_luminosity_roundtrip(tmp_path: Path) -> None:
     assert dfwidthlum.columns == ["peakmag", "dm15", "angle_bin"]
     assert dfwidthlum.height == 100
 
-    plotdir = tmp_path / "widthlum"
-    plotdir.mkdir()
-    widthlumfile.rename(plotdir / widthlumfile.name)
+    # the folder also holds the viewing angle file, and the plot read it as a width-luminosity file
     plotfile = tmp_path / "widthlum.pdf"
-    at.hesma_scripts.main(argsraw=["plotwidthluminosity", "-pathtofiles", str(plotdir), "-plotfile", str(plotfile)])
+    at.hesma_scripts.main(argsraw=["plotwidthluminosity", "-pathtofiles", str(tmp_path), "-plotfile", str(plotfile)])
     assert plotfile.is_file()
 
 

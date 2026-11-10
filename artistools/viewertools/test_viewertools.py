@@ -133,7 +133,8 @@ def test_viewer_selects_the_residual_type(
     values = np.asarray(line.get_ydata())
     finite = np.isfinite(values)
     assert finite.any()
-    assert np.allclose(values[finite], 0.0 if residualtype == "absolute" else 1.0)
+    # a spectrum has a flux of the order of 1e-13, thus the default atol of 1e-8 accepts each absolute residual
+    assert np.allclose(values[finite], 0.0 if residualtype == "absolute" else 1.0, rtol=1e-12, atol=0.0)
     parser = viewercore.make_parser(
         at.spectra.plotspectra.addargs if kind == "spectra" else at.lightcurve.plotlightcurve.addargs
     )

@@ -20,6 +20,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import polars as pl
 
 from artistools.misc import addarg_force
 from artistools.misc import addarg_modelpath
@@ -37,9 +38,6 @@ from artistools.misc import print_saved
 from artistools.misc import resolve_modelpath
 from artistools.misc import without_compressed_extension
 from artistools.misc import write_text_file_atomic
-
-if t.TYPE_CHECKING:
-    import polars as pl
 
 LIGHTCURVEFILENAME = "lightcurve.png"
 SPECTRUMFILENAME = "spectrum_timestep{timestep:03d}.png"
@@ -76,8 +74,9 @@ def run_captured[T](function: Callable[[], T]) -> tuple[T | None, str | None, li
             result = function()
         except SystemExit as exc:
             errortext = f"the command stopped with the exit status {exc.code}"
-        # the page names the error of a part, and the next part runs
-        except Exception as exc:  # ruff:ignore[blind-except]
+        # the page names the error of a part, and the next part runs. A truncated compressed file gives a panic of
+        # polars, which is no subclass of Exception
+        except (Exception, pl.exceptions.PanicException) as exc:  # ruff:ignore[blind-except]
             errortext = f"{type(exc).__name__}: {exc}"
     lines = captured.getvalue().splitlines()
     if errortext is not None and (errorlines := [line for line in lines if line.startswith(("error:", "help:"))]):

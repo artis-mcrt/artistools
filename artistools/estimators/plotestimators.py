@@ -285,6 +285,9 @@ class SeriesPlan(t.NamedTuple):
     seriesname: str
     # the weight of celltsweight in words for the log, e.g. "cell mass times time step duration"
     weightname: str
+    # the estimator column of a series of one variable, e.g. "Te", or None for a different type of series.
+    # In a plot of initabundances, "Te" is tellurium, which has no unit and no limit of a temperature
+    variablename: str | None = None
 
 
 class SeriesData(t.NamedTuple):
@@ -505,7 +508,7 @@ def get_subplot_queries(
     pointqueries = [plan.dfseries.select("xvalue", "yvalue") for plan in plans] if args.markers else []
     summaryqueries = [
         get_series_summary_query(
-            plan.dfseries, plan.weightname, (temperaturelimits or {}) if plan.seriesname in TEMPERATURENAMES else {}
+            plan.dfseries, plan.weightname, (temperaturelimits or {}) if plan.variablename in TEMPERATURENAMES else {}
         )
         for plan in plans
     ]
@@ -563,7 +566,11 @@ def get_series_data(
     pointcount = len(plans) if args.markers else 0
     dflinepoints_of_plan: Sequence[pl.DataFrame | None] = frames[:linecount] or [None] * len(plans)
     dfpoints_of_plan: Sequence[pl.DataFrame | None] = frames[linecount : linecount + pointcount] or [None] * len(plans)
-    summaries = [dfsummary.row(0, named=True) for dfsummary in frames[linecount + pointcount :]]
+    summaries = [
+        dfsummary.row(0, named=True)
+        | {"units": get_units(plan.variablename, latex=False) if plan.variablename else None}
+        for plan, dfsummary in zip(plans, frames[linecount + pointcount :], strict=True)
+    ]
     return [
         SeriesData(plan.label, plan.plotkwargs, dflinepoints, dfpoints, plan.seriesname, summary)
         for plan, dflinepoints, dfpoints, summary in zip(
@@ -657,12 +664,12 @@ def get_init_abundance_plans(
             linelabel = "$^{56}$Ni"
             linestyle = "--"
         elif speciesstr.lower() in {"ni_stb", "ni_stable"}:
-            expr_yvalue = pl.col(f"{valuetype}{elsymbol}") - pl.col(f"{valuetype}Ni56")
+            expr_yvalue = pl.col(f"{valuetype}Ni") - pl.col(f"{valuetype}Ni56")
             linelabel = "Stable Ni"
         elif speciesstr.lower() in {"co_56", "co56", "56co"}:
             expr_yvalue = pl.col(f"{valuetype}Co56")
             linelabel = "$^{56}$Co"
-        elif speciesstr.lower() in {"fegrp", "ffegroup"}:
+        elif speciesstr.lower() in {"fegrp", "fegroup", "ffegroup"}:
             expr_yvalue = pl.col(f"{valuetype}Fegroup")
             linelabel = "Fe group"
         else:
@@ -1382,6 +1389,7 @@ def get_series_plans(
             weightname=(
                 "cell mass times time step duration" if ismassquantity else "cell volume times time step duration"
             ),
+            variablename=variablename,
         )
     ]
 
@@ -1917,7 +1925,7 @@ def get_line_figure_summary_rows(figuredata: "LineFigureData", args: argparse.Na
                 f"{xcolumn}_at_value_max": summary["x_at_ymax"],
                 "value_mean": summary["weightedmean"] if hasvalue else None,
                 "method": summary["meanweight"] if hasvalue else None,
-                "units": get_units(series.seriesname, latex=False) if series.seriesname else None,
+                "units": summary["units"],
                 "empty_bin_count": summary["emptybincount"],
                 **{
                     f"{name.lower()}_point_count": summary[f"at_{name}"]

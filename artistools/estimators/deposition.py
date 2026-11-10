@@ -473,7 +473,8 @@ def get_selected_timesteps(modelpath: Path | str, timedays: str | None, timestep
 def format_channel_list(modelpath: Path | str, verbose: bool = False) -> str:
     """Return the deposition channels that the estimators of a model hold.
 
-    The scan reads the files of one cell, thus the listing costs much less than the table.
+    The scan reads the files of one cell. If the caches of the run folders are current, this list costs much less
+    than the table.
     """
     channels = get_deposition_channels(
         scan_estimators(modelpath, modelgridindex=0, verbose=verbose).collect_schema().names()

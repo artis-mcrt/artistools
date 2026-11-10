@@ -20,7 +20,6 @@ from artistools.misc import write_zstd_lines
 
 modelpath = at.get_path("testdata") / "testmodel"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
-outputpath = at.get_path("testoutput")
 
 
 def test_get_levels() -> None:

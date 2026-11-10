@@ -1174,7 +1174,7 @@ def make_spectrum_plot(
                     filterfunc,
                     scale_to_peak,
                     residualseries=residualseries,
-                    summaryrows=summaryrows,
+                    summaryrows=summaryrows if axis is axes[0] else None,
                     **plotkwargs,
                 )[0]
                 for axis in axes
@@ -1589,7 +1589,11 @@ def make_emissionabsorption_plot(
     Return the artists, their labels, the data of the model, and the points of the reference spectra. summaryrows
     takes the fields of the summary line of the total spectrum and of each reference spectrum.
     """
-    modelname = get_series_label(args.label, 0, get_model_name(modelpath))
+    # a reference spectrum can come before the model in -specpath, and -label and -linewidth follow that order
+    modelseriesindex = next(
+        (index for index, specpath in enumerate(args.specpath) if not path_is_reference_spectrum(specpath)), 0
+    )
+    modelname = get_series_label(args.label, modelseriesindex, get_model_name(modelpath))
 
     print_heading(get_model_logname(modelpath, modelname))
     clamp_to_timesteps = not args.notimeclamp
@@ -1699,11 +1703,10 @@ def make_emissionabsorption_plot(
 
     if not args.hidenetspectrum:
         plotobjectlabels.append("Spectrum")
-        # the emission plot takes its model from the first series of -specpath
         (line,) = axis.plot(
             dfspectotal["x"],
             dfspectotal["y"] * scalefactor,
-            linewidth=args.linewidth[0] or 1.5,
+            linewidth=args.linewidth[modelseriesindex] or 1.5,
             color="black",
             zorder=100,
         )

@@ -12,7 +12,6 @@ import pytest
 import artistools as at
 from artistools.constants import day_to_s
 
-modelpath = at.get_path("testdata") / "testmodel"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
 
 

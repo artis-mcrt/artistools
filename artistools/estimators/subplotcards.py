@@ -387,8 +387,7 @@ def change_subplot_type(
     if oldtype is not None and items and items[0] == oldtype:
         items = items[1:]
     if seriestype == VARIABLES_TYPE:
-        variables = [item for item in items if oldtype is None and get_series_name(item) in estimatorcolumns]
-        return (*(variables or [get_first_common_variable(estimatorcolumns)]), *directives)
+        return (get_first_common_variable(estimatorcolumns), *directives)
     choices = get_species_choices(seriestype, estimatorcolumns, levelnames)
     kept = [item for item in items if get_series_name(item) in choices]
     return (seriestype, *(kept or get_first_choice(choices)), *directives)

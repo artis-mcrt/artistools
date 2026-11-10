@@ -209,7 +209,8 @@ def plot_hesma_peakmag_dm15_dm40(pathtofiles: Path | str, args: argparse.Namespa
     fig, axesgrid = make_frame_figure()
     axis = axesgrid[0][0]
     plottedtables = []
-    for filepath in sorted(Path(pathtofiles).iterdir()):
+    # the folder can also hold the viewing angle files that widthluminosity reads, and a figure of an earlier command
+    for filepath in sorted(Path(pathtofiles).glob("*_width-luminosity.dat")):
         print(f"Reading {filepath}")
         dfwidthlum = read_wsv(filepath)
         axis.scatter(dfwidthlum["dm15"], dfwidthlum["peakmag"], label=filepath.stem)
@@ -272,7 +273,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-pathtofiles", type=Path, help="The folder of viewing angle data (widthluminosity, plotwidthluminosity)"
     )
-    parser.add_argument("--dm40", action="store_true", help="Also read the deltam40 file (widthluminosity)")
+    parser.add_argument(
+        "--dm40",
+        action="store_true",
+        help="Also write the deltam40_polyfit values of the viewing angle file as the dm40 column (widthluminosity)",
+    )
 
 
 def require(value: t.Any, argname: str, action: str) -> t.Any:

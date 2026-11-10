@@ -451,7 +451,8 @@ def scan_modelfile_text(
 
             matchedkey = next(key for key, ismatch in matched.items() if ismatch)
             message, colrenames = posordercandidates[matchedkey]
-            print(message)
+            if not printwarningsonly:
+                print(message)
 
             dfmodel = dfmodel.rename(colrenames, strict=False)
 

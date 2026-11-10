@@ -892,10 +892,7 @@ def draw_artis_lightcurve(
     try:
         nts_last, validrange_start_days, validrange_end_days = get_escaped_arrivalrange(modelpath)
     except FileNotFoundError:
-        print(
-            " Range of validity: could not determine due to missing files "
-            "(requires deposition.out, input.txt, model.txt)"
-        )
+        print(" Range of validity: not available, because input.txt or model.txt is missing")
         nts_last, validrange_start_days, validrange_end_days = None, -math.inf, math.inf
     else:
         if validrange_start_days is not None and validrange_end_days is not None:
@@ -1009,10 +1006,9 @@ def draw_artis_lightcurve(
         if haspacketnoise and isfiltered:
             summaryparts.append("no noise estimate, because the filter combines the packets of neighbouring timesteps")
         # a magnitude has no comoving-frame column, and its maximum is the faintest point
-        cmfcolumn_summary = ycolumn.replace("luminosity_", "luminosity_cmf_")
-        if ycolumn.startswith("luminosity_") and cmfcolumn_summary in lcdata.columns and lcdata.height > 4:
+        if ycolumn.startswith("luminosity_") and cmfcolumn in lcdata.columns and lcdata.height > 4:
             # the observer-frame luminosity falls at the end, thus only the comoving frame shows a rise at the end
-            cmfpeakindex = lcdata[cmfcolumn_summary].fill_nan(None).arg_max() or 0
+            cmfpeakindex = lcdata[cmfcolumn].fill_nan(None).arg_max() or 0
             if cmfpeakindex > lcdata.height - 3:
                 summarywarnings.append(
                     "the comoving-frame luminosity has its maximum at the end, thus the true peak can be after the"

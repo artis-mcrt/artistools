@@ -4037,6 +4037,20 @@ def test_average_ionisation_ylim_covers_every_element() -> None:
     assert settings["ylim"][1] > 5.0
 
 
+def test_a_series_of_tellurium_is_no_electron_temperature() -> None:
+    """In an ionisation plot, "Te" is tellurium. Its summary gave the unit K and the number of points at MINTEMP."""
+    estimators = pl.LazyFrame({
+        "deltavol_deltat": [1.0, 1.0],
+        "nnelement_Te": [1.0, 1.0],
+        "nnion_Te_I": [0.5, 0.5],
+        "nnion_Te_II": [0.5, 0.5],
+    })
+    settings: plotestimators.SubplotSettings = {}
+    (plan,) = plotestimators.get_average_ionisation_plans(settings, ["Te"], estimators)
+    assert plan.seriesname == "Te"
+    assert plan.variablename is None
+
+
 def test_an_archived_run_folder_keeps_a_cache_of_an_old_version(tmp_path: Path) -> None:
     """A run folder that holds no text file must keep its cache, whatever the cache format version.
 
@@ -4796,7 +4810,7 @@ def test_image_takes_the_label_font_size_and_the_x_range(tmp_path: Path) -> None
     assert panelaxis.xaxis.label.get_fontsize() == 7
     assert panelaxis.yaxis.label.get_fontsize() == 7
     assert all(ticklabel.get_fontsize() == 7 for ticklabel in panelaxis.get_xticklabels())
-    xlimit_on_c = 15000 * 1e5 / 2.99792458e10
+    xlimit_on_c = 15000 * at.constants.km_to_cm / at.constants.C_cm_per_s
     assert np.allclose(panelaxis.get_xlim(), (-xlimit_on_c, xlimit_on_c))
 
 

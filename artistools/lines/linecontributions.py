@@ -1169,7 +1169,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-maxlines",
         type=positive_int_arg,
         default=20,
-        help="The number of lines in the table, with the most emission first",
+        help="The number of lines in the table, with the most emission first. --percell gives every line",
     )
     addarg_taumin(parser)
     parser.add_argument(

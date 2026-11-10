@@ -2349,7 +2349,8 @@ def test_spectra_residual_panel_compares_series_of_the_same_type(
     dfstats = read_data_file(tmp_path / "same_type_residuals.txt")
     assert dfstats["model"].item() == "comparison"
     assert dfstats["reference"].item() == "baseline"
-    assert np.isclose(dfstats["rms"].item(), 0.0)
+    # the flux is of the order of 1e-13, thus the default atol of 1e-8 accepts each rms
+    assert np.isclose(dfstats["rms"].item(), 0.0, atol=0.0)
 
 
 def test_residual_keywords_select_the_baseline_and_comparisons(
@@ -2369,7 +2370,7 @@ def test_residual_keywords_select_the_baseline_and_comparisons(
     stats = read_data_file(tmp_path / "selected_residuals.txt")
     assert stats["model"].to_list() == ["comparison"]
     assert stats["reference"].to_list() == ["baseline"]
-    assert np.isclose(stats["rms"].item(), 0.0)
+    assert np.isclose(stats["rms"].item(), 0.0, atol=0.0)
 
 
 @pytest.mark.parametrize("baselineindex", [0, 1, 2])

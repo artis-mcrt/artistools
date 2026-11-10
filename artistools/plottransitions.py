@@ -92,7 +92,10 @@ def get_kurucz_transitions(
         for line in fnist:
             row = line.split()
             if len(row) >= 24:
-                Z, ion_stage = int(row[2].split(".")[0]), int(row[2].split(".")[1]) + 1
+                # a loggf of -10 or less fills its field and joins the wavelength, thus row[2] is not always the
+                # element code. The code is F6.2 (columns 18-23)
+                elementcode = line[18:24].split(".")
+                Z, ion_stage = int(elementcode[0]), int(elementcode[1]) + 1
                 if wantedions is not None and (Z, ion_stage) not in wantedions:
                     continue
                 if (Z, ion_stage) not in ionsfound:
@@ -473,10 +476,8 @@ def get_model_conditions(
     figure_title = (
         f"{get_model_name(modelpath)}\n"
         f"Cell {cell.modelgridindex} ({cell.velocity} km/s) with Te = {T_e:.1f} K, "
-        f"TR = {T_R:.1f} K at timestep {cell.timestep}"
+        f"TR = {T_R:.1f} K at timestep {cell.timestep} ({cell.time_days:.1f}d)"
     )
-    if cell.time_days != -1:
-        figure_title += f" ({cell.time_days:.1f}d)"
 
     ltenames = [f"T{index + 1}" for index in range(len(ltetemperatures))]
     return PlotConditions(
@@ -649,8 +650,9 @@ def get_ion_spectra(
             yvalues[seriesindex][ionindex] = generate_ion_spectrum(
                 dftransitions, xvalues, popcolumnname, plot_resolution, args
             )
-            if args.normalised:
-                yvalues[seriesindex][ionindex] /= max(yvalues[seriesindex][ionindex])
+            # an ion with no line in the x range has a spectrum of zeros, which stays as it is
+            if args.normalised and (peak := yvalues[seriesindex][ionindex].max()) > 0:
+                yvalues[seriesindex][ionindex] /= peak
 
         if args.print_lines:
             print(dftransitions.columns)

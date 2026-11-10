@@ -81,8 +81,15 @@ def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[
     - dict[modelgridindex] = list of associated propagation cellindices,
     - dict[cellindex] = modelgridindex,
     - bool indicating if the mapping is direct (one-to-one).
+
+    on_model_host finds a remote path only in a Path argument, thus a str path becomes a Path first.
     """
-    modelpath = Path(modelpath)
+    return read_grid_mapping(resolve_modelpath(modelpath))
+
+
+@on_model_host
+def read_grid_mapping(modelpath: Path) -> tuple[dict[int, list[int]], dict[int, int], bool]:
+    """Return the result of get_grid_mapping for a model path. The read runs on the host of a remote model."""
     filename = firstexisting("grid.out", tryzipped=True, folder=modelpath)
     with polars_source_open(filename) as source:
         dfgrid = pl.read_csv(
@@ -351,6 +358,7 @@ def parse_npts_line(line: str, modelfilepath: Path | str) -> list[int]:
 
 
 @modelpath_cache(maxsize=8)
+@on_model_host
 def get_npts_model(modelpath: Path) -> int:
     """Return the number of cells in the model.txt."""
     modelfilepath = (
@@ -371,6 +379,7 @@ def get_inputfilepath(modelpath: Path | str) -> Path:
 
 
 @modelpath_cache(maxsize=8)
+@on_model_host
 def get_nprocs(modelpath: Path) -> int:
     """Return the number of MPI processes specified in input.txt.
 
@@ -767,6 +776,9 @@ def scan_rank_text_cache(
         return None
 
     textsource_mtime, textsize = get_rank_text_state(textfiles)
+    # write_parquet_atomic replaces the cache only if it is still the file that the checks below read,
+    # thus the code reads the identity of the file before the checks
+    identity_of_stale_file = get_file_identity(parquetfilepath)
     # older text cannot hold newer data, e.g. an old file of all ranks after a user archives the file of a rank
     pqmetadata = read_parquet_cache_metadata(parquetfilepath, RANK_CACHE_VERSION, None)[0]
     if pqmetadata is not None and textsource_mtime < float(pqmetadata["textsource_mtime"]) - MTIME_TOLERANCE_S:
@@ -786,7 +798,6 @@ def scan_rank_text_cache(
         textsource_size=textsize if comparesize else None,
     )
     if stalereason is not None:
-        identity_of_stale_file = get_file_identity(parquetfilepath)
         # a stale cache must not stay at its path, because a read serves it after the text is archived
         if identity_of_stale_file is None and textsize < MIN_TEXT_BYTES_FOR_RANK_CACHE:
             return None
