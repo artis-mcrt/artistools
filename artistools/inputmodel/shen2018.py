@@ -2,6 +2,7 @@
 
 import argparse
 import math
+import string
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
@@ -33,7 +34,9 @@ def get_nuclide_atomic_number(species: str) -> int:
     """Return the atomic number of a nuclide column of the input file, and 0 for the neutron.
 
     A nuclide list gives a mass number with each element, thus "n" and "p" without one are the free nucleons. The
-    function get_atomic_number reads such a name without digits as nitrogen and phosphorus.
+    function get_atomic_number reads such a name without digits as nitrogen and phosphorus. The names of this file
+    are in lower case, e.g. n14 and ni56. Thus the symbol goes to get_atomic_number without its mass number, because
+    that function reads a lower-case "n" with a mass number as the neutron, as ARTIS does.
     """
     match species.lower():
         case "n" | "n1":
@@ -41,7 +44,7 @@ def get_nuclide_atomic_number(species: str) -> int:
         case "p" | "p1":
             return 1
         case _:
-            return get_atomic_number(species)
+            return get_atomic_number(species.rstrip(string.digits))
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

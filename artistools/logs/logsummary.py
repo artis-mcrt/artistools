@@ -56,7 +56,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             f"{modelpath} has no log of a rank in a run folder"
             if ranks is None and cells is None
             else f"{modelpath} has no log of {rankstext}",
-            "Give --ranks with ranks that ran"
+            "Make sure that a run folder holds the output_*-*.txt files of ARTIS"
+            if ranks is None and cells is None
+            else "Give --ranks with ranks that ran"
             if cells is None
             else "Give --modelgridindex with the cells of the model",
         )

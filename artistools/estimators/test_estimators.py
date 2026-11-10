@@ -4037,6 +4037,14 @@ def test_average_ionisation_ylim_covers_every_element() -> None:
     assert settings["ylim"][1] > 5.0
 
 
+def test_stable_nickel_in_lower_case_reads_the_nickel_column() -> None:
+    """The name ni_stable matched the special case, but the column took the spelling of the user (init_X_ni)."""
+    estimators = pl.LazyFrame({"rho": [1.0], "deltavol_deltat": [1.0], "init_X_Ni": [0.5], "init_X_Ni56": [0.2]})
+    settings: plotestimators.SubplotSettings = {}
+    (plan,) = plotestimators.get_init_abundance_plans(settings, ["ni_stable"], estimators, "initabundances")
+    assert plan.dfseries.select("yvalue").collect().item() == pytest.approx(0.3)
+
+
 def test_a_series_of_tellurium_is_no_electron_temperature() -> None:
     """In an ionisation plot, "Te" is tellurium. Its summary gave the unit K and the number of points at MINTEMP."""
     estimators = pl.LazyFrame({

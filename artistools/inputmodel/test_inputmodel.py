@@ -3457,6 +3457,18 @@ def test_plotinitialcomposition_rejects_a_column_or_a_model_that_it_cannot_plot(
         at.inputmodel.plotinitialcomposition.main(argsraw=["rho", str(modelpath), "-o", str(tmp_path)])
 
 
+def test_shen2018_nitrogen_in_lower_case_is_no_neutron() -> None:
+    """The names of a Shen et al. 2018 file are in lower case, thus n14 is nitrogen and only n and n1 are the neutron.
+
+    get_atomic_number reads a lower-case "n" with a mass number as the neutron, as ARTIS does. The nitrogen columns
+    then went to the atomic number 0, and the written abundance of nitrogen was zero.
+    """
+    from artistools.inputmodel.shen2018 import get_nuclide_atomic_number
+
+    names = ("n", "n1", "n14", "n15", "p", "ni56")
+    assert [get_nuclide_atomic_number(name) for name in names] == [0, 0, 7, 7, 1, 28]
+
+
 def test_makeartismodelfromshen2018(tmp_path: Path) -> None:
     """The command writes the model and the abundances, with the free nucleons n and p as neutrons and hydrogen.
 

@@ -13,6 +13,7 @@ import polars as pl
 import polars.selectors as cs
 
 from artistools.atomic import get_atomic_number
+from artistools.atomic import get_z_a_nucname
 from artistools.constants import amu_g
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
@@ -40,10 +41,8 @@ def calculate_model_electron_frac(dfmodel: pl.LazyFrame) -> float | None:
     exprs_protons = []
     exprs_nucleons = []
     for column in dfmodel.select(cs.matches("X_[A-z]+[0-9]")).collect_schema().names():
-        species = column.removeprefix("X_")
-        # the column name goes to get_atomic_number, which matches "n" and "N" with their case, as ARTIS does
-        atomic_number = get_atomic_number(column)
-        mass_number = float(species.removeprefix(species.rstrip(string.digits)))
+        # get_z_a_nucname matches "n" and "N" with their case, as ARTIS does
+        atomic_number, mass_number = get_z_a_nucname(column)
         exprs_protons.append(atomic_number / (mass_number * amu_g) * pl.col(column) * pl.col("mass_g"))
         exprs_nucleons.append(1 / amu_g * pl.col(column) * pl.col("mass_g"))
 
@@ -285,7 +284,8 @@ def print_species_masses(dfmodel: pl.LazyFrame, args: argparse.Namespace, mass_m
         # the column name keeps X_n (the neutron) and X_N (nitrogen) apart, as ARTIS does
         atomic_number = get_atomic_number(column)
 
-        if species[-1].isdigit():
+        # the free neutron is a nuclide and no element, also when its column gives no mass number (X_n)
+        if species[-1].isdigit() or atomic_number == 0:
             # isotopic species
 
             elname = species.rstrip(string.digits)

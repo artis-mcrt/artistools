@@ -206,15 +206,15 @@ def make_hesma_peakmag_dm15_dm40(
 
 def plot_hesma_peakmag_dm15_dm40(pathtofiles: Path | str, args: argparse.Namespace, outputfile: Path | str) -> None:
     """Plot peak magnitude against dm15 for every width-luminosity file in a folder."""
-    fig, axesgrid = make_frame_figure()
-    axis = axesgrid[0][0]
-    plottedtables = []
     # the folder can also hold the viewing angle files that widthluminosity reads, and a figure of an earlier command
     filepaths = sorted(Path(pathtofiles).glob("*_width-luminosity.dat"))
     if not filepaths:
         exit_with_error(
             f"{pathtofiles} holds no *_width-luminosity.dat file", "Make the files with the widthluminosity action"
         )
+    fig, axesgrid = make_frame_figure()
+    axis = axesgrid[0][0]
+    plottedtables = []
     for filepath in filepaths:
         print(f"Reading {filepath}")
         dfwidthlum = read_wsv(filepath)

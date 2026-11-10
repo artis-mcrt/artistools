@@ -4491,6 +4491,8 @@ def test_wavelength_and_time_units_convert_to_the_unit_of_the_command() -> None:
     from artistools.misc.units import wavelength_angstroms_arg
 
     assert [wavelength_angstroms_arg(text) for text in ("6000", "600nm", "0.6micron", "6000Å")] == [6000.0] * 4
+    # the Greek letter mu (U+03BC) and the micro sign (U+00B5, from Option-m on macOS) both give the micron
+    assert [wavelength_angstroms_arg(text) for text in ("0.6\u03bcm", "0.6\u00b5m")] == [6000.0] * 2
     assert np.isclose(time_days_arg("2.592e6s"), 30.0, rtol=1e-12)
     for convert, text in ((wavelength_angstroms_arg, "2keV"), (time_days_arg, "3yr")):
         with pytest.raises(argparse.ArgumentTypeError):
