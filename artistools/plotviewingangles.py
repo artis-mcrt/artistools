@@ -16,9 +16,7 @@ from artistools.misc import addarg_data_output
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_show
-from artistools.misc import get_costheta_bins
-from artistools.misc import get_phi_bins
-from artistools.misc import get_viewingdirection_phibincount
+from artistools.misc import get_dirbin_centre_direction
 from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import import_optional
 from artistools.misc import open_file
@@ -28,29 +26,12 @@ from artistools.misc import print_saved
 from artistools.plottools import TRANSPARENT_DARKMODE_FORMATS
 
 
-def get_theta_phi(anglebin: int) -> tuple[float, float]:
-    """Return the central theta and phi angles of the given direction bin.
-
-    The bin boundaries come from the shared definitions in artistools.misc.dirbins, so the arrows
-    point where every other artistools plot puts the same bin.
-    """
-    costhetabin, phibin = divmod(anglebin, get_viewingdirection_phibincount())
-    costheta_lower, costheta_upper, _ = get_costheta_bins(usedegrees=False)
-    phi_lower, phi_upper, _ = get_phi_bins(usedegrees=False)
-    theta = float(np.arccos((costheta_lower[costhetabin] + costheta_upper[costhetabin]) / 2))
-    phi = float((phi_lower[phibin] + phi_upper[phibin]) / 2)
-    return theta, phi
-
-
 def gen_viewing_angle_df(length: int) -> pl.DataFrame:
     """Return the Cartesian endpoint of a vector of the given length that points into each direction bin."""
     viewing_angles: dict[str, list[float | str]] = {"Angle-bin": [], "x_coord": [], "y_coord": [], "z_coord": []}
 
     for i in range(get_viewingdirectionbincount()):
-        theta, phi = get_theta_phi(i)
-        x_c = length * np.sin(theta) * np.cos(phi)
-        y_c = length * np.sin(theta) * np.sin(phi)
-        z_c = length * np.cos(theta)
+        x_c, y_c, z_c = (float(coordinate) for coordinate in length * get_dirbin_centre_direction(i))
 
         # 0 point
         viewing_angles["Angle-bin"].append(f"{i:02d}")

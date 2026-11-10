@@ -216,7 +216,12 @@ def print_last_interaction_convention(modelpath: Path | str) -> None:
         " it sets em_pos and em_time. Thus em_pos is the place of the last interaction, and emissiontype can come"
         " from an earlier event. Each absorption sets absorption_type"
     )
-    if get_artis_option(modelpath, "RPKT_BOUNDBOUND_THERMALISATION_PROBABILITY") in {None, "std::nullopt"}:
+    thermalisationoption = get_artis_option(modelpath, "RPKT_BOUNDBOUND_THERMALISATION_PROBABILITY")
+    # ARTIS from 2024-05 to 2025-08 gave the option as a float, and a negative value kept the macro atom
+    with contextlib.suppress(ValueError):
+        if thermalisationoption is not None and float(thermalisationoption.rstrip("fF")) < 0:
+            thermalisationoption = None
+    if thermalisationoption in {None, "std::nullopt"}:
         print_detail(
             "A line absorption activates a macro atom, and its radiative de-excitation is an emission. Thus a"
             " resonance scattering (an absorption and an emission by the same line) and a fluorescence each set"

@@ -1352,7 +1352,6 @@ def make_option_table(
         removebutton = make_glyph_button("xmark", f"Remove {flag} from the command", f"Remove {flag}")
         removebutton.clicked.connect(lambda: QtCore.QTimer.singleShot(0, window, lambda: set_option(row, "")))
         layout.addWidget(removebutton)
-        editor.setToolTip(helptexts.get(action.dest, ""))
         return editor
 
     def show_option_rows() -> None:

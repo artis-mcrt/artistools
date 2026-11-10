@@ -33,10 +33,10 @@ def get_nuclide_atomic_number(species: str) -> int:
     """Return the atomic number of a nuclide column of the input file, and 0 for the neutron.
 
     A nuclide list gives a mass number with each element, thus "n" and "p" without one are the free nucleons. The
-    function get_atomic_number reads such a name without digits as nitrogen and phosphorus.
+    function get_atomic_number reads such a name without digits as nitrogen and phosphorus, and "p1" as phosphorus.
     """
     match species.lower():
-        case "n" | "n1":
+        case "n":
             return 0
         case "p" | "p1":
             return 1

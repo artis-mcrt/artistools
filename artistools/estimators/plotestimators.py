@@ -285,6 +285,9 @@ class SeriesPlan(t.NamedTuple):
     seriesname: str
     # the weight of celltsweight in words for the log, e.g. "cell mass times time step duration"
     weightname: str
+    # the estimator column of a series of one variable, e.g. "Te", or None for a different type of series.
+    # In a plot of initabundances, "Te" is tellurium, which has no unit and no limit of a temperature
+    variablename: str | None = None
 
 
 class SeriesData(t.NamedTuple):
@@ -505,7 +508,7 @@ def get_subplot_queries(
     pointqueries = [plan.dfseries.select("xvalue", "yvalue") for plan in plans] if args.markers else []
     summaryqueries = [
         get_series_summary_query(
-            plan.dfseries, plan.weightname, (temperaturelimits or {}) if plan.seriesname in TEMPERATURENAMES else {}
+            plan.dfseries, plan.weightname, (temperaturelimits or {}) if plan.variablename in TEMPERATURENAMES else {}
         )
         for plan in plans
     ]
@@ -563,7 +566,11 @@ def get_series_data(
     pointcount = len(plans) if args.markers else 0
     dflinepoints_of_plan: Sequence[pl.DataFrame | None] = frames[:linecount] or [None] * len(plans)
     dfpoints_of_plan: Sequence[pl.DataFrame | None] = frames[linecount : linecount + pointcount] or [None] * len(plans)
-    summaries = [dfsummary.row(0, named=True) for dfsummary in frames[linecount + pointcount :]]
+    summaries = [
+        dfsummary.row(0, named=True)
+        | {"units": get_units(plan.variablename, latex=False) if plan.variablename else None}
+        for plan, dfsummary in zip(plans, frames[linecount + pointcount :], strict=True)
+    ]
     return [
         SeriesData(plan.label, plan.plotkwargs, dflinepoints, dfpoints, plan.seriesname, summary)
         for plan, dflinepoints, dfpoints, summary in zip(
@@ -657,12 +664,12 @@ def get_init_abundance_plans(
             linelabel = "$^{56}$Ni"
             linestyle = "--"
         elif speciesstr.lower() in {"ni_stb", "ni_stable"}:
-            expr_yvalue = pl.col(f"{valuetype}{elsymbol}") - pl.col(f"{valuetype}Ni56")
+            expr_yvalue = pl.col(f"{valuetype}Ni") - pl.col(f"{valuetype}Ni56")
             linelabel = "Stable Ni"
         elif speciesstr.lower() in {"co_56", "co56", "56co"}:
             expr_yvalue = pl.col(f"{valuetype}Co56")
             linelabel = "$^{56}$Co"
-        elif speciesstr.lower() in {"fegrp", "ffegroup"}:
+        elif speciesstr.lower() in {"fegrp", "fegroup", "ffegroup"}:
             expr_yvalue = pl.col(f"{valuetype}Fegroup")
             linelabel = "Fe group"
         else:
@@ -1361,8 +1368,7 @@ def get_series_plans(
         settings["ylabel"] = serieslabel + units_string
         linelabel = None
 
-    # a mass fraction and Ye are quantities for each unit of mass, thus the mean uses the cell masses as weights
-    ismassquantity = variablename.startswith("init_X_") or variablename in {"Ye", "init_Ye"}
+    ismassquantity = is_quantity_per_unit_mass(variablename)
     series = estimators.with_columns(
         celltsweight=pl.col("rho") * pl.col("deltavol_deltat") if ismassquantity else pl.col("deltavol_deltat"),
         yvalue=colexpr,
@@ -1382,6 +1388,7 @@ def get_series_plans(
             weightname=(
                 "cell mass times time step duration" if ismassquantity else "cell volume times time step duration"
             ),
+            variablename=variablename,
         )
     ]
 
@@ -1917,7 +1924,7 @@ def get_line_figure_summary_rows(figuredata: "LineFigureData", args: argparse.Na
                 f"{xcolumn}_at_value_max": summary["x_at_ymax"],
                 "value_mean": summary["weightedmean"] if hasvalue else None,
                 "method": summary["meanweight"] if hasvalue else None,
-                "units": get_units(series.seriesname, latex=False) if series.seriesname else None,
+                "units": summary["units"],
                 "empty_bin_count": summary["emptybincount"],
                 **{
                     f"{name.lower()}_point_count": summary[f"at_{name}"]
@@ -2276,6 +2283,14 @@ def get_ion_panel_columns(
     return columns
 
 
+def is_quantity_per_unit_mass(variablename: str) -> bool:
+    """Return True for a mass fraction or Ye, which a mean must weight with the cell masses.
+
+    The line of a variable and the pixel of a colour image take the same weight, thus one function gives the rule.
+    """
+    return variablename.startswith("init_X_") or variablename in {"Ye", "init_Ye"}
+
+
 def get_image_panels(plotlist: list[list[t.Any]], estimatorcolumns: Collection[str], poptype: str) -> list[ImagePanel]:
     """Return one panel for each variable and each ion of the plot list.
 
@@ -2296,6 +2311,8 @@ def get_image_panels(plotlist: list[list[t.Any]], estimatorcolumns: Collection[s
             if isinstance(plotitem, pl.Expr):
                 colname = plotitem.meta.output_name()
                 columns.append((plotitem, colname, f"{get_varname_formatted(colname)}{get_units_string(colname)}"))
+                if is_quantity_per_unit_mass(colname):
+                    weights[colname] = pl.col("rho")
             elif isinstance(plotitem, str):
                 if plotitem not in estimatorcolumns:
                     exit_with_error(
@@ -2305,6 +2322,8 @@ def get_image_panels(plotlist: list[list[t.Any]], estimatorcolumns: Collection[s
                     )
                 label = f"{get_varname_formatted(plotitem)}{get_units_string(plotitem)}"
                 columns.append((pl.col(plotitem), plotitem, label))
+                if is_quantity_per_unit_mass(plotitem):
+                    weights[plotitem] = pl.col("rho")
             elif get_directive_name(plotitem[0]) is not None:
                 continue
             elif is_ionseriestype(plotitem[0], estimatorcolumns, plotitem[1]):
@@ -3033,8 +3052,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         choices=["x", "y", "z"],
         help=(
             "Show each variable as a colour image of the mean along this axis of a 3D model, e.g. --projection z gives"
-            " an image in x and y. Each pixel is the mean over one line of cells along the axis, with the volume"
-            " times the timestep duration as the weight"
+            " an image in x and y. Each pixel is the mean over one line of cells along the axis. A pixel takes the"
+            " weight of the line plot, which is the volume times the timestep duration. For a mass fraction or Ye,"
+            " the weight also has a factor of the density. For an ion, the weight also has a factor of the number"
+            " density"
         ),
     )
 

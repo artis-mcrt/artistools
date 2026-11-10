@@ -134,7 +134,8 @@ XUNITS: t.Final[Mapping[str, XUnit]] = MappingProxyType({
     # each canonical name is singular, as micron and erg are. A script can still give angstroms
     "angstrom": XUnit("wavelength", 1.0, "\u00c5", ("angstroms", "a", "ang", "\u00e5", "\u00e5ngstr\u00f6m")),
     "nm": XUnit("wavelength", 10.0, "nm", ("nanometer", "nanometers")),
-    "micron": XUnit("wavelength", 10000.0, "\u03bcm", ("microns", "mu", "\u03bc", "\u03bcm")),
+    # the Greek letter mu (U+03BC) and the micro sign (U+00B5, which Option-m gives on macOS) are different characters
+    "micron": XUnit("wavelength", 10000.0, "\u03bcm", ("microns", "mu", "\u03bc", "\u03bcm", "\u00b5", "\u00b5m")),
     "hz": XUnit("frequency", 1.0, "Hz", ()),
     "erg": XUnit("energy", 1.0 / EV_to_erg, "erg", ("ergs",)),
     "ev": XUnit("energy", 1.0, "eV", ("electronvolt",)),

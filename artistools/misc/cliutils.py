@@ -272,7 +272,7 @@ def resolve_positional_modelpath(args: argparse.Namespace, dest: str) -> list[st
         # the default of such a command is None, thus a different value is one that the user wrote.
         # A command can also take many paths, and then only the positional argument names the model
         given_modelpath = getattr(args, "modelpath", None)
-        if isinstance(given_modelpath, str | Path) and Path(given_modelpath) != givenpath:
+        if isinstance(given_modelpath, str | Path) and get_canonical_path(Path(given_modelpath)) != givenpath:
             exit_with_error(
                 f"The folder '{givenpath}' and --modelpath '{given_modelpath}' name two different models",
                 "Give the folder one time",
@@ -847,12 +847,15 @@ def addarg_data_output(parser: argparse.ArgumentParser) -> None:
     group.add_argument(
         "--print_data",
         action="store_true",
-        help="Print the plotted data to the standard output, with a space between the values",
+        help="Print the plotted data to the standard output. --output-format selects text, JSON, or CSV",
     )
     group.add_argument(
         "--write_data",
         action="store_true",
-        help="Write the plotted data to a .txt file beside the figure, with a space between the values",
+        help=(
+            "Write the plotted data to a file beside the figure. --output-format selects a .txt, a .json, or a .csv"
+            " file"
+        ),
     )
     addarg_output_format(parser)
 
@@ -1155,20 +1158,25 @@ def explain_model_selection(modelpath: Path, args: argparse.Namespace) -> None:
 
     timeselection = {name: getattr(args, name, None) for name in ("timestep", "timemin", "timemax", "timedays")}
     if any(value is not None for value in timeselection.values()):
-        try:
-            timestepmin, timestepmax, timemin, timemax = get_time_range(
-                modelfolder,
-                timestep_range_str=timeselection["timestep"],
-                timemin=timeselection["timemin"],
-                timemax=timeselection["timemax"],
-                timedays_range_str=timeselection["timedays"],
-            )
-        except (OSError, ValueError) as exc:
-            print_detail(f"Time: the selection gives an error: {exc}")
-        else:
-            print_detail(
-                f"Time: timesteps {timestepmin} to {timestepmax}, which cover {timemin:.3f} to {timemax:.3f} d"
-            )
+        # the deposition command takes a list of times or of timesteps, e.g. "1,5,30", and each item is one selection
+        listname = next((name for name in ("timedays", "timestep") if "," in str(timeselection[name] or "")), None)
+        listitems = [None] if listname is None else str(timeselection[listname]).split(",")
+        for listitem in listitems:
+            selection = timeselection if listname is None else timeselection | {listname: listitem}
+            try:
+                timestepmin, timestepmax, timemin, timemax = get_time_range(
+                    modelfolder,
+                    timestep_range_str=selection["timestep"],
+                    timemin=selection["timemin"],
+                    timemax=selection["timemax"],
+                    timedays_range_str=selection["timedays"],
+                )
+            except (OSError, ValueError) as exc:
+                print_detail(f"Time: the selection gives an error: {exc}")
+            else:
+                print_detail(
+                    f"Time: timesteps {timestepmin} to {timestepmax}, which cover {timemin:.3f} to {timemax:.3f} d"
+                )
 
     if dirbins := [dirbin for dirbin in getattr(args, "plotviewingangle", None) or [] if dirbin != -2]:
         try:

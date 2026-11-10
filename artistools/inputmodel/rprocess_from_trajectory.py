@@ -4,7 +4,6 @@ import argparse
 import gc
 import math
 import posixpath
-import string
 import tarfile
 import time
 import typing as t
@@ -70,7 +69,7 @@ def get_dfelemabund_from_dfmodel(dfmodel: pl.DataFrame) -> pl.DataFrame:
     isoabundcolnames = [
         colname for colname in dfmodel.collect_schema().names() if colname.startswith("X_") and colname[-1].isdigit()
     ]
-    atomic_numbers = [get_atomic_number(colname[2:].rstrip(string.digits)) for colname in isoabundcolnames]
+    atomic_numbers = [get_atomic_number(colname) for colname in isoabundcolnames]
 
     elemisotopes: dict[int, list[str]] = {k: [] for k in set(atomic_numbers)}
 
@@ -897,7 +896,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     particleid = args.particleid
     print(f"Trajectory particle id {particleid}")
     dfnucabund, t_model_init_seconds = get_trajectory_timestepfile_nuc_abund(traj_root, particleid, "tday_nz-plane")
-    dfnucabund = dfnucabund.filter(pl.col("Z") >= 1).with_columns(radioactive=pl.lit(value=True))
+    dfnucabund = dfnucabund.filter(pl.col("Z") >= 1)
 
     t_model_init_days = t_model_init_seconds / day_to_s
 
@@ -930,7 +929,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         "X_Co57": 0.0,
     }
 
-    for row in dfnucabund.filter(pl.col("radioactive")).iter_rows(named=True):
+    for row in dfnucabund.iter_rows(named=True):
         A = row["N"] + row["Z"]
         rowdict[f"X_{get_elsymbol(row['Z'])}{A}"] = row["massfrac"]
 

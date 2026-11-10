@@ -4037,6 +4037,28 @@ def test_average_ionisation_ylim_covers_every_element() -> None:
     assert settings["ylim"][1] > 5.0
 
 
+def test_stable_nickel_in_lower_case_reads_the_nickel_column() -> None:
+    """The name ni_stable matched the special case, but the column took the spelling of the user (init_X_ni)."""
+    estimators = pl.LazyFrame({"rho": [1.0], "deltavol_deltat": [1.0], "init_X_Ni": [0.5], "init_X_Ni56": [0.2]})
+    settings: plotestimators.SubplotSettings = {}
+    (plan,) = plotestimators.get_init_abundance_plans(settings, ["ni_stable"], estimators, "initabundances")
+    assert plan.dfseries.select("yvalue").collect().item() == pytest.approx(0.3)
+
+
+def test_a_series_of_tellurium_is_no_electron_temperature() -> None:
+    """In an ionisation plot, "Te" is tellurium. Its summary gave the unit K and the number of points at MINTEMP."""
+    estimators = pl.LazyFrame({
+        "deltavol_deltat": [1.0, 1.0],
+        "nnelement_Te": [1.0, 1.0],
+        "nnion_Te_I": [0.5, 0.5],
+        "nnion_Te_II": [0.5, 0.5],
+    })
+    settings: plotestimators.SubplotSettings = {}
+    (plan,) = plotestimators.get_average_ionisation_plans(settings, ["Te"], estimators)
+    assert plan.seriesname == "Te"
+    assert plan.variablename is None
+
+
 def test_an_archived_run_folder_keeps_a_cache_of_an_old_version(tmp_path: Path) -> None:
     """A run folder that holds no text file must keep its cache, whatever the cache format version.
 
@@ -4718,6 +4740,24 @@ def test_projection_is_the_mean_of_each_line_of_cells() -> None:
     assert np.isnan(grid[0, 0])
 
 
+def test_image_of_a_mass_fraction_takes_the_mass_weight_of_the_line_plot() -> None:
+    """A pixel of a mass fraction or Ye is a mean with the cell masses as weights, as the line plot gives.
+
+    The pixel took the volume alone, thus an image and a line of the same cells gave different means.
+    """
+    estimators = pl.LazyFrame({
+        "deltavol_deltat": [1.0, 1.0],
+        "rho": [1.0, 9.0],
+        "init_X_Fe": [0.1, 0.5],
+        "Te": [1000.0, 3000.0],
+    })
+    columns = estimators.collect_schema().names()
+    panels = plotestimators.get_image_panels([["init_X_Fe", "Te"]], columns, "absolute")
+    massfraction, temperature = estimators.select(plotestimators.get_panel_means(panels)).collect().row(0)
+    assert massfraction == pytest.approx((0.1 * 1.0 + 0.5 * 9.0) / 10.0)
+    assert temperature == pytest.approx(2000.0)
+
+
 def test_time_axis_takes_no_automatic_bins() -> None:
     """A plot against time gives one point for each timestep, and the mean of the cells of the timestep gives its value.
 
@@ -4796,7 +4836,7 @@ def test_image_takes_the_label_font_size_and_the_x_range(tmp_path: Path) -> None
     assert panelaxis.xaxis.label.get_fontsize() == 7
     assert panelaxis.yaxis.label.get_fontsize() == 7
     assert all(ticklabel.get_fontsize() == 7 for ticklabel in panelaxis.get_xticklabels())
-    xlimit_on_c = 15000 * 1e5 / 2.99792458e10
+    xlimit_on_c = 15000 * at.constants.km_to_cm / at.constants.C_cm_per_s
     assert np.allclose(panelaxis.get_xlim(), (-xlimit_on_c, xlimit_on_c))
 
 

@@ -837,15 +837,19 @@ def get_z_a_nucname(nucname: str) -> tuple[int, int]:
     """Return the atomic number and the mass number of a nuclide name.
 
     For example, 'Pb208', 'X_Pb208', and 'nniso_Pb208' each give (82, 208).
+    A mass number below the atomic number gives a ValueError.
     """
     if "_" in nucname:
         nucname = nucname.split("_")[1]
 
-    # the mass number stays on the name, because it tells the free neutron "n1" from nitrogen
+    # the mass number stays on the name, because it separates the neutron (n1) from nitrogen (N14)
     z = get_atomic_number(nucname)
     assert z >= 0, f"{nucname} does not start with an element symbol"
 
     a = int(nucname.lower().lstrip(string.ascii_lowercase))
+    if a < z:
+        msg = f"The nuclide {nucname} has a mass number of {a}, which is below its atomic number of {z}"
+        raise ValueError(msg)
 
     return z, a
 
@@ -928,13 +932,17 @@ def get_elsymbols_df() -> pl.LazyFrame:
 
 
 def get_atomic_number(elsymbol: str) -> int:
-    """Return the atomic number of an element symbol, or -1 if it is not an element symbol."""
+    """Return the atomic number of an element symbol, or -1 if it is not an element symbol.
+
+    The symbol is not case sensitive, e.g. "fe" and X_FE are iron. The neutron has the atomic number 0, and only the
+    mass number 1 separates it from nitrogen:
+
+    - n1, N1, X_n1, and X_N1 are the neutron;
+    - each other name is nitrogen, e.g. "n", X_N, n14, and X_N14, because the neutron is not an element.
+    """
     assert elsymbol is not None
     name = elsymbol.removeprefix("X_").split("_")[0].split("-")[0]
-
-    # only "n1" is the free neutron. A symbol is not case sensitive, thus "n", "n14", and "nII" are
-    # nitrogen. No isotope of nitrogen has a mass number of 1
-    if name == "n1":
+    if name.title() == "N1":
         return 0
 
     # a dict lookup, because this is called once per column name in some loops
@@ -1289,7 +1297,7 @@ def read_linelistfile(filepath: Path) -> pl.DataFrame:
                     .otherwise(pl.lit(value=True))
                     .alias("rowiscomplete"),
                 )
-                .collect(engine="streaming")
+                .collect()
             )
         except pl.exceptions.InvalidOperationError as exc:
             msg = (

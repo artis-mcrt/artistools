@@ -202,7 +202,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 save_gridparticlecontributions(dfgridcontributions_out, outdir / "gridcontributions.txt")
 
     if args.makemodelfromgriddata:
-        print(args)
         makemodelfromgriddata(
             gridfolderpath=args.pathtogriddata,
             outputpath=outputfolders["makemodelfromgriddata"][0],

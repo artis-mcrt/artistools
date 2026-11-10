@@ -229,6 +229,8 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
         ),
         "cm^2/g",
     ),
+    # this record comes before the capped opacity, because that pattern also matches its moving average
+    ("(\\w+)_movingaverage_cm2_per_g", "the moving average over the wavelength of the opacity {0}", "cm^2/g"),
     (
         "linebinned_cap(.+)_cm2_per_g",
         (
@@ -237,7 +239,6 @@ COLUMN_FAMILIES: t.Final[tuple[tuple[str, str, str | None], ...]] = (
         ),
         "cm^2/g",
     ),
-    ("(\\w+)_movingaverage_cm2_per_g", "the moving average over the wavelength of the opacity {0}", "cm^2/g"),
     (
         "planckmean_exopac_cm2_per_g",
         "the mass-weighted mean of the Planck mean of the expansion opacity at the excitation temperature of each cell",

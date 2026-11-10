@@ -24,6 +24,7 @@ from matplotlib.lines import Line2D
 
 from artistools.codecomparison import read_reference_spectra
 from artistools.constants import c_ang_per_s
+from artistools.constants import co56_halflife_days
 from artistools.constants import megaparsec_to_cm
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_darkmode
@@ -505,7 +506,11 @@ def plot_reference_spectrum(
 
     if scaletoreftime is not None:
         timefactor = timeshift_fluxscale_co56law(scaletoreftime, float(metadata["t"]))
-        print_detail(f"Scaled from time {metadata['t']} to {scaletoreftime}, factor {timefactor} by the Co56 decay law")
+        print_detail(
+            f"Scaled the flux from {metadata['t']} d to {scaletoreftime} d with the factor {timefactor:.4f}. The flux"
+            f" follows the decay of Co56, which has a half-life of {co56_halflife_days} d (Junde, Su & Dong 2011,"
+            " Nuclear Data Sheets, 112, 1513-1645, doi:10.1016/j.nds.2011.04.004)"
+        )
         specdata = specdata.with_columns(f_lambda=pl.col("f_lambda") * timefactor)
         label += f" * {timefactor:.2f}"
 
@@ -1174,7 +1179,7 @@ def make_spectrum_plot(
                     filterfunc,
                     scale_to_peak,
                     residualseries=residualseries,
-                    summaryrows=summaryrows,
+                    summaryrows=summaryrows if axis is axes[0] else None,
                     **plotkwargs,
                 )[0]
                 for axis in axes
@@ -1589,7 +1594,11 @@ def make_emissionabsorption_plot(
     Return the artists, their labels, the data of the model, and the points of the reference spectra. summaryrows
     takes the fields of the summary line of the total spectrum and of each reference spectrum.
     """
-    modelname = get_series_label(args.label, 0, get_model_name(modelpath))
+    # a reference spectrum can come before the model in -specpath, and -label and -linewidth follow that order
+    modelseriesindex = next(
+        (index for index, specpath in enumerate(args.specpath) if not path_is_reference_spectrum(specpath)), 0
+    )
+    modelname = get_series_label(args.label, modelseriesindex, get_model_name(modelpath))
 
     print_heading(get_model_logname(modelpath, modelname))
     clamp_to_timesteps = not args.notimeclamp
@@ -1699,11 +1708,10 @@ def make_emissionabsorption_plot(
 
     if not args.hidenetspectrum:
         plotobjectlabels.append("Spectrum")
-        # the emission plot takes its model from the first series of -specpath
         (line,) = axis.plot(
             dfspectotal["x"],
             dfspectotal["y"] * scalefactor,
-            linewidth=args.linewidth[0] or 1.5,
+            linewidth=args.linewidth[modelseriesindex] or 1.5,
             color="black",
             zorder=100,
         )

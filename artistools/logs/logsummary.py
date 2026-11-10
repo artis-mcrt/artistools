@@ -45,14 +45,23 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         ranks = parse_range_list(args.ranks)
 
     logfiles = get_logfiles(modelpath, ranks, cells)
-    if not logfiles:
-        exit_with_error(f"{modelpath} has no log of the ranks {args.ranks}", "Give --ranks with ranks that ran")
     if cells is not None:
         rankstext = f"the ranks that update the cells {', '.join(str(cell) for cell in cells)} in each run folder"
     elif ranks is None:
         rankstext = "each rank that has a log in each run folder"
     else:
         rankstext = f"the ranks {', '.join(str(rank) for rank in ranks)}"
+    if not logfiles:
+        exit_with_error(
+            f"{modelpath} has no log of a rank in a run folder"
+            if ranks is None and cells is None
+            else f"{modelpath} has no log of {rankstext}",
+            "Make sure that a run folder holds the output_*-*.txt files of ARTIS"
+            if ranks is None and cells is None
+            else "Give --ranks with ranks that ran"
+            if cells is None
+            else "Give --modelgridindex with the cells of the model",
+        )
     print_detail(f"Reading {len(logfiles)} logs of {rankstext}")
 
     print_product(args, get_log_summary(logfiles))

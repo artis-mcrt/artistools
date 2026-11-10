@@ -2349,7 +2349,8 @@ def test_spectra_residual_panel_compares_series_of_the_same_type(
     dfstats = read_data_file(tmp_path / "same_type_residuals.txt")
     assert dfstats["model"].item() == "comparison"
     assert dfstats["reference"].item() == "baseline"
-    assert np.isclose(dfstats["rms"].item(), 0.0)
+    # the flux is of the order of 1e-13, thus the default atol of 1e-8 accepts each rms
+    assert np.isclose(dfstats["rms"].item(), 0.0, atol=0.0)
 
 
 def test_residual_keywords_select_the_baseline_and_comparisons(
@@ -2369,7 +2370,7 @@ def test_residual_keywords_select_the_baseline_and_comparisons(
     stats = read_data_file(tmp_path / "selected_residuals.txt")
     assert stats["model"].to_list() == ["comparison"]
     assert stats["reference"].to_list() == ["baseline"]
-    assert np.isclose(stats["rms"].item(), 0.0)
+    assert np.isclose(stats["rms"].item(), 0.0, atol=0.0)
 
 
 @pytest.mark.parametrize("baselineindex", [0, 1, 2])
@@ -2757,6 +2758,33 @@ def test_plotspectra_normalised_log_axis_keeps_room_above_the_peak() -> None:
     assert axes[0].get_yscale() == "log"
     assert axes[0].get_ylim()[1] > 1.02
     plt.close(fig)
+
+
+def test_co56_flux_scale_uses_the_half_life_of_the_constants() -> None:
+    """A shift by one half-life of Co56 changes the flux by a factor of two.
+
+    Before this correction, the law used a mean life of 113.7 d.
+    """
+    halflife = at.constants.co56_halflife_days
+    assert atspectra.timeshift_fluxscale_co56law(300.0, 300.0 + halflife) == pytest.approx(2.0)
+    assert atspectra.timeshift_fluxscale_co56law(300.0 + halflife, 300.0) == pytest.approx(0.5)
+    assert atspectra.timeshift_fluxscale_co56law(None, 300.0) == pytest.approx(1.0)
+
+
+def test_spectraemissionplot_takes_the_label_of_the_model_after_a_reference(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A reference spectrum before the model gave the model the label of the reference."""
+    at.spectra.plot(
+        argsraw=[],
+        specpath=["2010lp_20110928_fors2.txt", modelpath_classic_3d],
+        label=["REFLABEL", "MODELLABEL"],
+        showemission=True,
+        timemin=4,
+        timemax=6.5,
+        outputfile=tmp_path / "emission_after_reference.pdf",
+    )
+    assert "'MODELLABEL': Timesteps" in capsys.readouterr().out
 
 
 @mock.patch("artistools.spectra.core.get_flux_contributions_from_packets")

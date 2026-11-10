@@ -1563,3 +1563,23 @@ def test_plotspherical_write_data_holds_the_drawn_maps(
     assert np.allclose(
         dftable["costheta_lower"].to_numpy()[:: nphibins + 1], np.sin(meshgrid_theta[:-1, 0]), rtol=1e-12, atol=1e-15
     )
+
+
+@pytest.mark.parametrize(
+    ("optionline", "expected"),
+    [
+        ("constexpr float RPKT_BOUNDBOUND_THERMALISATION_PROBABILITY = -1.;", "activates a macro atom"),
+        ("constexpr std::optional<float> RPKT_BOUNDBOUND_THERMALISATION_PROBABILITY;", "activates a macro atom"),
+        ("constexpr float RPKT_BOUNDBOUND_THERMALISATION_PROBABILITY = 0.5;", "not a macro atom"),
+    ],
+)
+def test_last_interaction_convention_reads_a_negative_thermalisation_probability_as_off(
+    optionline: str, expected: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """ARTIS from 2024-05 to 2025-08 gave the option as a float, and the value -1 kept the macro atom.
+
+    The log took each value of the option as a thermalisation probability, thus it gave the wrong convention.
+    """
+    (tmp_path / "artisoptions.h").write_text(f"{optionline}\n", encoding="utf-8")
+    at.packets.core.print_last_interaction_convention(tmp_path)
+    assert expected in capsys.readouterr().out

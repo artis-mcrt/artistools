@@ -87,7 +87,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     ]
 
     if args.maxatomicnumber and args.maxatomicnumber > 0:
-        listspecies = [species for species in listspecies if get_atomic_number(species) <= args.maxatomicnumber]
+        listspecies = [species for species in listspecies if get_atomic_number(f"X_{species}") <= args.maxatomicnumber]
 
     modelname = get_model_name(modelpath)
     outputfilepath = Path(args.outputfile, f"{modelname}.csvy")

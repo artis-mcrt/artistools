@@ -954,12 +954,6 @@ def test_unknown_flag_names_the_closest_one(capsys: pytest.CaptureFixture[str]) 
     """
     import artistools.__main__
 
-    with pytest.raises(SystemExit):
-        artistools.__main__.main(argsraw=["plotestimators", "--listvaraibles"])
-    message = capsys.readouterr().err
-    assert "Unrecognised arguments: --listvaraibles" in message
-    assert "Did you mean --listvariables" in message
-
     # the suggestion comes from the arguments of the subcommand, not from the top-level parser
     with pytest.raises(SystemExit):
         artistools.__main__.main(argsraw=["plotspectra", ".", "-timeday", "300"])

@@ -272,7 +272,7 @@ def maptogrid(
         klow = max(math.floor((z[n] - maxdist - z0) / dz), 0)
         khigh = min(math.ceil((z[n] + maxdist - z0) / dz), ncoordgrid - 1)
 
-        if min(ihigh, jhigh, khigh) >= 1 and max(ilow, jlow, klow) <= ncoordgrid:
+        if min(ihigh, jhigh, khigh) >= 0 and max(ilow, jlow, klow) <= ncoordgrid - 1:
             particlesinsidegrid.add(n)
 
         # a kernel that ends two cells or more before the grid gives a negative slice end. A slice reads that

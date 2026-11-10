@@ -13,6 +13,7 @@ import polars as pl
 import polars.selectors as cs
 
 from artistools.atomic import get_atomic_number
+from artistools.atomic import get_z_a_nucname
 from artistools.constants import amu_g
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
@@ -33,18 +34,21 @@ from artistools.misc import print_warning
 
 
 def calculate_model_electron_frac(dfmodel: pl.LazyFrame) -> float | None:
-    """Calculate the electron fraction of the model from the isotopic composition, or None with no nuclide mass."""
+    """Calculate the electron fraction of the model from the isotopic composition, or None with no nuclide mass.
+
+    The sum leaves out the free neutrons (X_n1), because ARTIS does not decay them and keeps no abundance of them.
+    """
     exprs_protons = []
     exprs_nucleons = []
     for column in dfmodel.select(cs.matches("X_[A-z]+[0-9]")).collect_schema().names():
-        species = column.removeprefix("X_")
-        elsymb = species.rstrip(string.digits)
-        atomic_number = get_atomic_number(elsymb)
+        atomic_number, mass_number = get_z_a_nucname(column)
         if atomic_number == 0:
             continue
-        mass_number = float(species.removeprefix(elsymb))
         exprs_protons.append(atomic_number / (mass_number * amu_g) * pl.col(column) * pl.col("mass_g"))
         exprs_nucleons.append(1 / amu_g * pl.col(column) * pl.col("mass_g"))
+
+    if not exprs_nucleons:
+        return None
 
     globalelectronfrac = (
         dfmodel
@@ -70,8 +74,7 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
     dfmodel = add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta).select(
         cs.by_name(dfmodel.collect_schema().names()) | cs.by_name("rho", "mass_g", "vel_r_mid", "kinetic_en_erg")
     )
-    # don't confuse neutrons (lowercase 'n') with Nitrogen (N)
-    dfmodel = dfmodel.filter(pl.col("rho") > 0.0).drop(cs.starts_with("X_n"), strict=False)
+    dfmodel = dfmodel.filter(pl.col("rho") > 0.0)
 
     if args.noabund:
         dfmodel = dfmodel.drop(cs.starts_with("X_"), strict=False)
@@ -144,11 +147,13 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
         electronfrac = dfmodel.select(pl.col("Ye").dot(pl.col("mass_g")) / pl.col("mass_g").sum()).collect().item()
         assert electronfrac is not None
         print_product(args, f"  {'electron frac Ye':19s} {electronfrac:.3f}")
-        if args.isotopes:
-            # currently assumes that all isotopes are specified (i.e. not for Type Ia models)
-            calcelectronfrac = calculate_model_electron_frac(dfmodel)
-            if calcelectronfrac is not None:
-                print_product(args, f"  {'snapshot Ye':19s} {calcelectronfrac:.3f}")
+        # the snapshot Ye is correct only for a model that gives all the nuclides, i.e. not for a Type Ia model
+        if args.isotopes and (calcelectronfrac := calculate_model_electron_frac(dfmodel)) is not None:
+            print_product(
+                args,
+                f"  {'snapshot Ye':19s} {calcelectronfrac:.3f} (protons / nucleons of the nuclides, without the"
+                " free neutrons)",
+            )
 
     if "q" in dfmodel.collect_schema().names():
         initial_energy = dfmodel.select(pl.col("q").dot(pl.col("mass_g"))).collect().item()
@@ -256,7 +261,12 @@ def print_species_masses(dfmodel: pl.LazyFrame, args: argparse.Namespace, mass_m
     mass_msun_actinides = 0.0
     speciesmasses: dict[str, float] = {}
 
-    abundcolumns = dfmodel.select(cs.starts_with("X_") - cs.by_name("X_Fegroup")).collect_schema().names()
+    # ARTIS does not decay the free neutrons and keeps no abundance of them, thus this table leaves them out
+    abundcolumns = [
+        column
+        for column in dfmodel.select(cs.starts_with("X_") - cs.by_name("X_Fegroup")).collect_schema().names()
+        if get_atomic_number(column) != 0
+    ]
 
     # one collect for every species, rather than re-running the whole scan once per column
     speciesabund_g_of_column: dict[str, t.Any] = (
@@ -277,13 +287,12 @@ def print_species_masses(dfmodel: pl.LazyFrame, args: argparse.Namespace, mass_m
 
         species_mass_msun = speciesabund_g / Msun_to_g
 
-        atomic_number = get_atomic_number(species.rstrip(string.digits))
+        atomic_number = get_atomic_number(column)
 
         if species[-1].isdigit():
             # isotopic species
 
-            elname = species.rstrip(string.digits)
-            strtotiso = f"{elname}_isosum"
+            strtotiso = f"{species.rstrip(string.digits)}_isosum"
             speciesmasses[strtotiso] = speciesmasses.get(strtotiso, 0.0) + speciesabund_g
             mass_msun_isotopes += species_mass_msun
 

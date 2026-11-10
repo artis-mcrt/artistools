@@ -11,6 +11,7 @@ from artistools.viewertools.core import get_row_values
 from artistools.viewertools.core import get_short_limits
 from artistools.viewertools.core import get_yscale_choices
 from artistools.viewertools.core import OptionRows
+from artistools.viewertools.core import read_finite_number
 from artistools.viewertools.core import set_figscale_row
 from artistools.viewertools.widgets import add_row
 from artistools.viewertools.widgets import add_section
@@ -185,7 +186,7 @@ def add_direction_section(
                 if kind in kinds:
                     kindbox.addItem(text, kind)
                     kindbox.setItemData(
-                        kindbox.count() - 1, f"{helptexts.get(dest, '')} (-{dest})", QtCore.Qt.ItemDataRole.ToolTipRole
+                        kindbox.count() - 1, f"{helptexts.get(dest, '')} (--{dest})", QtCore.Qt.ItemDataRole.ToolTipRole
                     )
         # a model with no virtual packets has one kind, thus the box gives no choice
         kindbox.setVisible(kindbox.count() > 1)
@@ -408,9 +409,9 @@ def read_limit_fields(
         edit.setModified(False)
         text = edit.text().strip()
         try:
-            limits.append(format(float(text), ".10g") if text else "")
+            limits.append(format(read_finite_number(text), ".10g") if text else "")
         except ValueError:
-            show_error(f"Give a number for {flag}, or clear the field for the automatic limit")
+            show_error(f"Give a finite number for {flag}, or clear the field for the automatic limit")
             return None
     if limits[0] and limits[1] and not float(limits[0]) < float(limits[1]):
         show_error(f"Give a {fields[0][1]} that is less than {fields[1][1]}")

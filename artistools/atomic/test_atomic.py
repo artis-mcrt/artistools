@@ -20,7 +20,6 @@ from artistools.misc import write_zstd_lines
 
 modelpath = at.get_path("testdata") / "testmodel"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
-outputpath = at.get_path("testoutput")
 
 
 def test_get_levels() -> None:
@@ -946,16 +945,18 @@ def test_get_atomic_number_and_elsymbol() -> None:
     assert at.get_atomic_number("X_Fe") == 26
     assert at.get_atomic_number("UnknownXYZ") == -1
 
-    # the free neutron is "n1", and a title-case lookup gave nitrogen for it
-    assert at.get_atomic_number("X_n1") == 0
-    assert at.get_z_a_nucname("X_n1") == (0, 1)
-    assert at.get_z_a_nucname("n1") == (0, 1)
-    # a symbol is not case sensitive, thus every other "n" is nitrogen
-    assert at.get_atomic_number("n") == 7
-    assert at.get_atomic_number("N") == 7
-    assert at.get_atomic_number("X_N14") == 7
-    assert at.get_z_a_nucname("X_N14") == (7, 14)
-    assert at.get_z_a_nucname("n14") == (7, 14)
+    # the neutron is not an element, thus a name with no mass number is nitrogen in each case
+    for name in ("n", "N", "X_n", "X_N"):
+        assert at.get_atomic_number(name) == 7
+    # only the mass number 1 gives the neutron
+    for name in ("n1", "N1", "X_n1", "X_N1", "nniso_n1"):
+        assert at.get_z_a_nucname(name) == (0, 1)
+    for name in ("n14", "N14", "X_n14", "X_N14"):
+        assert at.get_z_a_nucname(name) == (7, 14)
+    # a nuclide cannot have a mass number below its atomic number
+    for name in ("N3", "X_n6", "Fe25"):
+        with pytest.raises(ValueError, match="below its atomic number"):
+            at.get_z_a_nucname(name)
     assert at.get_ion_tuple("nII") == (7, 2)
 
     # a symbol that the caller gave in the wrong case still resolves

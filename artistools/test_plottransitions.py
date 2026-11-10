@@ -67,21 +67,23 @@ def test_kurucz_transitions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     """gfall.dat is fixed-width, and the wavelength field is 11 characters wide, not 12.
 
     Reading 12 characters takes the first character of the loggf field with it, which is only harmless while that
-    character happens to be a space. The second line gives the upper level first, and a negative energy for a
-    predicted level. The reader took the first level as the lower level and kept the sign of the energy.
+    character happens to be a space. Thus the loggf of the test fills its field. The second line gives the upper level
+    first, and a negative energy for a predicted level. The reader took the first level as the lower level and kept
+    the sign of the energy.
     """
 
     def get_gfall_line(energy1: float, j1: float, energy2: float, j2: float) -> str:
         return (
             f"{715.5170:11.4f}"  # 0-10  wavelength in nm
-            f"{-1.234:7.3f}"  # 11-17 log(gf)
+            f"{-10.234:7.3f}"  # 11-17 log(gf)
             f"{44.00:6.2f}"  # 18-23 element code Z.(ion_stage - 1)
             f"{energy1:12.3f}"  # 24-35 energy of the first level in cm-1
             f"{j1:5.1f}"  # 36-40 J of the first level
             " a4F       "  # 41-51 configuration label
             f"{energy2:12.3f}"  # 52-63 energy of the second level in cm-1
-            f"{j2:5.1f}" + " " + " 0" * 16 + "\n"  # 64-68 J of the second level
-            # the parser only reads lines with at least 24 whitespace-separated fields
+            f"{j2:5.1f}" + " " + " 0" * 17 + "\n"  # 64-68 J of the second level
+            # the parser only reads lines with at least 24 whitespace-separated fields, and a loggf that fills its
+            # field joins the wavelength in one field
         )
 
     (tmp_path / "gfall.dat").write_text(
@@ -93,13 +95,12 @@ def test_kurucz_transitions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
 
     assert ionlist == [(44, 1)]
     assert len(dftransitions) == 2
-    hc_in_ev_cm = 0.0001239841984332003
     expected_values = {
         "lambda_angstroms": 7155.170,
         "lower_statweight": 2 * 4.5 + 1,
         "upper_statweight": 2 * 3.5 + 1,
-        "lower_energy_ev": hc_in_ev_cm * 25000.0,
-        "upper_energy_ev": hc_in_ev_cm * 35000.0,
+        "lower_energy_ev": at.constants.hc_in_ev_cm * 25000.0,
+        "upper_energy_ev": at.constants.hc_in_ev_cm * 35000.0,
     }
     for colname, expected in expected_values.items():
         assert dftransitions[colname].to_list() == pytest.approx([expected, expected]), colname
@@ -129,3 +130,20 @@ def test_plottransitions_writes_the_drawn_values(
         )
         assert np.allclose(dfseries["lambda_angstroms"].to_numpy(), drawnx, rtol=1e-12, atol=0.0)
         assert np.allclose(dfseries["f_lambda_arbitrary"].to_numpy(), drawny, rtol=1e-12, atol=0.0)
+
+
+def test_normalised_spectrum_of_an_ion_with_no_line_stays_zero(tmp_path: Path) -> None:
+    """An ion with no line in the x range has a spectrum of zeros, and --normalised divided it by zero."""
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        at.plottransitions.main(
+            argsraw=[],
+            modelpath=modelpath,
+            timedays=300,
+            normalised=True,
+            xmin=7140,
+            xmax=7170,
+            outputfile=tmp_path / "trans.pdf",
+        )

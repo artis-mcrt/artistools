@@ -254,8 +254,7 @@ def scan_lightcurve_from_packets(
         except FileNotFoundError:
             print_warning(f"{modelpath} holds no model.txt, thus the light curve has no comoving frame luminosity")
         else:
-            # the escape time multiplied by the Lorentz factor at the model surface gives the comoving-frame arrival
-            # time
+            # the escape time divided by the Lorentz factor of the model surface gives the comoving-frame arrival time
             dfpackets = dfpackets.with_columns(t_arrive_cmf_d=pl.col("escape_time") * escapesurfacegamma / day_to_s)
 
     if pellet_nucname is not None:

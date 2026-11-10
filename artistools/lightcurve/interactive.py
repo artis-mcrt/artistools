@@ -784,7 +784,7 @@ def open_window(
     for column, dest in enumerate(ENERGYRATEDESTS, start=1):
         text, tooltip = energyheaders[dest]
         header = QtWidgets.QLabel(text)
-        header.setToolTip(f"{tooltip} (-{dest})")
+        header.setToolTip(f"{tooltip} (--{dest})")
         energygrid.addWidget(header, 1, column, QtCore.Qt.AlignmentFlag.AlignHCenter)
         # the columns share the width of the section, thus each check box is under the middle of its heading
         energygrid.setColumnStretch(column, 1)
@@ -886,11 +886,14 @@ def open_window(
             pelletcheck.setChecked(values.usepelletdecaytime)
             pelletreason = refusedreasons.get("--use-pellet-decay-time")
             pelletcheck.setEnabled(pelletreason is None or values.usepelletdecaytime)
-            pelletcheck.setToolTip(pelletreason or helptexts.get("use_pellet_decay_time", ""))
+            # show_flag_labels gave each tooltip its flag, and a new tooltip must keep it
+            pelletcheck.setToolTip(
+                pelletreason or f"{helptexts.get('use_pellet_decay_time', '')} (--use-pellet-decay-time)"
+            )
             cmfcheck.setChecked(values.plotcmf)
             cmfreason = refusedreasons.get("--plotcmf")
             cmfcheck.setEnabled(cmfreason is None or values.plotcmf)
-            cmfcheck.setToolTip(cmfreason or helptexts.get("plotcmf", ""))
+            cmfcheck.setToolTip(cmfreason or f"{helptexts.get('plotcmf', '')} (--plotcmf)")
             invalidcheck.setChecked(values.plotinvalidpart)
             unavailable: list[str] = []
             for (dest, particle), check in energychecks.items():
@@ -915,7 +918,7 @@ def open_window(
             hasbarnescurve = any(particle in values.thermalisation for particle in ("gamma", "betaminus", "alpha"))
             barnescheck.setEnabled(hasbarnescurve or values.showbarnes)
             barnescheck.setToolTip(
-                helptexts.get("showbarnes", "")
+                f"{helptexts.get('showbarnes', '')} (--showbarnes)"
                 if hasbarnescurve
                 else (
                     "Select the thermalisation of gamma, betaminus, or alpha first. Barnes et al. (2016) give only"

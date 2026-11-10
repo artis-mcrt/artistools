@@ -1,9 +1,7 @@
 """Write and inspect the energydistribution.txt and energyrate.txt radioactive energy input files."""
 
 import argparse
-import itertools
 import typing as t
-from collections.abc import Callable
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -27,6 +25,7 @@ from artistools.misc import confirm_overwrite
 from artistools.misc import exit_with_error
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
+from artistools.misc import print_detail
 from artistools.misc import print_saved
 from artistools.misc import read_wsv
 from artistools.misc import require_action
@@ -36,6 +35,10 @@ from artistools.plottools import save_figure
 
 ENERGY_FILE_NAMES = ("energydistribution.txt", "energyrate.txt")
 
+# the r-process power law of the energy files: the heating rate [erg/g/s] at 1 day, and the exponent of the time
+POWERLAW_HEATING_ERG_PER_G_PER_S_AT_1_DAY = 5e9
+POWERLAW_HEATING_EXPONENT = -1.3
+
 
 def cumulative_trapezoid(y: npt.ArrayLike, x: npt.ArrayLike) -> npt.NDArray[np.float64]:
     """Cumulatively integrate y over x with the trapezoidal rule, starting from zero."""
@@ -44,50 +47,23 @@ def cumulative_trapezoid(y: npt.ArrayLike, x: npt.ArrayLike) -> npt.NDArray[np.f
     return np.concatenate(([0.0], np.cumsum(np.diff(xarr) * (yarr[:-1] + yarr[1:]) / 2.0)))
 
 
-def quad_adaptive(func: Callable[[float], float], a: float, b: float) -> float:
-    """Integrate a smooth function over [a, b] with adaptive Simpson quadrature.
+def get_powerlaw_heating_rate() -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    """Return the times [days] and the heating rate [erg/g/s] of the r-process power law of the energy files.
 
-    rtol must stay above the rounding noise of the integrand (e.g. cancellation in
-    1/2 - arctan(x)/pi at large x leaves ~1e-9 relative noise). Below that noise floor no
-    subdivision can meet the tolerance, so the recursion raises rather than subdividing until
-    maxdepth is exhausted, which would cost up to 2**maxdepth evaluations and silently return
-    an unconverged result.
+    The rate is 5e9 * t^-1.3 erg/g/s with t in days, from 1e-4 to 50 days. The code that writes the energy files and
+    the plot of plotrate both call this function. Thus the plot shows the heating that the files give to ARTIS.
     """
-    rtol = 1.5e-8
-    maxdepth = 20
-
-    def simpson(x0: float, x2: float, f0: float, f1: float, f2: float) -> float:
-        return (x2 - x0) / 6.0 * (f0 + 4.0 * f1 + f2)
-
-    def recurse(x0: float, x2: float, f0: float, f1: float, f2: float, depth: int) -> float:
-        x1 = 0.5 * (x0 + x2)
-        fleft = func(0.5 * (x0 + x1))
-        fright = func(0.5 * (x1 + x2))
-        whole = simpson(x0, x2, f0, f1, f2)
-        left = simpson(x0, x1, f0, fleft, f1)
-        right = simpson(x1, x2, f1, fright, f2)
-        if abs(left + right - whole) <= rtol * (abs(left) + abs(right)):
-            # Richardson extrapolation of the two half-interval estimates
-            return left + right + (left + right - whole) / 15.0
-        if depth <= 0:
-            msg = f"Adaptive quadrature did not reach rtol={rtol:g} on [{x0:g}, {x2:g}] within {maxdepth} levels"
-            raise RuntimeError(msg)
-        return recurse(x0, x1, f0, fleft, f1, depth - 1) + recurse(x1, x2, f1, fright, f2, depth - 1)
-
-    x1 = 0.5 * (a + b)
-    return recurse(a, b, func(a), func(x1), func(b), maxdepth)
+    tmin_days, tmax_days = 0.0001, 50.0
+    times_days = np.logspace(np.log10(tmin_days), np.log10(tmax_days), num=300)
+    return times_days, POWERLAW_HEATING_ERG_PER_G_PER_S_AT_1_DAY * times_days**POWERLAW_HEATING_EXPONENT
 
 
 def get_cumulative_heating_fraction() -> tuple[pl.DataFrame, float]:
     """Return the cumulative fraction of energy released by each time, and the total energy [erg/g].
 
-    The heating rate follows the 5e9 * t^-1.3 erg/g/s r-process power law.
+    The heating rate is that of get_powerlaw_heating_rate.
     """
-    tmin = 0.0001  # days
-    tmax = 50
-
-    times = np.logspace(np.log10(tmin), np.log10(tmax), num=300)  # days
-    qdot = 5e9 * times ** (-1.3)  # define energy power law (5e9*t^-1.3)
+    times, qdot = get_powerlaw_heating_rate()
 
     # qdot is a rate for each second, thus the integration variable must also be a time in seconds
     cumulative_energy = cumulative_trapezoid(y=qdot, x=times * day_to_s)
@@ -132,39 +108,6 @@ def make_energy_files(cellmass_grams: npt.NDArray[np.floating], outputpath: Path
     print_saved(Path(outputpath, "energyrate.txt"))
 
 
-def rprocess_const_and_powerlaw() -> tuple[pl.DataFrame, float]:
-    """Following eqn 4 Korobkin 2012."""
-    tmin = 0.01 * day_to_s
-    tmax = 50 * day_to_s
-    t0 = 1.3  # seconds
-    epsilon0 = 2e18
-    sigma = 0.11
-    alpha = 1.3
-    thermalisation_factor = 0.5
-
-    def integrand(t_sec: float) -> float:
-        return float(epsilon0 * ((1 / 2) - (1 / np.pi * np.arctan((t_sec - t0) / sigma))) ** alpha) * (
-            thermalisation_factor / 0.5
-        )
-
-    times = np.logspace(np.log10(tmin), np.log10(tmax), num=200)
-    energy_per_gram_cumulative = [0.0]
-    for tlow, thigh in itertools.pairwise(times):
-        energy_per_gram_cumulative.append(energy_per_gram_cumulative[-1] + quad_adaptive(integrand, tlow, thigh))
-
-    E_tot = energy_per_gram_cumulative[-1]  # ergs/g
-    print("Etot per gram", E_tot)
-
-    rate = np.array(energy_per_gram_cumulative) / E_tot
-
-    nuclear_heating_power = [integrand(time) for time in times]
-
-    times_and_rate = {"times": times / day_to_s, "rate": rate, "nuclear_heating_power": nuclear_heating_power}
-    dftimes_and_rate = pl.DataFrame(data=times_and_rate)
-
-    return dftimes_and_rate, E_tot
-
-
 def energy_from_rprocess_calculation(energy_thermo_data: pl.DataFrame) -> tuple[pl.DataFrame, float]:
     """Integrate a trajectory Qdot to get the cumulative rate and the total energy [erg/g]."""
     energy_thermo_data = energy_thermo_data.filter(pl.col("time/s") <= 1e7)
@@ -182,15 +125,23 @@ def energy_from_rprocess_calculation(energy_thermo_data: pl.DataFrame) -> tuple[
 
 
 def plot_energy_rate(modelpath: str | Path, axis: mplax.Axes) -> pl.DataFrame:
-    """Plot the analytic power of the nuclear heating of the whole model against time, and return the plotted data."""
-    times_and_rate, _ = rprocess_const_and_powerlaw()
+    """Plot the analytic power of the nuclear heating of the whole model against time, and return the plotted data.
+
+    The power is the heating rate of get_powerlaw_heating_rate times the mass of the model.
+    """
+    times_days, heatingrate = get_powerlaw_heating_rate()
     lzmodel, modelmeta = scan_modeldata(modelpath)
     Mtot_grams = (
         add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta).select(pl.col("mass_g").sum()).collect().item()
     )
-    nuclear_heating_power = times_and_rate["nuclear_heating_power"] * Mtot_grams
-    axis.plot(times_and_rate["times"], nuclear_heating_power, color="k", zorder=10)
-    return pl.DataFrame({"time_days": times_and_rate["times"], "nuclear_heating_power": nuclear_heating_power})
+    print_detail(
+        f"The heating power is {POWERLAW_HEATING_ERG_PER_G_PER_S_AT_1_DAY:g} * t^{POWERLAW_HEATING_EXPONENT:g} erg/g/s"
+        f" (t in days) times the mass of the model, {Mtot_grams:.4e} g. This is the power law of the energy files"
+        " that makeartismodel --makeenergyinputfiles writes"
+    )
+    nuclear_heating_power = heatingrate * Mtot_grams
+    axis.plot(times_days, nuclear_heating_power, color="k", zorder=10)
+    return pl.DataFrame({"time_days": times_days, "nuclear_heating_power": nuclear_heating_power})
 
 
 def get_etot_fromfile(modelpath: str | Path) -> tuple[float, pl.DataFrame]:
@@ -224,7 +175,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         parser,
         choices=["plotrate", "describe", "fromtrajectory"],
         helptext=(
-            "plotrate: plot the analytic nuclear heating power against time."
+            "plotrate: plot the nuclear heating power against time, with the power law of the energy files."
             " describe: report the total energy and rate from the written energy files."
             " fromtrajectory: integrate a trajectory energy_thermo.dat to get the total energy and rate"
         ),

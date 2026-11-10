@@ -4,6 +4,7 @@ import itertools
 import json
 import math
 import multiprocessing
+import re
 import shutil
 import tarfile
 import time
@@ -1478,19 +1479,95 @@ def test_energyfiles_written_then_described(tmp_path: Path, capsys: pytest.Captu
     assert "energydistribution.txt" in capsys.readouterr().out
 
 
-def test_rprocess_const_and_powerlaw() -> None:
-    """The adaptive quadrature must match the scipy.integrate.quad values it replaced for the Korobkin 2012 rate."""
-    times_and_rate, e_tot = at.inputmodel.energyinputfiles.rprocess_const_and_powerlaw()
-    assert np.isclose(e_tot, 1.0364888092e16, rtol=1e-6)
+def test_plotrate_shows_the_heating_law_of_the_energy_files() -> None:
+    """The plot of plotrate drew a different law from energyrate.txt, with approximately two times the rate."""
+    import matplotlib.pyplot as plt
 
-    # interior points of the cumulative curve, not just the total: accumulating per-interval could
-    # get the endpoint right while distorting the shape in between
-    rate = times_and_rate["rate"].to_numpy()
-    assert np.isclose(times_and_rate["times"][100], 0.7224019284438787, rtol=1e-9)
-    assert np.isclose(rate[50], 0.5138699342846266, rtol=1e-6)
-    assert np.isclose(rate[100], 0.7840751031432063, rtol=1e-6)
-    assert np.isclose(rate[150], 0.9262544511559376, rtol=1e-6)
-    assert rate[-1] == pytest.approx(1.0)
+    from artistools.inputmodel import energyinputfiles
+
+    fig, axis = plt.subplots()
+    dfplotted = energyinputfiles.plot_energy_rate(modelpath, axis)
+    plt.close(fig)
+    lzmodel, modelmeta = at.inputmodel.scan_modeldata(modelpath)
+    mass_g = (
+        at.inputmodel
+        .add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
+        .select(pl.col("mass_g").sum())
+        .collect()
+        .item()
+    )
+    times_days = dfplotted["time_days"].to_numpy()
+    heatingrate = dfplotted["nuclear_heating_power"].to_numpy() / mass_g
+    assert np.allclose(heatingrate, 5e9 * times_days**-1.3, rtol=1e-12, atol=0.0)
+
+    # the total energy of the files is the integral of the plotted rate
+    dfcumulative, e_tot_per_gram = energyinputfiles.get_cumulative_heating_fraction()
+    assert np.allclose(dfcumulative["times"].to_numpy(), times_days, rtol=1e-12, atol=0.0)
+    assert np.isclose(e_tot_per_gram, np.trapezoid(heatingrate, times_days * day_to_s), rtol=1e-12)
+
+
+def test_abundances_that_lack_a_cell_of_the_model_stop_the_read(tmp_path: Path) -> None:
+    """The join with abundances.txt dropped a cell that the file does not give, and each mass left that cell out."""
+    dfmodel = pl.DataFrame({
+        "inputcellid": [1, 2],
+        "vel_r_max_kmps": [1000.0, 2000.0],
+        "logrho": [-10.0, -11.0],
+        "X_Fegroup": [1.0, 1.0],
+        "X_Ni56": [0.5, 0.5],
+        "X_Co56": [0.0, 0.0],
+        "X_Fe52": [0.0, 0.0],
+        "X_Cr48": [0.0, 0.0],
+    })
+    at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta={"dimensions": 1, "t_model_init_days": 1.0})
+    at.inputmodel.save_empty_abundance_file(npts_model=1, outputfilepath=tmp_path)
+
+    assert at.inputmodel.scan_modeldata(tmp_path)[0].select(pl.len()).collect().item() == 2
+    with pytest.raises(ValueError, match="no abundances for 1 of the 2 cells"):
+        at.inputmodel.scan_modeldata(tmp_path, get_elemabundances=True)
+
+
+def test_dimension_reduction_logs_the_mass_outside_the_output_grid(capsys: pytest.CaptureFixture[str]) -> None:
+    """The log must give the mass that the output model leaves out.
+
+    The radial bins end at vmax, thus the output model leaves out the corner cells of a 3D model.
+    """
+    lzdfmodel, modelmeta = at.inputmodel.scan_modeldata(modelpath_classic_3d)
+    mass_g_in = (
+        at.inputmodel
+        .add_derived_cols_to_modeldata(lzdfmodel, modelmeta=modelmeta)
+        .select(pl.col("mass_g").sum())
+        .collect()
+        .item()
+    )
+    capsys.readouterr()
+    dfmodel1d, _, _, modelmeta1d = at.inputmodel.dimension_reduce_model(
+        lzdfmodel, outputdimensions=1, modelmeta=modelmeta
+    )
+    mass_g_out = (
+        at.inputmodel
+        .add_derived_cols_to_modeldata(dfmodel1d.lazy(), modelmeta=modelmeta1d)
+        .select(pl.col("mass_g").sum())
+        .collect()
+        .item()
+    )
+    match = re.search(r"outside this grid hold (\S+) Msun", capsys.readouterr().out)
+    assert match is not None
+    assert mass_g_in > mass_g_out
+    assert np.isclose(float(match[1]) * at.constants.Msun_to_g, mass_g_in - mass_g_out, rtol=1e-3)
+
+
+def test_snapshot_electron_fraction_leaves_out_the_free_neutrons() -> None:
+    """A free neutron (X_n1 or X_N1) is not in the sum, and a nitrogen nuclide in lower case (X_n14) is."""
+    from artistools.inputmodel.describeinputmodel import calculate_model_electron_frac
+
+    for neutroncolumn in ("X_n1", "X_N1"):
+        dfmodel = pl.LazyFrame({neutroncolumn: [0.5], "X_He4": [0.25], "X_Li7": [0.25], "mass_g": [1.0]})
+        assert calculate_model_electron_frac(dfmodel) == pytest.approx((0.25 * 2 / 4 + 0.25 * 3 / 7) / 0.5)
+        assert calculate_model_electron_frac(pl.LazyFrame({neutroncolumn: [1.0], "mass_g": [1.0]})) is None
+
+    for nitrogencolumn in ("X_n14", "X_N14"):
+        dfmodel = pl.LazyFrame({nitrogencolumn: [1.0], "mass_g": [1.0]})
+        assert calculate_model_electron_frac(dfmodel) == pytest.approx(0.5)
 
 
 def test_energyfiles_from_trajectory(trajectory_copy: Path) -> None:
@@ -3378,6 +3455,18 @@ def test_plotinitialcomposition_rejects_a_column_or_a_model_that_it_cannot_plot(
 
     with pytest.raises(ValueError, match="2D or a 3D model"):
         at.inputmodel.plotinitialcomposition.main(argsraw=["rho", str(modelpath), "-o", str(tmp_path)])
+
+
+def test_shen2018_nitrogen_in_lower_case_is_no_neutron() -> None:
+    """The names of a Shen et al. 2018 file are in lower case, thus n14 is nitrogen and only n and n1 are the neutron.
+
+    A rule that read the case of the name gave the atomic number 0 to the nitrogen columns, and the written abundance
+    of nitrogen was zero.
+    """
+    from artistools.inputmodel.shen2018 import get_nuclide_atomic_number
+
+    names = ("n", "n1", "n14", "n15", "p", "ni56")
+    assert [get_nuclide_atomic_number(name) for name in names] == [0, 0, 7, 7, 1, 28]
 
 
 def test_makeartismodelfromshen2018(tmp_path: Path) -> None:
