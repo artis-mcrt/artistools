@@ -1220,7 +1220,7 @@ def test_mathtext_lock_wraps_the_parser_one_time(monkeypatch: pytest.MonkeyPatch
     assert height > 0
 
 
-def test_direction_data_follows_the_files_and_the_data_source() -> None:
+def test_direction_data_follows_the_files_and_the_data_source(tmp_path: Path) -> None:
     """A direction bin needs a *_res.out file or the packets with --frompackets, and an observer needs vpkt.txt.
 
     The commands read the packets for a direction bin only with --frompackets. The viewer enabled the bins of a model
@@ -1239,6 +1239,14 @@ def test_direction_data_follows_the_files_and_the_data_source() -> None:
     # vpktcontrib has the virtual packets
     assert has_data(datafolder / "vpktcontrib", "vpkt", lightcurveres, "", frompackets=True)
     assert not has_data(datafolder / "vpktcontrib", "vpkt", lightcurveres, "", frompackets=False)
+
+    # a cache folder with no cache in it gives no observers, and a cache of the virtual packets gives them
+    for folder, hascache in ((tmp_path / "emptycachefolder", False), (tmp_path / "cachedvpackets", True)):
+        (folder / "vpackets").mkdir(parents=True)
+        (folder / "vpkt.txt").write_text("1\n", encoding="utf-8")
+        if hascache:
+            (folder / "vpackets" / "vpacketsbatch00_0000_0000.out.parquet").write_bytes(b"")
+        assert has_data(folder, "vpkt", lightcurveres, "", frompackets=True) == hascache
 
 
 def test_series_styles_keep_the_values_after_the_paths() -> None:

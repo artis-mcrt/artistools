@@ -764,10 +764,6 @@ def get_packets_rankbatch_parquetfile(
     If the file does not exist or is outdated, the function first makes it from the text files.
     """
     modelpath = Path(modelpath)
-    strpacket = "vpackets" if virtual else "packets"
-    packetdir = Path(modelpath, strpacket)
-    make_cache_folder(packetdir, modelpath)
-
     parquetfilepath = get_packets_rankbatch_parquetpath(modelpath, batch_mpiranks, batchindex, virtual)
 
     text_filenames = [get_packets_textfilename(rank, virtual) for rank in batch_mpiranks]
@@ -830,6 +826,8 @@ def get_packets_rankbatch_parquetfile(
             else firstexisting(filename, folder=modelpath, tryzipped=True, search_subfolders=True)
             for filename in text_filenames
         ]
+        # a model with no text files must not get an empty cache folder, because a check for packets then finds it
+        make_cache_folder(parquetfilepath.parent, modelpath)
 
         # the stamp is the newest text file of the batch, which the check of the cache compares
         textsource_mtime = max(text_file_path.stat().st_mtime for text_file_path in text_file_paths)

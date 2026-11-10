@@ -43,8 +43,11 @@ def path_is_dir(path: Path) -> bool:
 
 @on_model_host
 def folder_holds_match(folder: Path, pattern: str) -> bool:
-    """Return whether a file in the folder matches the glob pattern. The host of a remote path gives the answer."""
-    return any(folder.glob(pattern))
+    """Return whether a file in the folder matches the glob pattern. The host of a remote path gives the answer.
+
+    A folder that matches the pattern does not count, e.g. an empty cache folder vpackets for the pattern vpackets*.
+    """
+    return any(path.is_file() for path in folder.glob(pattern))
 
 
 @cache
