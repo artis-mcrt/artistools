@@ -2821,7 +2821,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         ),
     )
     # argcomplete reads this attribute, which argparse does not declare
-    itemsarg.completer = complete_plotitem  # ty:ignore[unresolved-attribute]  # pyrefly: ignore[missing-attribute]
+    itemsarg.completer = complete_plotitem  # ty:ignore[missing-attribute]  # pyrefly: ignore[missing-attribute]
 
     # the default is None and not Path(), thus resolve_positional_modelpath sees an explicit value
     addarg_modelpath(

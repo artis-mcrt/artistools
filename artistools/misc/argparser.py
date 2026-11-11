@@ -536,7 +536,7 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
         return True
 
     @t.override
-    def parse_known_args(  # ty:ignore[invalid-method-override]  # pyrefly: ignore[bad-override]
+    def parse_known_args(  # ty:ignore[incompatible-method-override]  # pyrefly: ignore[bad-override]
         self, args: "Sequence[str] | None" = None, namespace: argparse.Namespace | None = None
     ) -> tuple[argparse.Namespace | None, list[str]]:
         """Split a joined flag and value, then parse. A subparser reads its own arguments here.
@@ -552,7 +552,7 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
         return super().parse_known_args(argstrings, namespace)
 
     @t.override
-    def parse_args(  # ty:ignore[invalid-method-override]  # pyrefly: ignore[bad-override]
+    def parse_args(  # ty:ignore[incompatible-method-override]  # pyrefly: ignore[bad-override]
         self, args: "Sequence[str] | None" = None, namespace: argparse.Namespace | None = None
     ) -> argparse.Namespace:
         """Parse the arguments, and name the closest flag when one is not recognised.

@@ -1593,7 +1593,7 @@ def get_next_color(ax: mplax.Axes) -> str:
     Call this to keep colours consistent with the automatic ones, or to skip a colour that would otherwise
     be reused. matplotlib exposes no public accessor, hence the private attribute.
     """
-    nextcolor: str = ax._get_lines.get_next_color()  # pyrefly: ignore[missing-attribute] # ruff:ignore[private-member-access] # pyright: ignore[reportAttributeAccessIssue]  # ty:ignore[unresolved-attribute]
+    nextcolor: str = ax._get_lines.get_next_color()  # pyrefly: ignore[missing-attribute] # ruff:ignore[private-member-access] # pyright: ignore[reportAttributeAccessIssue]  # ty:ignore[missing-attribute]
     return nextcolor
 
 
