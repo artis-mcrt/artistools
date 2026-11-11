@@ -38,14 +38,12 @@ def rd_sn_hydro_data(file: str, quiet: bool = False) -> dict[str, t.Any]:
     # open file
     with pathlib.Path(file).open(encoding="utf-8") as f:
         # read in header
-        okhdr = 0
         nd, nspec, niso = 0, 0, 0
         time = 0.0
-        while okhdr == 0:
+        while True:
             line = readline_or_stop(f, file, "the radius grid")
             if "Number of data points:" in line:
                 nd = int(line.split()[4])
-                nrow = int(np.ceil(nd / float(ncol)))
             elif "Number of mass fractions:" in line:
                 nspec = int(line.split()[4])
             elif "Number of isotopes:" in line:
@@ -55,8 +53,8 @@ def rd_sn_hydro_data(file: str, quiet: bool = False) -> dict[str, t.Any]:
             elif "Radius grid" in line:
                 if 0 in {nd, nspec, niso, time}:
                     sys.exit("nd, nspec, niso or model time undefined")
-                else:
-                    okhdr = 1
+                break
+        nrow = int(np.ceil(nd / float(ncol)))
         if not quiet:
             print(" *** INPUT FILE: " + file)
             print(" Number of data points:          " + str(nd))

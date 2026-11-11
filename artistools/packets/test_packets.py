@@ -1552,11 +1552,11 @@ def test_plotspherical_write_data_holds_the_drawn_maps(
     mapcalls = [call for call in mockpcolormesh.call_args_list if call.args[0].name == "mollweide"]
     assert len(mapcalls) == len(plotvars)
     for call, colname in zip(mapcalls, ["luminosity_erg_per_s", "emvelocityoverc"], strict=True):
-        _, meshgrid_phi, meshgrid_theta, data = call.args
-        drawn = np.asarray(data, dtype=np.float64)
+        drawn = np.asarray(call.args[3], dtype=np.float64)
         assert drawn.shape == (ncosthetabins, nphibins + 1)
         assert np.allclose(dftable[colname].to_numpy().reshape(drawn.shape), drawn, rtol=1e-6, atol=0, equal_nan=True)
 
+    _, meshgrid_phi, meshgrid_theta, _ = mapcalls[-1].args
     longitude_edges = np.sort(meshgrid_phi[0])
     assert np.allclose(dftable["longitude_lower_rad"].to_numpy()[: nphibins + 1], longitude_edges[:-1][::-1])
     assert np.allclose(dftable["longitude_upper_rad"].to_numpy()[: nphibins + 1], longitude_edges[1:][::-1])

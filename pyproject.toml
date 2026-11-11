@@ -203,7 +203,6 @@ ignore-missing-imports = [
 ]
 
 [tool.pyrefly.errors]
-unbound-name = false
 # the strict preset leaves these kinds off
 empty-body = true
 implicit-abstract-class = true
@@ -321,7 +320,12 @@ docstring-code-format = true
 [tool.ruff.lint]
 select = ["ALL"]
 # ALL does not select a rule that has no code
-extend-select = ["pytest-fixture-autouse"]
+extend-select = [
+    "pytest-fixture-autouse",
+    "shared-clock-mock",
+    "tarfile-ignore-zeros-true",
+    "unnecessary-regular-expression-compile",
+]
 ignore = [
     "any-type",
     "complex-structure",
@@ -424,13 +428,16 @@ allowed-unresolved-imports = ["george.**", "PySide6.**", "shiboken6.**", "zstand
 # these rules are off by default
 blanket-ignore-comment = "error"
 disjoint-cast = "error"
+division-by-zero = "error"
 dynamic-function-decorator-return = "error"
 invalid-legacy-positional-parameter = "error"
 invalid-mutable-override = "error"
+mismatched-sentinel-name = "error"
 missing-override-decorator = "error"
 missing-type-argument = "error"
 possibly-missing-attribute = "error"
 possibly-missing-import = "error"
+possibly-unresolved-reference = "error"
 unsupported-dynamic-base = "error"
 
 # the reason is at the sub-config of pyrefly

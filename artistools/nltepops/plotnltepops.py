@@ -682,10 +682,7 @@ def make_plot_populations_with_time_or_velocity(
 
     # the axis label size comes from the artistools matplotlibrc
     labelfontsize = None
-    if args.x == "time":
-        xlabel = "Time Since Explosion [days]"
-    elif args.x == "velocity":
-        xlabel = r"Cell mid-point velocity [km s$^{-1}$]"
+    xlabel = "Time Since Explosion [days]" if args.x == "time" else r"Cell mid-point velocity [km s$^{-1}$]"
     ylabel = r"Level population [cm$^{-3}$]"
 
     set_axis_labels(fig, ax, xlabel, ylabel, labelfontsize, args)
@@ -752,8 +749,7 @@ def plot_populations_with_time_or_velocity(
         modelgridindex = get_single_modelgridindex(args.modelgridindex)
         assert modelgridindex is not None, "the branch above stops when no cell is given"
         modelgridindex_list = [modelgridindex] * len(timesteps)
-
-    if args.x == "velocity":
+    else:
         # vel_r_mid is the mid-point radial velocity of a cell in a model of any dimension, in cm/s
         dfmodel, modelmeta = scan_modeldata(modelpaths[0])
         modeldata = add_derived_cols_to_modeldata(dfmodel, modelmeta).select("vel_r_mid").collect()

@@ -455,10 +455,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # a Ye on the boundary of two bins goes to the upper bin alone. Both ends closed summed it in the two bins
     closed_of_bin: dict[str, t.Literal["left", "both"]] = {"all": "both", "low": "left", "mid": "left", "high": "both"}
 
+    trajids_of_ejectastate: dict[str | int, set[int]] = {}
     if args.npz:
         npz_dict = np.load(args.npz)
         npz_idcs = np.asarray(npz_dict["idx"])
         npz_types = np.asarray(npz_dict["state"])
+        trajids_of_ejectastate = {state: set(npz_idcs[npz_types == state].tolist()) for state in (-1, 0, 1)}
 
     # get beta decay data
     nuc_data = get_nuc_data(nuc_dataset)
@@ -535,9 +537,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 continue
         else:
             # select by ejecta type
-            selected_traj_ids = (
-                traj_ids if state == "any" else list(set(traj_ids) & set(npz_idcs[npz_types == state].tolist()))
-            )
+            selected_traj_ids = traj_ids if state == "any" else list(set(traj_ids) & trajids_of_ejectastate[state])
             print(f" {len(selected_traj_ids)} trajectories selected")
             if len(selected_traj_ids) == 0:
                 print_warning(f"No trajectories found for eject state {state}")

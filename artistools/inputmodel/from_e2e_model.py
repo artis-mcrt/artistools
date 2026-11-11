@@ -48,6 +48,9 @@ def sphkernel(
         sigma = 1.0 / np.pi
     elif nu == 2:
         sigma = 10.0 / (7.0 * np.pi)
+    else:
+        msg = f"The SPH kernel needs 2 or 3 dimensions, got {nu}"
+        raise ValueError(msg)
 
     return w * sigma / hsph**nu
 
@@ -254,25 +257,15 @@ def get_grid(
 
     # Step 3) Define the final grid
 
-    # define grid variables depending on final dimension again
-    if model_dim == 2:
-        numb_cells_ARTIS_radial = grid_dims[0]
-        numb_cells_ARTIS_z = grid_dims[1]
-    elif model_dim == 3:
-        numb_cells_ARTIS_x = grid_dims[0]
-        numb_cells_ARTIS_y = grid_dims[1]
-        numb_cells_ARTIS_z = grid_dims[2]
-
     # ... cylindrical coordinates of the particle positions
     vmax_cmps = vmax_on_c * CLIGHT  # maximum velocity in coordinate direction (!)
     rcyltraj = vtraj * np.sin(atraj) * CLIGHT * t_model_init_s
     zcyltraj = vtraj * np.cos(atraj) * CLIGHT * t_model_init_s
     if model_dim == 2:
         # ... cylindrical coordinates of the grid onto which we want to map
-        nvr = numb_cells_ARTIS_radial
-        nvz = (
-            numb_cells_ARTIS_z // eqsymfac
-        )  # number of mapping grid cells in z direction depends on equatorial symmetry
+        nvr = grid_dims[0]
+        # equatorial symmetry maps the particles onto the upper half of the z range only
+        nvz = grid_dims[1] // eqsymfac
 
         wid_init_rcyl = vmax_cmps * t_model_init_s / nvr
         pos_rcyl_min = vmax_cmps * t_model_init_s / nvr * np.arange(nvr)
@@ -292,7 +285,11 @@ def get_grid(
         zgridc2d = np.broadcast_to(pos_z_mid[np.newaxis, :], (nvr, nvz))
 
         volgrid = np.broadcast_to((wid_init_z * np.pi * (pos_rcyl_max**2 - pos_rcyl_min**2))[:, np.newaxis], (nvr, nvz))
-    elif model_dim == 3:
+        gridrcyl, gridz = rgridc2d, zgridc2d
+        # the callers read the cell centres of a 2D grid and the lower cell corners of a 3D grid
+        returnedgridpositions = (rgridc2d, zgridc2d)
+    else:
+        numb_cells_ARTIS_x, numb_cells_ARTIS_y, numb_cells_ARTIS_z = grid_dims
         # an odd count in x or y puts a cell centre on the symmetry axis, where the mapping divides
         # by the cylindrical radius
         if numb_cells_ARTIS_x % 2 or numb_cells_ARTIS_y % 2:
@@ -320,8 +317,9 @@ def get_grid(
         z3d_min = op(op(np.ones(numb_cells_ARTIS_x), np.ones(numb_cells_ARTIS_y)), vzgridl) * (CLIGHT * t_model_init_s)
         if eqsymfac == 2:
             z3d = abs(z3d)
-        R3d = np.sqrt(x3d**2 + y3d**2)
         volgrid = op(op(vxgridr - vxgridl, vygridr - vygridl), vzgridr - vzgridl) * (CLIGHT * t_model_init_s) ** 3
+        gridrcyl, gridz = np.sqrt(x3d**2 + y3d**2), z3d
+        returnedgridpositions = (x3d_min, y3d_min, z3d_min)
 
     # Step 4) Prepare the mapping procedure by calculating the tracer particle smoothing lengths
 
@@ -373,12 +371,8 @@ def get_grid(
 
     interpol_axis = model_dim
     print("Interpolating...")
-    if model_dim == 2:
-        distall = np.sqrt(oa(rgridc2d, -rcyltraj) ** 2 + oa(zgridc2d, -zcyltraj) ** 2)
-        hall = np.multiply.outer(np.ones((nvr, nvz)), hsmooth)
-    elif model_dim == 3:
-        distall = np.sqrt(oa(R3d, -rcyltraj) ** 2 + oa(z3d, -zcyltraj) ** 2)
-        hall = np.multiply.outer(np.ones((numb_cells_ARTIS_x, numb_cells_ARTIS_y, numb_cells_ARTIS_z)), hsmooth)
+    distall = np.sqrt(oa(gridrcyl, -rcyltraj) ** 2 + oa(gridz, -zcyltraj) ** 2)
+    hall = np.multiply.outer(np.ones(gridrcyl.shape), hsmooth)
     wall = sphkernel(distall, hall, nu)
     weight = wall * (mtraj / rho2dhat)
     weinor = (weight.T / (np.sum(weight, axis=interpol_axis) + 1.0e-100).T).T
@@ -389,12 +383,12 @@ def get_grid(
     rhoint = np.zeros(rho2d.shape)
     if model_dim == 2:
         rhoint = rho2d / (
-            2.0 * np.pi * np.clip(rgridc2d, 0.5 * hint, None)
+            2.0 * np.pi * np.clip(gridrcyl, 0.5 * hint, None)
         )  # limiting to 0.5*h seems to prevent artefacts near the axis
         xint = np.tensordot(xtraj.T, wall * mtraj, axes=(1, 2)) / (np.sum(wall * mtraj, axis=2) + 1e-100)
-    elif model_dim == 3:
-        rhoint = rho2d / (2.0 * np.pi * R3d)
-        xint = np.tensordot(xtraj.T, wall * mtraj, axes=(1, 3)) / (2.0 * np.pi * R3d)
+    else:
+        rhoint = rho2d / (2.0 * np.pi * gridrcyl)
+        xint = np.tensordot(xtraj.T, wall * mtraj, axes=(1, 3)) / (2.0 * np.pi * gridrcyl)
     assert np.amax(rhoint) > 0, "Model is empty after interpolating!"
     # ... temperature
     qinterpol = np.sum(weinor * qtraj, axis=interpol_axis)
@@ -410,7 +404,7 @@ def get_grid(
     rescfac = np.sum(mtraj) / np.sum(dmgrid)
     if model_dim == 2:
         rhoint *= rescfac
-    elif model_dim == 3:
+    else:
         # renormalise each partial density, so that the isotopic masses on the mapped grid equal the
         # isotopic masses of the tracers
         rescfacx = np.zeros(ncomp)
@@ -467,6 +461,7 @@ def get_grid(
         wloc /= np.sum(wloc, axis=-1, keepdims=True)
     cellhasmass = dmgrid > (1e-100 * mtot)
     if model_dim == 2:
+        nvr, nvz = gridrcyl.shape
         # the rows run over nz, then nr, then the particle id, thus put nz first
         wloc = wloc.transpose((1, 0, 2))
         cellhasmass = cellhasmass.T
@@ -497,7 +492,7 @@ def get_grid(
         if eqsymfac == 2:
             # the lower half of the full grid reflects the upper half, thus each particle also gives its fraction to
             # the mirror cell. For row iz of the half grid, the mirror is row nvz - 1 - iz of the full grid
-            nrowsfull, ncolsfull = 2 * int(nvz), int(nvr)
+            ncolsfull, nrowsfull = gridrcyl.shape[0], 2 * gridrcyl.shape[1]
             fullrow = (pl.col("cellindex") - 1) // ncolsfull
             dfparticlecontribs = pl.concat([
                 dfparticlecontribs,
@@ -506,9 +501,8 @@ def get_grid(
                 ),
             ]).sort("cellindex", "particleid")
 
-        return rgridc2d, zgridc2d, rhoint, xint, iso, qinterpol, yeinterpol, eqsymfac, dfparticlecontribs
-    # 3D case
-    return x3d_min, y3d_min, z3d_min, rhoint, xint, iso, qinterpol, yeinterpol, bsinterpol, eqsymfac, dfparticlecontribs
+        return *returnedgridpositions, rhoint, xint, iso, qinterpol, yeinterpol, eqsymfac, dfparticlecontribs
+    return *returnedgridpositions, rhoint, xint, iso, qinterpol, yeinterpol, bsinterpol, eqsymfac, dfparticlecontribs
 
 
 def get_model_interpolation_weights(dens_3D: pl.Series, dens_2D: pl.Series) -> pl.DataFrame:
@@ -941,14 +935,14 @@ def map_to_artis(
         # create modelmeta dictionary
         modelmeta = {
             "dimensions": 2,
-            "ncoordgridrcyl": ngridrcyl,
-            "ncoordgridz": ngridz,
-            "wid_init_rcyl": vmax_on_c * CLIGHT * t_model_init_s / ngridrcyl,
-            "wid_init_z": 2 * vmax_on_c * CLIGHT * t_model_init_s / ngridz,
+            "ncoordgridrcyl": grid_dims[0],
+            "ncoordgridz": grid_dims[1],
+            "wid_init_rcyl": vmax_on_c * CLIGHT * t_model_init_s / grid_dims[0],
+            "wid_init_z": 2 * vmax_on_c * CLIGHT * t_model_init_s / grid_dims[1],
             "t_model_init_days": t_model_init_s / day_to_s,
             "vmax_cmps": vmax_on_c * CLIGHT,
         }
-    elif model_dim == 3:
+    else:
         # add_derived_cols_to_modeldata reads the cell widths, thus -dimensions 1 after --mapto3D needs them
         wid_init_x, wid_init_y, wid_init_z = (2 * vmax_on_c * CLIGHT * t_model_init_s / ncells for ncells in grid_dims)
         modelmeta = {
