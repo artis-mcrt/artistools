@@ -764,6 +764,7 @@ def plot_qdot_abund_modelcells(
 
     arr_time_artis_days_alltimesteps = dftimesteps.select(pl.col("tmid_days")).to_series().to_numpy()
 
+    dfpairs = dfparticledata = arr_time_gsi_days = None
     if gsinet_available:
         arr_time_gsi_days = [modelmeta["t_model_init_days"], *arr_time_artis_days_alltimesteps]
         dfpairs, dfparticledata = get_dfcontribsparticledata(
@@ -777,12 +778,7 @@ def plot_qdot_abund_modelcells(
         )
         if dfpairs.is_empty():
             print("No particle of the model has network data, thus the plots show the ARTIS data alone")
-            gsinet_available = False
-
-    if not gsinet_available:
-        dfpairs = None
-        dfparticledata = None
-        arr_time_gsi_days = None
+            dfpairs = dfparticledata = arr_time_gsi_days = None
 
     plot_qdot(
         modelpath,

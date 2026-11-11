@@ -825,6 +825,8 @@ def make_zero_based_atomic_data(folder: Path, atomic_number: int, ion_stage: int
         if len(header) == 4 and header[:2] == [str(atomic_number), str(ion_stage)]:
             levellines = adatalines[linenumber + 1 : linenumber + 1 + int(header[2])]
             break
+    else:
+        pytest.fail(f"adata.txt of {modelpath} has no ion Z={atomic_number} ion_stage={ion_stage}")
     (folder / "adata.txt").write_text(
         "\n".join([
             "# a comment line in front of the first ion",

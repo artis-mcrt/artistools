@@ -881,8 +881,7 @@ def draw_artis_lightcurve(
     lumunit = get_plot_lum_unit(args)
     ycolumn = get_plot_lum_column(lumunit)
 
-    if args.colorbarcostheta or args.colorbarphi:
-        scaledmap = make_colorbar_viewingangles_colormap()
+    scaledmap = make_colorbar_viewingangles_colormap()
 
     lctimemin, lctimemax = get_time_range_days(lcdataframes[dirbins[0]])
     assert isinstance(lctimemin, float)
@@ -1389,8 +1388,7 @@ def make_band_lightcurves_plot(modelpaths: Sequence[str | Path], args: argparse.
     # the colours that other series were given
     set_prop_cycle_unusedcolors(axes, [*args.color, *args.refspeccolors])
 
-    if args.colorbarcostheta or args.colorbarphi:
-        scaledmap = make_colorbar_viewingangles_colormap()
+    scaledmap = make_colorbar_viewingangles_colormap()
 
     # every model is asked for the same bands, so one list serves the loader, the reference curves, the
     # y axis label and the output file name. main() dispatches here only when -filter has a value

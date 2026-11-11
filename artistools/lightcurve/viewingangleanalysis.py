@@ -506,12 +506,12 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
         )
 
         # the error bars below use the angle-averaged x value whether or not its point is drawn
-        if args.make_viewing_angle_peakmag_delta_m15_scatter_plot:
-            xvalues_viewingangles = band_delta_m15_viewing_angles
-            xvalues_angleaveraged = args.band_delta_m15_angle_averaged_polyfit[ii]
         if args.make_viewing_angle_peakmag_risetime_scatter_plot:
             xvalues_viewingangles = band_risetime_viewing_angles
             xvalues_angleaveraged = args.band_risetime_angle_averaged_polyfit[ii]
+        else:
+            xvalues_viewingangles = band_delta_m15_viewing_angles
+            xvalues_angleaveraged = args.band_delta_m15_angle_averaged_polyfit[ii]
 
         a0 = ax.scatter(xvalues_viewingangles, band_peak_mag_viewing_angles, **plotkwargsviewingangles)
         # the angle average has the direction bin -1, as in the readers of the light curves
@@ -594,20 +594,20 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
         frameon=False,
     )
 
-    if args.make_viewing_angle_peakmag_delta_m15_scatter_plot:
-        xlabel = rf"$\Delta$m$_{{15}}$({key})"
     if args.make_viewing_angle_peakmag_risetime_scatter_plot:
         xlabel = "Rise Time [days]"
+    else:
+        xlabel = rf"$\Delta$m$_{{15}}$({key})"
 
     ax.set_xlabel(xlabel)
     ax.set_ylabel(rf"M$_{{\mathrm{{{key}}}}}$, max")
     set_scatterplot_plot_params(ax, args)
 
     filestem = f"{get_filename_part(key)}_band_{get_filename_part(datanames[0])}"
-    if args.make_viewing_angle_peakmag_delta_m15_scatter_plot:
-        filename = f"{filestem}_dm15_peakmag.pdf"
     if args.make_viewing_angle_peakmag_risetime_scatter_plot:
         filename = f"{filestem}_risetime_peakmag.pdf"
+    else:
+        filename = f"{filestem}_dm15_peakmag.pdf"
     xcolumn = "risetime_days" if args.make_viewing_angle_peakmag_risetime_scatter_plot else "deltam15"
     dftable = pl.concat(dfplotted).rename({"x": xcolumn, "x_err": f"{xcolumn}_err"}) if dfplotted else pl.DataFrame()
     output_data(args, {"": dftable}, datafolder / filename)
@@ -626,12 +626,11 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
     fig, axesgrid = make_frame_figure(args)
     ax = axesgrid[0][0]
     dfplotted: list[pl.DataFrame] = []
+    bands = [args.filter[0], args.filter[1]]
 
     datanames = get_viewing_angle_data_names(args.modelpath)
     for modelnumber, modelpath in enumerate(args.modelpath):
         modelname = get_model_name(modelpath)
-
-        bands = [args.filter[0], args.filter[1]]
 
         datafilename = get_viewing_angle_data_folder(args) / get_viewing_angle_data_filename(
             bands[0], datanames[modelnumber]

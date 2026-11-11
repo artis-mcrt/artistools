@@ -623,6 +623,8 @@ def get_ion_spectra(
             columnname="upper_pop_Te",
         )
 
+        # --print-lines shows the table of the last series
+        dftransitions = pldftransitions
         for seriesindex, temperature in enumerate(conditions.temperature_list):
             if temperature == "NOTEMPNLTE":
                 popcolumnname = "upper_pop_nlte"
