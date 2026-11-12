@@ -1234,7 +1234,9 @@ def find_time_grid(viewer: SpectrumViewer, values: ControlValues, giventimedays:
     return values
 
 
-def set_models(viewer: SpectrumViewer, spectra: "Sequence[str]", timegrid: str) -> ControlValues:
+def set_models(
+    viewer: SpectrumViewer, spectra: "Sequence[str]", timegrid: str, sourceindices: "Sequence[int | None] | None" = None
+) -> ControlValues:
     """Read the models of a list of spectra, and return the values of the list with a time that the models have.
 
     timegrid names the model that gives the timesteps of the time controls, or "" for the first model. A new time
@@ -1250,7 +1252,7 @@ def set_models(viewer: SpectrumViewer, spectra: "Sequence[str]", timegrid: str) 
         viewer.values,
         spectra=tuple(spectra),
         timegrid=timegrid,
-        otheroptions=move_series_styles(viewer.values.otheroptions, viewer.values.spectra, spectra),
+        otheroptions=move_series_styles(viewer.values.otheroptions, viewer.values.spectra, spectra, sourceindices),
     )
     # a new first model can have no observers of the virtual packets, thus the kind of viewing direction can go
     if values.directionkind not in grid.directionkinds:
@@ -2133,12 +2135,12 @@ def open_window(
             return
         apply(dc.replace(viewer.values, fixedionlist=series))
 
-    def apply_spectra(spectra: "Sequence[str]") -> None:
+    def apply_spectra(spectra: "Sequence[str]", sourceindices: "Sequence[int | None] | None" = None) -> None:
         """Read the models of a new list of spectra, and apply the list with a time that the models have.
 
         The models of the new list can cover a shorter time, e.g. after Add Model, thus the time moves inside it.
         """
-        apply(set_models(viewer, spectra, viewer.values.timegrid))
+        apply(set_models(viewer, spectra, viewer.values.timegrid, sourceindices))
 
     def on_use_timegrid(path: str) -> None:
         apply(set_models(viewer, viewer.values.spectra, path))
