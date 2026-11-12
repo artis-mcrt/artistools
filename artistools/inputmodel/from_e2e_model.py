@@ -103,6 +103,87 @@ def check_tracer_ids(idx: npt.NDArray[np.integer], dyncond: npt.NDArray[np.bool_
         raise ValueError(msg)
 
 
+def interpolate_grid(
+    gridrcyl: npt.NDArray[np.float64],
+    gridz: npt.NDArray[np.float64],
+    rcyltraj: npt.NDArray[np.float64],
+    zcyltraj: npt.NDArray[np.float64],
+    hsmooth: npt.NDArray[np.float64],
+    mtraj: npt.NDArray[np.float64],
+    rho2dtraj: npt.NDArray[np.float64],
+    rho2dhat: npt.NDArray[np.float64],
+    xtraj: npt.NDArray[np.float64],
+    qtraj: npt.NDArray[np.float64],
+    yetraj: npt.NDArray[np.float64],
+    bstraj: npt.NDArray[np.float64],
+    max_pairs_per_batch: int = 1_000_000,
+) -> tuple[
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    npt.NDArray[np.float64],
+    pl.DataFrame,
+]:
+    """Return interpolated tracer properties and nonzero particle contributions for batches of cells.
+
+    Each dense array has at most max_pairs_per_batch cell-particle pairs, or one cell if its particle count is larger.
+    The final composition array and the contribution table can exceed this limit.
+    """
+    ncell = gridrcyl.size
+    cell_batch_size = max(1, max_pairs_per_batch // len(mtraj))
+    rhoint = np.empty(ncell)
+    xint = np.empty((xtraj.shape[1], ncell))
+    qinterpol = np.empty(ncell)
+    yeinterpol = np.empty(ncell)
+    bsinterpol = np.empty(ncell)
+    contrib_cells: list[npt.NDArray[np.intp]] = []
+    contrib_particles: list[npt.NDArray[np.intp]] = []
+    contrib_fractions: list[npt.NDArray[np.float64]] = []
+    for start in range(0, ncell, cell_batch_size):
+        cells = slice(start, min(start + cell_batch_size, ncell))
+        radii = gridrcyl.ravel()[cells]
+        heights = gridz.ravel()[cells]
+        distances = np.sqrt((radii[:, np.newaxis] - rcyltraj) ** 2 + (heights[:, np.newaxis] - zcyltraj) ** 2)
+        wall = sphkernel(distances, hsmooth, nu=2)
+        weight = wall * (mtraj / rho2dhat)
+        weinor = weight / (weight.sum(axis=1, keepdims=True) + 1.0e-100)
+        hint = np.sum(weinor * hsmooth, axis=1)
+        wloc = wall * mtraj * rho2dtraj / rho2dhat
+        rho2d = wloc.sum(axis=1)
+        weighted_mass = wall * mtraj
+        if gridrcyl.ndim == 2:
+            # The lower limit on the radius prevents artefacts near the symmetry axis.
+            rhoint[cells] = rho2d / (2.0 * np.pi * np.clip(radii, 0.5 * hint, None))
+            xint[:, cells] = np.tensordot(xtraj.T, weighted_mass, axes=(1, 1)) / (weighted_mass.sum(axis=1) + 1.0e-100)
+        else:
+            rhoint[cells] = rho2d / (2.0 * np.pi * radii)
+            xint[:, cells] = np.tensordot(xtraj.T, weighted_mass, axes=(1, 1)) / (2.0 * np.pi * radii)
+        qinterpol[cells] = np.sum(weinor * qtraj, axis=1)
+        yeinterpol[cells] = np.sum(weinor * yetraj, axis=1)
+        bsinterpol[cells] = np.sum(weinor * bstraj, axis=1)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            wloc /= rho2d[:, np.newaxis]
+        cell_indices, particle_indices = np.nonzero(wloc > 1.0e-20)
+        contrib_cells.append(cell_indices + start)
+        contrib_particles.append(particle_indices)
+        contrib_fractions.append(wloc[cell_indices, particle_indices])
+
+    contributions = pl.DataFrame({
+        "cellflatindex": np.concatenate(contrib_cells),
+        "particleid": np.concatenate(contrib_particles),
+        "frac_of_cellmass": np.concatenate(contrib_fractions),
+    })
+    return (
+        rhoint.reshape(gridrcyl.shape),
+        xint.reshape((xtraj.shape[1], *gridrcyl.shape)),
+        qinterpol.reshape(gridrcyl.shape),
+        yeinterpol.reshape(gridrcyl.shape),
+        bsinterpol.reshape(gridrcyl.shape),
+        contributions,
+    )
+
+
 def get_grid(
     dat_path: Path,
     iso_path: Path,
@@ -252,7 +333,6 @@ def get_grid(
     # ... smoothing length prefactor and number of dimensions (see Eq. 10 of P2007)
     hsmeta = 1.01
     nu = 2
-    oa = np.add.outer
     op = np.multiply.outer
 
     # Step 3) Define the final grid
@@ -369,31 +449,11 @@ def get_grid(
 
     # Step 5) Final mapping by interpolating all quantities onto the grid
 
-    interpol_axis = model_dim
     print("Interpolating...")
-    distall = np.sqrt(oa(gridrcyl, -rcyltraj) ** 2 + oa(gridz, -zcyltraj) ** 2)
-    hall = np.multiply.outer(np.ones(gridrcyl.shape), hsmooth)
-    wall = sphkernel(distall, hall, nu)
-    weight = wall * (mtraj / rho2dhat)
-    weinor = (weight.T / (np.sum(weight, axis=interpol_axis) + 1.0e-100).T).T
-    hint = np.sum(weinor * hsmooth, axis=interpol_axis)
-
-    # ... density
-    rho2d = np.sum(wall * mtraj * rho2dtraj / rho2dhat, axis=interpol_axis)
-    rhoint = np.zeros(rho2d.shape)
-    if model_dim == 2:
-        rhoint = rho2d / (
-            2.0 * np.pi * np.clip(gridrcyl, 0.5 * hint, None)
-        )  # limiting to 0.5*h seems to prevent artefacts near the axis
-        xint = np.tensordot(xtraj.T, wall * mtraj, axes=(1, 2)) / (np.sum(wall * mtraj, axis=2) + 1e-100)
-    else:
-        rhoint = rho2d / (2.0 * np.pi * gridrcyl)
-        xint = np.tensordot(xtraj.T, wall * mtraj, axes=(1, 3)) / (2.0 * np.pi * gridrcyl)
+    rhoint, xint, qinterpol, yeinterpol, bsinterpol, dfparticlecontribs = interpolate_grid(
+        gridrcyl, gridz, rcyltraj, zcyltraj, hsmooth, mtraj, rho2dtraj, rho2dhat, xtraj, qtraj, yetraj, bstraj
+    )
     assert np.amax(rhoint) > 0, "Model is empty after interpolating!"
-    # ... temperature
-    qinterpol = np.sum(weinor * qtraj, axis=interpol_axis)
-    yeinterpol = np.sum(weinor * yetraj, axis=interpol_axis)
-    bsinterpol = np.sum(weinor * bstraj, axis=interpol_axis)
 
     # the 2D grid holds one half of an equatorially symmetric model, and the 3D grid holds both halves
     gridsymfac = eqsymfac if model_dim == 2 else 1
@@ -453,24 +513,12 @@ def get_grid(
     test = np.where(test > -1, test, 0.0)
     print("(X-1)_max over 2D grid    :", np.amax(np.where(test > -1, abs(test), 0.0)))
 
-    # write file containing the contribution of each trajectory to each interpolated grid cell.
-    # wloc is the weight of each particle in each cell, normalised over the particles of the cell.
-    # The mass of the particle is a factor of the cell density above, thus wloc must also hold it
-    wloc = wall * mtraj * rho2dtraj / rho2dhat
-    with np.errstate(divide="ignore", invalid="ignore"):
-        wloc /= np.sum(wloc, axis=-1, keepdims=True)
     cellhasmass = dmgrid > (1e-100 * mtot)
     if model_dim == 2:
         nvr, nvz = gridrcyl.shape
-        # the rows run over nz, then nr, then the particle id, thus put nz first
-        wloc = wloc.transpose((1, 0, 2))
-        cellhasmass = cellhasmass.T
-        # map_to_artis reflects a grid with equatorial symmetry in z, thus row iz of the half grid is row nvz + iz
-        # of the full grid
+        # map_to_artis reflects a half grid into the lower half of the full grid.
         zrowoffset = nvz if eqsymfac == 2 else 0
-        cellids = ((zrowoffset + np.arange(nvz))[:, np.newaxis] * nvr + np.arange(nvr)[np.newaxis, :] + 1)[
-            ..., np.newaxis
-        ]
+        cellids = (zrowoffset + np.arange(nvz))[np.newaxis, :] * nvr + np.arange(nvr)[:, np.newaxis] + 1
     else:
         nx, ny, nz = (np.arange(n) for n in grid_dims)
         cellids = (
@@ -478,15 +526,17 @@ def get_grid(
             + ny[np.newaxis, :, np.newaxis] * grid_dims[0]
             + nx[:, np.newaxis, np.newaxis]
             + 1
-        )[..., np.newaxis]
-    contributes = cellhasmass[..., np.newaxis] & (wloc > 1.0e-20)
-    contribindices = np.nonzero(contributes)
-
-    dfparticlecontribs = pl.DataFrame({
-        "particleid": contribindices[-1],
-        "cellindex": np.broadcast_to(cellids, contributes.shape)[contribindices],
-        "frac_of_cellmass": wloc[contribindices],
-    }).with_columns(frac_of_cellmass_includemissing=pl.col("frac_of_cellmass"))
+        )
+    cellindices = dfparticlecontribs["cellflatindex"].to_numpy()
+    dfparticlecontribs = (
+        dfparticlecontribs
+        .with_columns(pl.Series("cellindex", cellids.ravel()[cellindices]))
+        .filter(pl.Series(cellhasmass.ravel()[cellindices]))
+        .select("particleid", "cellindex", "frac_of_cellmass")
+        .with_columns(frac_of_cellmass_includemissing=pl.col("frac_of_cellmass"))
+    )
+    if model_dim == 2:
+        dfparticlecontribs = dfparticlecontribs.sort("cellindex", "particleid")
 
     if model_dim == 2:
         if eqsymfac == 2:
