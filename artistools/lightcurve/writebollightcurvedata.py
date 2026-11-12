@@ -17,6 +17,7 @@ from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import confirm_overwrite
 from artistools.misc import get_model_name
+from artistools.misc import get_unique_output_names
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import print_saved
@@ -66,6 +67,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_force(parser)
 
 
+def get_bol_lightcurve_outputfiles(modelpaths: Sequence[Path], outputpath: Path, fromspectra: bool) -> list[Path]:
+    """Return a separate output path for each model before the overwrite check."""
+    suffix = "_fromspectra" if fromspectra else ""
+    names = get_unique_output_names([get_model_name(modelpath) for modelpath in modelpaths])
+    return [outputpath / f"bol_lightcurvedata_{name}{suffix}.txt" for name in names]
+
+
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Write bolometric light curve data out as a plain text file for each model."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
@@ -79,22 +87,15 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     outputpath = Path(args.outputfile)
     outputpath.mkdir(parents=True, exist_ok=True)
-    # the two sources hold different columns, thus each one writes a file of its own
-    suffix = "_fromspectra" if args.fromspectra else ""
     modelpaths = normalize_path_list(args.modelpath)
-    confirm_overwrite(
-        [outputpath],
-        [f"bol_lightcurvedata_{get_model_name(modelpath)}{suffix}.txt" for modelpath in modelpaths],
-        force=args.force,
-    )
+    outputfiles = get_bol_lightcurve_outputfiles(modelpaths, outputpath, args.fromspectra)
+    confirm_overwrite([outputpath], [path.name for path in outputfiles], force=args.force)
 
-    for modelpath in modelpaths:
-        modelname = get_model_name(modelpath)
+    for modelpath, outfilepath in zip(modelpaths, outputfiles, strict=True):
         lightcurvedataframe = (
             get_bol_lc_from_spec(modelpath) if args.fromspectra else get_bol_lc_from_lightcurveout(modelpath)
         )
 
-        outfilepath = outputpath / f"bol_lightcurvedata_{modelname}{suffix}.txt"
         with outfilepath.open("w", encoding="utf-8") as f:
             f.write(f"{header}\n")
             lightcurvedataframe.write_csv(f, separator=" ", include_header=False, null_value="nan")

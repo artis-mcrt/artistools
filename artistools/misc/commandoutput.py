@@ -40,6 +40,26 @@ def make_output_folder(folder: Path | str, verb: str) -> Path:
     return folder
 
 
+def get_unique_output_names(names: Sequence[str]) -> list[str]:
+    """Return unique output names, with a number after each repeated name."""
+    reserved = set(names)
+    used: set[str] = set()
+    outputnames: list[str] = []
+    for name in names:
+        candidate = name
+        suffix = 1
+        if name in used:
+            candidate = f"{name}_{suffix}"
+            while candidate in used or candidate in reserved:
+                suffix += 1
+                candidate = f"{name}_{suffix}"
+        if candidate != name:
+            print_warning(f"The output name {name} occurs more than once. This output uses {candidate}")
+        used.add(candidate)
+        outputnames.append(candidate)
+    return outputnames
+
+
 def confirm_overwrite(folders: Iterable[Path | str], filenames: Sequence[str], force: bool) -> None:
     """Warn about the output files that exist, and stop the command if the user does not agree to overwrite them.
 

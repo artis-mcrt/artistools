@@ -34,6 +34,7 @@ from artistools.misc import addarg_output
 from artistools.misc import confirm_overwrite_matches
 from artistools.misc import exit_with_error
 from artistools.misc import get_timestep_times
+from artistools.misc import get_unique_output_names
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
@@ -351,7 +352,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     args.outputfile.mkdir(parents=True, exist_ok=True)
     # the name of "." is empty, thus the model name comes from the absolute path of the folder
-    modelids = [Path(modelpath).absolute().name.split("_")[0] for modelpath in modelpathlist]
+    modelids = get_unique_output_names([Path(modelpath).absolute().name.split("_")[0] for modelpath in modelpathlist])
     # each file name holds the model and a quantity, e.g. phys_<model>_artisnebular.txt
     # a folder name can hold a character of a glob pattern, e.g. "[", thus the pattern takes the name as text
     confirm_overwrite_matches(

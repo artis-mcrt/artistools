@@ -67,6 +67,7 @@ from artistools.misc.commandoutput import confirm_overwrite_matches as confirm_o
 from artistools.misc.commandoutput import format_frame_path as format_frame_path
 from artistools.misc.commandoutput import FrameSet as FrameSet
 from artistools.misc.commandoutput import get_provenance_lines as get_provenance_lines
+from artistools.misc.commandoutput import get_unique_output_names as get_unique_output_names
 from artistools.misc.commandoutput import make_output_folder as make_output_folder
 from artistools.misc.commandoutput import merge_pdf_files as merge_pdf_files
 from artistools.misc.commandoutput import open_file as open_file
