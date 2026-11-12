@@ -4,6 +4,7 @@ import contextlib
 import datetime as dt
 import errno
 import os
+import stat
 import sys
 import time
 import typing as t
@@ -80,6 +81,47 @@ def replace_outdated_file(newfilepath: Path, destpath: Path, outdatedfile: tuple
         identity = get_file_identity(destpath)
         if identity is None or identity == outdatedfile:
             newfilepath.replace(destpath)
+    finally:
+        os.close(lockfd)
+
+
+@contextlib.contextmanager
+def cache_conversion_lock(parquetfilepath: Path, *, exclusive: bool = False) -> Generator[bool]:
+    """Hold a lock on the temporary files of a conversion.
+
+    Conversions share the lock throughout their temporary files' lifetime. Deletion takes the exclusive lock without
+    a wait. The lock file stays in place so that each process uses the same inode.
+    """
+    try:
+        import fcntl
+    except ImportError:
+        yield not exclusive
+        return
+
+    cachename = parquetfilepath.name.removesuffix(".tmp")
+    lockpath = parquetfilepath.with_name(f".{cachename}.conversion-lock")
+    try:
+        try:
+            lockfd = os.open(lockpath, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, 0o666)
+        except PermissionError:
+            lockfd = os.open(lockpath, os.O_CREAT | os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, 0o666)
+    except OSError as exc:
+        if not is_readonly_error(exc):
+            raise
+        raise get_readonly_cache_error(parquetfilepath) from exc
+    try:
+        lockstat = os.fstat(lockfd)
+        if not stat.S_ISREG(lockstat.st_mode) or lockstat.st_nlink != 1:
+            msg = f"The cache lock {lockpath} must be a regular file with one link"
+            raise ValueError(msg)
+        with contextlib.suppress(OSError):
+            os.fchmod(lockfd, 0o666)
+        try:
+            fcntl.flock(lockfd, fcntl.LOCK_EX | fcntl.LOCK_NB if exclusive else fcntl.LOCK_SH)
+        except BlockingIOError:
+            yield False
+        else:
+            yield True
     finally:
         os.close(lockfd)
 
@@ -344,16 +386,17 @@ def temporary_parts_folder(parquetfilepath: Path) -> Generator[Path]:
     """
     import tempfile
 
-    try:
-        partsfolder = tempfile.TemporaryDirectory(
-            dir=parquetfilepath.parent, prefix=f".{parquetfilepath.name}.parts", ignore_cleanup_errors=True
-        )
-    except OSError as exc:
-        if not is_readonly_error(exc):
-            raise
-        raise get_readonly_cache_error(parquetfilepath) from exc
-    with partsfolder as partsfoldername:
-        yield Path(partsfoldername)
+    with cache_conversion_lock(parquetfilepath):
+        try:
+            partsfolder = tempfile.TemporaryDirectory(
+                dir=parquetfilepath.parent, prefix=f".{parquetfilepath.name}.parts", ignore_cleanup_errors=True
+            )
+        except OSError as exc:
+            if not is_readonly_error(exc):
+                raise
+            raise get_readonly_cache_error(parquetfilepath) from exc
+        with partsfolder as partsfoldername:
+            yield Path(partsfoldername)
 
 
 # up to 2026-10, the parquet caches had this suffix after .parquet. The suffix did not show a temporary file,
@@ -397,44 +440,45 @@ def write_parquet_atomic(
     """
     import tempfile
 
-    try:
-        deststat: os.stat_result | None = parquetfilepath.stat()
-    except FileNotFoundError:
-        deststat = None
-
-    try:
-        fd, partialfilename = tempfile.mkstemp(
-            dir=parquetfilepath.parent, prefix=f".{parquetfilepath.name}.partial", suffix=".partial"
-        )
-    except OSError as exc:
-        if not is_readonly_error(exc):
-            raise
-        raise get_readonly_cache_error(parquetfilepath) from exc
-    os.close(fd)
-    partialfilepath = Path(partialfilename)
-    # mkstemp creates the file 0600, and the destination takes the mode of the file that lands on it, so a
-    # cache written into a group-shared model directory would be unreadable to everyone but its author.
-    # Reuse the mode the destination already has, or else the read/write bits of the directory holding it —
-    # reading the process umask would need a get-and-restore that is not safe against other threads.
-    destmode = deststat.st_mode if deststat else parquetfilepath.parent.stat().st_mode & 0o666
-    partialfilepath.chmod(destmode & 0o777)
-    try:
-        pldf.lazy().sink_parquet(
-            partialfilepath,
-            compression="zstd",
-            compression_level=compression_level,
-            metadata=metadata,
-            row_group_size=row_group_size,
-        )
+    with cache_conversion_lock(parquetfilepath):
         try:
-            # gives the file a second name, and fails if that name is taken, thus the destination appears
-            # complete in one step and no reader of it ever sees a different file at the same path
-            os.link(partialfilepath, parquetfilepath)
-        except FileExistsError:
-            replace_outdated_file(partialfilepath, parquetfilepath, replaces)
-        except OSError:
-            # a file system without hard links cannot make the destination appear in one step, but the
-            # locked identity rule still applies: install, replace the out-of-date file, or keep a rival's
-            replace_outdated_file(partialfilepath, parquetfilepath, replaces)
-    finally:
-        partialfilepath.unlink(missing_ok=True)
+            deststat: os.stat_result | None = parquetfilepath.stat()
+        except FileNotFoundError:
+            deststat = None
+
+        try:
+            fd, partialfilename = tempfile.mkstemp(
+                dir=parquetfilepath.parent, prefix=f".{parquetfilepath.name}.partial", suffix=".partial"
+            )
+        except OSError as exc:
+            if not is_readonly_error(exc):
+                raise
+            raise get_readonly_cache_error(parquetfilepath) from exc
+        os.close(fd)
+        partialfilepath = Path(partialfilename)
+        # mkstemp creates the file 0600, and the destination takes the mode of the file that lands on it, so a
+        # cache written into a group-shared model directory would be unreadable to everyone but its author.
+        # Reuse the mode the destination already has, or else the read/write bits of the directory holding it —
+        # reading the process umask would need a get-and-restore that is not safe against other threads.
+        destmode = deststat.st_mode if deststat else parquetfilepath.parent.stat().st_mode & 0o666
+        partialfilepath.chmod(destmode & 0o777)
+        try:
+            pldf.lazy().sink_parquet(
+                partialfilepath,
+                compression="zstd",
+                compression_level=compression_level,
+                metadata=metadata,
+                row_group_size=row_group_size,
+            )
+            try:
+                # gives the file a second name, and fails if that name is taken, thus the destination appears
+                # complete in one step and no reader of it ever sees a different file at the same path
+                os.link(partialfilepath, parquetfilepath)
+            except FileExistsError:
+                replace_outdated_file(partialfilepath, parquetfilepath, replaces)
+            except OSError:
+                # a file system without hard links cannot make the destination appear in one step, but the
+                # locked identity rule still applies: install, replace the out-of-date file, or keep a rival's
+                replace_outdated_file(partialfilepath, parquetfilepath, replaces)
+        finally:
+            partialfilepath.unlink(missing_ok=True)

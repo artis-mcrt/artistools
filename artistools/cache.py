@@ -3,7 +3,9 @@
 A reader of artistools converts a text file to a parquet cache when it first reads the file. Later commands read the
 cache. "make" does all the conversions at one time, e.g. in the job script after a run of ARTIS. Each later command
 then reads its data quickly. "list" gives the caches and their sizes. "delete" deletes the caches and the leftover
-files, which are the temporary files and folders of a conversion that stopped.
+files.
+
+An active conversion keeps its files until it completes.
 """
 
 import argparse
@@ -22,6 +24,7 @@ from artistools.inputmodel import scan_modeldata
 from artistools.misc import addarg_action
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_table_output
+from artistools.misc import cache_conversion_lock
 from artistools.misc import check_local_path
 from artistools.misc import confirm_deletion
 from artistools.misc import exit_with_error
@@ -61,7 +64,7 @@ def get_cache_folders(modelfolder: Path) -> list[Path]:
 
 
 def find_cache_files(modelfolder: Path) -> tuple[list[Path], list[Path]]:
-    """Return the parquet caches of a model, and the leftover files of the conversions that stopped.
+    """Return the parquet caches of a model and the temporary files of its conversions.
 
     The lock files of the caches stay out of both lists. A process that waits for a lock keeps the lock file open,
     thus a deletion can give the lock to two writers at one time.
@@ -199,12 +202,25 @@ def delete_caches(modelfolder: Path, force: bool) -> None:
         print(f"{modelfolder} holds no cache")
         return
     confirm_deletion(paths, force)
+    paths_by_cache: dict[Path, list[Path]] = {}
     for path in paths:
-        if path.is_dir():
-            shutil.rmtree(path)
-        else:
-            path.unlink(missing_ok=True)
-    print(f"Deleted {len(paths)} files. The next command that reads each kind of data converts the text files again")
+        match = re.match(CACHE_BASENAME, path.name.lstrip("."))
+        assert match is not None
+        cachepath = path.with_name(match.group())
+        paths_by_cache.setdefault(cachepath, []).append(path)
+    deleted = 0
+    for cachepath, cachepaths in paths_by_cache.items():
+        with cache_conversion_lock(cachepath, exclusive=True) as acquired:
+            if not acquired:
+                print_warning(f"Kept the files of {cachepath}: exclusive access is not available")
+                continue
+            for path in cachepaths:
+                if path.is_dir():
+                    shutil.rmtree(path)
+                else:
+                    path.unlink(missing_ok=True)
+                deleted += 1
+    print(f"Deleted {deleted} files. The next command that reads each kind of data converts the text files again")
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
