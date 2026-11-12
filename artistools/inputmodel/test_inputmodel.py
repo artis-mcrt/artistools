@@ -2857,6 +2857,8 @@ def test_from_e2e_model_split_trajectory_pieces_give_the_same_heating(tmp_path: 
     assert np.amax(rho_whole) > 0.0
     np.testing.assert_allclose(rho_split, rho_whole, rtol=1e-10)
     np.testing.assert_allclose(q_split, q_whole, rtol=1e-10)
+    for result in results:
+        assert result[-1]["particleid"].unique().to_list() == [7]
 
 
 def test_maptogrid_keeps_the_mirror_symmetry_of_the_particles(tmp_path: Path) -> None:
@@ -3906,3 +3908,37 @@ def test_add_mass_to_center_adds_the_mass_below_0p1c() -> None:
     assert (dffilled["rho"] > 0.0).sum() == 8
     added_mass_msun = float((dffilled["rho"] * wid_init**3).sum()) / Msun_to_g
     assert added_mass_msun == pytest.approx(3e-4 - 1e-9, rel=1e-9)
+
+
+@pytest.mark.parametrize("model_dim", [2, 3])
+def test_from_e2e_model_keeps_original_particle_ids(tmp_path: Path, model_dim: int) -> None:
+    from artistools.inputmodel.from_e2e_model import get_grid
+
+    datpath = tmp_path / "tracers.npz"
+    isopath = tmp_path / "iso_table.npy"
+    write_e2e_model(datpath, isopath)
+    with np.load(datpath) as source:
+        data = {name: source[name] for name in source.files}
+    original_ids = np.arange(len(data["idx"])) * 13 + 17
+    data["idx"] = original_ids
+    np.savez(datpath, **data)
+    shuffledpath = tmp_path / "shuffled.npz"
+    order = np.random.default_rng(seed=123).permutation(len(original_ids))
+    np.savez(shuffledpath, **{name: values if name == "time" else values[order] for name, values in data.items()})
+    contributions = [
+        get_grid(
+            path,
+            isopath,
+            0.4,
+            model_dim=model_dim,
+            grid_dims=np.array([4, 4] if model_dim == 2 else [4, 4, 4]),
+            nodynej=False,
+            nohmns=False,
+            notorus=False,
+            no_nu_trapping=False,
+        )[-1].sort("cellindex", "particleid")
+        for path in (datpath, shuffledpath)
+    ]
+    assert len(contributions[0]) > 0
+    assert set(contributions[0]["particleid"]) <= set(original_ids)
+    pltest.assert_frame_equal(contributions[0], contributions[1])
