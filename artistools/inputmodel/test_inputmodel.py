@@ -3944,3 +3944,25 @@ def test_from_e2e_model_keeps_original_particle_ids(tmp_path: Path, model_dim: i
     assert len(contributions[0]) > 0
     assert set(contributions[0]["particleid"]) <= set(original_ids)
     pltest.assert_frame_equal(contributions[0], contributions[1])
+
+
+@pytest.mark.parametrize("extension", ["", ".zst"])
+@pytest.mark.parametrize("failure", ["validation", "write"])
+def test_abundance_write_failure_keeps_the_previous_file(tmp_path: Path, extension: str, failure: str) -> None:
+    output = tmp_path / f"abundances.txt{extension}"
+    original = b"previous abundance data"
+    output.write_bytes(original)
+    abundance = pl.DataFrame({"inputcellid": [1], "X_H": [1.0]})
+    if failure == "validation":
+        abundance = abundance.with_columns(pl.lit(2).alias("inputcellid"))
+        with pytest.raises(AssertionError):
+            at.inputmodel.save_initelemabundances(abundance, outpath=output)
+    else:
+        msg = "Write failed"
+        with (
+            mock.patch("artistools.inputmodel.core.write_artis_csv", side_effect=OSError(msg)),
+            pytest.raises(OSError, match=msg),
+        ):
+            at.inputmodel.save_initelemabundances(abundance, outpath=output)
+    assert output.read_bytes() == original
+    assert sorted(tmp_path.iterdir()) == [output]

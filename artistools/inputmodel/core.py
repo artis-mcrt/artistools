@@ -46,6 +46,7 @@ from artistools.misc import resolve_modelpath
 from artistools.misc import resolve_outputfile
 from artistools.misc import with_compressed_extension
 from artistools.misc import without_compressed_extension
+from artistools.misc import write_file_atomic
 from artistools.misc import write_parquet_atomic
 from artistools.misc import write_zstd_lines
 from artistools.misc import zopen
@@ -1411,7 +1412,9 @@ def save_initelemabundances(
     """
     timestart = time.perf_counter()
 
-    abundancefilename = prepare_zstd_output(resolve_outputfile(outpath, "abundances.txt"))
+    abundancefilename = with_compressed_extension(
+        without_compressed_extension(resolve_outputfile(outpath, "abundances.txt")), ".zst"
+    )
 
     dfelabundances = (
         dfelabundances.lazy().with_columns([pl.col("inputcellid").cast(pl.Int32)]).sort("inputcellid").collect()
@@ -1430,8 +1433,8 @@ def save_initelemabundances(
 
     dfelabundances = dfelabundances.select(["inputcellid", *elcolnames])
 
-    with abundancefilename.open("wb") as fabund:
-        # sn3d and scan_initelemabundances skip each comment line, and both read the columns by position
+    def write_abundances(fabund: t.IO[bytes]) -> None:
+        # sn3d and scan_initelemabundances read the columns by position and skip each comment line.
         write_zstd_lines(
             fabund,
             [
@@ -1443,7 +1446,8 @@ def save_initelemabundances(
         )
         write_artis_csv(dfelabundances, fabund)
 
-    remove_parquet_cache(abundancefilename)
+    write_file_atomic(abundancefilename, write_abundances)
+    prepare_zstd_output(abundancefilename)
     print_saved(abundancefilename)
     print_detail(f"Took {time.perf_counter() - timestart:.1f} seconds")
 
