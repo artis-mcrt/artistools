@@ -249,7 +249,7 @@ def get_nearest_network_timesteps(
     arr_networktimedays = arr_networktime_s / day_to_s
     arr_heatingrow = np.array(
         [
-            int(np.abs(arr_networktimedays - plottimedays).argmin()) if plottimedays < arr_networktimedays[-1] else -1
+            int(np.abs(arr_networktimedays - plottimedays).argmin()) if plottimedays <= arr_networktimedays[-1] else -1
             for plottimedays in arr_t_day
         ],
         dtype=np.int64,
