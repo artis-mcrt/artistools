@@ -1174,10 +1174,13 @@ def apply_density_perturbations(
         epsilon = rng.uniform(-delta_max, delta_max, size=pert_array.shape)
         pert_array = 1 + epsilon
 
-        # scale mass for every z-slice
-        for i in range(N_x):
-            scale_factor = N_x**2 / np.sum(pert_array[i * N_x**2 : ((i + 1) * N_x**2)])
-            pert_array[i * N_x**2 : ((i + 1) * N_x**2)] *= scale_factor
+        # Equal cell volumes make the density sum proportional to the mass of each slice.
+        rho_slices = df_model["rho"].to_numpy().reshape((N_x, N_x**2))
+        pert_slices = pert_array.reshape((N_x, N_x**2))
+        initial_mass = rho_slices.sum(axis=1)
+        perturbed_mass = (rho_slices * pert_slices).sum(axis=1)
+        scale_factors = np.divide(initial_mass, perturbed_mass, out=np.ones(N_x), where=perturbed_mass != 0.0)
+        pert_slices *= scale_factors[:, np.newaxis]
 
     return df_model.with_columns((pl.col("rho") * pl.Series(pert_array)).alias("rho"))
 
