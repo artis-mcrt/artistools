@@ -1139,7 +1139,9 @@ def scan_vspecpol_spectrum(
     vspecdata = scan_vspecpol_data(vspecindex=angle, modelpath=Path(modelpath))[stokesparam]
 
     arr_tmid = [float(i) for i in vspecdata.collect_schema().names()[1:]]
-    arr_tdelta = [l1 - l2 for l1, l2 in zip(arr_tmid[1:], arr_tmid[:-1], strict=False)] + [arr_tmid[-1] - arr_tmid[-2]]
+    # ARTIS uses logarithmic time bins, whose widths are proportional to their middle times (vpkt.cc).
+    # The common factor cancels in the mean, also for a spectrum with one time column.
+    arr_tdelta = arr_tmid
 
     timerangelow, timerangehigh = (timeavg, timeavg) if timemin is None or timemax is None else (timemin, timemax)
     check_time_range_overlaps_time_bins(
@@ -1158,6 +1160,7 @@ def scan_vspecpol_spectrum(
     timelower = arr_tmid[timestepmin]
     timeupper = arr_tmid[timestepmax]
     print(f" vpacket spectrum timesteps {timestepmin} ({timelower}d) to {timestepmax} ({timeupper}d)")
+    print("  The mean weights each virtual spectrum by the width of its logarithmic time bin (ARTIS vpkt.cc)")
 
     dfout = vspecdata.select(
         f_nu=(
