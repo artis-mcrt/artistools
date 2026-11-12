@@ -3906,3 +3906,25 @@ def test_add_mass_to_center_adds_the_mass_below_0p1c() -> None:
     assert (dffilled["rho"] > 0.0).sum() == 8
     added_mass_msun = float((dffilled["rho"] * wid_init**3).sum()) / Msun_to_g
     assert added_mass_msun == pytest.approx(3e-4 - 1e-9, rel=1e-9)
+
+
+@pytest.mark.parametrize("extension", ["", ".zst"])
+@pytest.mark.parametrize("failure", ["validation", "write"])
+def test_abundance_write_failure_keeps_the_previous_file(tmp_path: Path, extension: str, failure: str) -> None:
+    output = tmp_path / f"abundances.txt{extension}"
+    original = b"previous abundance data"
+    output.write_bytes(original)
+    abundance = pl.DataFrame({"inputcellid": [1], "X_H": [1.0]})
+    if failure == "validation":
+        abundance = abundance.with_columns(pl.lit(2).alias("inputcellid"))
+        with pytest.raises(AssertionError):
+            at.inputmodel.save_initelemabundances(abundance, outpath=output)
+    else:
+        msg = "Write failed"
+        with (
+            mock.patch("artistools.inputmodel.core.write_artis_csv", side_effect=OSError(msg)),
+            pytest.raises(OSError, match=msg),
+        ):
+            at.inputmodel.save_initelemabundances(abundance, outpath=output)
+    assert output.read_bytes() == original
+    assert sorted(tmp_path.iterdir()) == [output]
