@@ -1507,3 +1507,19 @@ def test_viewer_python_code_gives_the_changed_arguments() -> None:
     assert "notitle=True" in code
     rejected = viewerwidgets.get_python_code(parser, ["-xmin", "abc"], "plotlightcurves", "at.lightcurve.plot")
     assert rejected == "# plotlightcurves rejects the command"
+
+
+def test_repeated_paths_keep_separate_series_styles() -> None:
+    rows = (("--label", ("first A", "second A", "B")), ("--color", ("red", "blue", "green")))
+    oldpaths = ("a", "a", "b")
+    newpaths = ("b", "a", "a")
+    moved = viewercore.move_series_styles(rows, oldpaths, newpaths)
+    assert moved == (("--label", ("B", "first A", "second A")), ("--color", ("green", "red", "blue")))
+    changed = viewercore.set_series_rows(moved, newpaths, "a", {"--label": "changed"}, occurrence=1)
+    assert viewercore.get_series_style(changed, newpaths, "a")["--label"] == "first A"
+    assert viewercore.get_series_style(changed, newpaths, "a", occurrence=1)["--label"] == "changed"
+    assert viewercore.get_path_colours(newpaths, [False] * 3, changed) == ["green", "red", "blue"]
+    swapped = viewercore.move_series_styles(rows, oldpaths, oldpaths, [1, 0, 2])
+    assert swapped == (("--label", ("second A", "first A", "B")), ("--color", ("blue", "red", "green")))
+    removed = viewercore.move_series_styles(rows, oldpaths, ("a", "b"), [1, 2])
+    assert removed == (("--label", ("second A", "B")), ("--color", ("blue", "green")))

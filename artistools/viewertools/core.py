@@ -689,41 +689,59 @@ def get_series_tokens(values: "Sequence[str | None]") -> tuple[str, ...] | None:
 RESIDUAL_BASELINE_FLAGS: t.Final = frozenset({"--residualbaselineseries", "-residuals", "--res", "--residuals"})
 
 
-def move_series_styles(rows: OptionRows, oldpaths: "Sequence[str]", newpaths: "Sequence[str]") -> OptionRows:
+def move_series_styles(
+    rows: OptionRows,
+    oldpaths: "Sequence[str]",
+    newpaths: "Sequence[str]",
+    sourceindices: "Sequence[int | None] | None" = None,
+) -> OptionRows:
     """Return the option rows with the value of each series style option on the same path in the new list.
 
     Thus a --label stays on its series when the order changes. The values of a removed series go out of the rows. The
     values after the paths stay after the new paths, because a command can add series after them, e.g. --obsspec.
     The indices of the residual options also stay on their series.
     """
+    if sourceindices is None:
+        positions: dict[str, list[int]] = {}
+        for index, path in enumerate(oldpaths):
+            positions.setdefault(path, []).append(index)
+        sourceindices = [positions[path].pop(0) if positions.get(path) else None for path in newpaths]
     changes: dict[str, tuple[str, ...] | None] = {}
     for flag in SERIES_STYLE_FLAGS:
         if not (values := get_row_values(rows, flag)):
             continue
-        bypath = {path: get_series_value(values, index) for index, path in enumerate(oldpaths)}
         newvalues = get_series_tokens([
-            *(bypath.get(path) for path in newpaths),
+            *(get_series_value(values, index) if index is not None else None for index in sourceindices),
             *get_values_after_paths(values, len(oldpaths)),
         ])
         if newvalues != values:
             changes[flag] = newvalues
-    return move_residual_indices(set_row_values(rows, changes), oldpaths, newpaths)
+    return move_residual_indices(set_row_values(rows, changes), oldpaths, newpaths, sourceindices)
 
 
-def move_residual_indices(rows: OptionRows, oldpaths: "Sequence[str]", newpaths: "Sequence[str]") -> OptionRows:
+def move_residual_indices(
+    rows: OptionRows,
+    oldpaths: "Sequence[str]",
+    newpaths: "Sequence[str]",
+    sourceindices: "Sequence[int | None] | None" = None,
+) -> OptionRows:
     """Return the option rows with the residual baseline and the residual series on the same series in the new list.
 
     These options give a series by its index in plot order. The row of a removed baseline goes away, and the command
     then takes the series at index 0. A removed series goes out of --residual, and a list with no series left goes
     away. A command with --residual and no baseline row takes the baseline at index 0.
     """
-    if list(oldpaths) == list(newpaths):
+    if list(oldpaths) == list(newpaths) and sourceindices is None:
         return rows
     positions: dict[str, list[int]] = {}
     for position, path in enumerate(newpaths):
         positions.setdefault(path, []).append(position)
     # the second copy of a path stays the second copy
-    newindices = {index: positions[path].pop(0) for index, path in enumerate(oldpaths) if positions.get(path)}
+    newindices = (
+        {index: positions[path].pop(0) for index, path in enumerate(oldpaths) if positions.get(path)}
+        if sourceindices is None
+        else {index: position for position, index in enumerate(sourceindices) if index is not None}
+    )
 
     def get_new_index(word: str) -> str | None:
         """Return the new index of a series, the unchanged word for a non-index, or None for a removed series."""
@@ -760,18 +778,19 @@ def move_residual_indices(rows: OptionRows, oldpaths: "Sequence[str]", newpaths:
 
 
 def set_series_rows(
-    rows: OptionRows, paths: "Sequence[str]", path: str, changes: "Mapping[str, str | None]"
+    rows: OptionRows, paths: "Sequence[str]", path: str, changes: "Mapping[str, str | None]", *, occurrence: int = 0
 ) -> OptionRows:
     """Return the option rows with the value of each series style option in changes for the series of one path.
 
     changes gives each option by its flag, e.g. --label. A value of None gives the series the default of the command,
     and the other series keep their values, also the series that the command adds after the paths, e.g. --obsspec.
     """
+    selectedindex = [index for index, other in enumerate(paths) if other == path][occurrence]
     rowchanges: dict[str, tuple[str, ...] | None] = {}
     for flag, value in changes.items():
         oldvalues = get_row_values(rows, flag) or ()
         newvalues = [
-            *(value if other == path else get_series_value(oldvalues, index) for index, other in enumerate(paths)),
+            *(value if index == selectedindex else get_series_value(oldvalues, index) for index in range(len(paths))),
             *get_values_after_paths(oldvalues, len(paths)),
         ]
         rowchanges[flag] = get_series_tokens(newvalues)
@@ -783,20 +802,21 @@ def get_values_after_paths(values: "Sequence[str]", pathcount: int) -> list[str 
     return [get_series_value(values, index) for index in range(pathcount, len(values))]
 
 
-def get_series_style(rows: OptionRows, paths: "Sequence[str]", path: str) -> dict[str, str | None]:
+def get_series_style(
+    rows: OptionRows, paths: "Sequence[str]", path: str, *, occurrence: int = 0
+) -> dict[str, str | None]:
     """Return the value of each series style option of the series of one path, or None where it takes the default."""
-    index = list(paths).index(path)
+    index = [index for index, other in enumerate(paths) if other == path][occurrence]
     return {flag: get_series_value(get_row_values(rows, flag) or (), index) for flag in SERIES_STYLE_FLAGS}
 
 
-def get_path_colours(paths: "Sequence[str]", isreference: "Sequence[bool]", rows: OptionRows) -> dict[str, str]:
+def get_path_colours(paths: "Sequence[str]", isreference: "Sequence[bool]", rows: OptionRows) -> list[str]:
     """Return the colour of the series of each path, as the command gives it with the --color of the rows.
 
     A reference series takes black and greys, and a model takes the colours of the cycle.
     """
     usercolours = get_row_values(rows, "--color") or ()
-    colours = get_series_colors(isreference, [get_series_value(usercolours, index) for index in range(len(paths))])
-    return dict(zip(paths, colours, strict=True))
+    return get_series_colors(isreference, [get_series_value(usercolours, index) for index in range(len(paths))])
 
 
 def get_helptexts(parser: argparse.ArgumentParser) -> dict[str, str]:
