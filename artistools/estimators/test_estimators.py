@@ -1306,7 +1306,7 @@ def test_a_partly_archived_model_rebuilds_only_its_stale_batches(
         )
 
     with (
-        mock.patch.object(artistools.estimators.core, "get_mpiranklist", return_value=[0, 1]),
+        mock.patch.object(artistools.estimators.core, "get_run_mpiranklist", return_value=[0, 1]),
         mock.patch.object(artistools.estimators.core, "batched", side_effect=batched_by_one),
     ):
         dfestim = at.estimators.scan_estimators(tmp_path).collect()
@@ -5368,3 +5368,53 @@ def test_units_of_a_column_of_tellurium_are_not_kelvin() -> None:
     assert at.estimators.get_units("nnelement_Te") == at.estimators.get_units("nnelement_Fe")
     assert at.estimators.get_units("init_X_Te") == at.estimators.get_units("init_X_Fe")
     assert at.estimators.get_units("em_Te") == "K"
+
+
+@pytest.mark.parametrize("layout", ["assignments", "log", "unknown", "sparse"])
+def test_estimators_use_the_layout_of_each_run(
+    tmp_path: Path, get_cell_texts: Callable[[str], list[str]], layout: str
+) -> None:
+    from artistools.estimators.core import EstimatorBatchCache
+    from artistools.estimators.core import get_estimator_batch_states
+    from artistools.estimators.core import select_estimator_batch_caches
+
+    write_model_of_two_cells(tmp_path, nprocs=1)
+    (tmp_path / "modelgridrankassignments.out").write_text("#rank nstart ndo ndo_nonempty\n0 0 2 2\n", encoding="utf-8")
+    runfolder = tmp_path / "job0"
+    runfolder.mkdir()
+    if layout == "assignments":
+        (runfolder / "modelgridrankassignments.out").write_text(
+            "#rank nstart ndo ndo_nonempty\n0 1 1 1\n1 0 1 1\n", encoding="utf-8"
+        )
+    elif layout == "log":
+        (runfolder / "output_0-0.txt").write_text("rank 0 of [0..1]\n", encoding="utf-8")
+    celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
+    cells = (1, 0) if layout == "assignments" else (0, 1)
+    ranks = (0, 2) if layout == "sparse" else (0, 1)
+    for rank, cell in zip(ranks, cells, strict=True):
+        (runfolder / f"estimators_{rank:04d}.out").write_text(relabel_cell(celltexts[0], cell), encoding="utf-8")
+    states = get_estimator_batch_states(tmp_path, None, None)
+    assert len(states) == 1
+    assert states[0].mpiranks == ranks
+    if layout == "assignments":
+        from artistools.estimators.core import CACHEVERSION
+
+        batches = [EstimatorBatchCache(runfolder, (rank,), runfolder / f"rank{rank}.parquet") for rank in ranks]
+        assert select_estimator_batch_caches(tmp_path, batches, [0], None) == [batches[1]]
+        partial = at.rustext.estimparse(runfolder, 0, 0)
+        at.misc.write_parquet_atomic(
+            partial,
+            runfolder / "estimators_allranks.out.parquet",
+            metadata={
+                "cacheversion": str(CACHEVERSION),
+                "textsource_mtime": str(max(path.stat().st_mtime for path in runfolder.glob("estimators_*.out"))),
+                "rank_min": "0",
+                "rank_max": "0",
+                "textsource": "rank files",
+            },
+        )
+        assert get_estimator_batch_states(tmp_path, None, None)[0].rebuild
+    full = at.scan_estimators(tmp_path).collect().sort("modelgridindex")
+    assert full["modelgridindex"].to_list() == [0, 1]
+    selected = at.scan_estimators(tmp_path, modelgridindex=0).collect()
+    pltest.assert_frame_equal(selected, full.filter(modelgridindex=0))

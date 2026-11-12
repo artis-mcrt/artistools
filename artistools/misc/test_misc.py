@@ -4682,3 +4682,70 @@ def test_firstexisting_gives_the_purpose_of_a_missing_file(tmp_path: Path) -> No
 
     assert "None of these files exist" in str(noreason.value)
     assert "gives the wavelength" not in str(noreason.value)
+
+
+@pytest.mark.parametrize("layout", ["assignments", "log", "unknown", "sparse"])
+@pytest.mark.parametrize("cache", [False, True])
+def test_rank_reader_uses_the_layout_of_each_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, layout: str, cache: bool
+) -> None:
+    from artistools.misc.modelinfo import read_rank_outputfiles
+
+    write_rank_output_model(tmp_path, {"job0": [(0, cell, float(cell)) for cell in range(3)], ".": [(1, 4, 14.0)]})
+    runfolder = tmp_path / "job0"
+    extrarank = 2 if layout == "sparse" else 1
+    (runfolder / f"nlte_{extrarank:04d}.out").write_text(
+        "timestep modelgridindex nnlevel\n0 3 3.0\n0 4 4.0\n", encoding="utf-8"
+    )
+    if layout == "assignments":
+        (runfolder / "modelgridrankassignments.out").write_text(
+            "#rank nstart ndo ndo_nonempty\n0 0 3 3\n1 3 2 2\n", encoding="utf-8"
+        )
+    elif layout == "log":
+        (runfolder / "output_0-0.txt").write_text("rank 0 of [0..1]\n", encoding="utf-8")
+    monkeypatch.setattr("artistools.misc.modelinfo.MIN_TEXT_BYTES_FOR_RANK_CACHE", 1)
+    cachename = "nltecache.parquet" if cache else None
+    full = read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", cachefilename=cachename).sort(
+        "timestep", "modelgridindex"
+    )
+    assert full["modelgridindex"].to_list() == [0, 1, 2, 3, 4, 4]
+    selected = read_rank_outputfiles(
+        tmp_path, "nlte_{mpirank:04d}.out", modelgridindex=4, cachefilename=cachename
+    ).sort("timestep")
+    pltest.assert_frame_equal(selected, full.filter(modelgridindex=4))
+
+
+def test_legacy_rank_cache_keeps_archived_rows_without_a_run_layout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from artistools.misc import modelinfo
+    from artistools.misc import write_parquet_atomic
+
+    monkeypatch.setattr(modelinfo, "MIN_TEXT_BYTES_FOR_RANK_CACHE", 1)
+    write_rank_output_model(tmp_path, {"job0": [(0, cell, cell + 0.5) for cell in range(3)]})
+    runfolder = tmp_path / "job0"
+    rankone = runfolder / "nlte_0001.out"
+    rankone.write_text("timestep modelgridindex nnlevel\n0 3 3.5\n0 4 4.5\n", encoding="utf-8")
+    cachefile = runfolder / "nltecache.parquet"
+
+    def read_rows(cell: int | None = None) -> pl.DataFrame:
+        return modelinfo.read_rank_outputfiles(
+            tmp_path, "nlte_{mpirank:04d}.out", modelgridindex=cell, cachefilename=cachefile.name
+        ).sort("modelgridindex")
+
+    full = read_rows()
+    metadata = pl.read_parquet_metadata(cachefile)
+    del metadata["ranks"]
+    write_parquet_atomic(full, cachefile, metadata=metadata, replaces=at.misc.get_file_identity(cachefile))
+    cachedbytes = cachefile.read_bytes()
+    rankone.unlink()
+
+    pltest.assert_frame_equal(read_rows(), full)
+    pltest.assert_frame_equal(read_rows(4), full.filter(modelgridindex=4))
+    assert cachefile.read_bytes() == cachedbytes
+    assert "the run layout is unknown" in capsys.readouterr().err
+
+    newer = (runfolder / "nlte_0000.out").stat().st_mtime + 1000.0
+    write_allranks_nlte_file(runfolder, mtime=newer)
+    assert read_rows()["nnlevel"].to_list() == pytest.approx([cell + 10.5 for cell in range(5)])
+    assert "ranks" in pl.read_parquet_metadata(cachefile)
