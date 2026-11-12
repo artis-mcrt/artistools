@@ -3906,3 +3906,68 @@ def test_add_mass_to_center_adds_the_mass_below_0p1c() -> None:
     assert (dffilled["rho"] > 0.0).sum() == 8
     added_mass_msun = float((dffilled["rho"] * wid_init**3).sum()) / Msun_to_g
     assert added_mass_msun == pytest.approx(3e-4 - 1e-9, rel=1e-9)
+
+
+@pytest.mark.parametrize("shape", [(3, 4), (2, 3, 4)])
+@pytest.mark.parametrize("max_pairs", [1, 20, 10_000])
+def test_e2e_cell_batches_match_the_full_interpolation(shape: tuple[int, ...], max_pairs: int) -> None:
+    from artistools.inputmodel.from_e2e_model import interpolate_grid
+    from artistools.inputmodel.from_e2e_model import sphkernel
+
+    ncell = math.prod(shape)
+    gridrcyl = np.linspace(0.1, 3.0, ncell).reshape(shape)
+    gridz = np.linspace(-1.0, 1.0, ncell).reshape(shape)
+    gridrcyl.flat[-1] = 100.0
+    rcyltraj = np.array([0.5, 1.0, 1.5, 2.0])
+    zcyltraj = np.array([-0.2, 0.3, -1.0, 1.0])
+    hsmooth = np.array([0.9, 0.3, 1.0, 1.2])
+    mtraj = np.array([1.0, 2.0, 3.0, 0.5])
+    rho2dtraj = np.array([0.1, 0.5, 0.3, 0.2])
+    rho2dhat = rho2dtraj * np.array([0.8, 1.0, 0.9, 0.95])
+    xtraj = np.array([[0.1, 0.9], [0.2, 0.8], [0.4, 0.6], [0.7, 0.3]])
+    qtraj = np.array([1.0, 3.0, 2.0, 4.0])
+    yetraj = np.array([0.1, 0.3, 0.2, 0.4])
+    bstraj = np.array([0.0, 1.0, 0.0, 1.0])
+    with mock.patch("artistools.inputmodel.from_e2e_model.sphkernel", wraps=sphkernel) as kernel:
+        rho, composition, heating, ye, state, contributions = interpolate_grid(
+            gridrcyl,
+            gridz,
+            rcyltraj,
+            zcyltraj,
+            hsmooth,
+            mtraj,
+            rho2dtraj,
+            rho2dhat,
+            xtraj,
+            qtraj,
+            yetraj,
+            bstraj,
+            max_pairs_per_batch=max_pairs,
+        )
+    assert all(call.args[0].size <= max(len(mtraj), max_pairs) for call in kernel.call_args_list)
+
+    distance = np.sqrt(np.add.outer(gridrcyl, -rcyltraj) ** 2 + np.add.outer(gridz, -zcyltraj) ** 2)
+    wall = sphkernel(distance, np.multiply.outer(np.ones(shape), hsmooth), nu=2)
+    weight = wall * (mtraj / rho2dhat)
+    normalised_weight = weight / (weight.sum(axis=-1, keepdims=True) + 1.0e-100)
+    hint = np.sum(normalised_weight * hsmooth, axis=-1)
+    expected_rho = np.sum(wall * mtraj * rho2dtraj / rho2dhat, axis=-1) / (
+        2.0 * np.pi * (np.clip(gridrcyl, 0.5 * hint, None) if len(shape) == 2 else gridrcyl)
+    )
+    expected_composition = np.tensordot(xtraj.T, wall * mtraj, axes=(1, len(shape))) / (
+        np.sum(wall * mtraj, axis=-1) + 1.0e-100 if len(shape) == 2 else 2.0 * np.pi * gridrcyl
+    )
+    np.testing.assert_allclose(rho, expected_rho, rtol=1e-12)
+    np.testing.assert_allclose(composition, expected_composition, rtol=1e-12)
+    for actual, tracer_values in ((heating, qtraj), (ye, yetraj), (state, bstraj)):
+        np.testing.assert_allclose(actual, np.sum(normalised_weight * tracer_values, axis=-1), rtol=1e-12)
+    wloc = (wall * mtraj * rho2dtraj / rho2dhat).reshape(ncell, -1)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        wloc /= wloc.sum(axis=-1, keepdims=True)
+    cell_indices, particle_indices = np.nonzero(wloc > 1.0e-20)
+    expected_contributions = pl.DataFrame({
+        "cellflatindex": cell_indices,
+        "particleid": particle_indices,
+        "frac_of_cellmass": wloc[cell_indices, particle_indices],
+    })
+    pltest.assert_frame_equal(contributions, expected_contributions, rel_tol=1e-12)
