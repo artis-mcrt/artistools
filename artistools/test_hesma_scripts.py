@@ -10,6 +10,8 @@ import pytest
 
 import artistools as at
 
+pytestmark = pytest.mark.usefixtures("close_figures")
+
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_hesma_plots_take_the_times_and_the_tables_of_each_file(

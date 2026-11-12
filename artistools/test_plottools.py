@@ -18,6 +18,9 @@ from matplotlib.container import ErrorbarContainer
 
 import artistools as at
 
+pytestmark = pytest.mark.usefixtures("close_figures")
+
+
 modelpath = at.get_path("testdata") / "testmodel"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
 

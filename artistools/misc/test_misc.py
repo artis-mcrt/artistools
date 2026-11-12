@@ -39,6 +39,8 @@ from artistools.misc.general import get_bin_index_expr
 from artistools.misc.general import get_weighted_quantile_expr
 from artistools.viewertools.core import run_command_step_with_warning
 
+pytestmark = pytest.mark.usefixtures("close_figures")
+
 modelpath = at.get_path("testdata") / "testmodel"
 modelpath_3d = at.get_path("testdata") / "testmodel_3d_10^3"
 

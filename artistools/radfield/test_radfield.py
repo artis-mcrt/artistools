@@ -11,6 +11,9 @@ import pytest
 
 import artistools as at
 
+pytestmark = pytest.mark.usefixtures("close_figures")
+
+
 modelpath = at.get_path("testdata") / "testmodel"
 outputpath = at.get_path("testoutput")
 
