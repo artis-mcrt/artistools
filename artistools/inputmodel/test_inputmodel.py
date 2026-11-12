@@ -3906,3 +3906,24 @@ def test_add_mass_to_center_adds_the_mass_below_0p1c() -> None:
     assert (dffilled["rho"] > 0.0).sum() == 8
     added_mass_msun = float((dffilled["rho"] * wid_init**3).sum()) / Msun_to_g
     assert added_mass_msun == pytest.approx(3e-4 - 1e-9, rel=1e-9)
+
+
+def test_from_e2e_model_rejects_unequal_3d_dimensions_before_a_write(tmp_path: Path) -> None:
+    output = tmp_path / "output"
+    with pytest.raises(ValueError, match="equal --ngridx"):
+        at.inputmodel.from_e2e_model.main(
+            argsraw=[
+                "--npz",
+                str(tmp_path / "absent.npz"),
+                "--mapto3D",
+                "--ngridx",
+                "4",
+                "--ngridy",
+                "6",
+                "--ngridz",
+                "8",
+                "-o",
+                str(output),
+            ]
+        )
+    assert not list(output.iterdir())
