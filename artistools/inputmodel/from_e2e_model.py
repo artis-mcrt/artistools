@@ -1329,9 +1329,24 @@ def get_output_file_names(args: argparse.Namespace) -> tuple[str, ...]:
     return (*MODEL_FILE_NAMES, *DYN_CHECK_FILE_NAMES) if writesdynfiles else MODEL_FILE_NAMES
 
 
+def validate_grid_dimensions(args: argparse.Namespace) -> None:
+    """Stop if the model stays 3D and its grid is not cubic, because the model writer needs a cubic grid.
+
+    With --dimensions 0 or 1, dimension_reduce_model replaces the 3D grid before the model writer runs.
+    """
+    staysthreedimensional = args.mapto3D and (args.dimensions is None or args.dimensions >= 2)
+    if staysthreedimensional and not (args.ngridx == args.ngridy == args.ngridz):
+        msg = (
+            "A 3D model needs equal --ngridx, --ngridy, and --ngridz values,"
+            f" got {args.ngridx}, {args.ngridy}, and {args.ngridz}"
+        )
+        raise ValueError(msg)
+
+
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Prepare data for an ARTIS kilonova calculation from end-to-end hydro models."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+    validate_grid_dimensions(args)
 
     if args.iso is None:
         args.iso = Path(args.npz).parent / "iso_table.npy"

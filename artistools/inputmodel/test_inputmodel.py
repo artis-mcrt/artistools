@@ -3961,3 +3961,26 @@ def test_random_density_perturbations_preserve_each_slice_mass(empty_slice: bool
     np.testing.assert_allclose(rho_perturbed.sum(axis=1), rho.sum(axis=1), rtol=1e-12)
     assert not np.allclose(rho_perturbed, rho)
     assert np.all(np.isfinite(rho_perturbed))
+
+
+def test_from_e2e_model_rejects_unequal_3d_dimensions_before_a_write(tmp_path: Path) -> None:
+    """The model writer needs a cubic grid, thus only a model that stays 3D needs equal dimensions.
+
+    The command did the map and wrote abundances.txt before the model writer stopped at the unequal dimensions.
+    """
+    datpath = tmp_path / "e2emodel.npz"
+    write_e2e_model(datpath, tmp_path / "iso_table.npy")
+    gridargs = ["-npz", str(datpath), "-vmax_on_c", "0.4", "--mapto3D", "-ngridx", "4", "-ngridy", "6", "-ngridz", "8"]
+
+    with (
+        mock.patch.object(at.inputmodel.from_e2e_model, "get_grid") as mockgetgrid,
+        pytest.raises(ValueError, match="equal --ngridx"),
+    ):
+        at.inputmodel.from_e2e_model.main(argsraw=[*gridargs, "-o", str(tmp_path / "model3d")])
+    mockgetgrid.assert_not_called()
+    # parse_cli_args makes the -o folder of each command, thus the folder exists
+    assert not list((tmp_path / "model3d").iterdir())
+
+    at.inputmodel.from_e2e_model.main(argsraw=[*gridargs, "-dimensions", "1", "-o", str(tmp_path / "model1d")])
+    _, modelmeta1d = at.inputmodel.scan_modeldata(tmp_path / "model1d", printwarningsonly=True)
+    assert modelmeta1d["dimensions"] == 1
