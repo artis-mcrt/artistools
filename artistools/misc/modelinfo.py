@@ -558,6 +558,64 @@ def get_mpiranklist(
     return [get_mpirankofcell(modelgridindex, modelpath=modelpath)]
 
 
+def get_run_mpiranklist(
+    modelpath: Path | str,
+    runfolder: Path,
+    modelgridindex: Sequence[int] | None = None,
+    filenameformat: str = "estimators_{mpirank:04d}.out",
+    cachefilename: str | None = "estimators_allranks.out.parquet",
+) -> Sequence[int]:
+    """Return the ranks of the cells for one run, or all ranks when its layout is unknown.
+
+    The assignments or the rank-0 log give the layout of each run.
+    Without either source, the function returns each available rank for the caller to select the cells.
+    The current input describes only the run in the model folder.
+    """
+    from artistools.logs.core import get_logged_rank_count
+
+    modelpath = Path(modelpath)
+    npts_model = get_npts_model(modelpath)
+    cells = np.asarray(modelgridindex or [], dtype=np.int64)
+    if cells.size and (cells >= 0).all() and (cells >= npts_model).any():
+        msg = f"Cell {int(cells.max())} is not in this model. Its cells are 0 to {npts_model - 1}"
+        raise ValueError(msg)
+    dfranks = get_rankassignments(runfolder)
+    nprocs = get_logged_rank_count(runfolder) if dfranks is None else None
+    if nprocs is None and dfranks is None and runfolder == modelpath:
+        nprocs = get_nprocs(modelpath)
+    if dfranks is not None:
+        ranks = dfranks.lazy().filter(pl.col("ndo") > 0).select("rank").collect()["rank"]
+        allranks: Sequence[int] = sorted(ranks.to_list())
+    elif nprocs is not None:
+        allranks = range(min(nprocs, npts_model))
+    else:
+        fileranks = get_rank_outputfiles(runfolder, filenameformat)
+        cachedranks: set[int] = set()
+        if filenameformat == "estimators_{mpirank:04d}.out":
+            for path in runfolder.glob("estimbatch*.out.parquet*"):
+                if (match := re.fullmatch(r"estimbatch\d+_(\d+)_(\d+)\.out\.parquet(?:\.tmp)?", path.name)) is not None:
+                    cachedranks.update(range(int(match.group(1)), int(match.group(2)) + 1))
+        if cachefilename is not None:
+            metadata: dict[str, str]
+            try:
+                metadata = pl.read_parquet_metadata(runfolder / cachefilename)
+            except (OSError, pl.exceptions.PolarsError):
+                metadata = {}
+            if "ranks" in metadata:
+                cachedranks.update(int(rank) for rank in metadata["ranks"].split(",") if rank)
+            elif "rank_min" in metadata and "rank_max" in metadata:
+                cachedranks.update(range(int(metadata["rank_min"]), int(metadata["rank_max"]) + 1))
+        return sorted(set(fileranks) | cachedranks) or [0]
+    if cells.size == 0 or (cells < 0).any():
+        return allranks
+
+    def get_nprocs_of_run() -> int:
+        assert nprocs is not None
+        return nprocs
+
+    return sorted(set(get_ranks_of_cells_in_layout(cells, npts_model, dfranks, get_nprocs_of_run).tolist()))
+
+
 def get_rank_outputfiles(folderpath: Path, filenameformat: str) -> dict[int, Path]:
     """Return the output file of each MPI rank in a run folder, keyed by rank, e.g. nlte_0001.out.zst for rank 1.
 
@@ -748,6 +806,8 @@ def scan_rank_text_cache(
     cachefilename: str,
     allranks_with_matter: Sequence[int],
     selectedfiles: Sequence[Path],
+    *,
+    modelpath: Path | str,
 ) -> pl.LazyFrame | None:
     """Return a scan of the parquet cache of a run folder, or None if the read must take the text.
 
@@ -787,6 +847,22 @@ def scan_rank_text_cache(
 
     # the stamp names the form of the text, because a file of all ranks and the files of the ranks have the same time
     textsource = without_compressed_extension(textfiles[0]).name
+    prefix, suffix = re.split(r"\{mpirank[^}]*\}", filenameformat)
+    if (
+        pqmetadata is not None
+        and "ranks" not in pqmetadata
+        and textsource != f"{prefix}allranks{suffix}"
+        and folderpath != Path(modelpath)
+        and get_rankassignments(folderpath) is None
+    ):
+        from artistools.logs.core import get_logged_rank_count
+
+        if get_logged_rank_count(folderpath) is None:
+            print_warning(
+                f"{parquetfilepath} gives no ranks, and the run layout is unknown. "
+                "The reader keeps the cache because the available text files can be incomplete"
+            )
+            return pl.scan_parquet(parquetfilepath, glob=False)
     textcompression = get_text_compression(textfiles)
     # a compression keeps the time of the text and changes its size, thus only the same compression can compare sizes
     comparesize = pqmetadata is not None and pqmetadata.get("textsource_compression") == textcompression
@@ -810,6 +886,7 @@ def scan_rank_text_cache(
             "textsource_mtime": str(textsource_mtime),
             "textsource_size": str(textsize),
             "textsource_compression": textcompression,
+            "ranks": ",".join(str(rank) for rank in allranks_with_matter),
         }
         if not convert_rank_text_to_parquet(
             textfiles, parquetfilepath, metadata, (textsource_mtime, textsize), identity_of_stale_file
@@ -850,14 +927,9 @@ def read_rank_outputfiles(
     timesteps: list[int] = [timestep] if isinstance(timestep, int) else list(timestep or [])
     # a negative timestep selects all timesteps
     selectedtimesteps: list[int] = timesteps if all(ts >= 0 for ts in timesteps) else []
-    # get_mpiranklist also stops with an error for a cell that is not in the model
-    mpiranks = get_mpiranklist(modelpath, modelgridindex=modelgridindex, only_ranks_withgridcells=True)
-    # a rank whose cells all hold no matter writes no file, and a file of all ranks has no row for its cells
-    nonemptycounts = get_nonempty_cellcounts(modelpath)
-    ranks_with_matter = [rank for rank in mpiranks if nonemptycounts is None or nonemptycounts.get(rank) != 0]
-    if selectedcells and not ranks_with_matter:
-        cellstext = f"Cell {selectedcells[0]} holds" if len(selectedcells) == 1 else f"The cells {selectedcells} hold"
-        msg = f"{cellstext} no matter. ARTIS writes no {filefamily} data for a cell with no matter"
+    npts_model = get_npts_model(modelpath)
+    if any(cell >= npts_model for cell in selectedcells):
+        msg = f"Cell {max(selectedcells)} is not in this model. Its cells are 0 to {npts_model - 1}"
         raise ValueError(msg)
 
     # a restart that repeats a timestep can hold a cell that the earlier folder never wrote. Thus each folder that holds
@@ -885,7 +957,26 @@ def read_rank_outputfiles(
 
     filepathsofeachfolder: list[list[Path]] = []
     folders_with_text: list[Path] = []
+    ranks_of_folder: dict[Path, Sequence[int]] = {}
+    has_empty_selection = False
     for folderpath in runfolders:
+        nonemptycounts = get_nonempty_cellcounts(folderpath)
+        allranks = get_run_mpiranklist(
+            modelpath, folderpath, filenameformat=filenameformat, cachefilename=cachefilename
+        )
+        ranks_of_folder[folderpath] = [
+            rank for rank in allranks if nonemptycounts is None or nonemptycounts.get(rank) != 0
+        ]
+        mpiranks = (
+            get_run_mpiranklist(modelpath, folderpath, selectedcells, filenameformat, cachefilename)
+            if selectedcells
+            else allranks
+        )
+        ranks_with_matter_set = set(ranks_of_folder[folderpath])
+        ranks_with_matter = [rank for rank in mpiranks if rank in ranks_with_matter_set]
+        if selectedcells and not ranks_with_matter:
+            has_empty_selection = True
+            continue
         folderfilepaths, missingranks = get_folder_text_files(
             folderpath, filenameformat, ranks_with_matter, selectscells=bool(selectedcells)
         )
@@ -906,6 +997,12 @@ def read_rank_outputfiles(
             folders_with_text.append(folderpath)
 
     if not filepathsofeachfolder:
+        if has_empty_selection:
+            cellstext = (
+                f"Cell {selectedcells[0]} holds" if len(selectedcells) == 1 else f"The cells {selectedcells} hold"
+            )
+            msg = f"{cellstext} no matter. ARTIS writes no {filefamily} data for a cell with no matter"
+            raise ValueError(msg)
         msg = f"No {filefamily} files found in {modelpath}"
         raise FileNotFoundError(msg)
 
@@ -927,13 +1024,6 @@ def read_rank_outputfiles(
         dffile = read_rank_file_rows(filepath, line_filter=line_filter)
         return None if dffile is None else dffile.with_columns(pl.lit(folderindex, dtype=pl.Int32).alias("folderindex"))
 
-    allranks_with_matter: Sequence[int] = ()
-    if cachefilename is not None:
-        allranks_with_matter = [
-            rank
-            for rank in get_mpiranklist(modelpath, only_ranks_withgridcells=True)
-            if nonemptycounts is None or nonemptycounts.get(rank) != 0
-        ]
     cacheconditions: list[pl.Expr] = [
         *([pl.col("timestep").is_in(selectedtimesteps)] if selectedtimesteps else []),
         *([pl.col("modelgridindex").is_in(selectedcells)] if selectedcells else []),
@@ -946,7 +1036,14 @@ def read_rank_outputfiles(
         cachescan = (
             None
             if cachefilename is None
-            else scan_rank_text_cache(folderpath, filenameformat, cachefilename, allranks_with_matter, folderfilepaths)
+            else scan_rank_text_cache(
+                folderpath,
+                filenameformat,
+                cachefilename,
+                ranks_of_folder[folderpath],
+                folderfilepaths,
+                modelpath=modelpath,
+            )
         )
         if cachescan is not None:
             dfsoffiles.append(
