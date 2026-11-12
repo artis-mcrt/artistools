@@ -3897,3 +3897,37 @@ def test_output_template_names_a_field_that_plotspectra_does_not_give(tmp_path: 
     )
     with pytest.raises(ValueError, match=r"holds the field 'foo'"):
         plotspectra.get_plot_outputfile(args)
+
+
+@pytest.mark.parametrize("difference", ["time", "frequency", "shape"])
+def test_virtual_average_refuses_different_grids(tmp_path: Path, difference: str) -> None:
+    folders = [tmp_path / name for name in ("first", "second")]
+    tables = [np.array([[0.0, 1.0, 2.0], [10.0, 100.0, 200.0], [20.0, 300.0, 400.0]])] * 2
+    tables[1] = tables[1].copy()
+    if difference == "time":
+        tables[1][0, 1] = 1.5
+    elif difference == "frequency":
+        tables[1][1, 0] = 11.0
+    else:
+        tables[1] = tables[1][:2]
+    for folder, table in zip(folders, tables, strict=True):
+        folder.mkdir()
+        np.savetxt(folder / "vspecpol_total-2.out", table)
+
+    with pytest.raises(ValueError, match="time or frequency grid"):
+        atspectra.make_averaged_vspecfiles(folders)
+    assert not list(folders[0].glob("vspecpol_averaged-*"))
+
+
+def test_virtual_average_keeps_observer_index_and_fractional_flux(tmp_path: Path) -> None:
+    folders = [tmp_path / name for name in ("first", "second")]
+    for folder, flux in zip(folders, (100, 101), strict=True):
+        folder.mkdir()
+        (folder / "vspecpol_total-2.out").write_text(f"0 1 2\n10 {flux} 200\n20 300 400\n", encoding="utf-8")
+
+    atspectra.make_averaged_vspecfiles(folders)
+
+    assert not (folders[0] / "vspecpol_averaged-0.out").exists()
+    actual = np.loadtxt(folders[0] / "vspecpol_averaged-2.out")
+    expected = np.array([[0.0, 1.0, 2.0], [10.0, 100.5, 200.0], [20.0, 300.0, 400.0]])
+    np.testing.assert_allclose(actual, expected)

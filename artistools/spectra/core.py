@@ -952,9 +952,21 @@ def make_averaged_vspecfiles(modelpaths: Sequence[Path]) -> None:
 
     filenames.sort(key=observer_index)
 
-    for spec_index, filename in enumerate(filenames):  # vspecpol-total files
-        vspecarrays = [read_wsv(modelpath / filename, has_header=False).to_numpy() for modelpath in modelpaths]
+    for filename in filenames:
+        spec_index, _ = observer_index(filename)
+        vspecarrays = [
+            read_wsv(modelpath / filename, has_header=False).lazy().cast(pl.Float64).collect().to_numpy()
+            for modelpath in modelpaths
+        ]
         averaged = vspecarrays[0].copy()
+        for modelpath, values in zip(modelpaths[1:], vspecarrays[1:], strict=True):
+            if (
+                values.shape != averaged.shape
+                or not np.array_equal(values[0], averaged[0])
+                or not np.array_equal(values[:, 0], averaged[:, 0])
+            ):
+                msg = f"The time or frequency grid of {modelpath / filename} differs from {modelpaths[0] / filename}"
+                raise ValueError(msg)
         # the first row (times) and first column (frequencies) are labels shared by all models, so average the rest
         averaged[1:, 1:] = np.mean([arr[1:, 1:] for arr in vspecarrays], axis=0)
         pl.DataFrame(averaged).write_csv(
