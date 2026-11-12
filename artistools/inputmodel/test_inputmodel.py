@@ -29,6 +29,8 @@ from artistools.inputmodel.core import CACHEVERSION
 from artistools.inputmodel.core import CREATED_COMMENT_PREFIX
 from artistools.inputmodel.core import get_standard_columns
 
+pytestmark = pytest.mark.usefixtures("close_figures")
+
 
 def get_empty_3d_model(
     ncoordgrid: int, vmax: float, t_model_init_days: float, includenico57: bool = False
