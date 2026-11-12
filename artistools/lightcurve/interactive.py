@@ -1033,14 +1033,16 @@ def open_window(
     def on_direction(choice: DirectionChoice) -> None:
         apply(viewer.set_direction(viewer.values, choice))
 
-    def apply_lightcurves(lightcurves: "Sequence[str]") -> None:
+    def apply_lightcurves(lightcurves: "Sequence[str]", sourceindices: "Sequence[int | None] | None" = None) -> None:
         """Read the models of a new list of light curves, and apply the list."""
         viewer.load_models(lightcurves)
         # each series style option, e.g. -label, stays on its light curve
         values = dc.replace(
             viewer.values,
             lightcurves=tuple(lightcurves),
-            otheroptions=move_series_styles(viewer.values.otheroptions, viewer.values.lightcurves, lightcurves),
+            otheroptions=move_series_styles(
+                viewer.values.otheroptions, viewer.values.lightcurves, lightcurves, sourceindices
+            ),
         )
         # a new first model can have no data for a kind of viewing direction, e.g. the observers of the virtual packets
         if values.directionkind not in viewer.models.directionkinds:

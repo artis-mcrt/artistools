@@ -148,6 +148,7 @@ def get_grid(
     nodid = {i % 10000 for i in idx[~dyncond]}  # IDs of other ejecta trajs.
     nnod = len(nodid)
     ntraj = ndyn + nnod
+    trajids = np.array([*nodid, *dynid], dtype=idx.dtype)
     mtraj = np.zeros(ntraj)  # final trajectory mass
     isoA0 = iso[:, 0] + iso[:, 1]  # mass number = neutron number + proton number
     xiso0 = dat.f.nz[:, :] * isoA0[:]  # number fraction -> mass fraction
@@ -483,7 +484,7 @@ def get_grid(
     contribindices = np.nonzero(contributes)
 
     dfparticlecontribs = pl.DataFrame({
-        "particleid": contribindices[-1],
+        "particleid": trajids[contribindices[-1]],
         "cellindex": np.broadcast_to(cellids, contributes.shape)[contribindices],
         "frac_of_cellmass": wloc[contribindices],
     }).with_columns(frac_of_cellmass_includemissing=pl.col("frac_of_cellmass"))
