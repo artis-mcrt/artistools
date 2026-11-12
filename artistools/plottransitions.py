@@ -26,6 +26,10 @@ from artistools.constants import me_c_over_8pi2_e2_s_per_angstrom2
 from artistools.estimators import read_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import scan_modeldata
+from artistools.lines import addarg_excitationtemperature
+from artistools.lines import get_excitation_temperature_column
+from artistools.lines import get_opacity_atomic_data
+from artistools.lines.linecontributions import get_ion_populations
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
@@ -359,6 +363,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("--include-permitted", action="store_true", help="Also consider permitted lines")
 
+    addarg_excitationtemperature(parser)
+
     addarg_timedays(parser, kind="str")
 
     addarg_timestep(parser, helptext="Timestep to plot, e.g. 40, or last. Default: last")
@@ -460,7 +466,11 @@ def get_cell_conditions(modelpath: Path, args: argparse.Namespace) -> CellCondit
 
 
 def get_model_conditions(
-    modelpath: Path, cell: CellConditions, ionlist: Sequence[tuple[int, int]], ltetemperatures: Sequence[float]
+    modelpath: Path,
+    cell: CellConditions,
+    ionlist: Sequence[tuple[int, int]],
+    ltetemperatures: Sequence[float],
+    exctemperature: str = "auto",
 ) -> PlotConditions:
     """Return the NLTE populations and the temperatures of one cell of a model.
 
@@ -473,6 +483,9 @@ def get_model_conditions(
 
     T_e = float(cell.estimators["Te"])
     T_R = float(cell.estimators["TR"])
+    temperaturecolumn = get_excitation_temperature_column(
+        modelpath, exctemperature, usetext="The superlevel populations take Boltzmann weights at"
+    )
     figure_title = (
         f"{get_model_name(modelpath)}\n"
         f"Cell {cell.modelgridindex} ({cell.velocity} km/s) with Te = {T_e:.1f} K, "
@@ -488,7 +501,12 @@ def get_model_conditions(
             for Z, ion_stage in ionlist
         },
         temperature_list=["NOTEMPNLTE", *ltenames],
-        vardict={"Te": T_e, "TR": T_R, **dict(zip(ltenames, ltetemperatures, strict=True))},
+        vardict={
+            "Te": T_e,
+            "TR": T_R,
+            "T_exc": float(cell.estimators[temperaturecolumn]),
+            **dict(zip(ltenames, ltetemperatures, strict=True)),
+        },
         figure_title=figure_title,
         dfnltepops=dfnltepops,
     )
@@ -607,6 +625,12 @@ def get_ion_spectra(
         if args.atomicdatabase == "artis":
             assert isinstance(ion["levels"], pl.DataFrame | pl.LazyFrame)
             pldflevels = ion["levels"].lazy().collect()
+            pldftransitions = pldftransitions.filter(
+                pl.col("lower").is_between(0, pldflevels.height - 1),
+                pl.col("upper").is_between(0, pldflevels.height - 1),
+            )
+            if pldftransitions.is_empty():
+                continue
             pldftransitions = add_artis_transition_columns(pldftransitions, pldflevels)
 
         pldftransitions = pldftransitions.sort(by="lambda_angstroms")
@@ -628,7 +652,8 @@ def get_ion_spectra(
         for seriesindex, temperature in enumerate(conditions.temperature_list):
             if temperature == "NOTEMPNLTE":
                 popcolumnname = "upper_pop_nlte"
-                dftransitions = add_nlte_pop(pldftransitions, conditions, ionid)
+                assert pldflevels is not None
+                dftransitions = add_nlte_pop(pldftransitions, pldflevels, conditions, ionid)
                 depcoeffs |= get_line_departure_coeffs(dftransitions, ionid)
 
                 with pl.Config(tbl_cols=-1):
@@ -670,11 +695,21 @@ def get_ion_spectra(
     return yvalues, depcoeffs
 
 
-def add_nlte_pop(pldftransitions: pl.DataFrame, conditions: PlotConditions, ionid: tuple[int, int]) -> pl.DataFrame:
+def add_nlte_pop(
+    pldftransitions: pl.DataFrame, pldflevels: pl.DataFrame, conditions: PlotConditions, ionid: tuple[int, int]
+) -> pl.DataFrame:
     """Add the NLTE population of the upper level, its flux factor, and its departure coefficient."""
     assert conditions.dfnltepops is not None
     dfnltepops_thision = conditions.dfnltepops.filter((pl.col("Z") == ionid[0]) & (pl.col("ion_stage") == ionid[1]))
-    nltepopdict = dict(zip(dfnltepops_thision["level"], dfnltepops_thision["n_NLTE"], strict=True))
+    levels = pldflevels.select(level=pl.col("levelindex").cast(pl.Int64), g="g", energy_ev="energy_ev")
+    neededlevels = levels.filter(pl.col("level").is_in(pldftransitions["upper"].implode()))
+    dfcells = pl.DataFrame({
+        "modelgridindex": [conditions.dfnltepops["modelgridindex"][0]],
+        "T_exc": [conditions.vardict["T_exc"]],
+        "nnion": [conditions.ionpopdict[ionid]],
+    })
+    populations = get_ion_populations(dfcells, levels, neededlevels, dfnltepops_thision, "nnion")
+    nltepopdict = dict(zip(populations["level"], populations["population"], strict=True))
 
     return pldftransitions.with_columns(
         upper_pop_nlte=pl.col("upper").replace_strict(nltepopdict, default=0.0, return_dtype=pl.Float64)
@@ -743,6 +778,13 @@ def print_ionisation_table(cell: CellConditions, depcoeffs: Mapping[tuple[int, i
     )
 
 
+def get_transition_atomic_data(modelpath: Path, ionlist: Sequence[tuple[int, int]], from_model: bool) -> pl.DataFrame:
+    """Return the atomic data, with only the levels that ARTIS keeps for a plot of a model."""
+    if from_model:
+        return get_opacity_atomic_data(modelpath, tuple(ionlist))
+    return get_levels(modelpath, tuple(ionlist), get_transitions=True)
+
+
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Plot estimated spectra from bound-bound transitions."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
@@ -774,10 +816,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # resolution of the plot in Angstroms
     plot_resolution = max(1, int((args.xmax - args.xmin) / 1000))
 
-    adata = get_levels(modelpath, tuple(ionlist), get_transitions=True) if args.atomicdatabase == "artis" else None
+    adata = get_transition_atomic_data(modelpath, ionlist, from_model) if args.atomicdatabase == "artis" else None
 
     conditions = (
-        get_model_conditions(modelpath, cell, ionlist, args.T)
+        get_model_conditions(modelpath, cell, ionlist, args.T, args.exctemperature)
         if cell is not None
         else get_fixed_temperature_conditions(args, ionlist)
     )
