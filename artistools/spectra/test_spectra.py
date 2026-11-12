@@ -3897,3 +3897,22 @@ def test_output_template_names_a_field_that_plotspectra_does_not_give(tmp_path: 
     )
     with pytest.raises(ValueError, match=r"holds the field 'foo'"):
         plotspectra.get_plot_outputfile(args)
+
+
+@pytest.mark.parametrize(
+    ("selection", "message"),
+    [
+        ({"specpath": [modelpath_classic_3d, modelpath_classic_3d]}, "one model path"),
+        ({"plotviewingangle": [0, 1]}, "one direction"),
+        ({"plotvspecpol": [0, 1]}, "one direction"),
+    ],
+)
+@pytest.mark.parametrize("stokesparam", ["Q/I", "U/I"])
+def test_polarisation_refuses_multiple_series(
+    selection: dict[str, t.Any], stokesparam: str, message: str, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    options = {"specpath": [modelpath_classic_3d], "timedays": "5", "outputfile": tmp_path, **selection}
+    with mock.patch.object(plotspectra, "plot_polarisation") as draw, pytest.raises(SystemExit):
+        at.spectra.plot(args=None, argsraw=[], stokesparam=stokesparam, **options)
+    draw.assert_not_called()
+    assert message in capsys.readouterr().err
