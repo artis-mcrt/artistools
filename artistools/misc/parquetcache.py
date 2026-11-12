@@ -4,6 +4,7 @@ import contextlib
 import datetime as dt
 import errno
 import os
+import stat
 import sys
 import time
 import typing as t
@@ -68,14 +69,17 @@ def replace_outdated_file(newfilepath: Path, destpath: Path, outdatedfile: tuple
     # NFS gives flock as a POSIX lock, and an exclusive POSIX lock needs a descriptor that can write. A user without
     # write access to the lock of a different user reads it, which flock accepts on a local file system
     try:
-        lockfd = os.open(lockpath, os.O_CREAT | os.O_RDWR, 0o666)
+        lockfd = os.open(lockpath, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, 0o666)
     except PermissionError:
-        lockfd = os.open(lockpath, os.O_CREAT | os.O_RDONLY, 0o666)
-    # the chmod lets each user write the lock under a restrictive umask, and fails harmlessly for a user who does
-    # not own the lock
-    with contextlib.suppress(OSError):
-        lockpath.chmod(0o666)
+        lockfd = os.open(lockpath, os.O_CREAT | os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, 0o666)
     try:
+        lockstat = os.fstat(lockfd)
+        if not stat.S_ISREG(lockstat.st_mode) or lockstat.st_nlink != 1:
+            msg = f"The cache lock {lockpath} must be a regular file with one link"
+            raise ValueError(msg)
+        # The descriptor keeps the permission change on the lock if another user replaces its path.
+        with contextlib.suppress(OSError):
+            os.fchmod(lockfd, 0o666)
         fcntl.flock(lockfd, fcntl.LOCK_EX)
         identity = get_file_identity(destpath)
         if identity is None or identity == outdatedfile:

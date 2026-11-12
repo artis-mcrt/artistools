@@ -1094,6 +1094,31 @@ def test_write_parquet_atomic_replaces_only_the_file_found_outdated(tmp_path: Pa
     assert list(tmp_path.glob("*.partial*")) == []
 
 
+@pytest.mark.parametrize("lockkind", ["symlink", "hardlink", "fifo"])
+def test_replace_outdated_file_rejects_unsafe_lock(tmp_path: Path, lockkind: str) -> None:
+    pytest.importorskip("fcntl")
+    privatepath = tmp_path / "private"
+    privatepath.write_text("private data", encoding="utf-8")
+    privatepath.chmod(0o600)
+    lockpath = tmp_path / ".cache.replace-lock"
+    if lockkind == "symlink":
+        lockpath.symlink_to(privatepath)
+    elif lockkind == "hardlink":
+        lockpath.hardlink_to(privatepath)
+    else:
+        os.mkfifo(lockpath)
+    replacement = tmp_path / "replacement"
+    replacement.write_text("cache data", encoding="utf-8")
+
+    with pytest.raises((OSError, ValueError)):
+        parquetcache.replace_outdated_file(replacement, tmp_path / "cache", None)
+
+    assert privatepath.stat().st_mode & 0o777 == 0o600
+    assert privatepath.read_text(encoding="utf-8") == "private data"
+    assert replacement.is_file()
+    assert not (tmp_path / "cache").exists()
+
+
 def test_replace_outdated_file_keeps_a_rivals_fresh_replacement(tmp_path: Path) -> None:
     """The second of two writers that found the same out-of-date file must not replace the first's file.
 
