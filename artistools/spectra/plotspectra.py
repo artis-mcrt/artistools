@@ -2693,6 +2693,16 @@ def check_yvariable_args(args: argparse.Namespace) -> None:
             "Give --plotvspecpol, e.g. --plotvspecpol 0, and remove the options that need the packets",
         )
 
+    if "/" in args.stokesparam:
+        if len(args.specpath) != 1:
+            exit_with_error(
+                "A polarisation plot supports one model path", "Give one model path for each polarisation plot"
+            )
+        if len(args.plotvspecpol or []) > 1 or len(args.plotviewingangle or []) > 1:
+            exit_with_error(
+                "A polarisation plot supports one direction", "Give one direction for each polarisation plot"
+            )
+
     if args.yvariable == "packetcount" and len(args.modelspecpaths) < len(args.specpath):
         exit_with_error(
             "A reference spectrum holds no count of packets, thus --yvariable packetcount needs ARTIS models alone",
