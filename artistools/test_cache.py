@@ -1,5 +1,7 @@
 import shutil
+import typing as t
 from pathlib import Path
+from unittest import mock
 
 import polars as pl
 import pytest
@@ -36,7 +38,18 @@ def test_cache_delete_keeps_the_lock_files_and_other_parquet_files(tmp_path: Pat
 
     cachemain(argsraw=["delete", "-f", str(tmp_path)])
 
-    assert sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*") if path.is_file()) == sorted(kept)
+    lockfiles = [
+        ".model.txt.parquet.conversion-lock",
+        ".linelist.out.parquet.conversion-lock",
+        "packets/.packetsbatch00_0000_0003.out.parquet.conversion-lock",
+        "packets/.packetsbatch01_0004_0007.out.parquet.conversion-lock",
+        "12411848.slurm/.estimbatch00_0000_0003.out.parquet.conversion-lock",
+        "12411848.slurm/.estimators_allranks.out.parquet.conversion-lock",
+    ]
+    assert sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*") if path.is_file()) == sorted([
+        *kept,
+        *lockfiles,
+    ])
 
 
 def test_cache_make_gives_no_data_for_virtual_packets_without_their_files(tmp_path: Path) -> None:
@@ -85,3 +98,38 @@ def test_cache_make_gives_an_error_for_incomplete_or_remote_packet_files(tmp_pat
 
     with pytest.raises(ValueError, match="on a different host"):
         make_packet_caches(Path("modelhost:/models/kilonova"), virtual=True)
+
+
+def test_cache_delete_keeps_an_active_parts_folder(tmp_path: Path) -> None:
+    pytest.importorskip("fcntl")
+    from artistools.cache import delete_caches
+    from artistools.misc import temporary_parts_folder
+
+    cachepath = tmp_path / "estimators_allranks.out.parquet"
+    with temporary_parts_folder(cachepath) as partsfolder:
+        partfile = partsfolder / "part.parquet"
+        partfile.write_bytes(b"part")
+        cachepath.write_bytes(b"old cache")
+        delete_caches(tmp_path, force=True)
+        assert partfile.read_bytes() == b"part"
+        assert cachepath.read_bytes() == b"old cache"
+    delete_caches(tmp_path, force=True)
+    assert not cachepath.exists()
+
+
+def test_cache_delete_keeps_an_active_partial_file(tmp_path: Path) -> None:
+    pytest.importorskip("fcntl")
+    from artistools.cache import delete_caches
+    from artistools.misc import write_parquet_atomic
+
+    cachepath = tmp_path / "model.txt.parquet"
+    sink_parquet = pl.LazyFrame.sink_parquet
+
+    def sink_then_delete(frame: pl.LazyFrame, path: Path, **kwargs: t.Any) -> None:
+        sink_parquet(frame, path, **kwargs)
+        delete_caches(tmp_path, force=True)
+        assert path.is_file()
+
+    with mock.patch.object(pl.LazyFrame, "sink_parquet", side_effect=sink_then_delete, autospec=True):
+        write_parquet_atomic(pl.DataFrame({"value": [1]}), cachepath)
+    assert pl.read_parquet(cachepath)["value"].to_list() == [1]

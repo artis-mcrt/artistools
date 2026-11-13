@@ -197,6 +197,7 @@ from artistools.misc.modelpaths import path_is_file as path_is_file
 from artistools.misc.modelpaths import path_is_reference_data as path_is_reference_data
 from artistools.misc.modelpaths import require_reference_data_file as require_reference_data_file
 from artistools.misc.modelpaths import resolve_modelpath as resolve_modelpath
+from artistools.misc.parquetcache import cache_conversion_lock as cache_conversion_lock
 from artistools.misc.parquetcache import get_file_identity as get_file_identity
 from artistools.misc.parquetcache import get_file_state as get_file_state
 from artistools.misc.parquetcache import get_parquet_cache_name as get_parquet_cache_name
