@@ -328,3 +328,7 @@ def test_the_product_keeps_its_name_when_one_frame_holds_data(tmp_path: Path) ->
     likeaframe = tmp_path / "plotradfield_cell00000_ts040.pdf"
     at.radfield.plotradfield.main(argsraw=[], modelpath=modelpath, timestep="40-41", outputfile=str(likeaframe))
     assert likeaframe.is_file(), f"the merge must not remove its own product: {list(tmp_path.iterdir())}"
+
+
+def test_unique_output_names_preserve_names_of_later_models() -> None:
+    assert at.misc.get_unique_output_names(["a", "a", "a_1", "a", "a_2"]) == ["a", "a_3", "a_1", "a_4", "a_2"]

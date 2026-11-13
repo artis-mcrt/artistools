@@ -243,3 +243,17 @@ def test_write_edep_needs_the_deposition_estimators(tmp_path: Path, capsys: pyte
 
     assert not outfile.exists()
     assert "hold no deposition_ column" in " ".join(capsys.readouterr().err.split())
+
+
+def test_comparison_export_keeps_models_with_the_same_prefix(tmp_path: Path) -> None:
+    modelpaths = [tmp_path / name for name in ("model_low", "model_high")]
+    for folder in modelpaths:
+        folder.mkdir()
+        for source in modelpath.iterdir():
+            if source.is_file():
+                (folder / source.name).symlink_to(source.resolve())
+    outputfolder = tmp_path / "output"
+    at.writecomparisondata.main(argsraw=[], modelpath=modelpaths, outputfile=outputfolder, selected_timesteps=[50])
+    for prefix in ("phys", "spectra", "ionfrac_fe", "ionfrac_co"):
+        assert (outputfolder / f"{prefix}_model_artisnebular.txt").is_file()
+        assert (outputfolder / f"{prefix}_model_1_artisnebular.txt").is_file()

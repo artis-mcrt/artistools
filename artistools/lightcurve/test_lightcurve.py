@@ -3725,3 +3725,19 @@ def test_summary_table_agrees_with_the_summary_lines(
     assert np.isclose(dfpeak["luminosity_erg/s"].item(), row["peak_luminosity_erg_per_s"], rtol=1e-12)
     assert np.isclose(dfpeak["time_days"].item(), row["peak_time_days"], rtol=1e-12)
     assert np.isclose(dfpeak["relnoise"].item(), row["peak_relnoise"], rtol=1e-12)
+
+
+def test_bolometric_export_keeps_models_with_the_same_name(tmp_path: Path) -> None:
+    from artistools.lightcurve import writebollightcurvedata
+
+    modelpaths = [tmp_path / name for name in ("first", "second")]
+    for index, folder in enumerate(modelpaths):
+        folder.mkdir()
+        (folder / "plotlabel.txt").write_text("same\n", encoding="utf-8")
+        (folder / "light_curve.out").write_text(f"1 {index + 1} 0\n2 {index + 1} 0\n", encoding="utf-8")
+    outputfolder = tmp_path / "output"
+    writebollightcurvedata.main(argsraw=[], modelpath=modelpaths, outputfile=outputfolder)
+    outputs = sorted(outputfolder.glob("*.txt"))
+    assert [path.name for path in outputs] == ["bol_lightcurvedata_same.txt", "bol_lightcurvedata_same_1.txt"]
+    data = [np.loadtxt(path) for path in outputs]
+    assert np.allclose(data[1][:, 1], 2 * data[0][:, 1])
