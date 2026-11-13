@@ -3897,3 +3897,35 @@ def test_output_template_names_a_field_that_plotspectra_does_not_give(tmp_path: 
     )
     with pytest.raises(ValueError, match=r"holds the field 'foo'"):
         plotspectra.get_plot_outputfile(args)
+
+
+@pytest.mark.parametrize("stokesparam", ["Q/I", "U/I"])
+@pytest.mark.parametrize("binflux", [False, True])
+@pytest.mark.parametrize("filtermovingavg", [0, 3])
+def test_polarisation_processes_fluxes_before_the_ratio(stokesparam: str, binflux: bool, filtermovingavg: int) -> None:
+    intensity = np.array([100.0, 1.0, 1.0, 1.0, 1.0])
+    numerator = np.array([0.0, 1.0, 1.0, 1.0, 1.0])
+    stokes = {
+        "I": pl.LazyFrame({"nu": np.arange(1, 6) * 1e14, "3.0": intensity}),
+        stokesparam[0]: pl.LazyFrame({"nu": np.arange(1, 6) * 1e14, "3.0": numerator}),
+    }
+    args = argparse.Namespace(
+        stokesparam=stokesparam, binflux=binflux, filtermovingavg=filtermovingavg, xunit="angstroms"
+    )
+    result = plotspectra.get_polarisation_spectrum(stokes, "3.0", args)
+    if filtermovingavg:
+        kernel = np.ones(filtermovingavg) / filtermovingavg
+        intensity = np.convolve(np.pad(intensity, 1, mode="edge"), kernel, mode="valid")
+        numerator = np.convolve(np.pad(numerator, 1, mode="edge"), kernel, mode="valid")
+    expected = numerator.mean() / intensity.mean() if binflux else numerator / intensity
+    assert result["3.0"].to_numpy() == pytest.approx(expected)
+
+
+def test_polarisation_marks_zero_intensity_as_unavailable() -> None:
+    stokes = {
+        "I": pl.LazyFrame({"nu": [1e14, 2e14], "3.0": [0.0, 0.0]}),
+        "Q": pl.LazyFrame({"nu": [1e14, 2e14], "3.0": [0.0, 1.0]}),
+    }
+    args = argparse.Namespace(stokesparam="Q/I", binflux=False, xunit="angstroms")
+    result = plotspectra.get_polarisation_spectrum(stokes, "3.0", args)
+    assert result["3.0"].to_list() == [None, None]

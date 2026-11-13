@@ -249,6 +249,49 @@ def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
     return xlabel, ylabel
 
 
+def get_polarisation_spectrum(
+    stokes_params: Mapping[str, pl.LazyFrame], timecolumn: str, args: argparse.Namespace
+) -> pl.DataFrame:
+    """Return the polarisation ratio after each filter and bin operation."""
+    numerator = args.stokesparam.split("/")[0]
+    dfspectrum = (
+        stokes_params[numerator]
+        .select("nu", numerator=pl.col(timecolumn))
+        .join(
+            stokes_params["I"].select("nu", intensity=pl.col(timecolumn)),
+            on="nu",
+            how="left",
+            validate="1:1",
+            maintain_order="left",
+        )
+        .with_columns(lambda_angstroms=c_ang_per_s / pl.col("nu"))
+        .collect()
+    )
+    if (filterfunc := get_filterfunc(args)) is not None:
+        print("Apply the filter to the Stokes fluxes before the ratio")
+        dfspectrum = dfspectrum.with_columns(
+            pl.Series(column, filterfunc(dfspectrum[column])) for column in ["numerator", "intensity"]
+        )
+    dfspectrum = dfspectrum.with_columns(
+        x=pl.Series(convert_angstroms_to_unit(dfspectrum["lambda_angstroms"].to_numpy(), args.xunit))
+    )
+    if args.binflux:
+        print("Calculate each polarisation bin from the mean Stokes fluxes")
+        dfspectrum = bin_spectrum(dfspectrum, 5, "x", ["numerator", "intensity"])
+    return (
+        dfspectrum
+        .lazy()
+        .with_columns(
+            pl
+            .when(pl.col("intensity") != 0.0)
+            .then(pl.col("numerator") / pl.col("intensity"))
+            .otherwise(None)
+            .alias(timecolumn)
+        )
+        .collect()
+    )
+
+
 def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     """Plot the Stokes parameter selected by args.stokesparam against wavelength."""
     if args.plotvspecpol:
@@ -258,9 +301,7 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
         angle = args.plotviewingangle[0] if args.plotviewingangle else -1
         stokes_params = scan_specpol_data(dirbin=angle, modelpath=modelpath)
 
-    dfspectrum = stokes_params[args.stokesparam].with_columns(lambda_angstroms=c_ang_per_s / pl.col("nu")).collect()
-
-    timearray = dfspectrum.columns[1:-1]
+    timearray = stokes_params["I"].collect_schema().names()[1:]
     # locals, not a write-back onto args: this function runs once for each model, and a range that
     # one model resolved would then reach the next one. get_time_range refuses a timemin that sits
     # after the last timestep, thus it dropped a shorter model and printed one line
@@ -289,10 +330,7 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     timecolname = min(timearray, key=timedistance)
     timeavg = f"{float(timecolname):.4f}"
 
-    filterfunc = get_filterfunc(args)
-    if filterfunc is not None:
-        print("Applying filter to ARTIS spectrum")
-        dfspectrum = dfspectrum.with_columns(pl.Series(timecolname, filterfunc(dfspectrum[timecolname])))
+    dfdrawn = get_polarisation_spectrum(stokes_params, timecolname, args)
 
     if args.plotvspecpol:
         # the vpkt configuration is only necessary for the observer angle in the label
@@ -306,12 +344,6 @@ def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
     fig, axesgrid = make_frame_figure(args)
     axis = axesgrid[0][0]
 
-    # main gives args.xmin and args.xmax in the unit of -xunit, thus the axis takes that same unit
-    dfspectrum = dfspectrum.with_columns(
-        x=pl.Series(convert_angstroms_to_unit(dfspectrum["lambda_angstroms"].to_numpy(), args.xunit))
-    )
-
-    dfdrawn = bin_spectrum(dfspectrum, 5, "x", timecolname) if args.binflux else dfspectrum
     axis.plot(dfdrawn["x"], dfdrawn[timecolname], label=None if args.binflux else linelabel)
 
     if args.ymax is None:
