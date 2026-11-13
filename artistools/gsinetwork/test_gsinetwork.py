@@ -104,17 +104,17 @@ def test_decayproducts_process_trajectory_reads_the_row_of_the_timestep(
         nuc_data=at.gsinetwork.decayproducts.get_nuc_data("Hotokezaka"),
         traj_root=tmp_path,
         traj_masses_g={9: 1.0},
-        # a time between the timesteps 2 and 4, and nearer to 4
-        arr_t_day=np.array([3.9e4 / day_to_s]),
+        # The final time has a measured rate.
+        arr_t_day=np.array([3.9e4, 4.0e4, 4.1e4]) / day_to_s,
         nuclide_contrib=False,
         traj_parquet_dir=None,
         traj_ID=9,
     )
 
     assert decay_powers is not None
-    assert decay_powers["hbeta"].tolist() == pytest.approx([40.0])
-    assert decay_powers["htot"].tolist() == pytest.approx([400.0])
-    assert decay_powers["Qdot"].tolist() == pytest.approx([4.0])
+    assert decay_powers["hbeta"].tolist() == pytest.approx([40.0, 40.0, 0.0])
+    assert decay_powers["htot"].tolist() == pytest.approx([400.0, 400.0, 0.0])
+    assert decay_powers["Qdot"].tolist() == pytest.approx([4.0, 4.0, 0.0])
 
     # a heating.dat with a header alone gives no heating row, and the sums leave out the trajectory
     write_trajectory_archive(tmp_path, 10, members | {"heating.dat": "#count time/s hbeta htot\n"}, ".tar.xz")
