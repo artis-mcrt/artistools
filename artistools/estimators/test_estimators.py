@@ -5368,3 +5368,17 @@ def test_units_of_a_column_of_tellurium_are_not_kelvin() -> None:
     assert at.estimators.get_units("nnelement_Te") == at.estimators.get_units("nnelement_Fe")
     assert at.estimators.get_units("init_X_Te") == at.estimators.get_units("init_X_Fe")
     assert at.estimators.get_units("em_Te") == "K"
+
+
+@pytest.mark.parametrize("weight", [0.0, 2.0])
+def test_image_mean_keeps_finite_values_beside_infinity(weight: float) -> None:
+    estimators = pl.LazyFrame({
+        "Te": [3.0, float("inf"), float("-inf"), float("nan"), None],
+        "deltavol_deltat": [weight] * 5,
+    })
+    panels = plotestimators.get_image_panels([["Te"]], estimators.collect_schema().names(), "absolute")
+    mean = estimators.select(plotestimators.get_panel_means(panels)).collect().item()
+    assert mean == pytest.approx(3.0)
+    drawn = plotestimators.get_drawn_image_values(np.array([[mean]]), logscale=False)
+    assert drawn.count() == 1
+    assert drawn[0, 0] == pytest.approx(3.0)
