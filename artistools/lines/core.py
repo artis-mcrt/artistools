@@ -388,7 +388,7 @@ def get_next_cell_with_estimators_text(modelpath: Path | str, timestep: int, mod
     return f"No cell after cell {modelgridindex} has estimators"
 
 
-def get_opacity_atomic_data(modelpath: Path | str) -> pl.DataFrame:
+def get_opacity_atomic_data(modelpath: Path | str, ionlist: tuple[tuple[int, int], ...] | None = None) -> pl.DataFrame:
     """Return the levels that ARTIS keeps and the transitions of each ion, with the columns that the opacities need.
 
     ARTIS keeps the first nlevelsmax_readin levels of each ion from compositiondata.txt, or all the levels for a
@@ -399,7 +399,7 @@ def get_opacity_atomic_data(modelpath: Path | str) -> pl.DataFrame:
     # get_opacity_lines() needs the statistical weights as well as the wavelength, and
     # add_transition_columns() drops each derived column that this call does not request
     adata = get_levels(
-        modelpath, get_transitions=True, derived_transitions_columns=["lambda_angstroms", "lower_g", "upper_g"]
+        modelpath, ionlist, get_transitions=True, derived_transitions_columns=["lambda_angstroms", "lower_g", "upper_g"]
     )
 
     keptlevelcount_of_element = get_kept_level_counts(modelpath)
