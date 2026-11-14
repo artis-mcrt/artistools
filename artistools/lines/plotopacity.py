@@ -484,12 +484,16 @@ def get_opacity_tables(
 
 
 def get_smoothing_text(dfopacities: pl.DataFrame, movingaveragewidth: float) -> str | None:
-    """Return the title of the legend, which gives the moving average of the lines, or None."""
+    """Return the title of the legend, which gives the width of the window of the moving average, or None.
+
+    The window holds an odd number of bins. The title gives the width of these bins, which can differ from
+    movingaveragewidth.
+    """
     if movingaveragewidth <= 0.0 or dfopacities.is_empty():
         return None
     deltalambda = dfopacities["lambda_angstroms_upper"][0] - dfopacities["lambda_angstroms_lower"][0]
     windowbins = get_window_bins(movingaveragewidth, deltalambda)
-    return rf"Lines: moving average of {movingaveragewidth:g} $\mathrm{{\AA}}$ ({windowbins} bins)"
+    return rf"Lines: moving average of {windowbins * deltalambda:g} $\mathrm{{\AA}}$ ({windowbins} bins)"
 
 
 def get_velocity_bounds_text(

@@ -1235,6 +1235,24 @@ def test_plotopacity_window_holds_the_nearest_odd_number_of_bins() -> None:
     assert at.lines.plotopacity.get_window_bins(1.2, 0.2) == 7
 
 
+def test_plotopacity_legend_gives_the_width_of_the_window_bins() -> None:
+    """The title of the legend gives the width of the bins that the moving average takes.
+
+    A width of 200 Angstroms takes 11 bins of 20 Angstroms. The title gave "200" beside "11 bins".
+    """
+    dfopacities = pl.DataFrame({"lambda_angstroms_lower": [3000.0, 3020.0], "lambda_angstroms_upper": [3020.0, 3040.0]})
+    title = at.lines.plotopacity.get_smoothing_text(dfopacities, 200.0)
+    assert title is not None
+    assert "moving average of 220 " in title
+    assert "(11 bins)" in title
+    # a width of an odd number of bins stays as it is
+    title = at.lines.plotopacity.get_smoothing_text(dfopacities, 100.0)
+    assert title is not None
+    assert "moving average of 100 " in title
+    assert "(5 bins)" in title
+    assert at.lines.plotopacity.get_smoothing_text(dfopacities, 0.0) is None
+
+
 def test_opacity_cell_batches_hold_fewer_cells_for_more_bins() -> None:
     """A batch has one row for each cell and bin, thus a batch of more bins must hold fewer cells.
 
