@@ -309,22 +309,26 @@ def get_computed_bin_edges(
 
 
 def get_window_bins(width: float, deltalambda: float) -> int:
-    """Return the odd number of bins nearest to the width of the window of the moving average.
+    """Return the whole number of bins nearest to the width of the window of the moving average.
 
-    An odd number of bins puts the centre of the window at the middle of a bin. If the width is an even number of
-    bins, two odd numbers are equally near, and the function gives the larger one. The tolerance of 1e-9 makes a
-    quotient such as 1.2 / 0.2 = 5.999999999999999 give the same result as 6.
+    The minimum is one bin. If two numbers are equally near, the function gives the larger one. The tolerance of
+    1e-9 makes a quotient such as 1.2 / 0.2 = 5.999999999999999 give the same result as 6.
     """
-    return 2 * math.floor(width / deltalambda / 2 + 1e-9) + 1
+    return max(1, math.floor(width / deltalambda + 0.5 + 1e-9))
 
 
 def get_moving_averages(dfopacities: pl.DataFrame, windowbins: int, columns: Sequence[str]) -> pl.DataFrame:
-    """Return the centred moving average of each column at the middle of each bin.
+    """Return the centred moving average of each column at the centre of each window.
 
-    Near each end of the range, the window holds fewer bins.
+    A window of an odd number of bins has its centre at the middle of a bin. A window of an even number of bins has
+    its centre at the lower edge of a bin, with the same number of bins on each side of this edge. Near each end of
+    the range, the window holds fewer bins.
     """
+    # the window of a bin takes windowbins // 2 bins below it, thus an even window has its centre at the lower edge
+    windowmid = pl.col("lambda_angstroms_bin_mid" if windowbins % 2 == 1 else "lambda_angstroms_lower")
     return dfopacities.select(
-        "lambda_angstroms_bin_mid", pl.col(*columns).rolling_mean(window_size=windowbins, center=True, min_samples=1)
+        windowmid.alias("lambda_angstroms_window_mid"),
+        pl.col(*columns).rolling_mean(window_size=windowbins, center=True, min_samples=1),
     )
 
 
@@ -350,7 +354,7 @@ def plot_opacities(
     )
     if dfmovingaverages is not None:
         dfmovingaverages = df_filter_minmax_bracketed(
-            dfmovingaverages, "lambda_angstroms_bin_mid", args.xmin, args.xmax
+            dfmovingaverages, "lambda_angstroms_window_mid", args.xmin, args.xmax
         ).collect()
     rowheights = (1.0, RESIDUALROWHEIGHT, RESIDUALROWHEIGHT) if args.showlinecount else (1.0, RESIDUALROWHEIGHT)
     # the frame takes one column of the page, as the plots of the other ejecta properties do, e.g. plotdensity
@@ -369,7 +373,7 @@ def plot_opacities(
     def get_line(column: str) -> "tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]":
         if dfmovingaverages is None:
             return get_bin_line(column)
-        return dfmovingaverages["lambda_angstroms_bin_mid"].to_numpy(), dfmovingaverages[column].to_numpy()
+        return dfmovingaverages["lambda_angstroms_window_mid"].to_numpy(), dfmovingaverages[column].to_numpy()
 
     opacityseries = get_opacity_series(args.taucaps)
     colors: dict[str, mplt.ColorType] = {}
@@ -453,7 +457,7 @@ def get_opacity_tables(
     """Return the tables of the plotted opacities, with the keys of output_data.
 
     The empty key gives one row for each bin of the plot. A moving average has one more point at each end of the
-    range, thus "_movingaverage" gives the moving averages and the ratios at the middle of each bin from --xmin to
+    range, thus "_movingaverage" gives the moving averages and the ratios at the centre of each window from --xmin to
     --xmax. With no moving average, the ratios go in the table of the bins. ratios holds the drawn ratio of each
     line-binned opacity.
     """
@@ -474,11 +478,11 @@ def get_opacity_tables(
     dfaverages = (
         dfmovingaverages
         .select(
-            "lambda_angstroms_bin_mid",
+            "lambda_angstroms_window_mid",
             *(pl.col(column).alias(f"{column}_movingaverage_cm2_per_g") for column in opacitycolumns),
         )
         .hstack(pl.DataFrame(ratiocolumns))
-        .filter(is_in_range("lambda_angstroms_bin_mid", args.xmin, args.xmax))
+        .filter(is_in_range("lambda_angstroms_window_mid", args.xmin, args.xmax))
     )
     return {"": dfbins, "_movingaverage": dfaverages}
 
@@ -486,7 +490,7 @@ def get_opacity_tables(
 def get_smoothing_text(dfopacities: pl.DataFrame, movingaveragewidth: float) -> str | None:
     """Return the title of the legend, which gives the width of the window of the moving average, or None.
 
-    The window holds an odd number of bins. The title gives the width of these bins, which can differ from
+    The window holds a whole number of bins. The title gives the width of these bins, which can differ from
     movingaveragewidth.
     """
     if movingaveragewidth <= 0.0 or dfopacities.is_empty():
@@ -661,7 +665,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         type=float,
         default=200.0,
         help=(
-            "Width in Angstroms of the window of the moving average. The window holds the nearest odd number of bins."
+            "Width in Angstroms of the window of the moving average. The window holds the nearest whole number of bins."
             " Give 0 for no moving average"
         ),
     )

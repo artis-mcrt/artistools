@@ -1210,7 +1210,7 @@ def test_plotopacity_calculates_only_the_bins_of_the_plot(tmp_path: Path, capsys
             df.filter(pl.col("lambda_angstroms_upper") > xmin, pl.col("lambda_angstroms_lower") < xmax),
             at.misc.df_filter_minmax_bracketed(
                 at.lines.plotopacity.get_moving_averages(df, windowbins, ["exopac", "linebinned", "linebinned_cap1"]),
-                "lambda_angstroms_bin_mid",
+                "lambda_angstroms_window_mid",
                 xmin,
                 xmax,
             ).collect(),
@@ -1221,35 +1221,58 @@ def test_plotopacity_calculates_only_the_bins_of_the_plot(tmp_path: Path, capsys
     pltest.assert_frame_equal(plotted[0][1], plotted[1][1], rel_tol=1e-9)
 
 
-def test_plotopacity_window_holds_the_nearest_odd_number_of_bins() -> None:
-    """The window of the moving average holds the odd number of bins that is nearest to its width.
+def test_plotopacity_window_holds_the_nearest_whole_number_of_bins() -> None:
+    """The window of the moving average holds the whole number of bins that is nearest to its width.
 
-    2 * round(n / 2) + 1 gave the odd number nearest to n + 1, e.g. 5 bins for a width of 3 bins.
+    The window held an odd number of bins, thus a width of 200 Angstroms took 11 bins of 20 Angstroms.
     """
     windowbins = {
-        width: at.lines.plotopacity.get_window_bins(width, 20.0) for width in (20.0, 60.0, 62.0, 140.0, 220.0)
+        width: at.lines.plotopacity.get_window_bins(width, 20.0) for width in (20.0, 60.0, 62.0, 140.0, 200.0, 220.0)
     }
-    assert windowbins == {20.0: 1, 60.0: 3, 62.0: 3, 140.0: 7, 220.0: 11}
-    # a width of an even number of bins is one bin from two odd numbers, and it takes the larger one
-    assert at.lines.plotopacity.get_window_bins(200.0, 20.0) == 11
-    assert at.lines.plotopacity.get_window_bins(1.2, 0.2) == 7
+    assert windowbins == {20.0: 1, 60.0: 3, 62.0: 3, 140.0: 7, 200.0: 10, 220.0: 11}
+    # the quotient 1.2 / 0.2 is 5.999999999999999, which must give 6 bins
+    assert at.lines.plotopacity.get_window_bins(1.2, 0.2) == 6
+    # a width half-way between two numbers takes the larger one, and the minimum is one bin
+    assert at.lines.plotopacity.get_window_bins(50.0, 20.0) == 3
+    assert at.lines.plotopacity.get_window_bins(5.0, 20.0) == 1
+
+
+def test_plotopacity_even_window_has_its_centre_at_a_bin_edge() -> None:
+    """A window of an even number of bins takes the same number of bins on each side of a bin edge."""
+    lowers = np.arange(3000.0, 3200.0, 20.0)
+    dfopacities = pl.DataFrame({
+        "lambda_angstroms_lower": lowers,
+        "lambda_angstroms_upper": lowers + 20.0,
+        "lambda_angstroms_bin_mid": lowers + 10.0,
+        "exopac": 2.0 ** np.arange(len(lowers)),
+    })
+    dfeven = at.lines.plotopacity.get_moving_averages(dfopacities, 4, ["exopac"])
+    # the window with its centre at 3080 Angstroms takes the two bins below this edge and the two bins above it
+    row = dfeven.row(4, named=True)
+    assert np.isclose(row["lambda_angstroms_window_mid"], 3080.0, rtol=1e-12, atol=0.0)
+    assert np.isclose(row["exopac"], (4.0 + 8.0 + 16.0 + 32.0) / 4, rtol=1e-12, atol=0.0)
+    dfodd = at.lines.plotopacity.get_moving_averages(dfopacities, 3, ["exopac"])
+    row = dfodd.row(4, named=True)
+    assert np.isclose(row["lambda_angstroms_window_mid"], 3090.0, rtol=1e-12, atol=0.0)
+    assert np.isclose(row["exopac"], (8.0 + 16.0 + 32.0) / 3, rtol=1e-12, atol=0.0)
 
 
 def test_plotopacity_legend_gives_the_width_of_the_window_bins() -> None:
     """The title of the legend gives the width of the bins that the moving average takes.
 
-    A width of 200 Angstroms takes 11 bins of 20 Angstroms. The title gave "200" beside "11 bins".
+    A width of 210 Angstroms takes 11 bins of 20 Angstroms, which are 220 Angstroms. The title gave the width of
+    the request beside the number of bins.
     """
     dfopacities = pl.DataFrame({"lambda_angstroms_lower": [3000.0, 3020.0], "lambda_angstroms_upper": [3020.0, 3040.0]})
-    title = at.lines.plotopacity.get_smoothing_text(dfopacities, 200.0)
+    title = at.lines.plotopacity.get_smoothing_text(dfopacities, 210.0)
     assert title is not None
     assert "moving average of 220 " in title
     assert "(11 bins)" in title
-    # a width of an odd number of bins stays as it is
-    title = at.lines.plotopacity.get_smoothing_text(dfopacities, 100.0)
+    # a width of a whole number of bins stays as it is
+    title = at.lines.plotopacity.get_smoothing_text(dfopacities, 200.0)
     assert title is not None
-    assert "moving average of 100 " in title
-    assert "(5 bins)" in title
+    assert "moving average of 200 " in title
+    assert "(10 bins)" in title
     assert at.lines.plotopacity.get_smoothing_text(dfopacities, 0.0) is None
 
 
@@ -1413,11 +1436,11 @@ def test_plotopacity_writes_the_drawn_values(
         assert np.allclose(dfbins["lambda_angstroms_upper"].to_numpy(), binx[1::3], rtol=1e-12, atol=0.0)
         assert np.allclose(dfbins[f"{column}_cm2_per_g"].to_numpy(), biny[0::3], rtol=1e-12, atol=0.0)
         averagex, averagey = np.asarray(averagexall)[isinrange], np.asarray(averageyall)[isinrange]
-        assert np.allclose(dfaverages["lambda_angstroms_bin_mid"].to_numpy(), averagex, rtol=1e-12, atol=0.0)
+        assert np.allclose(dfaverages["lambda_angstroms_window_mid"].to_numpy(), averagex, rtol=1e-12, atol=0.0)
         assert np.allclose(dfaverages[f"{column}_movingaverage_cm2_per_g"].to_numpy(), averagey, rtol=1e-12, atol=0.0)
     for column, (_, ratioxall, ratioyall) in zip(columns[1:], ratioplots, strict=True):
         ratiox, ratioy = np.asarray(ratioxall)[isinrange], np.asarray(ratioyall)[isinrange]
-        assert np.allclose(dfaverages["lambda_angstroms_bin_mid"].to_numpy(), ratiox, rtol=1e-12, atol=0.0)
+        assert np.allclose(dfaverages["lambda_angstroms_window_mid"].to_numpy(), ratiox, rtol=1e-12, atol=0.0)
         assert np.allclose(
             dfaverages[f"ratio_{column}_to_exopac"].to_numpy(), ratioy, rtol=1e-12, atol=0.0, equal_nan=True
         )
