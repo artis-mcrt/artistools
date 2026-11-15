@@ -3727,14 +3727,21 @@ def test_summary_table_agrees_with_the_summary_lines(
     assert np.isclose(dfpeak["relnoise"].item(), row["peak_relnoise"], rtol=1e-12)
 
 
-def test_bolometric_export_stops_when_two_models_have_the_same_name(tmp_path: Path) -> None:
+def test_bolometric_export_stops_when_two_models_have_the_same_name(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     from artistools.lightcurve import writebollightcurvedata
 
-    modelpaths = [tmp_path / name for name in ("first", "second")]
-    for folder in modelpaths:
+    modelpaths = [tmp_path / name for name in ("first", "second", "third")]
+    for folder, label in zip(modelpaths, ("same", "same", "different"), strict=True):
         folder.mkdir()
-        (folder / "plotlabel.txt").write_text("same\n", encoding="utf-8")
+        (folder / "plotlabel.txt").write_text(f"{label}\n", encoding="utf-8")
     outputfolder = tmp_path / "output"
     with pytest.raises(SystemExit):
         writebollightcurvedata.main(argsraw=[], modelpath=modelpaths, outputfile=outputfolder)
+    errortext = "".join(capsys.readouterr().err.split())
+    assert "nameofadifferentmodelpath" in errortext
+    assert "first" in errortext
+    assert "second" in errortext
+    assert "third" not in errortext
     assert not list(outputfolder.iterdir())

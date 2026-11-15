@@ -78,31 +78,33 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         else "# 1st col is time in days, 2nd col is the spherically averaged bolometric luminosity in erg/s"
     )
 
+    modelpaths = normalize_path_list(args.modelpath)
+    modelnames = [get_model_name(modelpath) for modelpath in modelpaths]
+    # the name of a model gives the name of its file, thus a later model replaces the file of an earlier one
+    samenamepaths = [
+        str(modelpath)
+        for modelpath, modelname in zip(modelpaths, modelnames, strict=True)
+        if modelnames.count(modelname) > 1
+    ]
+    if samenamepaths:
+        exit_with_error(
+            f"These model paths have the name of a different model path: {', '.join(samenamepaths)}",
+            "Give each model a different name in its plotlabel.txt, or write each model to a different output folder",
+        )
+
     outputpath = Path(args.outputfile)
     outputpath.mkdir(parents=True, exist_ok=True)
     # the two sources hold different columns, thus each one writes a file of its own
     suffix = "_fromspectra" if args.fromspectra else ""
-    modelpaths = normalize_path_list(args.modelpath)
-    modelnames = [get_model_name(modelpath) for modelpath in modelpaths]
-    if len(set(modelnames)) < len(modelnames):
-        # the name of a model gives the name of its file, thus the second model replaces the file of the first
-        exit_with_error(
-            f"Two models have the same name, thus they have the same output file: {', '.join(modelnames)}",
-            "Give each model a different name in its plotlabel.txt, or run the command for one model at a time",
-        )
-    confirm_overwrite(
-        [outputpath],
-        [f"bol_lightcurvedata_{get_model_name(modelpath)}{suffix}.txt" for modelpath in modelpaths],
-        force=args.force,
-    )
+    filenames = [f"bol_lightcurvedata_{modelname}{suffix}.txt" for modelname in modelnames]
+    confirm_overwrite([outputpath], filenames, force=args.force)
 
-    for modelpath in modelpaths:
-        modelname = get_model_name(modelpath)
+    for modelpath, filename in zip(modelpaths, filenames, strict=True):
         lightcurvedataframe = (
             get_bol_lc_from_spec(modelpath) if args.fromspectra else get_bol_lc_from_lightcurveout(modelpath)
         )
 
-        outfilepath = outputpath / f"bol_lightcurvedata_{modelname}{suffix}.txt"
+        outfilepath = outputpath / filename
         with outfilepath.open("w", encoding="utf-8") as f:
             f.write(f"{header}\n")
             lightcurvedataframe.write_csv(f, separator=" ", include_header=False, null_value="nan")

@@ -245,11 +245,18 @@ def test_write_edep_needs_the_deposition_estimators(tmp_path: Path, capsys: pyte
     assert "hold no deposition_ column" in " ".join(capsys.readouterr().err.split())
 
 
-def test_comparison_export_stops_when_two_models_have_the_same_identifier(tmp_path: Path) -> None:
-    modelpaths = [tmp_path / name for name in ("model_low", "model_high")]
+def test_comparison_export_stops_when_two_models_have_the_same_identifier(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    modelpaths = [tmp_path / name for name in ("model_low", "model_high", "other_low")]
     for folder in modelpaths:
         folder.mkdir()
     outputfolder = tmp_path / "output"
     with pytest.raises(SystemExit):
         at.writecomparisondata.main(argsraw=[], modelpath=modelpaths, outputfile=outputfolder, selected_timesteps=[50])
+    errortext = "".join(capsys.readouterr().err.split())
+    assert "identifierofadifferentmodelpath" in errortext
+    assert "model_low" in errortext
+    assert "model_high" in errortext
+    assert "other_low" not in errortext
     assert not list(outputfolder.iterdir())
