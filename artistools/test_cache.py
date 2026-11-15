@@ -103,7 +103,7 @@ def test_cache_delete_keeps_an_active_parts_folder(tmp_path: Path) -> None:
         assert partfile.read_bytes() == b"part"
 
 
-def test_cache_delete_keeps_an_active_partial_file(tmp_path: Path) -> None:
+def test_cache_delete_keeps_the_temporary_folder_of_an_active_write(tmp_path: Path) -> None:
     pytest.importorskip("fcntl")
     from artistools.cache import delete_caches
     from artistools.misc import write_parquet_atomic
@@ -130,8 +130,9 @@ def test_cache_delete_operates_on_a_file_system_without_flock(tmp_path: Path) ->
     from artistools.misc import write_parquet_atomic
 
     cachepath = tmp_path / "model.txt.parquet"
-    leftover = tmp_path / ".model.txt.parquet.partialab12.partial"
-    leftover.write_text("x")
+    leftover = tmp_path / ".model.txt.parquet.parts9x"
+    leftover.mkdir()
+    (leftover / "conversion-lock").write_text("")
     with mock.patch.object(fcntl, "flock", side_effect=OSError(errno.ENOSYS, "Function not implemented")):
         write_parquet_atomic(pl.DataFrame({"value": [1]}), cachepath)
         assert cachepath.is_file()

@@ -979,10 +979,10 @@ def test_write_parquet_atomic_names_a_read_only_mount(tmp_path: Path, monkeypatc
     import errno
     import tempfile
 
-    def readonly_mkstemp(*_args: t.Any, **_kwargs: t.Any) -> tuple[int, str]:
+    def readonly_mkdtemp(*_args: t.Any, **_kwargs: t.Any) -> str:
         raise OSError(errno.EROFS, "Read-only file system")
 
-    monkeypatch.setattr(tempfile, "mkstemp", readonly_mkstemp)
+    monkeypatch.setattr(tempfile, "mkdtemp", readonly_mkdtemp)
     with pytest.raises(PermissionError, match="is read-only"):
         at.misc.write_parquet_atomic(pl.DataFrame({"a": [1]}), tmp_path / "out.parquet")
 

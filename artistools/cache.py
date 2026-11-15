@@ -53,8 +53,8 @@ CACHE_BASENAME: t.Final = (
 # a cache of an artistools version before 2026-10 also has the suffix .tmp
 CACHE_NAME_PATTERN: t.Final = re.compile(rf"{CACHE_BASENAME}(?:\.tmp)?")
 
-# write_parquet_atomic writes a cache to a temporary file of the name of mkstemp, and a conversion of estimators
-# writes its parts into a temporary folder. A conversion that stops, e.g. at the time limit of a job, can leave them
+# a conversion writes its files into a temporary folder. A conversion that stops, e.g. at the time limit of a job, can
+# leave the folder. An artistools version before 2026-11 wrote a cache to a temporary file of the name of mkstemp
 LEFTOVER_NAME_PATTERN: t.Final = re.compile(rf"\.{CACHE_BASENAME}\.(?:partial\w+\.partial|parts\w+)")
 
 

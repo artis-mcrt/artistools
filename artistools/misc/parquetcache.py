@@ -335,14 +335,14 @@ def get_readonly_cache_error(parquetfilepath: Path) -> PermissionError:
     return PermissionError(msg)
 
 
-# a parts folder holds a file of this name, which takes the lock of the conversion, because NFS gives no exclusive
-# flock on a folder
-PARTS_LOCK_NAME: t.Final = "conversion-lock"
+# a temporary folder holds a file of this name, which takes the lock of the conversion. A lock on a data file stops
+# each write to it on an SMB mount, and NFS gives no exclusive flock on a folder
+CONVERSION_LOCK_NAME: t.Final = "conversion-lock"
 
 
 @contextlib.contextmanager
-def conversion_lock(lockpath: Path) -> Generator[None]:
-    """Hold a shared flock on a temporary file of a conversion, thus conversion_is_active gives True for it.
+def conversion_lock(temporaryfolder: Path) -> Generator[None]:
+    """Hold a shared flock on the lock file of a temporary folder, thus conversion_is_active gives True for it.
 
     The operating system releases the lock of a conversion that stops. A platform or a file system without flock
     gives no lock, and the conversion continues.
@@ -352,7 +352,7 @@ def conversion_lock(lockpath: Path) -> Generator[None]:
     except ImportError:
         yield
         return
-    lockfd = os.open(lockpath, os.O_CREAT | os.O_RDWR, 0o600)
+    lockfd = os.open(temporaryfolder / CONVERSION_LOCK_NAME, os.O_CREAT | os.O_RDWR, 0o600)
     try:
         with contextlib.suppress(OSError):
             fcntl.flock(lockfd, fcntl.LOCK_SH)
@@ -362,15 +362,17 @@ def conversion_lock(lockpath: Path) -> Generator[None]:
 
 
 def conversion_is_active(temporarypath: Path) -> bool:
-    """Return True if a conversion holds conversion_lock on a temporary file or on the lock file of a parts folder.
+    """Return True if a conversion holds conversion_lock in a temporary folder. The test does not wait.
 
-    The test does not wait. It gives False if it cannot test the lock, e.g. on a file system without flock.
+    A folder that this user cannot open belongs to a different user, thus the test gives True. A path with no lock
+    file gives False. The test also gives False if flock is not available, e.g. on some Lustre file systems.
     """
-    lockpath = temporarypath / PARTS_LOCK_NAME if temporarypath.is_dir() else temporarypath
     try:
         import fcntl
 
-        lockfd = os.open(lockpath, os.O_RDWR)
+        lockfd = os.open(temporarypath / CONVERSION_LOCK_NAME, os.O_RDWR)
+    except PermissionError:
+        return True
     except (ImportError, OSError):
         return False
     try:
@@ -386,7 +388,7 @@ def conversion_is_active(temporarypath: Path) -> bool:
 
 @contextlib.contextmanager
 def temporary_parts_folder(parquetfilepath: Path) -> Generator[Path]:
-    """Give a temporary folder beside a cache for the parts of the cache, and remove the folder after use.
+    """Give a temporary folder beside a cache for the files of its conversion, and remove the folder after use.
 
     The folder is on the file system of the cache, because the parts of a large model need as much space as the cache.
     The name of the folder starts with a dot, thus no glob of the caches finds it. The folder holds conversion_lock
@@ -402,7 +404,7 @@ def temporary_parts_folder(parquetfilepath: Path) -> Generator[Path]:
         if not is_readonly_error(exc):
             raise
         raise get_readonly_cache_error(parquetfilepath) from exc
-    with partsfolder as partsfoldername, conversion_lock(Path(partsfoldername) / PARTS_LOCK_NAME):
+    with partsfolder as partsfoldername, conversion_lock(Path(partsfoldername)):
         yield Path(partsfoldername)
 
 
@@ -441,52 +443,39 @@ def write_parquet_atomic(
     started is too late to take it: a rival that finished its own replacement first would be snapshotted as
     the file to replace, and its fresh file would be renamed over while a reader scans it.
 
-    The temporary name is prefixed with a dot so that it does not start with the destination's name. A glob
-    keyed on that name (get_runfolder_timesteps() looks for "estimbatch*.out.parquet*") would otherwise match
+    The temporary file is in a folder from temporary_parts_folder, whose name starts with a dot. A glob keyed on
+    the destination's name (get_runfolder_timesteps() looks for "estimbatch*.out.parquet*") would otherwise match
     the in-flight temporary and read a file that is empty, half-written, or already renamed away.
     """
-    import tempfile
-
     try:
         deststat: os.stat_result | None = parquetfilepath.stat()
     except FileNotFoundError:
         deststat = None
 
-    try:
-        fd, partialfilename = tempfile.mkstemp(
-            dir=parquetfilepath.parent, prefix=f".{parquetfilepath.name}.partial", suffix=".partial"
-        )
-    except OSError as exc:
-        if not is_readonly_error(exc):
-            raise
-        raise get_readonly_cache_error(parquetfilepath) from exc
-    os.close(fd)
-    partialfilepath = Path(partialfilename)
-    # mkstemp creates the file 0600, and the destination takes the mode of the file that lands on it, so a
-    # cache written into a group-shared model directory would be unreadable to everyone but its author.
+    # sink_parquet applies the umask of the process, and the destination takes the mode of the file that lands on
+    # it, so a cache written into a group-shared model directory could be unreadable to everyone but its author.
     # Reuse the mode the destination already has, or else the read/write bits of the directory holding it —
     # reading the process umask would need a get-and-restore that is not safe against other threads.
     destmode = deststat.st_mode if deststat else parquetfilepath.parent.stat().st_mode & 0o666
-    partialfilepath.chmod(destmode & 0o777)
-    # "artistools cache delete" keeps the temporary file while this lock shows that the write is active
-    with conversion_lock(partialfilepath):
+    # "artistools cache delete" keeps the temporary folder while its lock shows that the write is active
+    with temporary_parts_folder(parquetfilepath) as temporaryfolder:
+        # the name is not the name of a cache, thus no search for the caches finds the file
+        partialfilepath = temporaryfolder / "partial.parquet"
+        pldf.lazy().sink_parquet(
+            partialfilepath,
+            compression="zstd",
+            compression_level=compression_level,
+            metadata=metadata,
+            row_group_size=row_group_size,
+        )
+        partialfilepath.chmod(destmode & 0o777)
         try:
-            pldf.lazy().sink_parquet(
-                partialfilepath,
-                compression="zstd",
-                compression_level=compression_level,
-                metadata=metadata,
-                row_group_size=row_group_size,
-            )
-            try:
-                # gives the file a second name, and fails if that name is taken, thus the destination appears
-                # complete in one step and no reader of it ever sees a different file at the same path
-                os.link(partialfilepath, parquetfilepath)
-            except FileExistsError:
-                replace_outdated_file(partialfilepath, parquetfilepath, replaces)
-            except OSError:
-                # a file system without hard links cannot make the destination appear in one step, but the
-                # locked identity rule still applies: install, replace the out-of-date file, or keep a rival's
-                replace_outdated_file(partialfilepath, parquetfilepath, replaces)
-        finally:
-            partialfilepath.unlink(missing_ok=True)
+            # gives the file a second name, and fails if that name is taken, thus the destination appears
+            # complete in one step and no reader of it ever sees a different file at the same path
+            os.link(partialfilepath, parquetfilepath)
+        except FileExistsError:
+            replace_outdated_file(partialfilepath, parquetfilepath, replaces)
+        except OSError:
+            # a file system without hard links cannot make the destination appear in one step, but the
+            # locked identity rule still applies: install, replace the out-of-date file, or keep a rival's
+            replace_outdated_file(partialfilepath, parquetfilepath, replaces)
