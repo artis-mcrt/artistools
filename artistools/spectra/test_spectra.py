@@ -3900,6 +3900,38 @@ def test_output_template_names_a_field_that_plotspectra_does_not_give(tmp_path: 
 
 
 @pytest.mark.parametrize(
+    "selection",
+    [
+        {"specpath": [modelpath_classic_3d, modelpath_classic_3d]},
+        {"plotviewingangle": [0, 1]},
+        {"plotvspecpol": [0, 1]},
+    ],
+)
+@pytest.mark.parametrize("stokesparam", ["Q/I", "U/I"])
+def test_polarisation_refuses_multiple_series(
+    selection: dict[str, t.Any], stokesparam: str, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    options = {"specpath": [modelpath_classic_3d], "timedays": "5", "outputfile": tmp_path, **selection}
+    with (
+        mock.patch.object(plotspectra, "scan_specpol_data") as scanspecpol,
+        mock.patch.object(plotspectra, "scan_vspecpol_data") as scanvspecpol,
+        pytest.raises(SystemExit),
+    ):
+        at.spectra.plot(args=None, argsraw=[], stokesparam=stokesparam, **options)
+    scanspecpol.assert_not_called()
+    scanvspecpol.assert_not_called()
+    assert "one model path and one direction" in capsys.readouterr().err
+
+
+def test_polarisation_limits_keep_the_average_of_models() -> None:
+    """--averagevspecpolfiles runs in place of the polarisation plot, thus a ratio keeps its two model paths."""
+    specpath = [modelpath_classic_3d, modelpath_classic_3d]
+    with mock.patch.object(plotspectra, "make_averaged_vspecfiles") as average:
+        at.spectra.plot(args=None, argsraw=[], stokesparam="Q/I", specpath=specpath, averagevspecpolfiles=True)
+    average.assert_called_once()
+
+
+@pytest.mark.parametrize(
     ("times", "fluxes", "expected"), [([1.5, 3.0, 6.0], [0.0, 0.0, 1.0], 4 / 7), ([3.0], [2.0], 2.0)]
 )
 def test_virtual_spectrum_uses_logarithmic_time_weights(
