@@ -2372,8 +2372,8 @@ def get_panel_means(panels: Sequence[ImagePanel]) -> list[pl.Expr]:
     for panelindex, panel in enumerate(panels):
         weight = pl.col("deltavol_deltat") * (panel.weightexpr if panel.weightexpr is not None else pl.lit(1.0))
         value = panel.colexpr.cast(pl.Float64)
-        # a cell or a timestep with no value must not pull the mean to zero, and a NaN is not a null
-        hasvalue = value.is_not_null() & value.is_not_nan()
+        # a cell with no value, a NaN, or an infinity must not change the mean of its pixel, as in get_line_points
+        hasvalue = value.is_finite().fill_null(value=False)
         weightsum = weight.filter(hasvalue).sum()
         means.append(
             pl
