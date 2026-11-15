@@ -920,7 +920,7 @@ def get_series_name(reference: ReferenceData, path: str) -> str:
     return get_metadata_label(get_file_metadata(filepath) if filepath is not None else {}, path)
 
 
-def get_series_colours(reference: ReferenceData, paths: "Sequence[str]", rows: OptionRows) -> dict[str, str]:
+def get_series_colours(reference: ReferenceData, paths: "Sequence[str]", rows: OptionRows) -> list[str]:
     """Return the colour of each series, as the command gives it with the --color of the option rows."""
     return get_path_colours(paths, [reference.is_reference(path) for path in paths], rows)
 
@@ -929,12 +929,11 @@ def make_series_rows(reference: ReferenceData, paths: "Sequence[str]", rows: Opt
     """Return a row of the list for each series, with the style of the series in the option rows."""
     import matplotlib.colors as mplcolors
 
-    # a command can give one model two times, and the copies of it are still one model
-    models = list(dict.fromkeys(path for path in paths if is_model_path(path)))
+    models = [path for path in paths if is_model_path(path)]
     colours = get_series_colours(reference, paths, rows)
     seriesrows: list[SeriesRow] = []
-    for path in paths:
-        style = get_series_style(rows, paths, path)
+    for index, path in enumerate(paths):
+        style = get_series_style(rows, paths, path, occurrence=list(paths[:index]).count(path))
         itemtext = get_series_item_text(reference, path)
         seriesrows.append(
             SeriesRow(
@@ -943,7 +942,7 @@ def make_series_rows(reference: ReferenceData, paths: "Sequence[str]", rows: Opt
                 labelled=style["--label"] is not None,
                 itemtext=itemtext,
                 tooltip=itemtext,
-                swatch=make_series_swatch(mplcolors.to_hex(colours[path]), style),
+                swatch=make_series_swatch(mplcolors.to_hex(colours[index]), style),
                 removereason=(
                     "The plot needs one ARTIS model at least. Add a different model first" if models == [path] else None
                 ),
@@ -994,7 +993,7 @@ class SeriesListActions(t.NamedTuple):
     # return the rows of the option table, which hold the style of each series, e.g. --label
     get_rows: "Callable[[], OptionRows]"
     # apply a new list of paths, e.g. a new order, an added path, or a removed path
-    apply_paths: "Callable[[Sequence[str]], None]"
+    apply_paths: "Callable[[Sequence[str], Sequence[int | None] | None], None]"
     # apply new rows of the option table, e.g. a new --label of a series. The flag is True for a change that makes a
     # new step of Undo
     apply_rows: "Callable[[OptionRows, bool], None]"
@@ -1030,11 +1029,11 @@ def add_series_list(
     from PySide6 import QtGui
     from PySide6 import QtWidgets
 
-    def apply_paths(paths: "Sequence[str]") -> None:
+    def apply_paths(paths: "Sequence[str]", sourceindices: "Sequence[int | None] | None" = None) -> None:
         """Apply a new list of series. A SystemExit in a Qt slot ends the process, thus an error stays here."""
 
         def apply_new_paths() -> None:
-            actions.apply_paths(paths)
+            actions.apply_paths(paths, sourceindices)
 
         if (message := run_command_step(apply_new_paths, quiet=False)) is not None:
             actions.show_error(message)
@@ -1044,8 +1043,10 @@ def add_series_list(
         paths = list(actions.get_paths())
         if row < 0 or not 0 <= row + step < len(paths):
             return
+        order: list[int | None] = list(range(len(paths)))
+        order.insert(row + step, order.pop(row))
         paths.insert(row + step, paths.pop(row))
-        apply_paths(paths)
+        apply_paths(paths, order)
         serieslist.setCurrentRow(row + step)
 
     serieslist = make_reorder_list(lambda step: move_row(serieslist.currentRow(), step))
@@ -1098,15 +1099,17 @@ def add_series_list(
             return
         apply_paths((*current, *newpaths))
 
-    def remove_path(path: str) -> None:
-        paths = [other for other in actions.get_paths() if other != path]
+    def remove_path(index: int) -> None:
+        oldpaths = actions.get_paths()
+        order = [other for other in range(len(oldpaths)) if other != index]
+        paths = [oldpaths[other] for other in order]
         # the time controls read the timesteps of a model, thus the plot needs an ARTIS model
         if not any(is_model_path(other) for other in paths):
             actions.show_error(
                 "The plot needs one ARTIS model at least. Add a different model before you remove this one"
             )
             return
-        apply_paths(paths)
+        apply_paths(paths, order)
 
     def copy_path(path: str) -> None:
         copy_text(str(get_series_full_path(reference, path)))
@@ -1118,21 +1121,27 @@ def add_series_list(
         folder = fullpath if fullpath.is_dir() else fullpath.parent
         QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(folder)))
 
-    def edit_properties(path: str) -> None:
+    def edit_properties(index: int) -> None:
         """Ask for the style of the line of a series, e.g. the label, the colour, and the width."""
         paths, rows = actions.get_paths(), actions.get_rows()
-        if path not in paths:
+        if not 0 <= index < len(paths):
             return
+        path = paths[index]
+        occurrence = list(paths[:index]).count(path)
         # the colour of the popup for "Default" is the colour that the series has with no --color of its own
-        defaultrows = set_series_rows(rows, paths, path, {"--color": None})
-        defaultcolour = get_series_colours(reference, paths, defaultrows)[path]
-        style = get_series_style(rows, paths, path)
+        defaultrows = set_series_rows(rows, paths, path, {"--color": None}, occurrence=occurrence)
+        defaultcolour = get_series_colours(reference, paths, defaultrows)[index]
+        style = get_series_style(rows, paths, path, occurrence=occurrence)
 
         def show_changes(changes: "Mapping[str, str | None] | None", undoable: bool) -> None:
             # a change applies to the current values, because the window can change them while the popup is open, e.g.
             # Play. A value of None for changes gives the series its style from before the popup
             newstyle = style if changes is None else changes
-            actions.apply_rows(set_series_rows(actions.get_rows(), actions.get_paths(), path, newstyle), undoable)
+            currentpaths = actions.get_paths()
+            if list(currentpaths).count(path) > occurrence:
+                actions.apply_rows(
+                    set_series_rows(actions.get_rows(), currentpaths, path, newstyle, occurrence=occurrence), undoable
+                )
 
         edit_series_properties(
             window,
@@ -1154,7 +1163,7 @@ def add_series_list(
         rowlayout.addWidget(QtWidgets.QLabel(f"<b>{index + 1}</b>"))
         # the new list replaces this row, thus each action of a button waits until the click ends
         swatch = make_swatch_button(
-            name, SWATCH_WIDTH, partial(QtCore.QTimer.singleShot, 0, window, partial(edit_properties, path))
+            name, SWATCH_WIDTH, partial(QtCore.QTimer.singleShot, 0, window, partial(edit_properties, index))
         )
         swatch.setIcon(QtGui.QIcon(seriesrow.swatch))
         rowlayout.addWidget(swatch)
@@ -1180,7 +1189,7 @@ def add_series_list(
         for symbol, tooltip, enabled, action in (
             ("chevron.up", f"Move {name} up (Alt-Up)", index > 0, partial(move_row, index, -1)),
             ("chevron.down", f"Move {name} down (Alt-Down)", index < count - 1, partial(move_row, index, 1)),
-            ("xmark", f"Remove {name} from the plot", seriesrow.removereason is None, partial(remove_path, path)),
+            ("xmark", f"Remove {name} from the plot", seriesrow.removereason is None, partial(remove_path, index)),
         ):
             button = make_glyph_button(symbol, tooltip, tooltip)
             button.setEnabled(enabled)
@@ -1199,10 +1208,10 @@ def add_series_list(
             ("Move to Top", index > 0, partial(move_row, index, -index)),
             ("Move to Bottom", index < count - 1, partial(move_row, index, count - 1 - index)),
             *seriesrow.extraactions,
-            ("Line Properties…", True, partial(edit_properties, path)),
+            ("Line Properties…", True, partial(edit_properties, index)),
             ("Copy Path", True, partial(copy_path, path)),
             ("Open Folder", not is_remote_path(path), partial(open_folder, path)),
-            ("Remove", seriesrow.removereason is None, partial(remove_path, path)),
+            ("Remove", seriesrow.removereason is None, partial(remove_path, index)),
         ):
             rowaction = QtGui.QAction(text, row)
             rowaction.setEnabled(enabled)
@@ -1244,6 +1253,7 @@ def add_series_list(
         for index, seriesrow in enumerate(rows):
             item = QtWidgets.QListWidgetItem()
             item.setData(QtCore.Qt.ItemDataRole.UserRole, seriesrow.path)
+            item.setData(QtCore.Qt.ItemDataRole.UserRole + 1, index)
             row = make_row(index, len(rows), seriesrow)
             rowheight = max(rowheight, row.sizeHint().height())
             serieslist.addItem(item)
@@ -1268,11 +1278,12 @@ def add_series_list(
         paths = list(actions.get_paths())
         if sorted(order) != sorted(paths):
             return
-        if order == paths and all(serieslist.itemWidget(item) is not None for item in items):
+        sourceindices = [item.data(QtCore.Qt.ItemDataRole.UserRole + 1) for item in items]
+        if sourceindices == list(range(len(paths))) and all(serieslist.itemWidget(item) is not None for item in items):
             return
         # the rows show the numbers and the buttons of the old order, thus show_rows makes them again
         shown[0] = None
-        apply_paths(order)
+        apply_paths(order, sourceindices)
 
     def get_start_folder() -> Path:
         # the dialog shows only local folders, thus it opens in the working folder for a first model on a different host
@@ -1346,7 +1357,7 @@ def add_series_list(
     recentmodelsmenu.aboutToShow.connect(show_recent_models)
 
     def on_double_click(item: QtWidgets.QListWidgetItem) -> None:
-        edit_properties(item.data(QtCore.Qt.ItemDataRole.UserRole))
+        edit_properties(serieslist.row(item))
 
     serieslist.itemDoubleClicked.connect(on_double_click)
 
