@@ -4,7 +4,6 @@ import contextlib
 import datetime as dt
 import errno
 import os
-import stat
 import sys
 import time
 import typing as t
@@ -81,63 +80,6 @@ def replace_outdated_file(newfilepath: Path, destpath: Path, outdatedfile: tuple
         identity = get_file_identity(destpath)
         if identity is None or identity == outdatedfile:
             newfilepath.replace(destpath)
-    finally:
-        os.close(lockfd)
-
-
-@contextlib.contextmanager
-def cache_conversion_lock(parquetfilepath: Path, *, exclusive: bool = False) -> Generator[bool]:
-    """Hold the lock that shows an active conversion of a cache, and give False if the lock is not available.
-
-    A conversion holds the shared lock while its temporary files exist. A deletion requests the exclusive lock and
-    does not wait for it. The lock file stays in place, thus each process locks the same inode. A deletion makes no
-    lock file, because an absent lock file shows that no conversion is active.
-
-    A platform or a file system without flock gives True for each request, as replace_outdated_file continues
-    without its lock. A deletion there has no protection, but the conversions and the deletion still operate.
-    """
-    try:
-        import fcntl
-    except ImportError:
-        yield True
-        return
-
-    cachename = parquetfilepath.name.removesuffix(".tmp")
-    lockpath = parquetfilepath.with_name(f".{cachename}.conversion-lock")
-    flags = os.O_NOFOLLOW | os.O_NONBLOCK | (0 if exclusive else os.O_CREAT)
-    try:
-        try:
-            lockfd = os.open(lockpath, flags | os.O_RDWR, 0o666)
-        except PermissionError:
-            lockfd = os.open(lockpath, flags | os.O_RDONLY, 0o666)
-    except FileNotFoundError:
-        if not exclusive:
-            raise
-        yield True
-        return
-    except OSError as exc:
-        if not is_readonly_error(exc):
-            raise
-        raise get_readonly_cache_error(parquetfilepath) from exc
-    try:
-        lockstat = os.fstat(lockfd)
-        if not stat.S_ISREG(lockstat.st_mode) or lockstat.st_nlink != 1:
-            msg = f"The cache lock {lockpath} must be a regular file with one link"
-            raise ValueError(msg)
-        with contextlib.suppress(OSError):
-            os.fchmod(lockfd, 0o666)
-        try:
-            fcntl.flock(lockfd, fcntl.LOCK_EX | fcntl.LOCK_NB if exclusive else fcntl.LOCK_SH)
-        except BlockingIOError:
-            acquired = False
-        except OSError as exc:
-            # e.g. a Lustre file system that the cluster mounts without the flock option
-            if exc.errno not in {errno.ENOSYS, errno.EOPNOTSUPP, errno.ENOLCK}:
-                raise
-            acquired = True
-        else:
-            acquired = True
-        yield acquired
     finally:
         os.close(lockfd)
 
@@ -393,26 +335,75 @@ def get_readonly_cache_error(parquetfilepath: Path) -> PermissionError:
     return PermissionError(msg)
 
 
+# a parts folder holds a file of this name, which takes the lock of the conversion, because NFS gives no exclusive
+# flock on a folder
+PARTS_LOCK_NAME: t.Final = "conversion-lock"
+
+
+@contextlib.contextmanager
+def conversion_lock(lockpath: Path) -> Generator[None]:
+    """Hold a shared flock on a temporary file of a conversion, thus conversion_is_active gives True for it.
+
+    The operating system releases the lock of a conversion that stops. A platform or a file system without flock
+    gives no lock, and the conversion continues.
+    """
+    try:
+        import fcntl
+    except ImportError:
+        yield
+        return
+    lockfd = os.open(lockpath, os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        with contextlib.suppress(OSError):
+            fcntl.flock(lockfd, fcntl.LOCK_SH)
+        yield
+    finally:
+        os.close(lockfd)
+
+
+def conversion_is_active(temporarypath: Path) -> bool:
+    """Return True if a conversion holds conversion_lock on a temporary file or on the lock file of a parts folder.
+
+    The test does not wait. It gives False if it cannot test the lock, e.g. on a file system without flock.
+    """
+    lockpath = temporarypath / PARTS_LOCK_NAME if temporarypath.is_dir() else temporarypath
+    try:
+        import fcntl
+
+        lockfd = os.open(lockpath, os.O_RDWR)
+    except (ImportError, OSError):
+        return False
+    try:
+        fcntl.flock(lockfd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return True
+    except OSError:
+        return False
+    finally:
+        os.close(lockfd)
+    return False
+
+
 @contextlib.contextmanager
 def temporary_parts_folder(parquetfilepath: Path) -> Generator[Path]:
     """Give a temporary folder beside a cache for the parts of the cache, and remove the folder after use.
 
     The folder is on the file system of the cache, because the parts of a large model need as much space as the cache.
-    The name of the folder starts with a dot, thus no glob of the caches finds it.
+    The name of the folder starts with a dot, thus no glob of the caches finds it. The folder holds conversion_lock
+    during its use, thus "artistools cache delete" keeps it.
     """
     import tempfile
 
-    with cache_conversion_lock(parquetfilepath):
-        try:
-            partsfolder = tempfile.TemporaryDirectory(
-                dir=parquetfilepath.parent, prefix=f".{parquetfilepath.name}.parts", ignore_cleanup_errors=True
-            )
-        except OSError as exc:
-            if not is_readonly_error(exc):
-                raise
-            raise get_readonly_cache_error(parquetfilepath) from exc
-        with partsfolder as partsfoldername:
-            yield Path(partsfoldername)
+    try:
+        partsfolder = tempfile.TemporaryDirectory(
+            dir=parquetfilepath.parent, prefix=f".{parquetfilepath.name}.parts", ignore_cleanup_errors=True
+        )
+    except OSError as exc:
+        if not is_readonly_error(exc):
+            raise
+        raise get_readonly_cache_error(parquetfilepath) from exc
+    with partsfolder as partsfoldername, conversion_lock(Path(partsfoldername) / PARTS_LOCK_NAME):
+        yield Path(partsfoldername)
 
 
 # up to 2026-10, the parquet caches had this suffix after .parquet. The suffix did not show a temporary file,
@@ -437,7 +428,6 @@ def write_parquet_atomic(
     replaces: tuple[int, int] | None = None,
     compression_level: int = 13,
     row_group_size: int | None = None,
-    lock_conversion: bool = True,
 ) -> None:
     """Write a parquet file with zstd compression through a temporary file, thus no reader sees a partial file.
 
@@ -454,35 +444,32 @@ def write_parquet_atomic(
     The temporary name is prefixed with a dot so that it does not start with the destination's name. A glob
     keyed on that name (get_runfolder_timesteps() looks for "estimbatch*.out.parquet*") would otherwise match
     the in-flight temporary and read a file that is empty, half-written, or already renamed away.
-
-    The write holds cache_conversion_lock, thus "artistools cache delete" keeps the temporary file. A caller that
-    writes a file that this command does not delete, e.g. an output file of the user or a trajectory cache, gives
-    lock_conversion=False.
     """
     import tempfile
 
-    with cache_conversion_lock(parquetfilepath) if lock_conversion else contextlib.nullcontext():
-        try:
-            deststat: os.stat_result | None = parquetfilepath.stat()
-        except FileNotFoundError:
-            deststat = None
+    try:
+        deststat: os.stat_result | None = parquetfilepath.stat()
+    except FileNotFoundError:
+        deststat = None
 
-        try:
-            fd, partialfilename = tempfile.mkstemp(
-                dir=parquetfilepath.parent, prefix=f".{parquetfilepath.name}.partial", suffix=".partial"
-            )
-        except OSError as exc:
-            if not is_readonly_error(exc):
-                raise
-            raise get_readonly_cache_error(parquetfilepath) from exc
-        os.close(fd)
-        partialfilepath = Path(partialfilename)
-        # mkstemp creates the file 0600, and the destination takes the mode of the file that lands on it, so a
-        # cache written into a group-shared model directory would be unreadable to everyone but its author.
-        # Reuse the mode the destination already has, or else the read/write bits of the directory holding it —
-        # reading the process umask would need a get-and-restore that is not safe against other threads.
-        destmode = deststat.st_mode if deststat else parquetfilepath.parent.stat().st_mode & 0o666
-        partialfilepath.chmod(destmode & 0o777)
+    try:
+        fd, partialfilename = tempfile.mkstemp(
+            dir=parquetfilepath.parent, prefix=f".{parquetfilepath.name}.partial", suffix=".partial"
+        )
+    except OSError as exc:
+        if not is_readonly_error(exc):
+            raise
+        raise get_readonly_cache_error(parquetfilepath) from exc
+    os.close(fd)
+    partialfilepath = Path(partialfilename)
+    # mkstemp creates the file 0600, and the destination takes the mode of the file that lands on it, so a
+    # cache written into a group-shared model directory would be unreadable to everyone but its author.
+    # Reuse the mode the destination already has, or else the read/write bits of the directory holding it —
+    # reading the process umask would need a get-and-restore that is not safe against other threads.
+    destmode = deststat.st_mode if deststat else parquetfilepath.parent.stat().st_mode & 0o666
+    partialfilepath.chmod(destmode & 0o777)
+    # "artistools cache delete" keeps the temporary file while this lock shows that the write is active
+    with conversion_lock(partialfilepath):
         try:
             pldf.lazy().sink_parquet(
                 partialfilepath,

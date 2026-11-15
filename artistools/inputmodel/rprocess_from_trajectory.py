@@ -368,8 +368,6 @@ def scan_trajectory_network_data(traj_root: Path, particleid: int) -> pl.LazyFra
         dftrajectory,
         parquetpath,
         replaces=outdatedparquet,
-        # "artistools cache delete" does not delete a trajectory cache, thus it needs no lock file
-        lock_conversion=False,
         metadata={
             "cacheversion": str(TRAJECTORY_CACHEVERSION),
             "textsource": archivepath.name,

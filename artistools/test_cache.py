@@ -24,10 +24,10 @@ def test_cache_delete_keeps_the_lock_files_and_other_parquet_files(tmp_path: Pat
         "12411848.slurm/estimbatch00_0000_0003.out.parquet",
         "packets/.packetsbatch01_0004_0007.out.parquet.partialab12.partial",
         "12411848.slurm/.estimators_allranks.out.parquet.parts9x/ts00001_part00000.parquet",
+        "12411848.slurm/.estimators_allranks.out.parquet.parts9x/conversion-lock",
     ]
     kept = [
         "packets/.packetsbatch00_0000_0003.out.parquet.replace-lock",
-        "packets/.packetsbatch01_0004_0007.out.parquet.conversion-lock",
         "spectrum_data.parquet",
         "science.out.parquet",
         "analysis/.analysis.parts.backup/notes.txt",
@@ -99,12 +99,8 @@ def test_cache_delete_keeps_an_active_parts_folder(tmp_path: Path) -> None:
     with temporary_parts_folder(cachepath) as partsfolder:
         partfile = partsfolder / "part.parquet"
         partfile.write_bytes(b"part")
-        cachepath.write_bytes(b"old cache")
         delete_caches(tmp_path, force=True)
         assert partfile.read_bytes() == b"part"
-        assert cachepath.read_bytes() == b"old cache"
-    delete_caches(tmp_path, force=True)
-    assert not cachepath.exists()
 
 
 def test_cache_delete_keeps_an_active_partial_file(tmp_path: Path) -> None:
@@ -134,8 +130,11 @@ def test_cache_delete_operates_on_a_file_system_without_flock(tmp_path: Path) ->
     from artistools.misc import write_parquet_atomic
 
     cachepath = tmp_path / "model.txt.parquet"
+    leftover = tmp_path / ".model.txt.parquet.partialab12.partial"
+    leftover.write_text("x")
     with mock.patch.object(fcntl, "flock", side_effect=OSError(errno.ENOSYS, "Function not implemented")):
         write_parquet_atomic(pl.DataFrame({"value": [1]}), cachepath)
         assert cachepath.is_file()
         delete_caches(tmp_path, force=True)
     assert not cachepath.exists()
+    assert not leftover.exists()

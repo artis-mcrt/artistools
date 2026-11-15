@@ -445,9 +445,7 @@ def process_trajectory(
 
         # an output file overwrites whatever a previous run left at the path
         trajparquetpath = traj_parquet_dir / f"decay_powers_{traj_ID}.parquet"
-        write_parquet_atomic(
-            traj_df, trajparquetpath, replaces=get_file_identity(trajparquetpath), lock_conversion=False
-        )
+        write_parquet_atomic(traj_df, trajparquetpath, replaces=get_file_identity(trajparquetpath))
     return decay_powers
 
 
@@ -578,9 +576,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             traj_set_df = pl.DataFrame(decay_powers)
             # an output file overwrites whatever a previous run left at the path
             setparquetpath = parquet_dir / f"decay_powers_{labelfull}.parquet"
-            write_parquet_atomic(
-                traj_set_df, setparquetpath, replaces=get_file_identity(setparquetpath), lock_conversion=False
-            )
+            write_parquet_atomic(traj_set_df, setparquetpath, replaces=get_file_identity(setparquetpath))
 
         plot_decay_powers(
             args,
