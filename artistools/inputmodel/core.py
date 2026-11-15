@@ -1446,7 +1446,10 @@ def save_initelemabundances(
         )
         write_artis_csv(dfelabundances, fabund)
 
+    # a reader must not find the cache of the old file beside the new file, and a write that stops early can leave it
+    remove_parquet_cache(abundancefilename)
     write_file_atomic(abundancefilename, write_abundances)
+    # a reader can write the cache of the old file again during the write, thus this call deletes the cache again
     prepare_zstd_output(abundancefilename)
     print_saved(abundancefilename)
     print_detail(f"Took {time.perf_counter() - timestart:.1f} seconds")
