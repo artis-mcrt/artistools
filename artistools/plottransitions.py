@@ -477,7 +477,10 @@ def get_model_conditions(
 
     Each temperature of ltetemperatures gives an LTE series with the ion populations of the cell.
     """
-    dfnltepops = read_nltepops(modelpath, modelgridindex=cell.modelgridindex, timestep=cell.timestep)
+    # get_ion_populations needs one row for each level, as get_cell_line_inputs of linecontributions gives it
+    dfnltepops = read_nltepops(modelpath, modelgridindex=cell.modelgridindex, timestep=cell.timestep).unique(
+        subset=["modelgridindex", "Z", "ion_stage", "level"], keep="first", maintain_order=True
+    )
 
     if dfnltepops.is_empty():
         exit_with_error(f"No NLTE populations for cell {cell.modelgridindex} at timestep {cell.timestep}")

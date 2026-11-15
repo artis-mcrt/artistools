@@ -172,7 +172,7 @@ def get_ion_populations(
 
 
 def warn_about_autoionising_levels(modelpath: Path | str) -> None:
-    """Warn that get_ion_populations gives an inexact superlevel split for a model with autoionising levels."""
+    """Warn that the population of a level in a superlevel is inexact for a model with autoionising levels."""
     if path_is_file(Path(modelpath, "autoion.txt")):
         print_warning(
             "The model has autoion.txt. ARTIS does not include the autoionising levels in the Boltzmann sum of the"
