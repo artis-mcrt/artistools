@@ -81,9 +81,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     modelpaths = normalize_path_list(args.modelpath)
     modelnames = [get_model_name(modelpath) for modelpath in modelpaths]
-    # the name of a model gives the name of its file, thus a later model replaces the file of an earlier one.
+    # the two sources hold different columns, thus each one writes a file of its own
+    suffix = "_fromspectra" if args.fromspectra else ""
+    filenames = [f"bol_lightcurvedata_{modelname}{suffix}.txt" for modelname in modelnames]
+    # two models with the same name have the same file, thus a later model replaces the file of an earlier one.
     # a name can hold a path, and some file systems ignore the letter case, thus "a//b" and "A/b" can be one file
-    filekeys = [os.path.normpath(modelname).casefold() for modelname in modelnames]
+    filekeys = [os.path.normpath(filename).casefold() for filename in filenames]
     samefilepaths = [
         str(modelpath) for modelpath, filekey in zip(modelpaths, filekeys, strict=True) if filekeys.count(filekey) > 1
     ]
@@ -95,9 +98,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     outputpath = Path(args.outputfile)
     outputpath.mkdir(parents=True, exist_ok=True)
-    # the two sources hold different columns, thus each one writes a file of its own
-    suffix = "_fromspectra" if args.fromspectra else ""
-    filenames = [f"bol_lightcurvedata_{modelname}{suffix}.txt" for modelname in modelnames]
     confirm_overwrite([outputpath], filenames, force=args.force)
 
     for modelpath, filename in zip(modelpaths, filenames, strict=True):
