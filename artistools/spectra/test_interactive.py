@@ -866,6 +866,12 @@ def test_interactive_other_options_reach_the_command(
     assert "--stokesparam Q/I" in message
     assert viewer.values.otheroptions == otheroptions
 
+    # with two models, the reason names the ratio and not the count of the models, which the window cannot use
+    twomodels = make_viewer("spectra", [str(modelpath), str(modelpath), "-t", "300", "--interactive"])
+    message = apply_values(twomodels, dc.replace(twomodels.values, otheroptions=(("--stokesparam", ("Q/I",)),)))
+    assert message is not None
+    assert "--stokesparam Q/I" in message
+
 
 def test_interactive_lock_series(make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer]) -> None:
     """A locked list of series keeps the colour of each series when the time changes."""

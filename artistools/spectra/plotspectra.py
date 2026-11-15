@@ -2693,7 +2693,9 @@ def check_yvariable_args(args: argparse.Namespace) -> None:
             "Give --plotvspecpol, e.g. --plotvspecpol 0, and remove the options that need the packets",
         )
 
-    if "/" in args.stokesparam:
+    # --makevspecpol and --averagevspecpolfiles run in place of the plot, and the average needs two or more models
+    drawspolarisationplot = "/" in args.stokesparam and not (args.makevspecpol or args.averagevspecpolfiles)
+    if drawspolarisationplot:
         if len(args.specpath) != 1:
             exit_with_error(
                 "A polarisation plot supports one model path", "Give one model path for each polarisation plot"

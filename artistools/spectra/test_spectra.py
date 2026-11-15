@@ -3916,3 +3916,11 @@ def test_polarisation_refuses_multiple_series(
         at.spectra.plot(args=None, argsraw=[], stokesparam=stokesparam, **options)
     draw.assert_not_called()
     assert message in capsys.readouterr().err
+
+
+def test_polarisation_limits_keep_the_average_of_models() -> None:
+    """--averagevspecpolfiles runs in place of the polarisation plot, thus a ratio keeps its two model paths."""
+    specpath = [modelpath_classic_3d, modelpath_classic_3d]
+    with mock.patch.object(plotspectra, "make_averaged_vspecfiles") as average:
+        at.spectra.plot(args=None, argsraw=[], stokesparam="Q/I", specpath=specpath, averagevspecpolfiles=True)
+    average.assert_called_once()

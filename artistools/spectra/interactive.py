@@ -702,8 +702,8 @@ class SpectrumViewer:
         giventimedays: str | None = args.timedays
         # resolve_plot_args gives a missing count the length of -fixedionlist
         countfromlist = bool(args.fixedionlist) and args.maxseriescount is None
-        resolve_plot_args(args)
         check_viewer_args(args)
+        resolve_plot_args(args)
         self.args = args
         # the results of the tests of the choices of the controls, which load_models clears. See get_choice_rejections
         self.rejections: dict[ControlValues, tuple[list[str | None], list[str | None], str | None, str | None]] = {}
@@ -985,8 +985,8 @@ class SpectrumViewer:
 
         def check() -> str | None:
             plotargs = parse_cli_args(addargs, None, None, self.get_plot_tokens(values))
-            resolve_plot_args(plotargs)
             check_viewer_args(plotargs)
+            resolve_plot_args(plotargs)
             if (plotargs.showemission, plotargs.showabsorption) != (values.showemission, values.showabsorption):
                 return "A different option of the command keeps the emission plot on"
             return get_text_source_conflict(values, plotargs)
@@ -1003,8 +1003,8 @@ class SpectrumViewer:
 
         def draw(fig: mplfig.Figure) -> RenderedSpectrum | str:
             plotargs = parse_cli_args(addargs, None, None, self.get_plot_tokens(values))
-            resolve_plot_args(plotargs)
             check_viewer_args(plotargs)
+            resolve_plot_args(plotargs)
             if (conflict := get_text_source_conflict(values, plotargs)) is not None:
                 return conflict
             if (plotargs.showemission, plotargs.showabsorption) != (values.showemission, values.showabsorption):
