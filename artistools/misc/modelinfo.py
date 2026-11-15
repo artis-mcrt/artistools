@@ -12,7 +12,6 @@ from collections.abc import Iterator
 from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
-from types import MappingProxyType
 
 import numpy as np
 import numpy.typing as npt
@@ -558,6 +557,68 @@ def get_mpiranklist(
     return [get_mpirankofcell(modelgridindex, modelpath=modelpath)]
 
 
+def get_run_layout(modelpath: Path | str, runfolder: Path) -> tuple[pl.DataFrame | None, int | None]:
+    """Return the rank assignments of one run, or its number of ranks when no file gives the assignments.
+
+    sn3d writes modelgridrankassignments.out into the model folder at the start of each run. Thus that file gives the
+    layout of the last run, and of each earlier run with the same ranks. The rank-0 log of a run folder gives its
+    number of ranks. Without that log, the estimator files show the ranks, because each rank with cells writes one. A
+    copy of the assignments file in a run folder wins.
+
+    A model with no assignments file comes from a version of ARTIS that gives each rank an equal block of the cells,
+    thus the number of ranks gives the layout. Two values of None show that the layout of the run is unknown.
+    """
+    from artistools.logs.core import get_logged_rank_count
+
+    modelpath = Path(modelpath)
+    dfranks = get_rankassignments(runfolder)
+    if dfranks is not None:
+        return dfranks, None
+    nprocs = get_logged_rank_count(runfolder)
+    dfmodelranks = None if runfolder == modelpath else get_rankassignments(modelpath)
+    if dfmodelranks is None:
+        return None, get_nprocs(modelpath) if nprocs is None and runfolder == modelpath else nprocs
+
+    if nprocs is not None:
+        has_ranks_of_model = nprocs == dfmodelranks.height
+    else:
+        ranks_with_cells = set(dfmodelranks.filter(pl.col("ndo") > 0)["rank"])
+        has_ranks_of_model = set(get_rank_outputfiles(runfolder, "estimators_{mpirank:04d}.out")) == ranks_with_cells
+    return (dfmodelranks if has_ranks_of_model else None), None
+
+
+def get_run_nonempty_cellcounts(modelpath: Path | str, runfolder: Path) -> "Mapping[int, int] | None":
+    """Return the count of cells that hold matter for each rank of one run, or None when no file gives the counts.
+
+    ARTIS assigns no 3D cell to a shell that holds no matter. A rank whose count is zero handles such
+    cells alone, thus it writes no nlte file and no radfield file, and the absence of such a file is not a fault.
+    """
+    dfranks, _ = get_run_layout(modelpath, runfolder)
+    if dfranks is None or "ndo_nonempty" not in dfranks.columns:
+        return None
+    return dict(zip(dfranks["rank"], dfranks["ndo_nonempty"], strict=True))
+
+
+def get_cached_ranks(runfolder: Path, filenameformat: str, cachefilename: str | None) -> set[int]:
+    """Return the ranks that the parquet caches of a run folder name, e.g. after an archive removed the text."""
+    cachedranks: set[int] = set()
+    if filenameformat == "estimators_{mpirank:04d}.out":
+        for path in runfolder.glob("estimbatch*.out.parquet*"):
+            if (match := re.fullmatch(r"estimbatch\d+_(\d+)_(\d+)\.out\.parquet(?:\.tmp)?", path.name)) is not None:
+                cachedranks.update(range(int(match.group(1)), int(match.group(2)) + 1))
+    if cachefilename is not None:
+        metadata: dict[str, str]
+        try:
+            metadata = pl.read_parquet_metadata(runfolder / cachefilename)
+        except (OSError, pl.exceptions.PolarsError):
+            metadata = {}
+        if "ranks" in metadata:
+            cachedranks.update(int(rank) for rank in metadata["ranks"].split(",") if rank)
+        elif "rank_min" in metadata and "rank_max" in metadata:
+            cachedranks.update(range(int(metadata["rank_min"]), int(metadata["rank_max"]) + 1))
+    return cachedranks
+
+
 def get_run_mpiranklist(
     modelpath: Path | str,
     runfolder: Path,
@@ -565,49 +626,26 @@ def get_run_mpiranklist(
     filenameformat: str = "estimators_{mpirank:04d}.out",
     cachefilename: str | None = "estimators_allranks.out.parquet",
 ) -> Sequence[int]:
-    """Return the ranks of the cells for one run, or all ranks when its layout is unknown.
+    """Return the ranks of the cells for one run, or each rank that has cells when no cell or a negative cell is given.
 
-    The assignments or the rank-0 log give the layout of each run.
-    Without either source, the function returns each available rank for the caller to select the cells.
-    The current input describes only the run in the model folder.
+    get_run_layout gives the layout of the run. When the layout is unknown, the function returns each rank that has
+    a text file or a place in a cache. The caller then selects the rows of the cells.
     """
-    from artistools.logs.core import get_logged_rank_count
-
-    modelpath = Path(modelpath)
     npts_model = get_npts_model(modelpath)
     cells = np.asarray(modelgridindex or [], dtype=np.int64)
     if cells.size and (cells >= 0).all() and (cells >= npts_model).any():
         msg = f"Cell {int(cells.max())} is not in this model. Its cells are 0 to {npts_model - 1}"
         raise ValueError(msg)
-    dfranks = get_rankassignments(runfolder)
-    nprocs = get_logged_rank_count(runfolder) if dfranks is None else None
-    if nprocs is None and dfranks is None and runfolder == modelpath:
-        nprocs = get_nprocs(modelpath)
-    if dfranks is not None:
-        ranks = dfranks.lazy().filter(pl.col("ndo") > 0).select("rank").collect()["rank"]
-        allranks: Sequence[int] = sorted(ranks.to_list())
-    elif nprocs is not None:
-        allranks = range(min(nprocs, npts_model))
-    else:
+    dfranks, nprocs = get_run_layout(modelpath, runfolder)
+    if dfranks is None and nprocs is None:
         fileranks = get_rank_outputfiles(runfolder, filenameformat)
-        cachedranks: set[int] = set()
-        if filenameformat == "estimators_{mpirank:04d}.out":
-            for path in runfolder.glob("estimbatch*.out.parquet*"):
-                if (match := re.fullmatch(r"estimbatch\d+_(\d+)_(\d+)\.out\.parquet(?:\.tmp)?", path.name)) is not None:
-                    cachedranks.update(range(int(match.group(1)), int(match.group(2)) + 1))
-        if cachefilename is not None:
-            metadata: dict[str, str]
-            try:
-                metadata = pl.read_parquet_metadata(runfolder / cachefilename)
-            except (OSError, pl.exceptions.PolarsError):
-                metadata = {}
-            if "ranks" in metadata:
-                cachedranks.update(int(rank) for rank in metadata["ranks"].split(",") if rank)
-            elif "rank_min" in metadata and "rank_max" in metadata:
-                cachedranks.update(range(int(metadata["rank_min"]), int(metadata["rank_max"]) + 1))
-        return sorted(set(fileranks) | cachedranks) or [0]
+        return sorted(set(fileranks) | get_cached_ranks(runfolder, filenameformat, cachefilename)) or [0]
+
     if cells.size == 0 or (cells < 0).any():
-        return allranks
+        if dfranks is not None:
+            return sorted(dfranks.filter(pl.col("ndo") > 0)["rank"].to_list())
+        assert nprocs is not None
+        return range(min(nprocs, npts_model))
 
     def get_nprocs_of_run() -> int:
         assert nprocs is not None
@@ -852,17 +890,13 @@ def scan_rank_text_cache(
         pqmetadata is not None
         and "ranks" not in pqmetadata
         and textsource != f"{prefix}allranks{suffix}"
-        and folderpath != Path(modelpath)
-        and get_rankassignments(folderpath) is None
+        and get_run_layout(modelpath, folderpath) == (None, None)
     ):
-        from artistools.logs.core import get_logged_rank_count
-
-        if get_logged_rank_count(folderpath) is None:
-            print_warning(
-                f"{parquetfilepath} gives no ranks, and the run layout is unknown. "
-                "The reader keeps the cache because the available text files can be incomplete"
-            )
-            return pl.scan_parquet(parquetfilepath, glob=False)
+        print_warning(
+            f"{parquetfilepath} gives no ranks, and the layout of the run is unknown. "
+            "The reader keeps the cache because the available text files can be incomplete"
+        )
+        return pl.scan_parquet(parquetfilepath, glob=False)
     textcompression = get_text_compression(textfiles)
     # a compression keeps the time of the text and changes its size, thus only the same compression can compare sizes
     comparesize = pqmetadata is not None and pqmetadata.get("textsource_compression") == textcompression
@@ -960,7 +994,7 @@ def read_rank_outputfiles(
     ranks_of_folder: dict[Path, Sequence[int]] = {}
     has_empty_selection = False
     for folderpath in runfolders:
-        nonemptycounts = get_nonempty_cellcounts(folderpath)
+        nonemptycounts = get_run_nonempty_cellcounts(modelpath, folderpath)
         allranks = get_run_mpiranklist(
             modelpath, folderpath, filenameformat=filenameformat, cachefilename=cachefilename
         )
@@ -1134,23 +1168,6 @@ def get_rankassignments_cached(modelpath: Path) -> pl.DataFrame | None:
     lzrankassignments = scan_rankassignments(modelpath)
 
     return lzrankassignments.collect() if lzrankassignments is not None else None
-
-
-@modelpath_cache(maxsize=16)
-def get_nonempty_cellcounts(modelpath: Path) -> "Mapping[int, int] | None":
-    """Return the count of cells that hold matter for each rank, or None without the assignments file.
-
-    ARTIS assigns no 3D cell to a shell that holds no matter. A rank whose count is zero handles such
-    cells alone, thus it writes no output file, and the absence of that file is not a fault.
-    """
-    dfranks = get_rankassignments(modelpath)
-    if dfranks is None:
-        return None
-
-    if "ndo_nonempty" not in dfranks.columns:
-        return None
-
-    return MappingProxyType(dict(zip(dfranks["rank"], dfranks["ndo_nonempty"], strict=True)))
 
 
 def get_mpiranks_of_cells(modelpath: Path | str, cells: npt.NDArray[np.int64]) -> npt.NDArray[np.int64]:

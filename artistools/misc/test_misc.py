@@ -2578,15 +2578,16 @@ def test_nonempty_cellcounts_reads_the_rank_assignments(tmp_path: Path) -> None:
     ARTIS assigns no 3D cell to a shell that holds no matter, thus the rank of such a shell writes no
     output file. That absence is normal, and it must not read as a file that went missing.
     """
-    from artistools.misc.modelinfo import get_nonempty_cellcounts
+    from artistools.misc.modelinfo import get_run_nonempty_cellcounts
 
     (tmp_path / "modelgridrankassignments.out").write_text("#rank nstart ndo ndo_nonempty\n0 0 1 0\n1 1 1 0\n2 2 1 3\n")
 
-    counts = get_nonempty_cellcounts(tmp_path)
+    counts = get_run_nonempty_cellcounts(tmp_path, tmp_path)
     assert counts == {0: 0, 1: 0, 2: 3}
 
     # a model that holds no such file gives None, thus the caller keeps its own error
-    assert get_nonempty_cellcounts(at.get_path("testdata") / "testmodel") is None
+    testmodel = at.get_path("testdata") / "testmodel"
+    assert get_run_nonempty_cellcounts(testmodel, testmodel) is None
 
 
 @pytest.mark.parametrize("has_allranks_file", [False, True])
@@ -4751,7 +4752,7 @@ def test_rank_reader_uses_the_layout_of_each_run(
             "#rank nstart ndo ndo_nonempty\n0 0 3 3\n1 3 2 2\n", encoding="utf-8"
         )
     elif layout == "log":
-        (runfolder / "output_0-0.txt").write_text("rank 0 of [0..1]\n", encoding="utf-8")
+        (runfolder / "output_0-0.txt").write_text("rank 0 of [0..1] in MPI_COMM_WORLD\n", encoding="utf-8")
     monkeypatch.setattr("artistools.misc.modelinfo.MIN_TEXT_BYTES_FOR_RANK_CACHE", 1)
     cachename = "nltecache.parquet" if cache else None
     full = read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", cachefilename=cachename).sort(
@@ -4792,9 +4793,43 @@ def test_legacy_rank_cache_keeps_archived_rows_without_a_run_layout(
     pltest.assert_frame_equal(read_rows(), full)
     pltest.assert_frame_equal(read_rows(4), full.filter(modelgridindex=4))
     assert cachefile.read_bytes() == cachedbytes
-    assert "the run layout is unknown" in capsys.readouterr().err
+    assert "the layout of the run is unknown" in capsys.readouterr().err
 
     newer = (runfolder / "nlte_0000.out").stat().st_mtime + 1000.0
     write_allranks_nlte_file(runfolder, mtime=newer)
     assert read_rows()["nnlevel"].to_list() == pytest.approx([cell + 10.5 for cell in range(5)])
     assert "ranks" in pl.read_parquet_metadata(cachefile)
+
+
+@pytest.mark.parametrize("rankevidence", ["log", "estimator files"])
+def test_rank_reader_gives_an_earlier_run_the_assignments_of_the_model_folder(
+    tmp_path: Path, rankevidence: str
+) -> None:
+    """sn3d writes the assignments into the model folder alone, thus a run folder with the same ranks takes that file.
+
+    Rank 1 has cells that hold no matter, thus it writes no nlte file, and equal blocks give cell 2 to the wrong rank.
+    """
+    from artistools.misc.modelinfo import read_rank_outputfiles
+
+    write_rank_output_model(tmp_path, {"job0": [(0, 0, 0.5)]})
+    (tmp_path / "modelgridrankassignments.out").write_text(
+        "#rank nstart ndo ndo_nonempty\n0 0 1 1\n1 1 1 0\n2 2 3 3\n3 0 0 0\n", encoding="utf-8"
+    )
+    runfolder = tmp_path / "job0"
+    (runfolder / "nlte_0002.out").write_text(
+        "timestep modelgridindex nnlevel\n0 2 2.5\n0 3 3.5\n0 4 4.5\n", encoding="utf-8"
+    )
+    if rankevidence == "log":
+        (runfolder / "output_0-0.txt").write_text("rank 0 of [0..3] in MPI_COMM_WORLD\n", encoding="utf-8")
+    else:
+        for rank in (1, 2):
+            (runfolder / f"estimators_{rank:04d}.out").write_text("", encoding="utf-8")
+
+    full = read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out").sort("modelgridindex")
+    assert full["modelgridindex"].to_list() == [0, 2, 3, 4]
+    selected = read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", modelgridindex=2)
+    pltest.assert_frame_equal(selected, full.filter(modelgridindex=2))
+
+    (runfolder / "nlte_0002.out").unlink()
+    with pytest.raises(FileNotFoundError, match="nlte_0002"):
+        read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out")

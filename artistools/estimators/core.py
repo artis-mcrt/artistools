@@ -50,10 +50,10 @@ from artistools.misc import firstexisting_or_none
 from artistools.misc import get_artis_option
 from artistools.misc import get_file_identity
 from artistools.misc import get_file_state
-from artistools.misc import get_nonempty_cellcounts
 from artistools.misc import get_parquet_cache_name
 from artistools.misc import get_rank_outputfiles
 from artistools.misc import get_run_mpiranklist
+from artistools.misc import get_run_nonempty_cellcounts
 from artistools.misc import get_runfolder_timesteps
 from artistools.misc import get_runfolders
 from artistools.misc import get_text_compression
@@ -1070,7 +1070,7 @@ def get_estimators_parquetfile(
             timestepparts, state, textfiles, textsize = convert_unchanged_text_to_parts(state, partsfolder)
             schema = get_parts_schema(timestepparts)
             if state.allranks:
-                nonempty_cellcounts = get_nonempty_cellcounts(state.runfolder)
+                nonempty_cellcounts = get_run_nonempty_cellcounts(modelpath, state.runfolder)
                 if nonempty_cellcounts is not None and state.textfile is None:
                     # the files of the ranks give the cells of the ranks that the conversion reads, and not of every
                     # rank

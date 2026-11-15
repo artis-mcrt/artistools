@@ -5387,7 +5387,7 @@ def test_estimators_use_the_layout_of_each_run(
             "#rank nstart ndo ndo_nonempty\n0 1 1 1\n1 0 1 1\n", encoding="utf-8"
         )
     elif layout == "log":
-        (runfolder / "output_0-0.txt").write_text("rank 0 of [0..1]\n", encoding="utf-8")
+        (runfolder / "output_0-0.txt").write_text("rank 0 of [0..1] in MPI_COMM_WORLD\n", encoding="utf-8")
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
     cells = (1, 0) if layout == "assignments" else (0, 1)
     ranks = (0, 2) if layout == "sparse" else (0, 1)

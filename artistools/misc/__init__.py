@@ -166,13 +166,13 @@ from artistools.misc.modelinfo import get_inputparams as get_inputparams
 from artistools.misc.modelinfo import get_model_logname as get_model_logname
 from artistools.misc.modelinfo import get_model_name as get_model_name
 from artistools.misc.modelinfo import get_mpiranklist as get_mpiranklist
-from artistools.misc.modelinfo import get_nonempty_cellcounts as get_nonempty_cellcounts
 from artistools.misc.modelinfo import get_nprocs as get_nprocs
 from artistools.misc.modelinfo import get_npts_model as get_npts_model
 from artistools.misc.modelinfo import get_nu_grid as get_nu_grid
 from artistools.misc.modelinfo import get_rank_outputfiles as get_rank_outputfiles
 from artistools.misc.modelinfo import get_ranks_of_cells_in_layout as get_ranks_of_cells_in_layout
 from artistools.misc.modelinfo import get_run_mpiranklist as get_run_mpiranklist
+from artistools.misc.modelinfo import get_run_nonempty_cellcounts as get_run_nonempty_cellcounts
 from artistools.misc.modelinfo import get_run_subfolders as get_run_subfolders
 from artistools.misc.modelinfo import get_runfolder_timesteps as get_runfolder_timesteps
 from artistools.misc.modelinfo import get_runfolders as get_runfolders
