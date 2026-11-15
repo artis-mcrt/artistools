@@ -121,7 +121,7 @@ MAX_MESSAGE_BYTES = 16 * 1024**3
 
 # increase the server protocol when a reader with the decorator on_model_host changes its arguments or its result.
 # Also increase it for a new format of a message. Then a clone with the protocol of the release needs no build on a host
-SERVER_PROTOCOL = 16
+SERVER_PROTOCOL = 17
 
 # the server writes this line before its first message. A startup file of the remote shell can write text to the
 # standard output first, thus the client ignores each line before this one
@@ -611,8 +611,15 @@ def get_git_source() -> GitSource | None:
     try:
         commit = run_git("rev-parse", "HEAD")
         # the first remote branch that holds the commit, e.g. "origin/mybranch", names the remote of a fork too
-        remotebranches = run_git("branch", "--remotes", "--contains", commit).split()
-        url = run_git("remote", "get-url", remotebranches[0].split("/")[0]) if remotebranches else REPOSITORY_URL
+        # a ref below refs/remotes can have no remote, e.g. pull/1/merge in a checkout of GitHub Actions
+        remotenames = run_git("remote").split()
+        remotebranches = [
+            (remotename, branch)
+            for branch in run_git("branch", "--remotes", "--contains", commit).split()
+            for remotename in remotenames
+            if branch.startswith(f"{remotename}/")
+        ]
+        url = run_git("remote", "get-url", remotebranches[0][0]) if remotebranches else REPOSITORY_URL
         haschanges = bool(run_git("status", "--porcelain", "--untracked-files=no"))
     except (OSError, subprocess.CalledProcessError):
         # a folder that is not a clone, or a host with no git, gives no commit

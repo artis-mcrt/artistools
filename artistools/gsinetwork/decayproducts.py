@@ -221,6 +221,15 @@ def get_nuc_data(nuc_dataset: str) -> pl.DataFrame:
     return append_electroncapture_betaplus_nuclei(ensdf_betaminus, nuc_dataset)
 
 
+def get_plot_times_days(timemin_days: float, timemax_days: float, nsteps: int) -> npt.NDArray[np.float64]:
+    """Return the plot times with equal logarithmic steps, and with the exact values of the two end times.
+
+    np.logspace gives 10 ** log10(timemax), which can be larger than timemax in the last bit. Such a plot time is
+    after a final network time that is equal to timemax, and it then has no network timestep.
+    """
+    return np.geomspace(timemin_days, timemax_days, nsteps, dtype=np.float64)
+
+
 def get_nearest_network_timesteps(
     traj_root: Path, traj_ID: int, arr_t_day: npt.NDArray[np.floating]
 ) -> tuple[pl.DataFrame, npt.NDArray[np.bool_], npt.NDArray[np.int64], npt.NDArray[np.int64]]:
@@ -249,7 +258,7 @@ def get_nearest_network_timesteps(
     arr_networktimedays = arr_networktime_s / day_to_s
     arr_heatingrow = np.array(
         [
-            int(np.abs(arr_networktimedays - plottimedays).argmin()) if plottimedays < arr_networktimedays[-1] else -1
+            int(np.abs(arr_networktimedays - plottimedays).argmin()) if plottimedays <= arr_networktimedays[-1] else -1
             for plottimedays in arr_t_day
         ],
         dtype=np.int64,
@@ -471,8 +480,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         print(f"Writing parquet files to '{parquet_dir}'.")
     assert nuc_data.height == nuc_data.unique(("Z", "A")).height
 
-    # set timesteps logarithmically
-    arr_t_day = np.logspace(np.log10(args.timemin), np.log10(args.timemax), args.nsteps, endpoint=True)
+    arr_t_day = get_plot_times_days(args.timemin, args.timemax, args.nsteps)
 
     # get masses of trajectories
     summarypath = Path(args.trajectoryroot, "summary-all.dat")

@@ -304,8 +304,11 @@ def test_stop_hook_checks_a_failed_tree_again(tmp_path: Path) -> None:
     bindir.mkdir()
     (bindir / "uv").write_text("#!/bin/sh\necho 'an error'\nexit 1\n", encoding="utf-8")
     (bindir / "uv").chmod(0o755)
+    # git reads no configuration of the user, e.g. a signature requirement that needs an agent
     env = {
         **os.environ,
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_CONFIG_NOSYSTEM": "1",
         "CLAUDE_PROJECT_DIR": str(checkout),
         "PATH": f"{bindir}{os.pathsep}{os.environ['PATH']}",
         "TMPDIR": str(tmp_path),
@@ -314,7 +317,7 @@ def test_stop_hook_checks_a_failed_tree_again(tmp_path: Path) -> None:
     for gitargs in (
         ["init", "-q"],
         ["add", "module.py"],
-        ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "a"],
+        ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", "commit", "-qm", "a"],
     ):
         subprocess.run([gitpath, *gitargs], cwd=checkout, check=True, env=env)  # ruff:ignore[subprocess-without-shell-equals-true]
 
