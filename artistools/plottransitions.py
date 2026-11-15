@@ -494,7 +494,9 @@ def get_model_conditions(
     print_detail(
         "The NLTE series takes the level populations of calculate_levelpop() of ARTIS (ltepop.cc). A level in the"
         " superlevel takes the superlevel population (the row with level -1 in the NLTE file), multiplied by its weight"
-        " g exp(-E / k T_exc) and divided by the sum of the weights of the superlevel"
+        " g exp(-E / k T_exc) and divided by the sum of the weights of the superlevel. For an ion with NLTE rows and"
+        " no superlevel, a level above the NLTE levels takes the ground-level population n_0 times"
+        " (g / g_0) exp(-(E - E_0) / k T_exc). An ion with no NLTE row has a population of zero"
     )
     warn_about_autoionising_levels(modelpath)
     figure_title = (
