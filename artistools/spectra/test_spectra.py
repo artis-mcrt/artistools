@@ -3912,9 +3912,14 @@ def test_polarisation_refuses_multiple_series(
     selection: dict[str, t.Any], stokesparam: str, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
     options = {"specpath": [modelpath_classic_3d], "timedays": "5", "outputfile": tmp_path, **selection}
-    with mock.patch.object(plotspectra, "plot_polarisation") as draw, pytest.raises(SystemExit):
+    with (
+        mock.patch.object(plotspectra, "scan_specpol_data") as scanspecpol,
+        mock.patch.object(plotspectra, "scan_vspecpol_data") as scanvspecpol,
+        pytest.raises(SystemExit),
+    ):
         at.spectra.plot(args=None, argsraw=[], stokesparam=stokesparam, **options)
-    draw.assert_not_called()
+    scanspecpol.assert_not_called()
+    scanvspecpol.assert_not_called()
     assert "one model path and one direction" in capsys.readouterr().err
 
 
