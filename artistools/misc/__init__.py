@@ -166,6 +166,7 @@ from artistools.misc.modelinfo import get_inputparams as get_inputparams
 from artistools.misc.modelinfo import get_model_logname as get_model_logname
 from artistools.misc.modelinfo import get_model_name as get_model_name
 from artistools.misc.modelinfo import get_mpiranklist as get_mpiranklist
+from artistools.misc.modelinfo import get_nonempty_cellcounts as get_nonempty_cellcounts
 from artistools.misc.modelinfo import get_nprocs as get_nprocs
 from artistools.misc.modelinfo import get_npts_model as get_npts_model
 from artistools.misc.modelinfo import get_nu_grid as get_nu_grid

@@ -1345,3 +1345,9 @@ def parse_vpkt_input(contents: str) -> VpktConfig:
 def get_dfrankassignments(modelpath: Path) -> pl.LazyFrame | None:
     """Return the result of scan_rankassignments, the new name of this function."""
     return scan_rankassignments(modelpath)
+
+
+@warnings.deprecated("get_nonempty_cellcounts is deprecated. Use get_run_nonempty_cellcounts.")
+def get_nonempty_cellcounts(modelpath: Path | str) -> "Mapping[int, int] | None":
+    """Return the result of get_run_nonempty_cellcounts for the run in the model folder."""
+    return get_run_nonempty_cellcounts(modelpath, Path(modelpath))
