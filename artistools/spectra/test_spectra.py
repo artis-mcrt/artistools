@@ -3899,15 +3899,9 @@ def test_output_template_names_a_field_that_plotspectra_does_not_give(tmp_path: 
         plotspectra.get_plot_outputfile(args)
 
 
-def write_vspecpol_total(folder: Path, observer_index: int, table: npt.NDArray[np.float64]) -> None:
-    folder.mkdir(exist_ok=True)
-    np.savetxt(folder / f"vspecpol_total-{observer_index}.out", table)
-
-
 @pytest.mark.parametrize("difference", ["time", "frequency", "shape"])
 def test_virtual_average_refuses_different_grids(tmp_path: Path, difference: str) -> None:
     """A different grid in the last observer direction stops the average before the first file exists."""
-    folders = [tmp_path / name for name in ("first", "second")]
     table = np.array([[0.0, 1.0, 2.0], [10.0, 100.0, 200.0], [20.0, 300.0, 400.0]])
     differenttable = table.copy()
     if difference == "time":
@@ -3916,10 +3910,11 @@ def test_virtual_average_refuses_different_grids(tmp_path: Path, difference: str
         differenttable[1, 0] = 10.01
     else:
         differenttable = differenttable[:2]
-    for folder in folders:
-        write_vspecpol_total(folder, 2, table)
-    write_vspecpol_total(folders[0], 5, table)
-    write_vspecpol_total(folders[1], 5, differenttable)
+    folders = [tmp_path / name for name in ("first", "second")]
+    for folder, lasttable in zip(folders, (table, differenttable), strict=True):
+        folder.mkdir()
+        np.savetxt(folder / "vspecpol_total-2.out", table)
+        np.savetxt(folder / "vspecpol_total-5.out", lasttable)
 
     with pytest.raises(ValueError, match="time or frequency grid"):
         atspectra.make_averaged_vspecfiles(folders)

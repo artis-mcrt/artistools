@@ -3,7 +3,6 @@
 import io
 import itertools
 import math
-import re
 import typing as t
 import warnings
 from collections.abc import Callable
@@ -76,7 +75,6 @@ from artistools.misc import read_wsv
 from artistools.misc import resolve_modelpath
 from artistools.misc import split_multitable_dataframe
 from artistools.misc import warn_direction_bin_noise
-from artistools.misc import without_compressed_extension
 from artistools.misc import XUnit
 from artistools.packets import filter_packets_dirbin
 from artistools.packets import get_emission_velocity_expr
@@ -950,9 +948,8 @@ def make_averaged_vspecfiles(modelpaths: Sequence[Path]) -> None:
     """
     # a plain file and its compressed sibling give one observer direction
     observer_indices = sorted({
-        int(namematch[1])
-        for vspecfile in Path(modelpaths[0]).iterdir()
-        if (namematch := re.fullmatch(r"vspecpol_total-(\d+)\.out", without_compressed_extension(vspecfile).name))
+        int(vspecfile.name.removeprefix("vspecpol_total-").split(".", 1)[0])
+        for vspecfile in Path(modelpaths[0]).glob("vspecpol_total-*.out*")
     })
 
     # the times have 6 significant figures in the file, thus two equal grids can differ by 5e-6.
