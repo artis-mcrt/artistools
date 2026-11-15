@@ -1434,7 +1434,7 @@ def save_initelemabundances(
     dfelabundances = dfelabundances.select(["inputcellid", *elcolnames])
 
     def write_abundances(fabund: t.IO[bytes]) -> None:
-        # sn3d and scan_initelemabundances read the columns by position and skip each comment line.
+        # sn3d and scan_initelemabundances skip each comment line, and both read the columns by position
         write_zstd_lines(
             fabund,
             [
@@ -1446,7 +1446,7 @@ def save_initelemabundances(
         )
         write_artis_csv(dfelabundances, fabund)
 
-    # a reader must not find the cache of the old file beside the new file, and a write that stops early can leave it
+    # a process that stops after the replacement must not leave the cache of the old file beside the new file
     remove_parquet_cache(abundancefilename)
     write_file_atomic(abundancefilename, write_abundances)
     # a reader can write the cache of the old file again during the write, thus this call deletes the cache again
