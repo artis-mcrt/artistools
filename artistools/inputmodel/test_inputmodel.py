@@ -3946,6 +3946,28 @@ def test_from_e2e_model_keeps_original_particle_ids(tmp_path: Path, model_dim: i
     pltest.assert_frame_equal(contributions[0], contributions[1])
 
 
+@pytest.mark.parametrize("extension", ["", ".zst"])
+@pytest.mark.parametrize("failure", ["validation", "write"])
+def test_abundance_write_failure_keeps_the_previous_file(tmp_path: Path, extension: str, failure: str) -> None:
+    output = tmp_path / f"abundances.txt{extension}"
+    original = b"previous abundance data"
+    output.write_bytes(original)
+    abundance = pl.DataFrame({"inputcellid": [1], "X_H": [1.0]})
+    if failure == "validation":
+        abundance = abundance.with_columns(pl.lit(2).alias("inputcellid"))
+        with pytest.raises(AssertionError):
+            at.inputmodel.save_initelemabundances(abundance, outpath=output)
+    else:
+        msg = "Write failed"
+        with (
+            mock.patch("artistools.inputmodel.core.write_artis_csv", side_effect=OSError(msg)),
+            pytest.raises(OSError, match=msg),
+        ):
+            at.inputmodel.save_initelemabundances(abundance, outpath=output)
+    assert output.read_bytes() == original
+    assert sorted(tmp_path.iterdir()) == [output]
+
+
 @pytest.mark.parametrize("empty_slice", [False, True])
 def test_random_density_perturbations_preserve_each_slice_mass(empty_slice: bool) -> None:
     from artistools.inputmodel.from_e2e_model import apply_density_perturbations
@@ -3961,3 +3983,22 @@ def test_random_density_perturbations_preserve_each_slice_mass(empty_slice: bool
     np.testing.assert_allclose(rho_perturbed.sum(axis=1), rho.sum(axis=1), rtol=1e-12)
     assert not np.allclose(rho_perturbed, rho)
     assert np.all(np.isfinite(rho_perturbed))
+
+
+def test_from_e2e_model_rejects_unequal_3d_dimensions_before_a_write(tmp_path: Path) -> None:
+    """The model writer needs a cubic grid, thus only a model that stays 3D needs equal dimensions.
+
+    The command did the map and wrote abundances.txt before the model writer stopped at the unequal dimensions.
+    """
+    datpath = tmp_path / "e2emodel.npz"
+    write_e2e_model(datpath, tmp_path / "iso_table.npy")
+    gridargs = ["-npz", str(datpath), "-vmax_on_c", "0.4", "--mapto3D", "-ngridx", "4", "-ngridy", "6", "-ngridz", "8"]
+
+    with pytest.raises(ValueError, match="equal --ngridx"):
+        at.inputmodel.from_e2e_model.main(argsraw=[*gridargs, "-o", str(tmp_path / "model3d")])
+    # parse_cli_args makes the -o folder of each command, thus the folder exists
+    assert not list((tmp_path / "model3d").iterdir())
+
+    at.inputmodel.from_e2e_model.main(argsraw=[*gridargs, "-dimensions", "1", "-o", str(tmp_path / "model1d")])
+    _, modelmeta1d = at.inputmodel.scan_modeldata(tmp_path / "model1d", printwarningsonly=True)
+    assert modelmeta1d["dimensions"] == 1
