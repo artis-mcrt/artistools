@@ -1096,6 +1096,46 @@ def test_write_parquet_atomic_replaces_only_the_file_found_outdated(tmp_path: Pa
     assert list(tmp_path.glob("*.partial*")) == []
 
 
+@pytest.mark.parametrize("lockkind", ["symlink", "hardlink", "fifo"])
+def test_replace_outdated_file_keeps_the_mode_of_a_file_at_the_lock_path(tmp_path: Path, lockkind: str) -> None:
+    """A different user of a shared model folder can put a link to a private file at the lock path."""
+    pytest.importorskip("fcntl")
+    privatepath = tmp_path / "private"
+    privatepath.touch(mode=0o600)
+    lockpath = tmp_path / ".cache.replace-lock"
+    replacement = tmp_path / "replacement"
+    replacement.touch()
+
+    if lockkind == "hardlink":
+        lockpath.hardlink_to(privatepath)
+        parquetcache.replace_outdated_file(replacement, tmp_path / "cache", None)
+    else:
+        if lockkind == "symlink":
+            lockpath.symlink_to(privatepath)
+        else:
+            os.mkfifo(lockpath)
+        with pytest.raises(OSError if lockkind == "symlink" else ValueError):
+            parquetcache.replace_outdated_file(replacement, tmp_path / "cache", None)
+        assert replacement.exists()
+
+    assert privatepath.stat().st_mode & 0o777 == 0o600
+
+
+def test_replace_outdated_file_makes_a_lock_that_each_user_can_write(tmp_path: Path) -> None:
+    """A second user of a shared model folder needs write access to the lock, for an exclusive flock on NFS."""
+    pytest.importorskip("fcntl")
+    replacement = tmp_path / "replacement"
+    replacement.touch()
+
+    oldumask = os.umask(0o077)
+    try:
+        parquetcache.replace_outdated_file(replacement, tmp_path / "cache", None)
+    finally:
+        os.umask(oldumask)
+
+    assert (tmp_path / ".cache.replace-lock").stat().st_mode & 0o777 == 0o666
+
+
 def test_replace_outdated_file_keeps_a_rivals_fresh_replacement(tmp_path: Path) -> None:
     """The second of two writers that found the same out-of-date file must not replace the first's file.
 
@@ -1207,9 +1247,6 @@ def test_replace_outdated_file_ignores_a_leftover_lock_file(tmp_path: Path) -> N
 
     assert destpath.read_text(encoding="utf-8") == "replacement"
     assert lockpath.exists()
-    # a different user in a shared model directory opens the lock for writing, because NFS needs that for an
-    # exclusive flock. The chmod gives that access whatever the umask
-    assert lockpath.stat().st_mode & 0o666 == 0o666
 
 
 def test_get_file_identity(tmp_path: Path) -> None:
@@ -4126,7 +4163,8 @@ def test_replace_outdated_file_locks_a_descriptor_that_can_write(tmp_path: Path)
     realopen = os.open
 
     def open_without_write_access(path: t.Any, flags: int, mode: int = 0o777) -> int:
-        if flags & os.O_ACCMODE != os.O_RDONLY:
+        # the open that makes a new lock gives FileExistsError before it tests the write access
+        if flags & os.O_ACCMODE != os.O_RDONLY and not flags & os.O_EXCL:
             raise PermissionError(path)
         return realopen(path, flags, mode)
 

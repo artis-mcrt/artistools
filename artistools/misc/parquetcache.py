@@ -4,6 +4,7 @@ import contextlib
 import datetime as dt
 import errno
 import os
+import stat
 import sys
 import time
 import typing as t
@@ -65,17 +66,24 @@ def replace_outdated_file(newfilepath: Path, destpath: Path, outdatedfile: tuple
         return
 
     lockpath = destpath.with_name(f".{destpath.name}.replace-lock")
-    # NFS gives flock as a POSIX lock, and an exclusive POSIX lock needs a descriptor that can write. A user without
-    # write access to the lock of a different user reads it, which flock accepts on a local file system
+    # a different user of a shared model folder can link a private file of the caller to the lock path. Thus no open
+    # follows a symbolic link, and only a new lock gets the mode that lets each user write it under each umask
     try:
-        lockfd = os.open(lockpath, os.O_CREAT | os.O_RDWR, 0o666)
-    except PermissionError:
-        lockfd = os.open(lockpath, os.O_CREAT | os.O_RDONLY, 0o666)
-    # the chmod lets each user write the lock under a restrictive umask, and fails harmlessly for a user who does
-    # not own the lock
-    with contextlib.suppress(OSError):
-        lockpath.chmod(0o666)
+        lockfd = os.open(lockpath, os.O_CREAT | os.O_EXCL | os.O_RDWR | os.O_NOFOLLOW, 0o666)
+        with contextlib.suppress(OSError):
+            os.fchmod(lockfd, 0o666)
+    except FileExistsError:
+        # NFS gives flock as a POSIX lock, and an exclusive POSIX lock needs a descriptor that can write. A user
+        # without write access to the lock of a different user reads it, which flock accepts on a local file system
+        try:
+            lockfd = os.open(lockpath, os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK)
+        except PermissionError:
+            lockfd = os.open(lockpath, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
+        # O_NONBLOCK lets the open of a named pipe return, and this test then rejects the pipe
+        if not stat.S_ISREG(os.fstat(lockfd).st_mode):
+            msg = f"The cache lock {lockpath} is not a regular file"
+            raise ValueError(msg)
         fcntl.flock(lockfd, fcntl.LOCK_EX)
         identity = get_file_identity(destpath)
         if identity is None or identity == outdatedfile:
