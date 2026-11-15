@@ -4801,7 +4801,7 @@ def test_legacy_rank_cache_keeps_archived_rows_without_a_run_layout(
     assert "ranks" in pl.read_parquet_metadata(cachefile)
 
 
-@pytest.mark.parametrize("rankevidence", ["log", "estimator files"])
+@pytest.mark.parametrize("rankevidence", ["log", "estimator files", "archived estimator files"])
 def test_rank_reader_gives_an_earlier_run_the_assignments_of_the_model_folder(
     tmp_path: Path, rankevidence: str
 ) -> None:
@@ -4821,7 +4821,7 @@ def test_rank_reader_gives_an_earlier_run_the_assignments_of_the_model_folder(
     )
     if rankevidence == "log":
         (runfolder / "output_0-0.txt").write_text("rank 0 of [0..3] in MPI_COMM_WORLD\n", encoding="utf-8")
-    else:
+    elif rankevidence == "estimator files":
         for rank in (1, 2):
             (runfolder / f"estimators_{rank:04d}.out").write_text("", encoding="utf-8")
 

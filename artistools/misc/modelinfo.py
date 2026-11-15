@@ -562,8 +562,9 @@ def get_run_layout(modelpath: Path | str, runfolder: Path) -> tuple[pl.DataFrame
 
     sn3d writes modelgridrankassignments.out into the model folder at the start of each run. Thus that file gives the
     layout of the last run, and of each earlier run with the same ranks. The rank-0 log of a run folder gives its
-    number of ranks. Without that log, the estimator files show the ranks, because each rank with cells writes one. A
-    copy of the assignments file in a run folder wins.
+    number of ranks. Without that log, an estimator file or an estimator cache of a rank that the model folder gives
+    no cells shows a different layout. An absent file shows nothing, because an archive can remove it. A copy of the
+    assignments file in a run folder wins.
 
     A model with no assignments file comes from a version of ARTIS that gives each rank an equal block of the cells,
     thus the number of ranks gives the layout. Two values of None show that the layout of the run is unknown.
@@ -582,8 +583,11 @@ def get_run_layout(modelpath: Path | str, runfolder: Path) -> tuple[pl.DataFrame
     if nprocs is not None:
         has_ranks_of_model = nprocs == dfmodelranks.height
     else:
-        ranks_with_cells = set(dfmodelranks.filter(pl.col("ndo") > 0)["rank"])
-        has_ranks_of_model = set(get_rank_outputfiles(runfolder, "estimators_{mpirank:04d}.out")) == ranks_with_cells
+        estimatorformat = "estimators_{mpirank:04d}.out"
+        foundranks = set(get_rank_outputfiles(runfolder, estimatorformat)) | get_cached_ranks(
+            runfolder, estimatorformat, "estimators_allranks.out.parquet"
+        )
+        has_ranks_of_model = foundranks <= set(dfmodelranks.filter(pl.col("ndo") > 0)["rank"])
     return (dfmodelranks if has_ranks_of_model else None), None
 
 
