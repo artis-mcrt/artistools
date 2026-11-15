@@ -1497,6 +1497,53 @@ def test_server_command_of_a_git_install_names_its_commit() -> None:
     assert gitsource.commit == headcommit.stdout.strip()
 
 
+def test_git_source_ignores_a_remote_ref_that_has_no_remote(tmp_path: Path) -> None:
+    """A checkout of GitHub Actions for a pull request holds its commit only in refs/remotes/pull/<n>/merge.
+
+    No remote has the name "pull", thus the commit counts as a commit that is only on this host.
+    """
+    import json
+
+    def run_git(*gitargs: str) -> str:
+        return subprocess.run(  # ruff:ignore[subprocess-without-shell-equals-true]
+            ["git", "-C", str(tmp_path), "-c", "user.name=test", "-c", "user.email=test@localhost", *gitargs],  # ruff:ignore[start-process-with-partial-path]
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+
+    modulefile = tmp_path / "artistools" / "misc" / "remote.py"
+    modulefile.parent.mkdir(parents=True)
+    modulefile.touch()
+    run_git("init")
+    run_git("add", ".")
+    run_git("commit", "--no-gpg-sign", "--no-verify", "-m", "the commit of the test")
+    commit = run_git("rev-parse", "HEAD")
+    run_git("update-ref", "refs/remotes/pull/1/merge", commit)
+
+    def get_git_source_of_clone() -> remote.GitSource | None:
+        distribution = mock.Mock()
+        distribution.read_text.return_value = json.dumps({"url": "file:///somewhere", "dir_info": {"editable": True}})
+        with (
+            mock.patch("importlib.metadata.distribution", return_value=distribution),
+            mock.patch.object(remote, "__file__", str(modulefile)),
+        ):
+            return remote.get_git_source()
+
+    gitsource = get_git_source_of_clone()
+    assert gitsource is not None
+    assert gitsource.commit == commit
+    assert not gitsource.ispushed
+    assert gitsource.url == remote.REPOSITORY_URL
+
+    run_git("remote", "add", "fork", "https://github.com/fork/artistools")
+    run_git("update-ref", "refs/remotes/fork/mybranch", commit)
+    gitsource = get_git_source_of_clone()
+    assert gitsource is not None
+    assert gitsource.ispushed
+    assert gitsource.url == "https://github.com/fork/artistools"
+
+
 def test_server_command_runs_the_code_of_this_artistools() -> None:
     """Choose a given command first, else the release if it has the server protocol of this commit.
 
@@ -1690,7 +1737,7 @@ def test_server_protocol_changes_with_the_readers(package_modules: list[Path]) -
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (16, "69e24cb9f926002e"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (17, "69e24cb9f926002e"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )

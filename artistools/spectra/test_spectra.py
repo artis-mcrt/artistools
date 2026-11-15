@@ -3941,3 +3941,39 @@ def test_virtual_average_keeps_observer_index_and_fractional_flux(tmp_path: Path
     actual = np.loadtxt(folders[0] / "vspecpol_averaged-2.out")
     expected = np.array([[0.0, 1.06291, 2.0], [10.0, 100.5, 200.0], [20.0, 300.0, 400.0]])
     np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=0.0)
+
+
+@pytest.mark.parametrize("stokesparam", ["Q/I", "U/I"])
+@pytest.mark.parametrize("binflux", [False, True])
+@pytest.mark.parametrize("filtermovingavg", [0, 3])
+def test_polarisation_processes_fluxes_before_the_ratio(stokesparam: str, binflux: bool, filtermovingavg: int) -> None:
+    intensity = np.array([100.0, 1.0, 1.0, 1.0, 1.0])
+    numerator = np.array([0.0, 1.0, 1.0, 1.0, 1.0])
+    stokes = {
+        "I": pl.LazyFrame({"nu": np.arange(1, 6) * 1e14, "3.0": intensity}),
+        stokesparam[0]: pl.LazyFrame({"nu": np.arange(1, 6) * 1e14, "3.0": numerator}),
+    }
+    args = argparse.Namespace(
+        stokesparam=stokesparam, binflux=binflux, filtermovingavg=filtermovingavg, xunit="angstroms"
+    )
+    result = plotspectra.get_polarisation_spectrum(stokes, "3.0", args)
+    if filtermovingavg:
+        kernel = np.ones(filtermovingavg) / filtermovingavg
+        intensity = np.convolve(np.pad(intensity, 1, mode="edge"), kernel, mode="valid")
+        numerator = np.convolve(np.pad(numerator, 1, mode="edge"), kernel, mode="valid")
+    expected = numerator.mean() / intensity.mean() if binflux else numerator / intensity
+    assert result["3.0"].to_numpy() == pytest.approx(expected)
+    if binflux and not filtermovingavg:
+        # the mean of the ratios is 0.8
+        assert result["3.0"].to_list() == pytest.approx([4.0 / 104.0])
+
+
+def test_polarisation_marks_zero_intensity_as_unavailable(capsys: pytest.CaptureFixture[str]) -> None:
+    stokes = {
+        "I": pl.LazyFrame({"nu": [1e14, 2e14], "3.0": [0.0, 0.0]}),
+        "Q": pl.LazyFrame({"nu": [1e14, 2e14], "3.0": [0.0, 1.0]}),
+    }
+    args = argparse.Namespace(stokesparam="Q/I", binflux=False, xunit="angstroms")
+    result = plotspectra.get_polarisation_spectrum(stokes, "3.0", args)
+    assert result["3.0"].to_list() == [None, None]
+    assert "no value at 2 of 2 points" in capsys.readouterr().out

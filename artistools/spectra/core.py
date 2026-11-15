@@ -1087,7 +1087,7 @@ def split_dataframe_stokesparams(specdata: pl.DataFrame | pl.LazyFrame) -> dict[
     The files repeat the table for the Stokes parameters I, Q, and U.
     """
     specdata = specdata.rename({specdata.collect_schema().names()[0]: "nu"}).lazy()
-    stokes_params = {
+    return {
         "I": specdata.select(cs.exclude(cs.contains("_duplicated_"))),
         "Q": specdata.select(
             pl.col("nu"), cs.ends_with("_duplicated_0").name.map(lambda x: x.removesuffix("_duplicated_0"))
@@ -1096,22 +1096,6 @@ def split_dataframe_stokesparams(specdata: pl.DataFrame | pl.LazyFrame) -> dict[
             pl.col("nu"), cs.ends_with("_duplicated_1").name.map(lambda x: x.removesuffix("_duplicated_1"))
         ),
     }
-
-    stokes_params |= {
-        f"{param}/I": stokes_params[param]
-        .join(stokes_params["I"], on="nu", how="left", suffix="_I", maintain_order="left")
-        .select(
-            cs.by_name("nu"),
-            *(
-                pl.col(col) / pl.col(f"{col}_I")
-                for col in stokes_params["I"].collect_schema().names()
-                if col != "nu" and not col.endswith("_I")
-            ),
-        )
-        for param in ("Q", "U")
-    }
-
-    return stokes_params
 
 
 def check_time_range_overlaps_time_bins(
