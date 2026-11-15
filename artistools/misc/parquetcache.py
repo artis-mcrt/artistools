@@ -456,7 +456,8 @@ def write_parquet_atomic(
     the in-flight temporary and read a file that is empty, half-written, or already renamed away.
 
     The write holds cache_conversion_lock, thus "artistools cache delete" keeps the temporary file. A caller that
-    writes an output file of the user gives lock_conversion=False, because that command deletes only the caches.
+    writes a file that this command does not delete, e.g. an output file of the user or a trajectory cache, gives
+    lock_conversion=False.
     """
     import tempfile
 
