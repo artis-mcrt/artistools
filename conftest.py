@@ -6,6 +6,7 @@ import pytest
 if t.TYPE_CHECKING:
     import io
     from collections.abc import Callable
+    from collections.abc import Generator
     from collections.abc import Sequence
 
     import matplotlib.figure as mplfig
@@ -48,6 +49,17 @@ def pytest_configure(config: t.Any) -> None:
                     entry.unlink(missing_ok=True)
 
     outputpath.mkdir(exist_ok=True)
+
+
+@pytest.fixture
+def close_figures() -> "Generator[None]":
+    """Close pyplot figures after each test that requests this fixture."""
+    import matplotlib.pyplot as plt
+
+    try:
+        yield
+    finally:
+        plt.close("all")
 
 
 @pytest.fixture

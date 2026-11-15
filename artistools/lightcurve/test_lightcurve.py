@@ -34,6 +34,8 @@ from artistools.lightcurve import viewingangleanalysis
 from artistools.lightcurve.core import bracket_spectrum_to_band
 from artistools.viewertools.window import apply_values
 
+pytestmark = pytest.mark.usefixtures("close_figures")
+
 modelpath = at.get_path("testdata") / "testmodel"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
 outputpath = at.get_path("testoutput")
