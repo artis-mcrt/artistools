@@ -352,6 +352,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args.outputfile.mkdir(parents=True, exist_ok=True)
     # the name of "." is empty, thus the model name comes from the absolute path of the folder
     modelids = [Path(modelpath).absolute().name.split("_")[0] for modelpath in modelpathlist]
+    if len(set(modelids)) < len(modelids):
+        # each file name holds the identifier, thus the second model replaces the files of the first
+        exit_with_error(
+            "Two models have the same identifier, which is the part of the folder name before the first underscore:"
+            f" {', '.join(modelids)}",
+            "Run the command for one model at a time, with a different output folder for each model",
+        )
     # each file name holds the model and a quantity, e.g. phys_<model>_artisnebular.txt
     # a folder name can hold a character of a glob pattern, e.g. "[", thus the pattern takes the name as text
     confirm_overwrite_matches(

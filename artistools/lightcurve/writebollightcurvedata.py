@@ -16,6 +16,7 @@ from artistools.misc import addarg_force
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import confirm_overwrite
+from artistools.misc import exit_with_error
 from artistools.misc import get_model_name
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
@@ -82,6 +83,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # the two sources hold different columns, thus each one writes a file of its own
     suffix = "_fromspectra" if args.fromspectra else ""
     modelpaths = normalize_path_list(args.modelpath)
+    modelnames = [get_model_name(modelpath) for modelpath in modelpaths]
+    if len(set(modelnames)) < len(modelnames):
+        # the name of a model gives the name of its file, thus the second model replaces the file of the first
+        exit_with_error(
+            f"Two models have the same name, thus they have the same output file: {', '.join(modelnames)}",
+            "Give each model a different name in its plotlabel.txt, or run the command for one model at a time",
+        )
     confirm_overwrite(
         [outputpath],
         [f"bol_lightcurvedata_{get_model_name(modelpath)}{suffix}.txt" for modelpath in modelpaths],
