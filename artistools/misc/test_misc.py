@@ -4833,3 +4833,28 @@ def test_rank_reader_gives_an_earlier_run_the_assignments_of_the_model_folder(
     (runfolder / "nlte_0002.out").unlink()
     with pytest.raises(FileNotFoundError, match="nlte_0002"):
         read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out")
+
+
+def test_rank_cache_without_ranks_is_rebuilt_for_a_run_with_assignments(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A cache of an earlier artistools names no ranks. The assignments of the run show that the text is complete."""
+    from artistools.misc import modelinfo
+    from artistools.misc import write_parquet_atomic
+
+    monkeypatch.setattr(modelinfo, "MIN_TEXT_BYTES_FOR_RANK_CACHE", 1)
+    write_rank_output_model(tmp_path, {"job0": [(0, cell, cell + 0.5) for cell in range(5)]})
+    (tmp_path / "job0" / "modelgridrankassignments.out").write_text(
+        "#rank nstart ndo ndo_nonempty\n0 0 5 5\n", encoding="utf-8"
+    )
+    cachefile = tmp_path / "job0" / "nltecache.parquet"
+
+    def read_rows() -> pl.DataFrame:
+        return modelinfo.read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", cachefilename=cachefile.name)
+
+    full = read_rows()
+    metadata = pl.read_parquet_metadata(cachefile)
+    del metadata["ranks"]
+    write_parquet_atomic(full, cachefile, metadata=metadata, replaces=at.misc.get_file_identity(cachefile))
+
+    pltest.assert_frame_equal(read_rows(), full)

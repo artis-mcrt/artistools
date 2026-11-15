@@ -890,7 +890,7 @@ def scan_rank_text_cache(
         pqmetadata is not None
         and "ranks" not in pqmetadata
         and textsource != f"{prefix}allranks{suffix}"
-        and get_run_layout(modelpath, folderpath) == (None, None)
+        and all(layoutsource is None for layoutsource in get_run_layout(modelpath, folderpath))
     ):
         print_warning(
             f"{parquetfilepath} gives no ranks, and the layout of the run is unknown. "
