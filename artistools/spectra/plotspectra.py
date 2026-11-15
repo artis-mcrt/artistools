@@ -157,6 +157,7 @@ if t.TYPE_CHECKING:
 # the part of the height of the data that the axes of a spectrum add above the tallest peak, thus the peak does not
 # touch the frame. set_legend gives the legend its own room
 YMARGIN: t.Final = 0.05
+POLARISATION_BINFLUX_NBINS: t.Final = 5
 
 
 def find_reference_spectrum_file_or_none(filename: Path | str) -> Path | None:
@@ -252,7 +253,12 @@ def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
 def get_polarisation_spectrum(
     stokes_params: Mapping[str, pl.LazyFrame], timecolumn: str, args: argparse.Namespace
 ) -> pl.DataFrame:
-    """Return the polarisation ratio after each filter and bin operation."""
+    """Return the Stokes ratio of args.stokesparam, e.g. Q/I, after each filter and bin operation.
+
+    A filter or a bin operates on the two Stokes fluxes, and the ratio comes last. The ratio of the means of the
+    fluxes then gives each flux its weight, which the mean of the ratios does not. The ratio is null where the
+    intensity I is zero, because the polarisation of no flux is not available.
+    """
     numerator = args.stokesparam.split("/")[0]
     dfspectrum = (
         stokes_params[numerator]
@@ -267,8 +273,10 @@ def get_polarisation_spectrum(
         .with_columns(lambda_angstroms=c_ang_per_s / pl.col("nu"))
         .collect()
     )
+    print(f"Method of {args.stokesparam} for the time bin at {timecolumn} days:")
+    fluxnames = f"the Stokes fluxes {numerator} and I"
     if (filterfunc := get_filterfunc(args)) is not None:
-        print("Apply the filter to the Stokes fluxes before the ratio")
+        print(f"  Apply the filter to each of {fluxnames}")
         dfspectrum = dfspectrum.with_columns(
             pl.Series(column, filterfunc(dfspectrum[column])) for column in ["numerator", "intensity"]
         )
@@ -276,19 +284,23 @@ def get_polarisation_spectrum(
         x=pl.Series(convert_angstroms_to_unit(dfspectrum["lambda_angstroms"].to_numpy(), args.xunit))
     )
     if args.binflux:
-        print("Calculate each polarisation bin from the mean Stokes fluxes")
-        dfspectrum = bin_spectrum(dfspectrum, 5, "x", ["numerator", "intensity"])
-    return (
-        dfspectrum
-        .lazy()
-        .with_columns(
-            pl
-            .when(pl.col("intensity") != 0.0)
-            .then(pl.col("numerator") / pl.col("intensity"))
-            .otherwise(None)
-            .alias(timecolumn)
+        print(
+            f"  --binflux: calculate the mean of each of {fluxnames} for each group of {POLARISATION_BINFLUX_NBINS}"
+            " adjacent frequency bins. Each frequency bin has the same weight"
         )
-        .collect()
+        dfspectrum = bin_spectrum(dfspectrum, POLARISATION_BINFLUX_NBINS, "x", ["numerator", "intensity"])
+    print(f"  Divide the Stokes flux {numerator} by the Stokes flux I")
+    if zerointensitycount := dfspectrum.filter(pl.col("intensity") == 0.0).height:
+        print(
+            f"  {args.stokesparam} has no value at {zerointensitycount} of {dfspectrum.height} points, because the"
+            " Stokes flux I is zero there. The plot shows a gap at such a point"
+        )
+    return dfspectrum.with_columns(
+        pl
+        .when(pl.col("intensity") != 0.0)
+        .then(pl.col("numerator") / pl.col("intensity"))
+        .otherwise(None)
+        .alias(timecolumn)
     )
 
 

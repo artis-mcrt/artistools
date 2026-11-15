@@ -3919,9 +3919,12 @@ def test_polarisation_processes_fluxes_before_the_ratio(stokesparam: str, binflu
         numerator = np.convolve(np.pad(numerator, 1, mode="edge"), kernel, mode="valid")
     expected = numerator.mean() / intensity.mean() if binflux else numerator / intensity
     assert result["3.0"].to_numpy() == pytest.approx(expected)
+    if binflux and not filtermovingavg:
+        # the mean of the ratios is 0.8
+        assert result["3.0"].to_list() == pytest.approx([4.0 / 104.0])
 
 
-def test_polarisation_marks_zero_intensity_as_unavailable() -> None:
+def test_polarisation_marks_zero_intensity_as_unavailable(capsys: pytest.CaptureFixture[str]) -> None:
     stokes = {
         "I": pl.LazyFrame({"nu": [1e14, 2e14], "3.0": [0.0, 0.0]}),
         "Q": pl.LazyFrame({"nu": [1e14, 2e14], "3.0": [0.0, 1.0]}),
@@ -3929,3 +3932,4 @@ def test_polarisation_marks_zero_intensity_as_unavailable() -> None:
     args = argparse.Namespace(stokesparam="Q/I", binflux=False, xunit="angstroms")
     result = plotspectra.get_polarisation_spectrum(stokes, "3.0", args)
     assert result["3.0"].to_list() == [None, None]
+    assert "no value at 2 of 2 points" in capsys.readouterr().out
