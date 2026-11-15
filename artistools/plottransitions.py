@@ -30,6 +30,7 @@ from artistools.lines import addarg_excitationtemperature
 from artistools.lines import get_excitation_temperature_column
 from artistools.lines import get_opacity_atomic_data
 from artistools.lines.linecontributions import get_ion_populations
+from artistools.lines.linecontributions import warn_about_autoionising_levels
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
@@ -486,6 +487,7 @@ def get_model_conditions(
     temperaturecolumn = get_excitation_temperature_column(
         modelpath, exctemperature, usetext="The superlevel populations take Boltzmann weights at"
     )
+    warn_about_autoionising_levels(modelpath)
     figure_title = (
         f"{get_model_name(modelpath)}\n"
         f"Cell {cell.modelgridindex} ({cell.velocity} km/s) with Te = {T_e:.1f} K, "

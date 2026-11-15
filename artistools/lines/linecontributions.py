@@ -171,6 +171,16 @@ def get_ion_populations(
     return pl.concat(framesofcells)
 
 
+def warn_about_autoionising_levels(modelpath: Path | str) -> None:
+    """Warn that get_ion_populations gives an inexact superlevel split for a model with autoionising levels."""
+    if path_is_file(Path(modelpath, "autoion.txt")):
+        print_warning(
+            "The model has autoion.txt. ARTIS does not include the autoionising levels in the Boltzmann sum of the"
+            " superlevel, but this command includes them. Thus the population of a level in the superlevel can be too"
+            " small"
+        )
+
+
 def get_lte_ion_populations(
     dfcells: pl.DataFrame, levels: pl.DataFrame, neededframe: pl.DataFrame, nnioncolumn: str
 ) -> pl.DataFrame:
@@ -566,12 +576,7 @@ def get_cell_line_inputs(
                 f"The model has NLTE populations, but the NLTE files hold no row for timestep {timestep}",
                 "ARTIS writes the NLTE populations only for some timesteps. Give a different time",
             )
-    if path_is_file(Path(modelpath, "autoion.txt")):
-        print_warning(
-            "The model has autoion.txt. ARTIS does not include the autoionising levels in the Boltzmann sum of the"
-            " superlevel, but this command includes them. Thus the population of a level in the superlevel can be too"
-            " small"
-        )
+    warn_about_autoionising_levels(modelpath)
 
     nlteions = set(dfnltepops.select("Z", "ion_stage").unique().iter_rows())
     usableions = [
