@@ -351,11 +351,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     # the name of "." is empty, thus the model name comes from the absolute path of the folder
     modelids = [Path(modelpath).absolute().name.split("_")[0] for modelpath in modelpathlist]
-    # each file name holds the identifier, thus a later model replaces the files of an earlier one
+    # each file name holds the identifier, thus a later model replaces the files of an earlier one.
+    # some file systems ignore the letter case, thus "Model" and "model" can be one file
+    filekeys = [model_id.casefold() for model_id in modelids]
     sameidpaths = [
         str(modelpath)
-        for modelpath, model_id in zip(modelpathlist, modelids, strict=True)
-        if modelids.count(model_id) > 1
+        for modelpath, filekey in zip(modelpathlist, filekeys, strict=True)
+        if filekeys.count(filekey) > 1
     ]
     if sameidpaths:
         exit_with_error(

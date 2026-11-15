@@ -3733,14 +3733,14 @@ def test_bolometric_export_stops_when_two_models_have_the_same_name(
     from artistools.lightcurve import writebollightcurvedata
 
     modelpaths = [tmp_path / name for name in ("first", "second", "third")]
-    for folder, label in zip(modelpaths, ("same", "same", "different"), strict=True):
+    for folder, label in zip(modelpaths, ("nested/same", "Nested//same", "different"), strict=True):
         folder.mkdir()
         (folder / "plotlabel.txt").write_text(f"{label}\n", encoding="utf-8")
     outputfolder = tmp_path / "output"
     with pytest.raises(SystemExit):
         writebollightcurvedata.main(argsraw=[], modelpath=modelpaths, outputfile=outputfolder)
     errortext = "".join(capsys.readouterr().err.split())
-    assert "nameofadifferentmodelpath" in errortext
+    assert "outputfilenameofadifferentmodelpath" in errortext
     assert "first" in errortext
     assert "second" in errortext
     assert "third" not in errortext

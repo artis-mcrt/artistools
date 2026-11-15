@@ -248,7 +248,7 @@ def test_write_edep_needs_the_deposition_estimators(tmp_path: Path, capsys: pyte
 def test_comparison_export_stops_when_two_models_have_the_same_identifier(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    modelpaths = [tmp_path / name for name in ("model_low", "model_high", "other_low")]
+    modelpaths = [tmp_path / name for name in ("model_low", "Model_high", "other_low")]
     for folder in modelpaths:
         folder.mkdir()
     outputfolder = tmp_path / "output"
@@ -257,6 +257,6 @@ def test_comparison_export_stops_when_two_models_have_the_same_identifier(
     errortext = "".join(capsys.readouterr().err.split())
     assert "identifierofadifferentmodelpath" in errortext
     assert "model_low" in errortext
-    assert "model_high" in errortext
+    assert "Model_high" in errortext
     assert "other_low" not in errortext
     assert not list(outputfolder.iterdir())

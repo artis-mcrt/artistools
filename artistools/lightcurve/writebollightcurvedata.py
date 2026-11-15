@@ -1,6 +1,7 @@
 """Write bolometric light curve data out as plain text files, one per model."""
 
 import argparse
+import os
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
@@ -80,15 +81,15 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     modelpaths = normalize_path_list(args.modelpath)
     modelnames = [get_model_name(modelpath) for modelpath in modelpaths]
-    # the name of a model gives the name of its file, thus a later model replaces the file of an earlier one
-    samenamepaths = [
-        str(modelpath)
-        for modelpath, modelname in zip(modelpaths, modelnames, strict=True)
-        if modelnames.count(modelname) > 1
+    # the name of a model gives the name of its file, thus a later model replaces the file of an earlier one.
+    # a name can hold a path, and some file systems ignore the letter case, thus "a//b" and "A/b" can be one file
+    filekeys = [os.path.normpath(modelname).casefold() for modelname in modelnames]
+    samefilepaths = [
+        str(modelpath) for modelpath, filekey in zip(modelpaths, filekeys, strict=True) if filekeys.count(filekey) > 1
     ]
-    if samenamepaths:
+    if samefilepaths:
         exit_with_error(
-            f"These model paths have the name of a different model path: {', '.join(samenamepaths)}",
+            f"These model paths have the output file name of a different model path: {', '.join(samefilepaths)}",
             "Give each model a different name in its plotlabel.txt, or write each model to a different output folder",
         )
 
