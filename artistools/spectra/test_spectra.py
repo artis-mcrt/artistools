@@ -3899,20 +3899,27 @@ def test_output_template_names_a_field_that_plotspectra_does_not_give(tmp_path: 
         plotspectra.get_plot_outputfile(args)
 
 
+def write_vspecpol_total(folder: Path, observer_index: int, table: npt.NDArray[np.float64]) -> None:
+    folder.mkdir(exist_ok=True)
+    np.savetxt(folder / f"vspecpol_total-{observer_index}.out", table)
+
+
 @pytest.mark.parametrize("difference", ["time", "frequency", "shape"])
 def test_virtual_average_refuses_different_grids(tmp_path: Path, difference: str) -> None:
+    """A different grid in the last observer direction stops the average before the first file exists."""
     folders = [tmp_path / name for name in ("first", "second")]
-    tables = [np.array([[0.0, 1.0, 2.0], [10.0, 100.0, 200.0], [20.0, 300.0, 400.0]])] * 2
-    tables[1] = tables[1].copy()
+    table = np.array([[0.0, 1.0, 2.0], [10.0, 100.0, 200.0], [20.0, 300.0, 400.0]])
+    differenttable = table.copy()
     if difference == "time":
-        tables[1][0, 1] = 1.5
+        differenttable[0, 1] = 1.001
     elif difference == "frequency":
-        tables[1][1, 0] = 11.0
+        differenttable[1, 0] = 10.01
     else:
-        tables[1] = tables[1][:2]
-    for folder, table in zip(folders, tables, strict=True):
-        folder.mkdir()
-        np.savetxt(folder / "vspecpol_total-2.out", table)
+        differenttable = differenttable[:2]
+    for folder in folders:
+        write_vspecpol_total(folder, 2, table)
+    write_vspecpol_total(folders[0], 5, table)
+    write_vspecpol_total(folders[1], 5, differenttable)
 
     with pytest.raises(ValueError, match="time or frequency grid"):
         atspectra.make_averaged_vspecfiles(folders)
@@ -3920,14 +3927,17 @@ def test_virtual_average_refuses_different_grids(tmp_path: Path, difference: str
 
 
 def test_virtual_average_keeps_observer_index_and_fractional_flux(tmp_path: Path) -> None:
+    """A grid difference of the print precision is permitted, and the stale compressed file has no effect."""
     folders = [tmp_path / name for name in ("first", "second")]
-    for folder, flux in zip(folders, (100, 101), strict=True):
+    for folder, time_days, flux in zip(folders, ("1.06291", "1.062912"), (100, 101), strict=True):
         folder.mkdir()
-        (folder / "vspecpol_total-2.out").write_text(f"0 1 2\n10 {flux} 200\n20 300 400\n", encoding="utf-8")
+        (folder / "vspecpol_total-2.out").write_text(f"0 {time_days} 2\n10 {flux} 200\n20 300 400\n", encoding="utf-8")
+    with gzip.open(folders[0] / "vspecpol_total-2.out.gz", "wt", encoding="utf-8") as fstale:
+        fstale.write("0 1.06291 2\n10 900 200\n20 300 400\n")
 
     atspectra.make_averaged_vspecfiles(folders)
 
-    assert not (folders[0] / "vspecpol_averaged-0.out").exists()
+    assert [path.name for path in folders[0].glob("vspecpol_averaged-*")] == ["vspecpol_averaged-2.out"]
     actual = np.loadtxt(folders[0] / "vspecpol_averaged-2.out")
-    expected = np.array([[0.0, 1.0, 2.0], [10.0, 100.5, 200.0], [20.0, 300.0, 400.0]])
-    np.testing.assert_allclose(actual, expected)
+    expected = np.array([[0.0, 1.06291, 2.0], [10.0, 100.5, 200.0], [20.0, 300.0, 400.0]])
+    np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=0.0)

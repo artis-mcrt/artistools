@@ -3,6 +3,7 @@
 import io
 import itertools
 import math
+import re
 import typing as t
 import warnings
 from collections.abc import Callable
@@ -75,6 +76,7 @@ from artistools.misc import read_wsv
 from artistools.misc import resolve_modelpath
 from artistools.misc import split_multitable_dataframe
 from artistools.misc import warn_direction_bin_noise
+from artistools.misc import without_compressed_extension
 from artistools.misc import XUnit
 from artistools.packets import filter_packets_dirbin
 from artistools.packets import get_emission_velocity_expr
@@ -941,37 +943,47 @@ def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
 
 
 def make_averaged_vspecfiles(modelpaths: Sequence[Path]) -> None:
-    """Average the vspecpol_total files of several models into one vspecpol_averaged file per observer direction."""
-    filenames = [
-        vspecfile.name for vspecfile in Path(modelpaths[0]).iterdir() if vspecfile.name.startswith("vspecpol_total-")
-    ]
+    """Average the vspecpol_total files of several models into one vspecpol_averaged file per observer direction.
 
-    def observer_index(filename: str) -> tuple[int, str]:
-        """Return the observer number n of a vspecpol_total-n.out file name, then the name for a tie."""
-        return int(filename.removeprefix("vspecpol_total-").split(".", 1)[0]), filename
+    The first model gives the observer directions, and it gets the output files. The function examines the
+    time grid and the frequency grid of every observer direction before it writes the first file.
+    """
+    # a plain file and its compressed sibling give one observer direction
+    observer_indices = sorted({
+        int(namematch[1])
+        for vspecfile in Path(modelpaths[0]).iterdir()
+        if (namematch := re.fullmatch(r"vspecpol_total-(\d+)\.out", without_compressed_extension(vspecfile).name))
+    })
 
-    filenames.sort(key=observer_index)
+    # the times have 6 significant figures in the file, thus two equal grids can differ by 5e-6.
+    # Two adjacent bins of a grid differ by more than 1e-3
+    grid_rtol = 1e-5
 
-    for filename in filenames:
-        spec_index, _ = observer_index(filename)
-        vspecarrays = [
-            read_wsv(modelpath / filename, has_header=False).lazy().cast(pl.Float64).collect().to_numpy()
-            for modelpath in modelpaths
-        ]
+    averaged_of_observer: dict[int, npt.NDArray[np.float64]] = {}
+    for observer_index in observer_indices:
+        # read_wsv reads a compressed sibling only when the plain file does not exist
+        vspecpaths = [Path(modelpath, f"vspecpol_total-{observer_index}.out") for modelpath in modelpaths]
+        vspecarrays = [read_wsv(vspecpath, has_header=False).cast(pl.Float64).to_numpy() for vspecpath in vspecpaths]
         averaged = vspecarrays[0].copy()
-        for modelpath, values in zip(modelpaths[1:], vspecarrays[1:], strict=True):
+        for vspecpath, values in zip(vspecpaths[1:], vspecarrays[1:], strict=True):
             if (
                 values.shape != averaged.shape
-                or not np.array_equal(values[0], averaged[0])
-                or not np.array_equal(values[:, 0], averaged[:, 0])
+                or not np.allclose(values[0], averaged[0], rtol=grid_rtol, atol=0.0)
+                or not np.allclose(values[:, 0], averaged[:, 0], rtol=grid_rtol, atol=0.0)
             ):
-                msg = f"The time or frequency grid of {modelpath / filename} differs from {modelpaths[0] / filename}"
+                msg = (
+                    f"The time or frequency grid of {vspecpath} differs from {vspecpaths[0]} "
+                    f"(relative tolerance {grid_rtol:g})"
+                )
                 raise ValueError(msg)
         # the first row (times) and first column (frequencies) are labels shared by all models, so average the rest
         averaged[1:, 1:] = np.mean([arr[1:, 1:] for arr in vspecarrays], axis=0)
-        pl.DataFrame(averaged).write_csv(
-            Path(modelpaths[0]) / f"vspecpol_averaged-{spec_index}.out", separator=" ", include_header=False
-        )
+        averaged_of_observer[observer_index] = averaged
+
+    for observer_index, averaged in averaged_of_observer.items():
+        outfile = Path(modelpaths[0], f"vspecpol_averaged-{observer_index}.out")
+        pl.DataFrame(averaged).write_csv(outfile, separator=" ", include_header=False)
+        print_saved(outfile)
 
 
 def name_repeated_columns(colnames: Sequence[str]) -> list[str]:
