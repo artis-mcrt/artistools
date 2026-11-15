@@ -613,7 +613,8 @@ def check_viewer_args(args: argparse.Namespace) -> None:
     exit_for_other_actions(
         "spectra",
         {
-            "--timedayslist": args.multispecplot,
+            # resolve_plot_args sets multispecplot from --timedayslist, and this check runs before it
+            "--timedayslist": args.multispecplot or bool(args.timedayslist),
             "--makevspecpol": args.makevspecpol,
             "--averagevspecpolfiles": args.averagevspecpolfiles,
             "--output-spectra": args.output_spectra,

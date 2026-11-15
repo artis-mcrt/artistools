@@ -848,7 +848,7 @@ def test_interactive_option_rows() -> None:
 
 
 def test_interactive_other_options_reach_the_command(
-    make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer],
+    make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer], capsys: pytest.CaptureFixture[str]
 ) -> None:
     """The command contains each row of the table, and a row that plotspectra rejects keeps the old options."""
     viewer = make_viewer("spectra", [str(modelpath), "-t", "300", "--filtermovingavg", "3", "--interactive"])
@@ -871,6 +871,11 @@ def test_interactive_other_options_reach_the_command(
     message = apply_values(twomodels, dc.replace(twomodels.values, otheroptions=(("--stokesparam", ("Q/I",)),)))
     assert message is not None
     assert "--stokesparam Q/I" in message
+
+    # --timedayslist alone selects the subplots of the epochs, which the window does not show
+    with pytest.raises(SystemExit):
+        make_viewer("spectra", [str(modelpath), "--timedayslist", "300", "310", "--interactive"])
+    assert "--timedayslist" in capsys.readouterr().err
 
 
 def test_interactive_lock_series(make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer]) -> None:
