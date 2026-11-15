@@ -50,10 +50,10 @@ from artistools.misc import firstexisting_or_none
 from artistools.misc import get_artis_option
 from artistools.misc import get_file_identity
 from artistools.misc import get_file_state
+from artistools.misc import get_nonempty_cellcounts
 from artistools.misc import get_parquet_cache_name
 from artistools.misc import get_rank_outputfiles
 from artistools.misc import get_run_mpiranklist
-from artistools.misc import get_run_nonempty_cellcounts
 from artistools.misc import get_runfolder_timesteps
 from artistools.misc import get_runfolders
 from artistools.misc import get_text_compression
@@ -494,8 +494,7 @@ def get_estimator_textsource(
     """
     rankfile_mtimes = {rank: filestat.mtime for rank, filestat in rankfile_stats.items()}
     if mpiranks:
-        mtime = max((rankfile_mtimes[rank] for rank in mpiranks if rank in rankfile_mtimes), default=None)
-        complete = all(rank in rankfile_mtimes for rank in mpiranks)
+        mtime, complete = get_batch_textsource_state(rankfile_mtimes, min(mpiranks), max(mpiranks))
     else:
         mtime, complete = max(rankfile_mtimes.values(), default=None), False
 
@@ -670,13 +669,7 @@ def allranks_parquet_is_current(folderpath: Path | str) -> bool:
         return False
 
     rankmin, rankmax = pqmetadata.get("rank_min"), pqmetadata.get("rank_max")
-    mpiranks = (
-        tuple(int(rank) for rank in pqmetadata["ranks"].split(",") if rank)
-        if "ranks" in pqmetadata
-        else range(int(rankmin), int(rankmax) + 1)
-        if rankmin is not None and rankmax is not None
-        else ()
-    )
+    mpiranks = range(int(rankmin), int(rankmax) + 1) if rankmin is not None and rankmax is not None else ()
     rankfile_stats = get_rankfile_stats(folderpath)
     textfile, textsource_mtime, textsource_complete = get_estimator_textsource(folderpath, mpiranks, rankfile_stats)
     if text_is_older_than_cache(pqmetadata, textsource_mtime):
@@ -828,8 +821,9 @@ def convert_text_to_parts(state: "EstimatorBatchState", partsfolder: Path) -> Ti
             estimparse_allranks_textbatches(state.textfile, MIN_TEXTBATCH_BYTES, submit_text_batch)
         else:
             print(f"    Reading {len(state.mpiranks)} estimator files in {state.runfolder.name}...", end="", flush=True)
-            for ranks in contiguous_runs(state.mpiranks):
-                estimparse_textbatches(state.runfolder, min(ranks), max(ranks), MIN_TEXTBATCH_BYTES, submit_text_batch)
+            estimparse_textbatches(
+                state.runfolder, min(state.mpiranks), max(state.mpiranks), MIN_TEXTBATCH_BYTES, submit_text_batch
+            )
         if pendingwrite is not None:
             pendingwrite.result()
 
@@ -995,7 +989,6 @@ def write_estimator_cache(
         {
             "rank_min": str(min(state.mpiranks)),
             "rank_max": str(max(state.mpiranks)),
-            "ranks": ",".join(str(rank) for rank in state.mpiranks),
             "textsource": get_textsource_name(state.textfile),
             # a job that still runs can add to the text after the read, within the tolerance of the cache stamp.
             # The size of the text then shows the change, see allranks_textsource_change()
@@ -1038,6 +1031,9 @@ def get_estimators_parquetfile(
     parquetfilepath = state.parquetfile
     stalereason = state.stalereason
 
+    assert len(state.mpiranks) == max(state.mpiranks) - min(state.mpiranks) + 1, (
+        "mpiranks must be a contiguous range of ranks"
+    )
     assert len(set(state.mpiranks)) == len(state.mpiranks), "mpiranks must not contain duplicates"
 
     if stalereason is not None and rankbatch_cache_cannot_be_rebuilt(
@@ -1070,7 +1066,7 @@ def get_estimators_parquetfile(
             timestepparts, state, textfiles, textsize = convert_unchanged_text_to_parts(state, partsfolder)
             schema = get_parts_schema(timestepparts)
             if state.allranks:
-                nonempty_cellcounts = get_run_nonempty_cellcounts(modelpath, state.runfolder)
+                nonempty_cellcounts = get_nonempty_cellcounts(modelpath, state.runfolder)
                 if nonempty_cellcounts is not None and state.textfile is None:
                     # the files of the ranks give the cells of the ranks that the conversion reads, and not of every
                     # rank
@@ -1591,17 +1587,6 @@ def get_estimator_batch_states(
         )
         if stalereason is None and allranks and complete:
             stalereason = allranks_textsource_change(pqmetadata, textfile, rankfile_stats)
-            if stalereason is None and textfile is None and pqmetadata is not None:
-                rankmin, rankmax = pqmetadata.get("rank_min"), pqmetadata.get("rank_max")
-                cachedranks = (
-                    tuple(int(rank) for rank in pqmetadata["ranks"].split(",") if rank)
-                    if "ranks" in pqmetadata
-                    else tuple(range(int(rankmin), int(rankmax) + 1))
-                    if rankmin is not None and rankmax is not None
-                    else mpiranks
-                )
-                if cachedranks != mpiranks:
-                    stalereason = "the ranks of the cache differ from the ranks of this run"
         if stalereason is not None and allranks and text_is_older_than_cache(pqmetadata, mtime):
             print_warning(f"{runfolder}: the estimator text is older than {cachepath.name}, thus artistools keeps it.")
             stalereason = None
@@ -1624,7 +1609,9 @@ def get_estimator_batch_states(
 
     states: list[EstimatorBatchState] = []
     for runfolder in runfolders:
+        # a restart can change the ranks, thus each run folder has its own ranks
         mpiranklist = get_run_mpiranklist(modelpath, runfolder)
+        # an empty selection of cells, e.g. of -readonlymgi, reads all the ranks, and the filter then gives no rows
         mpiranks_matched = set(
             get_run_mpiranklist(modelpath, runfolder, match_modelgridindex) if match_modelgridindex else mpiranklist
         )
@@ -1747,15 +1734,14 @@ def select_estimator_batch_caches(
     get_estimator_batch_states gives the same caches for a selection, thus a scan of these caches reads the same rows.
     """
     runfolders = set(get_runfolders(modelpath, timesteps=match_timestep))
-    mpiranks_of_folder = {
-        runfolder: set(get_run_mpiranklist(modelpath, runfolder, match_modelgridindex or None))
-        for runfolder in runfolders
+    mpiranks_matched = {
+        runfolder: set(get_run_mpiranklist(modelpath, runfolder, match_modelgridindex)) for runfolder in runfolders
     }
     return [
         batchcache
         for batchcache in batchcaches
         if batchcache.runfolder in runfolders
-        and mpiranks_of_folder[batchcache.runfolder].intersection(batchcache.mpiranks)
+        and mpiranks_matched[batchcache.runfolder].intersection(batchcache.mpiranks)
     ]
 
 

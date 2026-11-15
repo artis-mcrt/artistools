@@ -5370,7 +5370,7 @@ def test_units_of_a_column_of_tellurium_are_not_kelvin() -> None:
     assert at.estimators.get_units("em_Te") == "K"
 
 
-@pytest.mark.parametrize("layout", ["assignments", "log", "unknown", "sparse"])
+@pytest.mark.parametrize("layout", ["assignments", "log", "unknown"])
 def test_estimators_use_the_layout_of_each_run(
     tmp_path: Path, get_cell_texts: Callable[[str], list[str]], layout: str
 ) -> None:
@@ -5390,7 +5390,7 @@ def test_estimators_use_the_layout_of_each_run(
         (runfolder / "output_0-0.txt").write_text("rank 0 of [0..1] in MPI_COMM_WORLD\n", encoding="utf-8")
     celltexts = get_cell_texts((modelpath / "estimators_0000.out").read_text(encoding="utf-8"))
     cells = (1, 0) if layout == "assignments" else (0, 1)
-    ranks = (0, 2) if layout == "sparse" else (0, 1)
+    ranks = (0, 1)
     for rank, cell in zip(ranks, cells, strict=True):
         (runfolder / f"estimators_{rank:04d}.out").write_text(relabel_cell(celltexts[0], cell), encoding="utf-8")
     states = get_estimator_batch_states(tmp_path, None, None)
@@ -5411,8 +5411,10 @@ def test_estimators_use_the_layout_of_each_run(
                 "rank_min": "0",
                 "rank_max": "0",
                 "textsource": "rank files",
+                "textsource_size": str((runfolder / "estimators_0000.out").stat().st_size),
             },
         )
+        # the cache holds rank 0 alone, as a version that gave each run the layout of the model folder wrote it
         assert get_estimator_batch_states(tmp_path, None, None)[0].rebuild
     full = at.scan_estimators(tmp_path).collect().sort("modelgridindex")
     assert full["modelgridindex"].to_list() == [0, 1]

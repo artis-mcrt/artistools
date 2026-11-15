@@ -1737,7 +1737,7 @@ def test_server_protocol_changes_with_the_readers(package_modules: list[Path]) -
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (17, "69e24cb9f926002e"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (18, "69e24cb9f926002e"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )
@@ -2578,16 +2578,15 @@ def test_nonempty_cellcounts_reads_the_rank_assignments(tmp_path: Path) -> None:
     ARTIS assigns no 3D cell to a shell that holds no matter, thus the rank of such a shell writes no
     output file. That absence is normal, and it must not read as a file that went missing.
     """
-    from artistools.misc.modelinfo import get_run_nonempty_cellcounts
+    from artistools.misc.modelinfo import get_nonempty_cellcounts
 
     (tmp_path / "modelgridrankassignments.out").write_text("#rank nstart ndo ndo_nonempty\n0 0 1 0\n1 1 1 0\n2 2 1 3\n")
 
-    counts = get_run_nonempty_cellcounts(tmp_path, tmp_path)
+    counts = get_nonempty_cellcounts(tmp_path)
     assert counts == {0: 0, 1: 0, 2: 3}
 
     # a model that holds no such file gives None, thus the caller keeps its own error
-    testmodel = at.get_path("testdata") / "testmodel"
-    assert get_run_nonempty_cellcounts(testmodel, testmodel) is None
+    assert get_nonempty_cellcounts(at.get_path("testdata") / "testmodel") is None
 
 
 @pytest.mark.parametrize("has_allranks_file", [False, True])
@@ -4734,7 +4733,7 @@ def test_firstexisting_gives_the_purpose_of_a_missing_file(tmp_path: Path) -> No
     assert "gives the wavelength" not in str(noreason.value)
 
 
-@pytest.mark.parametrize("layout", ["assignments", "log", "unknown", "sparse"])
+@pytest.mark.parametrize("layout", ["assignments", "log", "unknown"])
 @pytest.mark.parametrize("cache", [False, True])
 def test_rank_reader_uses_the_layout_of_each_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, layout: str, cache: bool
@@ -4743,10 +4742,9 @@ def test_rank_reader_uses_the_layout_of_each_run(
 
     write_rank_output_model(tmp_path, {"job0": [(0, cell, float(cell)) for cell in range(3)], ".": [(1, 4, 14.0)]})
     runfolder = tmp_path / "job0"
-    extrarank = 2 if layout == "sparse" else 1
-    (runfolder / f"nlte_{extrarank:04d}.out").write_text(
-        "timestep modelgridindex nnlevel\n0 3 3.0\n0 4 4.0\n", encoding="utf-8"
-    )
+    (runfolder / "nlte_0001.out").write_text("timestep modelgridindex nnlevel\n0 3 3.0\n0 4 4.0\n", encoding="utf-8")
+    # each rank that has cells writes an estimator file
+    (runfolder / "estimators_0001.out").write_text("timestep 0 modelgridindex 3\n\n", encoding="utf-8")
     if layout == "assignments":
         (runfolder / "modelgridrankassignments.out").write_text(
             "#rank nstart ndo ndo_nonempty\n0 0 3 3\n1 3 2 2\n", encoding="utf-8"
@@ -4763,42 +4761,6 @@ def test_rank_reader_uses_the_layout_of_each_run(
         tmp_path, "nlte_{mpirank:04d}.out", modelgridindex=4, cachefilename=cachename
     ).sort("timestep")
     pltest.assert_frame_equal(selected, full.filter(modelgridindex=4))
-
-
-def test_legacy_rank_cache_keeps_archived_rows_without_a_run_layout(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    from artistools.misc import modelinfo
-    from artistools.misc import write_parquet_atomic
-
-    monkeypatch.setattr(modelinfo, "MIN_TEXT_BYTES_FOR_RANK_CACHE", 1)
-    write_rank_output_model(tmp_path, {"job0": [(0, cell, cell + 0.5) for cell in range(3)]})
-    runfolder = tmp_path / "job0"
-    rankone = runfolder / "nlte_0001.out"
-    rankone.write_text("timestep modelgridindex nnlevel\n0 3 3.5\n0 4 4.5\n", encoding="utf-8")
-    cachefile = runfolder / "nltecache.parquet"
-
-    def read_rows(cell: int | None = None) -> pl.DataFrame:
-        return modelinfo.read_rank_outputfiles(
-            tmp_path, "nlte_{mpirank:04d}.out", modelgridindex=cell, cachefilename=cachefile.name
-        ).sort("modelgridindex")
-
-    full = read_rows()
-    metadata = pl.read_parquet_metadata(cachefile)
-    del metadata["ranks"]
-    write_parquet_atomic(full, cachefile, metadata=metadata, replaces=at.misc.get_file_identity(cachefile))
-    cachedbytes = cachefile.read_bytes()
-    rankone.unlink()
-
-    pltest.assert_frame_equal(read_rows(), full)
-    pltest.assert_frame_equal(read_rows(4), full.filter(modelgridindex=4))
-    assert cachefile.read_bytes() == cachedbytes
-    assert "the layout of the run is unknown" in capsys.readouterr().err
-
-    newer = (runfolder / "nlte_0000.out").stat().st_mtime + 1000.0
-    write_allranks_nlte_file(runfolder, mtime=newer)
-    assert read_rows()["nnlevel"].to_list() == pytest.approx([cell + 10.5 for cell in range(5)])
-    assert "ranks" in pl.read_parquet_metadata(cachefile)
 
 
 @pytest.mark.parametrize("rankevidence", ["log", "estimator files", "archived estimator files"])
@@ -4833,28 +4795,3 @@ def test_rank_reader_gives_an_earlier_run_the_assignments_of_the_model_folder(
     (runfolder / "nlte_0002.out").unlink()
     with pytest.raises(FileNotFoundError, match="nlte_0002"):
         read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out")
-
-
-def test_rank_cache_without_ranks_is_rebuilt_for_a_run_with_assignments(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A cache of an earlier artistools names no ranks. The assignments of the run show that the text is complete."""
-    from artistools.misc import modelinfo
-    from artistools.misc import write_parquet_atomic
-
-    monkeypatch.setattr(modelinfo, "MIN_TEXT_BYTES_FOR_RANK_CACHE", 1)
-    write_rank_output_model(tmp_path, {"job0": [(0, cell, cell + 0.5) for cell in range(5)]})
-    (tmp_path / "job0" / "modelgridrankassignments.out").write_text(
-        "#rank nstart ndo ndo_nonempty\n0 0 5 5\n", encoding="utf-8"
-    )
-    cachefile = tmp_path / "job0" / "nltecache.parquet"
-
-    def read_rows() -> pl.DataFrame:
-        return modelinfo.read_rank_outputfiles(tmp_path, "nlte_{mpirank:04d}.out", cachefilename=cachefile.name)
-
-    full = read_rows()
-    metadata = pl.read_parquet_metadata(cachefile)
-    del metadata["ranks"]
-    write_parquet_atomic(full, cachefile, metadata=metadata, replaces=at.misc.get_file_identity(cachefile))
-
-    pltest.assert_frame_equal(read_rows(), full)
