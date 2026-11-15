@@ -1144,7 +1144,6 @@ def scan_vspecpol_spectrum(
     vspecdata = scan_vspecpol_data(vspecindex=angle, modelpath=Path(modelpath))[stokesparam]
 
     arr_tmid = [float(i) for i in vspecdata.collect_schema().names()[1:]]
-    arr_tdelta = [l1 - l2 for l1, l2 in zip(arr_tmid[1:], arr_tmid[:-1], strict=False)] + [arr_tmid[-1] - arr_tmid[-2]]
 
     timerangelow, timerangehigh = (timeavg, timeavg) if timemin is None or timemax is None else (timemin, timemax)
     check_time_range_overlaps_time_bins(
@@ -1163,14 +1162,18 @@ def scan_vspecpol_spectrum(
     timelower = arr_tmid[timestepmin]
     timeupper = arr_tmid[timestepmax]
     print(f" vpacket spectrum timesteps {timestepmin} ({timelower}d) to {timestepmax} ({timeupper}d)")
+    if timestepmax > timestepmin:
+        print("  The mean weights each virtual spectrum by the width of its logarithmic time bin (ARTIS vpkt.cc)")
 
+    # ARTIS gives the virtual spectra logarithmic time bins (vpkt.cc), thus the width of each bin is proportional to
+    # its middle time, and the middle times are the weights of the mean
     dfout = vspecdata.select(
         f_nu=(
             pl.sum_horizontal(
-                pl.col(vspecdata.collect_schema().names()[timestep + 1]) * arr_tdelta[timestep]
+                pl.col(vspecdata.collect_schema().names()[timestep + 1]) * arr_tmid[timestep]
                 for timestep in range(timestepmin, timestepmax + 1)
             )
-            / sum(arr_tdelta[timestepmin : timestepmax + 1])
+            / sum(arr_tmid[timestepmin : timestepmax + 1])
         ),
         nu=pl.col("nu"),
     ).with_columns(lambda_angstroms=constants.c_ang_per_s / pl.col("nu"))
