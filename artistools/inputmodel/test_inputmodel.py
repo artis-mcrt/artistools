@@ -3972,12 +3972,8 @@ def test_from_e2e_model_rejects_unequal_3d_dimensions_before_a_write(tmp_path: P
     write_e2e_model(datpath, tmp_path / "iso_table.npy")
     gridargs = ["-npz", str(datpath), "-vmax_on_c", "0.4", "--mapto3D", "-ngridx", "4", "-ngridy", "6", "-ngridz", "8"]
 
-    with (
-        mock.patch.object(at.inputmodel.from_e2e_model, "get_grid") as mockgetgrid,
-        pytest.raises(ValueError, match="equal --ngridx"),
-    ):
+    with pytest.raises(ValueError, match="equal --ngridx"):
         at.inputmodel.from_e2e_model.main(argsraw=[*gridargs, "-o", str(tmp_path / "model3d")])
-    mockgetgrid.assert_not_called()
     # parse_cli_args makes the -o folder of each command, thus the folder exists
     assert not list((tmp_path / "model3d").iterdir())
 

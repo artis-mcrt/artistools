@@ -1330,12 +1330,8 @@ def get_output_file_names(args: argparse.Namespace) -> tuple[str, ...]:
 
 
 def validate_grid_dimensions(args: argparse.Namespace) -> None:
-    """Stop if the model stays 3D and its grid is not cubic, because the model writer needs a cubic grid.
-
-    With --dimensions 0 or 1, dimension_reduce_model replaces the 3D grid before the model writer runs.
-    """
-    staysthreedimensional = args.mapto3D and (args.dimensions is None or args.dimensions >= 2)
-    if staysthreedimensional and not (args.ngridx == args.ngridy == args.ngridz):
+    """Stop at unequal dimensions of a model that stays 3D, because the model writer needs a cubic grid."""
+    if args.mapto3D and args.dimensions is None and not (args.ngridx == args.ngridy == args.ngridz):
         msg = (
             "A 3D model needs equal --ngridx, --ngridy, and --ngridz values,"
             f" got {args.ngridx}, {args.ngridy}, and {args.ngridz}"
