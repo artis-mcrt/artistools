@@ -3966,3 +3966,20 @@ def test_abundance_write_failure_keeps_the_previous_file(tmp_path: Path, extensi
             at.inputmodel.save_initelemabundances(abundance, outpath=output)
     assert output.read_bytes() == original
     assert sorted(tmp_path.iterdir()) == [output]
+
+
+@pytest.mark.parametrize("empty_slice", [False, True])
+def test_random_density_perturbations_preserve_each_slice_mass(empty_slice: bool) -> None:
+    from artistools.inputmodel.from_e2e_model import apply_density_perturbations
+
+    x, y = np.meshgrid(np.arange(4) - 1.5, np.arange(4) - 1.5)
+    rho = np.tile((1.0 + x**2 + y**2).ravel(), 4).reshape((4, 16))
+    if empty_slice:
+        rho[-1] = 0.0
+    model = pl.DataFrame({"rho": rho.ravel()})
+    with mock.patch("numpy.random.default_rng", return_value=np.random.default_rng(seed=123)):
+        perturbed = apply_density_perturbations(model, 0.5, ("random", 0.5))
+    rho_perturbed = perturbed["rho"].to_numpy().reshape((4, 16))
+    np.testing.assert_allclose(rho_perturbed.sum(axis=1), rho.sum(axis=1), rtol=1e-12)
+    assert not np.allclose(rho_perturbed, rho)
+    assert np.all(np.isfinite(rho_perturbed))
