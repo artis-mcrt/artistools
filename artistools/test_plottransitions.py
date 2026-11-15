@@ -9,6 +9,7 @@ import polars as pl
 import pytest
 
 import artistools as at
+from artistools.constants import K_B_ev_per_K
 
 pytestmark = pytest.mark.usefixtures("close_figures")
 
@@ -150,3 +151,75 @@ def test_normalised_spectrum_of_an_ion_with_no_line_stays_zero(tmp_path: Path) -
             xmax=7170,
             outputfile=tmp_path / "trans.pdf",
         )
+
+
+@pytest.mark.parametrize("temperature", [3000.0, 8000.0])
+def test_transitions_distribute_the_superlevel_population(temperature: float) -> None:
+    levels = pl.DataFrame({"levelindex": [0, 1, 2, 3], "g": [1.0, 3.0, 5.0, 7.0], "energy_ev": [0.0, 1.0, 2.0, 3.0]})
+    nltepops = pl.DataFrame({
+        "modelgridindex": [2, 2, 2],
+        "Z": [26, 26, 26],
+        "ion_stage": [2, 2, 2],
+        "level": [0, 1, -1],
+        "n_NLTE": [10.0, 20.0, 30.0],
+    })
+    conditions = at.plottransitions.PlotConditions(
+        ionpopdict={(26, 2): 60.0},
+        temperature_list=["NOTEMPNLTE"],
+        vardict={"Te": 5000.0, "T_exc": temperature},
+        figure_title="",
+        dfnltepops=nltepops,
+    )
+    transitions = pl.DataFrame({"upper": [1, 2, 3], "flux_factor": [2.0, 3.0, 4.0], "upper_pop_Te": [1.0, 1.0, 1.0]})
+    result = at.plottransitions.add_nlte_pop(transitions, levels, conditions, (26, 2))
+    weights = np.array([5.0, 7.0]) * np.exp(-np.array([0.0, 1.0]) / K_B_ev_per_K / temperature)
+    expected = np.concatenate(([20.0], 30.0 * weights / weights.sum()))
+    assert result["upper_pop_nlte"].to_numpy() == pytest.approx(expected)
+    assert result["flux_factor_nlte"].to_numpy() == pytest.approx(expected * np.array([2.0, 3.0, 4.0]))
+    assert result["upper_departure"].to_numpy() == pytest.approx(expected)
+
+
+def test_transition_superlevel_uses_only_the_kept_levels(tmp_path: Path) -> None:
+    levels = pl.DataFrame({"levelindex": [0, 1, 2], "g": [1.0, 3.0, 5.0], "energy_ev": [0.0, 1.0, 2.0]})
+    atomicdata = pl.DataFrame({"Z": [26], "ion_stage": [2], "levels": pl.Series([levels], dtype=pl.Object)})
+    with (
+        mock.patch.object(at.lines.core, "get_levels", return_value=atomicdata),
+        mock.patch.object(at.lines.core, "get_kept_level_counts", return_value={26: 2}),
+        mock.patch.object(at.lines.core, "get_single_level_top_ion_stages", return_value={}),
+    ):
+        result = at.plottransitions.get_transition_atomic_data(tmp_path, [(26, 2)], from_model=True)
+    keptlevels = result["levels"][0]
+    nltepops = pl.DataFrame({
+        "modelgridindex": [0, 0],
+        "Z": [26, 26],
+        "ion_stage": [2, 2],
+        "level": [0, -1],
+        "n_NLTE": [10.0, 30.0],
+    })
+    conditions = at.plottransitions.PlotConditions(
+        ionpopdict={(26, 2): 40.0},
+        temperature_list=["NOTEMPNLTE"],
+        vardict={"Te": 5000.0, "T_exc": 5000.0},
+        figure_title="",
+        dfnltepops=nltepops,
+    )
+    assert keptlevels.height == 2
+    transitions = pl.DataFrame({"upper": [1], "flux_factor": [1.0], "upper_pop_Te": [1.0]})
+    populations = at.plottransitions.add_nlte_pop(transitions, keptlevels, conditions, (26, 2))
+    assert populations["upper_pop_nlte"].sum() == pytest.approx(30.0)
+
+
+@pytest.mark.parametrize(("option", "expected"), [("true", 8000.0), ("false", 5000.0)])
+def test_transitions_take_the_model_excitation_temperature(tmp_path: Path, option: str, expected: float) -> None:
+    (tmp_path / "artisoptions.h").write_text(f"constexpr bool LTEPOP_EXCITATION_USE_TJ = {option};\n", encoding="utf-8")
+    nltepops = pl.DataFrame({"modelgridindex": [0], "Z": [26], "ion_stage": [2], "level": [0], "n_NLTE": [10.0]})
+    cell = at.plottransitions.CellConditions(
+        modelgridindex=0,
+        timestep=0,
+        time_days=1.0,
+        velocity=1000.0,
+        estimators={"Te": 5000.0, "TR": 6000.0, "TJ": 8000.0},
+    )
+    with mock.patch.object(at.plottransitions, "read_nltepops", return_value=nltepops):
+        conditions = at.plottransitions.get_model_conditions(tmp_path, cell, [(26, 2)], [])
+    assert conditions.vardict["T_exc"] == pytest.approx(expected)

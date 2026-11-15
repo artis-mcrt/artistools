@@ -304,8 +304,14 @@ def get_polarisation_spectrum(
     )
 
 
-def plot_polarisation(modelpath: Path, args: argparse.Namespace) -> None:
+def plot_polarisation(args: argparse.Namespace) -> None:
     """Plot the Stokes parameter selected by args.stokesparam against wavelength."""
+    if len(args.specpath) != 1 or len(args.plotvspecpol or []) > 1 or len(args.plotviewingangle or []) > 1:
+        exit_with_error(
+            "A polarisation plot supports one model path and one direction",
+            "Give one model path and one direction for each polarisation plot",
+        )
+    modelpath = args.specpath[0]
     if args.plotvspecpol:
         angle = args.plotvspecpol[0]
         stokes_params = scan_vspecpol_data(vspecindex=angle, modelpath=modelpath)
@@ -2811,7 +2817,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         return
 
     if "/" in args.stokesparam:
-        plot_polarisation(args.specpath[0], args)
+        plot_polarisation(args)
         return
 
     if args.output_spectra:

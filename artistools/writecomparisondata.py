@@ -349,9 +349,24 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         msg = "Give at least one timestep with --selected-timesteps"
         raise ValueError(msg)
 
-    args.outputfile.mkdir(parents=True, exist_ok=True)
     # the name of "." is empty, thus the model name comes from the absolute path of the folder
     modelids = [Path(modelpath).absolute().name.split("_")[0] for modelpath in modelpathlist]
+    # each file name holds the identifier, thus a later model replaces the files of an earlier one.
+    # some file systems ignore the letter case, thus "Model" and "model" can be one file
+    filekeys = [model_id.casefold() for model_id in modelids]
+    sameidpaths = [
+        str(modelpath)
+        for modelpath, filekey in zip(modelpathlist, filekeys, strict=True)
+        if filekeys.count(filekey) > 1
+    ]
+    if sameidpaths:
+        exit_with_error(
+            "These model paths have the identifier of a different model path, which is the part of the folder name"
+            f" before the first underscore: {', '.join(sameidpaths)}",
+            "Run the command for one model at a time, with a different output folder for each model",
+        )
+
+    args.outputfile.mkdir(parents=True, exist_ok=True)
     # each file name holds the model and a quantity, e.g. phys_<model>_artisnebular.txt
     # a folder name can hold a character of a glob pattern, e.g. "[", thus the pattern takes the name as text
     confirm_overwrite_matches(

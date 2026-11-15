@@ -1,6 +1,7 @@
 """Write bolometric light curve data out as plain text files, one per model."""
 
 import argparse
+import os
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
@@ -16,6 +17,7 @@ from artistools.misc import addarg_force
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import confirm_overwrite
+from artistools.misc import exit_with_error
 from artistools.misc import get_model_name
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
@@ -77,24 +79,33 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         else "# 1st col is time in days, 2nd col is the spherically averaged bolometric luminosity in erg/s"
     )
 
-    outputpath = Path(args.outputfile)
-    outputpath.mkdir(parents=True, exist_ok=True)
+    modelpaths = normalize_path_list(args.modelpath)
+    modelnames = [get_model_name(modelpath) for modelpath in modelpaths]
     # the two sources hold different columns, thus each one writes a file of its own
     suffix = "_fromspectra" if args.fromspectra else ""
-    modelpaths = normalize_path_list(args.modelpath)
-    confirm_overwrite(
-        [outputpath],
-        [f"bol_lightcurvedata_{get_model_name(modelpath)}{suffix}.txt" for modelpath in modelpaths],
-        force=args.force,
-    )
+    filenames = [f"bol_lightcurvedata_{modelname}{suffix}.txt" for modelname in modelnames]
+    # two models with the same name have the same file, thus a later model replaces the file of an earlier one.
+    # a name can hold a path, and some file systems ignore the letter case, thus "a//b" and "A/b" can be one file
+    filekeys = [os.path.normpath(filename).casefold() for filename in filenames]
+    samefilepaths = [
+        str(modelpath) for modelpath, filekey in zip(modelpaths, filekeys, strict=True) if filekeys.count(filekey) > 1
+    ]
+    if samefilepaths:
+        exit_with_error(
+            f"These model paths have the output file name of a different model path: {', '.join(samefilepaths)}",
+            "Give each model a different name in its plotlabel.txt, or write each model to a different output folder",
+        )
 
-    for modelpath in modelpaths:
-        modelname = get_model_name(modelpath)
+    outputpath = Path(args.outputfile)
+    outputpath.mkdir(parents=True, exist_ok=True)
+    confirm_overwrite([outputpath], filenames, force=args.force)
+
+    for modelpath, filename in zip(modelpaths, filenames, strict=True):
         lightcurvedataframe = (
             get_bol_lc_from_spec(modelpath) if args.fromspectra else get_bol_lc_from_lightcurveout(modelpath)
         )
 
-        outfilepath = outputpath / f"bol_lightcurvedata_{modelname}{suffix}.txt"
+        outfilepath = outputpath / filename
         with outfilepath.open("w", encoding="utf-8") as f:
             f.write(f"{header}\n")
             lightcurvedataframe.write_csv(f, separator=" ", include_header=False, null_value="nan")
