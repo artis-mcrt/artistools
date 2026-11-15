@@ -559,7 +559,9 @@ def get_ion_transitions(
     pldftransitions = ion["transitions"]
     assert isinstance(pldftransitions, pl.DataFrame | pl.LazyFrame)
 
-    return pldftransitions.lazy().collect()
+    # ARTIS has no line to a level that it does not keep
+    keptlevelcount = ion["levels"].lazy().select(pl.len()).collect().item()
+    return pldftransitions.lazy().filter(pl.max_horizontal("lower", "upper") < keptlevelcount).collect()
 
 
 def add_artis_transition_columns(pldftransitions: pl.DataFrame, pldflevels: pl.DataFrame) -> pl.DataFrame:
@@ -638,12 +640,6 @@ def get_ion_spectra(
         if args.atomicdatabase == "artis":
             assert isinstance(ion["levels"], pl.DataFrame | pl.LazyFrame)
             pldflevels = ion["levels"].lazy().collect()
-            pldftransitions = pldftransitions.filter(
-                pl.col("lower").is_between(0, pldflevels.height - 1),
-                pl.col("upper").is_between(0, pldflevels.height - 1),
-            )
-            if pldftransitions.is_empty():
-                continue
             pldftransitions = add_artis_transition_columns(pldftransitions, pldflevels)
 
         pldftransitions = pldftransitions.sort(by="lambda_angstroms")
