@@ -132,6 +132,22 @@ def test_decayproducts_process_trajectory_reads_the_row_of_the_timestep(
     )
 
 
+@pytest.mark.parametrize("timemax_days", [at.misc.time_days_arg("1s"), 2.0e4 / day_to_s])
+def test_decayproducts_plot_times_keep_the_exact_end_times(timemax_days: float) -> None:
+    """The last plot time must not be after a final network time that is equal to -timemax.
+
+    np.logspace gave a last plot time one bit above each of these values, and that time then had a decay power of zero.
+    """
+    timemin_days = timemax_days / 1000.0
+    for nsteps in (1, 2, 50):
+        arr_t_day = at.gsinetwork.decayproducts.get_plot_times_days(timemin_days, timemax_days, nsteps)
+        assert len(arr_t_day) == nsteps
+        # the comparison with the final network time is exact, thus this test is also exact
+        assert arr_t_day[0] == timemin_days
+        assert arr_t_day[-1] == (timemax_days if nsteps > 1 else timemin_days)
+    assert np.allclose(np.diff(np.log10(arr_t_day)), 3.0 / 49.0, rtol=1e-9, atol=0.0)
+
+
 def test_decayproducts_process_trajectory_takes_no_plot_times(trajectory_copy: Path) -> None:
     """An empty list of plot times gives empty arrays. The index array of the heating rows was a float array."""
     nuc_data = at.gsinetwork.decayproducts.get_nuc_data("Hotokezaka")
