@@ -4,6 +4,7 @@ permissions:
     contents: read
 on:
     push:
+    pull_request:
     merge_group:
     schedule:
         - cron: 0 10 * * 2
@@ -22,6 +23,9 @@ env:
     UV_FROZEN: 1
 jobs:
     lint:
+        # a push event already runs the jobs for a branch of this repository, thus a pull request event
+        # runs them only for a fork
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
         timeout-minutes: 30
         name: Format, lint, and type check
         runs-on: ubuntu-26.04-arm
@@ -117,6 +121,7 @@ jobs:
                   cargo clippy --all-features -- -D warnings
 
     pytest:
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
         timeout-minutes: 120
         strategy:
             fail-fast: false
@@ -179,7 +184,8 @@ jobs:
               run: uv run -- python -m coverage report
 
             - name: Upload coverage artifact
-              if: matrix.python-version == '3.14' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+              # a pull request event runs this job only for a fork, which gets no artifact
+              if: matrix.python-version == '3.14' && github.event_name != 'pull_request'
               uses: actions/upload-artifact@v7.0.2
               with:
                   name: coverage-report-python
@@ -188,8 +194,7 @@ jobs:
     upload-coverage-python:
         timeout-minutes: 10
         needs: pytest
-        if: ${{ !cancelled() && needs.pytest.result == 'success' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name
-            == github.repository) }}
+        if: ${{ !cancelled() && needs.pytest.result == 'success' && github.event_name != 'pull_request' }}
         runs-on: ubuntu-26.04-arm
         permissions:
             contents: read
