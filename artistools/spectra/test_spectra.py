@@ -3899,6 +3899,21 @@ def test_output_template_names_a_field_that_plotspectra_does_not_give(tmp_path: 
         plotspectra.get_plot_outputfile(args)
 
 
+@pytest.mark.parametrize(
+    ("times", "fluxes", "expected"), [([1.5, 3.0, 6.0], [0.0, 0.0, 1.0], 4 / 7), ([3.0], [2.0], 2.0)]
+)
+def test_virtual_spectrum_uses_logarithmic_time_weights(
+    times: list[float], fluxes: list[float], expected: float
+) -> None:
+    spectrum = pl.LazyFrame({"nu": [1e14], **{str(time): [flux] for time, flux in zip(times, fluxes, strict=True)}})
+    with (
+        mock.patch.object(atspectra, "scan_vspecpol_data", return_value={"I": spectrum}),
+        mock.patch.object(atspectra, "get_vpkt_config", return_value={"time_limits_enabled": False}),
+    ):
+        averaged = atspectra.scan_vspecpol_spectrum(Path(), times[0], 0, timemin=times[0], timemax=times[-1]).collect()
+    assert averaged["f_nu"].item() == pytest.approx(expected)
+
+
 @pytest.mark.parametrize("stokesparam", ["Q/I", "U/I"])
 @pytest.mark.parametrize("binflux", [False, True])
 @pytest.mark.parametrize("filtermovingavg", [0, 3])

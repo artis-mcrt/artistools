@@ -5420,3 +5420,17 @@ def test_estimators_use_the_layout_of_each_run(
     assert full["modelgridindex"].to_list() == [0, 1]
     selected = at.scan_estimators(tmp_path, modelgridindex=0).collect()
     pltest.assert_frame_equal(selected, full.filter(modelgridindex=0))
+
+
+@pytest.mark.parametrize("weight", [0.0, 2.0])
+def test_image_mean_takes_the_finite_values_alone(weight: float) -> None:
+    estimators = pl.LazyFrame({
+        "pixel": [0, 0, 0, 0, 0, 1, 1, 1],
+        "Te": [3.0, float("inf"), float("-inf"), float("nan"), None, float("inf"), float("nan"), None],
+        "deltavol_deltat": [weight] * 8,
+    })
+    panels = plotestimators.get_image_panels([["Te"]], estimators.collect_schema().names(), "absolute")
+    means = estimators.group_by("pixel").agg(plotestimators.get_panel_means(panels)).sort("pixel").collect()
+    drawn = plotestimators.get_drawn_image_values(means["panel0"].to_numpy(), logscale=False)
+    assert np.ma.getmaskarray(drawn).tolist() == [False, True]
+    assert drawn[0] == pytest.approx(3.0)
