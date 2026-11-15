@@ -87,24 +87,34 @@ def replace_outdated_file(newfilepath: Path, destpath: Path, outdatedfile: tuple
 
 @contextlib.contextmanager
 def cache_conversion_lock(parquetfilepath: Path, *, exclusive: bool = False) -> Generator[bool]:
-    """Hold a lock on the temporary files of a conversion.
+    """Hold the lock that shows an active conversion of a cache, and give False if the lock is not available.
 
-    Conversions share the lock throughout their temporary files' lifetime. Deletion takes the exclusive lock without
-    a wait. The lock file stays in place so that each process uses the same inode.
+    A conversion holds the shared lock while its temporary files exist. A deletion requests the exclusive lock and
+    does not wait for it. The lock file stays in place, thus each process locks the same inode. A deletion makes no
+    lock file, because an absent lock file shows that no conversion is active.
+
+    A platform or a file system without flock gives True for each request, as replace_outdated_file continues
+    without its lock. A deletion there has no protection, but the conversions and the deletion still operate.
     """
     try:
         import fcntl
     except ImportError:
-        yield not exclusive
+        yield True
         return
 
     cachename = parquetfilepath.name.removesuffix(".tmp")
     lockpath = parquetfilepath.with_name(f".{cachename}.conversion-lock")
+    flags = os.O_NOFOLLOW | os.O_NONBLOCK | (0 if exclusive else os.O_CREAT)
     try:
         try:
-            lockfd = os.open(lockpath, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, 0o666)
+            lockfd = os.open(lockpath, flags | os.O_RDWR, 0o666)
         except PermissionError:
-            lockfd = os.open(lockpath, os.O_CREAT | os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, 0o666)
+            lockfd = os.open(lockpath, flags | os.O_RDONLY, 0o666)
+    except FileNotFoundError:
+        if not exclusive:
+            raise
+        yield True
+        return
     except OSError as exc:
         if not is_readonly_error(exc):
             raise
@@ -119,9 +129,15 @@ def cache_conversion_lock(parquetfilepath: Path, *, exclusive: bool = False) -> 
         try:
             fcntl.flock(lockfd, fcntl.LOCK_EX | fcntl.LOCK_NB if exclusive else fcntl.LOCK_SH)
         except BlockingIOError:
-            yield False
+            acquired = False
+        except OSError as exc:
+            # e.g. a Lustre file system that the cluster mounts without the flock option
+            if exc.errno not in {errno.ENOSYS, errno.EOPNOTSUPP, errno.ENOLCK}:
+                raise
+            acquired = True
         else:
-            yield True
+            acquired = True
+        yield acquired
     finally:
         os.close(lockfd)
 
@@ -421,6 +437,7 @@ def write_parquet_atomic(
     replaces: tuple[int, int] | None = None,
     compression_level: int = 13,
     row_group_size: int | None = None,
+    lock_conversion: bool = True,
 ) -> None:
     """Write a parquet file with zstd compression through a temporary file, thus no reader sees a partial file.
 
@@ -437,10 +454,13 @@ def write_parquet_atomic(
     The temporary name is prefixed with a dot so that it does not start with the destination's name. A glob
     keyed on that name (get_runfolder_timesteps() looks for "estimbatch*.out.parquet*") would otherwise match
     the in-flight temporary and read a file that is empty, half-written, or already renamed away.
+
+    The write holds cache_conversion_lock, thus "artistools cache delete" keeps the temporary file. A caller that
+    writes an output file of the user gives lock_conversion=False, because that command deletes only the caches.
     """
     import tempfile
 
-    with cache_conversion_lock(parquetfilepath):
+    with cache_conversion_lock(parquetfilepath) if lock_conversion else contextlib.nullcontext():
         try:
             deststat: os.stat_result | None = parquetfilepath.stat()
         except FileNotFoundError:

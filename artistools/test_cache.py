@@ -27,6 +27,7 @@ def test_cache_delete_keeps_the_lock_files_and_other_parquet_files(tmp_path: Pat
     ]
     kept = [
         "packets/.packetsbatch00_0000_0003.out.parquet.replace-lock",
+        "packets/.packetsbatch01_0004_0007.out.parquet.conversion-lock",
         "spectrum_data.parquet",
         "science.out.parquet",
         "analysis/.analysis.parts.backup/notes.txt",
@@ -38,18 +39,7 @@ def test_cache_delete_keeps_the_lock_files_and_other_parquet_files(tmp_path: Pat
 
     cachemain(argsraw=["delete", "-f", str(tmp_path)])
 
-    lockfiles = [
-        ".model.txt.parquet.conversion-lock",
-        ".linelist.out.parquet.conversion-lock",
-        "packets/.packetsbatch00_0000_0003.out.parquet.conversion-lock",
-        "packets/.packetsbatch01_0004_0007.out.parquet.conversion-lock",
-        "12411848.slurm/.estimbatch00_0000_0003.out.parquet.conversion-lock",
-        "12411848.slurm/.estimators_allranks.out.parquet.conversion-lock",
-    ]
-    assert sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*") if path.is_file()) == sorted([
-        *kept,
-        *lockfiles,
-    ])
+    assert sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*") if path.is_file()) == sorted(kept)
 
 
 def test_cache_make_gives_no_data_for_virtual_packets_without_their_files(tmp_path: Path) -> None:
@@ -133,3 +123,19 @@ def test_cache_delete_keeps_an_active_partial_file(tmp_path: Path) -> None:
     with mock.patch.object(pl.LazyFrame, "sink_parquet", side_effect=sink_then_delete, autospec=True):
         write_parquet_atomic(pl.DataFrame({"value": [1]}), cachepath)
     assert pl.read_parquet(cachepath)["value"].to_list() == [1]
+
+
+def test_cache_delete_operates_on_a_file_system_without_flock(tmp_path: Path) -> None:
+    """Write and delete a cache when flock gives ENOSYS, as on a Lustre file system without the flock option."""
+    fcntl = pytest.importorskip("fcntl")
+    import errno
+
+    from artistools.cache import delete_caches
+    from artistools.misc import write_parquet_atomic
+
+    cachepath = tmp_path / "model.txt.parquet"
+    with mock.patch.object(fcntl, "flock", side_effect=OSError(errno.ENOSYS, "Function not implemented")):
+        write_parquet_atomic(pl.DataFrame({"value": [1]}), cachepath)
+        assert cachepath.is_file()
+        delete_caches(tmp_path, force=True)
+    assert not cachepath.exists()

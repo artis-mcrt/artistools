@@ -128,7 +128,11 @@ def write_data_table(
     if isinstance(destination, Path) and suffix == ".parquet" and outputformat is None:
         # an output file replaces the file at its path, and the caller already has the permission of the user
         write_parquet_atomic(
-            dfdata, destination, metadata={"comments": "\n".join(commentlines)}, replaces=get_file_identity(destination)
+            dfdata,
+            destination,
+            metadata={"comments": "\n".join(commentlines)},
+            replaces=get_file_identity(destination),
+            lock_conversion=False,
         )
         return
     tableformat = outputformat or {".json": "json", ".csv": "csv"}.get(suffix, "text")

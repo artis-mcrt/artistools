@@ -3,12 +3,12 @@
 A reader of artistools converts a text file to a parquet cache when it first reads the file. Later commands read the
 cache. "make" does all the conversions at one time, e.g. in the job script after a run of ARTIS. Each later command
 then reads its data quickly. "list" gives the caches and their sizes. "delete" deletes the caches and the leftover
-files.
-
-An active conversion keeps its files until it completes.
+files, which are the temporary files and folders of a conversion that stopped. "delete" keeps the cache and the
+temporary files of an active conversion.
 """
 
 import argparse
+import contextlib
 import re
 import shutil
 import typing as t
@@ -195,7 +195,11 @@ def make_caches(modelfolder: Path) -> pl.DataFrame:
 
 
 def delete_caches(modelfolder: Path, force: bool) -> None:
-    """Delete the caches and the leftover files of the model after the user agrees."""
+    """Delete the caches and the leftover files of the model after the user agrees.
+
+    A cache with an active conversion keeps all its files, because the name of a temporary file does not show if
+    its conversion stopped. The conversion holds cache_conversion_lock until it completes.
+    """
     caches, leftovers = find_cache_files(modelfolder)
     paths = [*caches, *leftovers]
     if not paths:
@@ -206,21 +210,22 @@ def delete_caches(modelfolder: Path, force: bool) -> None:
     for path in paths:
         match = re.match(CACHE_BASENAME, path.name.lstrip("."))
         assert match is not None
-        cachepath = path.with_name(match.group())
-        paths_by_cache.setdefault(cachepath, []).append(path)
-    deleted = 0
+        paths_by_cache.setdefault(path.with_name(match.group()), []).append(path)
+    deletedcount = 0
     for cachepath, cachepaths in paths_by_cache.items():
         with cache_conversion_lock(cachepath, exclusive=True) as acquired:
             if not acquired:
-                print_warning(f"Kept the files of {cachepath}: exclusive access is not available")
+                print_warning(f"Kept the files of {cachepath}, because a conversion of this cache is active")
                 continue
             for path in cachepaths:
                 if path.is_dir():
-                    shutil.rmtree(path)
+                    # a conversion that completes after find_cache_files removes its folder itself
+                    with contextlib.suppress(FileNotFoundError):
+                        shutil.rmtree(path)
                 else:
                     path.unlink(missing_ok=True)
-                deleted += 1
-    print(f"Deleted {deleted} files. The next command that reads each kind of data converts the text files again")
+                deletedcount += 1
+    print(f"Deleted {deletedcount} files. The next command that reads each kind of data converts the text files again")
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
