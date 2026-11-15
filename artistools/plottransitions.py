@@ -51,6 +51,7 @@ from artistools.misc import get_single_modelgridindex
 from artistools.misc import get_timestep_time
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
+from artistools.misc import print_detail
 from artistools.misc import print_heading
 from artistools.misc import print_warning
 from artistools.misc import require_reference_data_file
@@ -489,6 +490,11 @@ def get_model_conditions(
     T_R = float(cell.estimators["TR"])
     temperaturecolumn = get_excitation_temperature_column(
         modelpath, exctemperature, usetext="The superlevel populations take Boltzmann weights at"
+    )
+    print_detail(
+        "The NLTE series takes the level populations of calculate_levelpop() of ARTIS (ltepop.cc). A level in the"
+        " superlevel takes the superlevel population (the row with level -1 in the NLTE file), multiplied by its weight"
+        " g exp(-E / k T_exc) and divided by the sum of the weights of the superlevel"
     )
     warn_about_autoionising_levels(modelpath)
     figure_title = (
