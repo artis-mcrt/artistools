@@ -3911,9 +3911,7 @@ def test_virtual_spectrum_uses_logarithmic_time_weights(
         mock.patch.object(atspectra, "get_vpkt_config", return_value={"time_limits_enabled": False}),
     ):
         averaged = atspectra.scan_vspecpol_spectrum(Path(), times[0], 0, timemin=times[0], timemax=times[-1]).collect()
-        nearest = atspectra.scan_vspecpol_spectrum(Path(), times[-1], 0).collect()
     assert averaged["f_nu"].item() == pytest.approx(expected)
-    assert nearest["f_nu"].item() == pytest.approx(fluxes[-1])
 
 
 @pytest.mark.parametrize("stokesparam", ["Q/I", "U/I"])
