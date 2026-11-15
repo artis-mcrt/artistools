@@ -4733,7 +4733,7 @@ def test_firstexisting_gives_the_purpose_of_a_missing_file(tmp_path: Path) -> No
     assert "gives the wavelength" not in str(noreason.value)
 
 
-@pytest.mark.parametrize("layout", ["assignments", "log", "unknown"])
+@pytest.mark.parametrize("layout", ["assignments", "log", "unknown", "unknown with archived estimators"])
 @pytest.mark.parametrize("cache", [False, True])
 def test_rank_reader_uses_the_layout_of_each_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, layout: str, cache: bool
@@ -4743,8 +4743,9 @@ def test_rank_reader_uses_the_layout_of_each_run(
     write_rank_output_model(tmp_path, {"job0": [(0, cell, float(cell)) for cell in range(3)], ".": [(1, 4, 14.0)]})
     runfolder = tmp_path / "job0"
     (runfolder / "nlte_0001.out").write_text("timestep modelgridindex nnlevel\n0 3 3.0\n0 4 4.0\n", encoding="utf-8")
-    # each rank that has cells writes an estimator file
-    (runfolder / "estimators_0001.out").write_text("timestep 0 modelgridindex 3\n\n", encoding="utf-8")
+    if layout != "unknown with archived estimators":
+        # each rank that has cells writes an estimator file
+        (runfolder / "estimators_0001.out").write_text("timestep 0 modelgridindex 3\n\n", encoding="utf-8")
     if layout == "assignments":
         (runfolder / "modelgridrankassignments.out").write_text(
             "#rank nstart ndo ndo_nonempty\n0 0 3 3\n1 3 2 2\n", encoding="utf-8"

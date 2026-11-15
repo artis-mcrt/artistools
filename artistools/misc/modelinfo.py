@@ -559,6 +559,7 @@ def get_mpiranklist(
 
 
 ESTIMATOR_RANKFILE_FORMAT = "estimators_{mpirank:04d}.out"
+RANKFILE_FORMATS = (ESTIMATOR_RANKFILE_FORMAT, "nlte_{mpirank:04d}.out", "radfield_{mpirank:04d}.out")
 
 
 def get_highest_output_rank(runfolder: Path, filenameformat: str) -> int | None:
@@ -588,8 +589,8 @@ def get_run_layout(modelpath: Path | str, runfolder: Path) -> tuple[pl.DataFrame
     that gives each rank an equal block of the cells, thus the number of ranks gives the layout.
 
     The rank-0 log of a run folder gives its number of ranks. Without that log, the run has the ranks of the model
-    folder, unless an estimator file or an estimator cache names a higher rank. An absent file shows nothing, because
-    an archive can remove it. Two values of None show that no file gives the layout of the run.
+    folder, unless a rank file or an estimator cache names a higher rank. An absent file shows nothing, because an
+    archive can remove it. Two values of None show that no file gives the layout of the run.
     """
     from artistools.logs.core import get_logged_rank_count
 
@@ -601,8 +602,8 @@ def get_run_layout(modelpath: Path | str, runfolder: Path) -> tuple[pl.DataFrame
     nprocs_of_model = dfmodelranks.height if dfmodelranks is not None else get_nprocs(Path(modelpath))
     nprocs = get_logged_rank_count(runfolder)
     if nprocs is None:
-        highestrank = get_highest_output_rank(runfolder, ESTIMATOR_RANKFILE_FORMAT)
-        if highestrank is not None and highestrank >= nprocs_of_model:
+        highestranks = [get_highest_output_rank(runfolder, filenameformat) for filenameformat in RANKFILE_FORMATS]
+        if max((rank for rank in highestranks if rank is not None), default=-1) >= nprocs_of_model:
             return None, None
         nprocs = nprocs_of_model
     if dfmodelranks is None:
