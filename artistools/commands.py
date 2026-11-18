@@ -344,7 +344,13 @@ subcommandtree: CommandTree = {
         "from_e2e": CommandSpec(
             "inputmodel.from_e2e_model",
             helptext="Prepare data for an ARTIS kilonova calculation from end-to-end hydro models.",
-            examples=(("--npz model.npz -o artismodel", "an ARTIS model from the end-to-end model in model.npz"),),
+            examples=(
+                ("--npz model.npz -o artismodel", "an ARTIS model from the end-to-end model in model.npz"),
+                (
+                    "--npz model.npz --coordinates spherical --ngrid-r 25 --ngrid-theta 16 -o artismodel",
+                    "a 2D spherical model of 25 shells and 16 polar cells",
+                ),
+            ),
             # the test data has no npz file of an end-to-end model
             exampletestfolder=None,
         ),

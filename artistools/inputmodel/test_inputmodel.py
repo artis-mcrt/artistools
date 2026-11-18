@@ -4442,3 +4442,86 @@ def test_spherical_map_and_cartesian_map_give_the_same_shell_masses(tmp_path: Pa
         assert math.isclose(shellmass_spherical.sum(), particlemass, rel_tol=mass_rtol), foldername
         cumulativedifference = np.cumsum(shellmass_spherical - shellmass_cartesian) / particlemass
         assert np.abs(cumulativedifference).max() < 0.05, foldername
+
+
+@pytest.mark.parametrize("mapto3d", [False, True])
+def test_from_e2e_model_spherical_grid_holds_both_halves_of_a_symmetric_model(tmp_path: Path, mapto3d: bool) -> None:
+    """A spherical grid holds both halves of a model with equatorial symmetry, with two times the tracer mass.
+
+    The tracers of such a model are above the plane z = 0. The cylindrical grid maps one half and reflects it. A
+    spherical grid has no reflection: the map reads each cell at |z|, and the normalisation takes two times the
+    tracer mass. The contributions of the particles then name each cell of both halves.
+    """
+    from artistools.inputmodel.from_e2e_model import t_model_init_s
+
+    rng = np.random.default_rng(seed=5)
+    ntraj, ntimes = 60, 8
+    datpath = tmp_path / "e2emodel.npz"
+    np.savez(
+        datpath,
+        # each polar angle is below pi / 2, thus the model has equatorial symmetry
+        pos=np.column_stack([rng.uniform(0.05, 0.3, ntraj), rng.uniform(0.2, 1.5, ntraj)]),
+        idx=np.arange(1, ntraj + 1, dtype=float),
+        state=np.zeros(ntraj),
+        mass=np.full(ntraj, 1e-3),
+        qdot=np.full((ntraj, ntimes), 1e10),
+        hnuloss=np.zeros((ntraj, ntimes)),
+        time=np.linspace(0.0, 2.0 * t_model_init_s, ntimes),
+        nz=rng.uniform(0.01, 0.2, size=(ntraj, 2)),
+        t5out=np.column_stack([np.zeros((ntraj, 4)), np.full(ntraj, 0.3)]),
+    )
+    np.save(tmp_path / "iso_table.npy", np.array([[2, 2], [26, 30]]))
+
+    gridshape = (6, 8, 4) if mapto3d else (6, 8)
+    argsraw = ["-npz", str(datpath), "-vmax_on_c", "0.4", "--coordinates", "spherical"]
+    argsraw += ["--ngrid-r", "6", "--ngrid-theta", "8", *(["--mapto3D", "--ngrid-phi", "4"] if mapto3d else [])]
+    at.inputmodel.from_e2e_model.main(argsraw=[*argsraw, "-o", str(tmp_path / "model")])
+
+    lzmodel, modelmeta = at.inputmodel.scan_modeldata(tmp_path / "model", printwarningsonly=True)
+    assert modelmeta["coordinates"] == ("spherical3d" if mapto3d else "spherical2d")
+    dfmodel = at.inputmodel.add_derived_cols_to_modeldata(lzmodel, modelmeta).collect()
+    cellmass = dfmodel["mass_g"].to_numpy().reshape(gridshape, order="F")
+
+    tracermass_g = ntraj * 1e-3 * at.constants.Msun_to_g
+    assert math.isclose(cellmass.sum(), 2.0 * tracermass_g, rel_tol=1e-6)
+    # the polar cells are uniform in cos(theta), thus cell i_theta and cell n_theta - 1 - i_theta are mirror cells
+    np.testing.assert_allclose(cellmass, cellmass[:, ::-1], rtol=1e-6)
+    if mapto3d:
+        # the tracers have rotational symmetry around the z axis
+        np.testing.assert_allclose(cellmass, np.broadcast_to(cellmass[:, :, :1], cellmass.shape), rtol=1e-6)
+
+    dfcontributions = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(tmp_path / "model")
+    dfcellfractions = dfcontributions.group_by("cellindex").agg(pl.col("frac_of_cellmass").sum()).sort("cellindex")
+    assert dfcellfractions["cellindex"].to_list() == dfmodel.filter(pl.col("rho") > 0)["inputcellid"].to_list()
+    np.testing.assert_allclose(dfcellfractions["frac_of_cellmass"].to_numpy(), 1.0, rtol=1e-6)
+
+
+def test_from_e2e_model_spherical_grid_agrees_with_the_cylindrical_grid(tmp_path: Path) -> None:
+    """A 2D spherical map and a 2D cylindrical map of one model give the same mass in each radial shell.
+
+    The spherical map has the method of the cylindrical map, and both hold the tracer mass after the normalisation.
+    The cumulative mass of the shells agrees to less than 0.05 of the total mass. The values are not equal, because
+    the cylindrical cells do not follow the shells.
+    """
+    datpath = tmp_path / "e2emodel.npz"
+    write_e2e_model(datpath, tmp_path / "iso_table.npy")
+    baseargs = ["-npz", str(datpath), "-vmax_on_c", "0.4"]
+    gridargs = {
+        "cylindrical": ["-ngridrcyl", "24", "-ngridz", "48"],
+        "spherical": ["--coordinates", "spherical", "--ngrid-r", "24", "--ngrid-theta", "24"],
+    }
+    shelledges_on_c = np.linspace(0.0, 0.4, 9)
+    shellmassfractions = {}
+    for coordinates, coordinateargs in gridargs.items():
+        at.inputmodel.from_e2e_model.main(argsraw=[*baseargs, *coordinateargs, "-o", str(tmp_path / coordinates)])
+        lzmodel, modelmeta = at.inputmodel.scan_modeldata(tmp_path / coordinates, printwarningsonly=True)
+        dfmodel = at.inputmodel.add_derived_cols_to_modeldata(lzmodel, modelmeta).collect()
+        shellmass, _ = np.histogram(
+            dfmodel["vel_r_mid_on_c"].to_numpy(), bins=shelledges_on_c, weights=dfmodel["mass_g"].to_numpy()
+        )
+        # 40 tracers of 1e-3 Msun
+        assert math.isclose(dfmodel["mass_g"].sum(), 0.04 * at.constants.Msun_to_g, rel_tol=1e-6), coordinates
+        shellmassfractions[coordinates] = shellmass / dfmodel["mass_g"].sum()
+
+    cumulativedifference = np.cumsum(shellmassfractions["spherical"] - shellmassfractions["cylindrical"])
+    assert np.abs(cumulativedifference).max() < 0.05
