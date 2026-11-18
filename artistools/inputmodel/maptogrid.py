@@ -139,7 +139,8 @@ def get_spherical_deposit(
     a cell is the kernel value at its mid-point times its volume, and the weights of one particle are normalised to a
     sum of 1. Thus the grid holds exactly the mass of each particle inside the outer radius. A particle with no cell
     mid-point in its kernel gives all its mass to the cell that contains it, and its sum of weights is zero. A
-    particle at or outside the outer radius gives no mass, and its sum of weights is NaN.
+    particle outside the outer radius gives no mass, and its sum of weights is NaN. The particle with the largest
+    radius is at the outer radius for a grid to that radius, and it is inside the grid.
     """
     r_edges, theta_edges, phi_edges = edges
     ngridr, ngridtheta, ngridphi = (len(axisedges) - 1 for axisedges in edges)
@@ -163,7 +164,7 @@ def get_spherical_deposit(
     paircells: list[npt.NDArray[np.int64]] = [np.empty(0, dtype=np.int64)]
     pairmasses: list[npt.NDArray[np.float64]] = [np.empty(0)]
 
-    for n in np.flatnonzero(r_particle < r_edges[-1]).tolist():
+    for n in np.flatnonzero(r_particle <= r_edges[-1]).tolist():
         kernelradius = 2.0 * float(h[n])
         r_p, theta_p, phi_p = float(r_particle[n]), float(theta_particle[n]), float(phi_particle[n])
 

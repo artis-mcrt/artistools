@@ -4257,7 +4257,7 @@ def test_spherical_deposit_agrees_with_a_sum_over_all_cells() -> None:
     volumes = get_spherical_cell_volumes(*edges).ravel(order="F")
     expected = np.zeros((len(h), volumes.size))
     for n in range(len(h)):
-        if np.linalg.norm(position[n]) >= r_outer:
+        if np.linalg.norm(position[n]) > r_outer:
             continue
         dis2 = np.sum((cellposition - position[n]) ** 2, axis=1)
         weights = np.where(dis2 < (2.0 * h[n]) ** 2, kernelvals2(np.minimum(dis2, 4.0 * h[n] ** 2), h[n], wij), 0.0)
@@ -4286,7 +4286,7 @@ def test_spherical_deposit_agrees_with_a_sum_over_all_cells() -> None:
     # different sides of the edge
     np.testing.assert_allclose(actual, expected, rtol=1e-9, atol=1e-12)
 
-    isinside = np.linalg.norm(position, axis=1) < r_outer
+    isinside = np.linalg.norm(position, axis=1) <= r_outer
     assert np.isnan(weightsums[~isinside]).all()
     assert not actual[~isinside].any()
     assert weightsums[6] == pytest.approx(0.0, abs=0.0)
