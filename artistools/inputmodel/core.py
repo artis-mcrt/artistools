@@ -285,7 +285,11 @@ def scan_modelfile_text(
         ncols_line_odd = len(data_line_odd.split())
 
     if ncols_line_even == 0:
-        msg = f"{filename}: found only 0 cells instead of {npts_model} expected."
+        msg = (
+            f"{filename}: found no cell line. A model.txt of format version 2 needs one cell line or more"
+            if formatversion == 2
+            else f"{filename}: found only 0 cells instead of {npts_model} expected."
+        )
         raise ValueError(msg)
 
     modelmeta["coordinates"] = get_model_coordinates(modelmeta)
@@ -1600,7 +1604,8 @@ def save_modeldata(
     from 0, and the index of the first axis changes fastest, e.g. i_r + n_r * (i_theta + n_theta * i_phi). Thus
     dfmodel must have the cell ids 0 to N - 1 for version 2, and abundances.txt and gridcontributions.txt of the
     model must hold the same ids (see with_cell_ids_from_zero). A cell with no line is empty, thus the function
-    writes no line for a cell with rho = 0. A 1D cell has rho and not logrho.
+    writes no line for a cell with rho = 0. A file needs one cell line, thus a model with no density keeps the
+    line of its first cell. A 1D cell has rho and not logrho.
 
     The mass fractions of abundances.txt must be true mass fractions, because sn3d does not normalise them.
 
@@ -1786,8 +1791,10 @@ def save_modeldata(
             startcols = [col for col in standardcols if not col.startswith("X_")]
             dfmodel = dfmodel.select([*startcols, *abundandcustomcols])
             if formatversion == 2:
-                # a cell with no line is empty in version 2, thus the file needs no line for a cell with no density
-                dfmodel = dfmodel.filter(pl.col("rho") > 0)
+                # a cell with no line is empty in version 2, thus the file needs no line for a cell with no density.
+                # sn3d and scan_modeldata need one cell line, thus a model with no density keeps its first cell
+                hasdensity = pl.col("rho") > 0
+                dfmodel = dfmodel.filter(hasdensity | (~hasdensity.any() & (pl.int_range(pl.len()) == 0)))
             # fast polars writer
             # set abundances to null for cells with zero density (so that shorter form "0.0" can be written)
             dfmodel = dfmodel.with_columns(

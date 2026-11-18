@@ -4122,6 +4122,18 @@ def test_spherical_model_reader_takes_cell_ids_from_zero(tmp_path: Path, capsys:
     captured = capsys.readouterr()
     assert "does not know the key key_of_a_later_version" in captured.out + captured.err
 
+    # a model with no density keeps one cell line, because a file with no cell line is not valid
+    emptyfolder = tmp_path / "empty"
+    emptyfolder.mkdir()
+    at.inputmodel.save_modeldata(
+        lzmodel.with_columns(rho=pl.lit(0.0, dtype=pl.Float32)).collect(),
+        outpath=emptyfolder,
+        modelmeta=dict(modelmeta),
+    )
+    dfempty = at.inputmodel.scan_modeldata(emptyfolder)[0].collect()
+    assert dfempty["inputcellid"].to_list() == [0, 1, 2, 3]
+    assert dfempty["rho"].to_list() == [0.0, 0.0, 0.0, 0.0]
+
     # a cell with no line is empty in format version 2
     lines = [line for line in SPHERICAL2D_MODEL_LINES if line != "2 3e-12 1 0 0 0 0"]
     (tmp_path / "model.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
