@@ -4310,6 +4310,7 @@ def test_makeartismodel_converts_the_format_version_in_the_model_folder(tmp_path
     shutil.copytree(at.get_path("testdata") / "test-classicmode_3d", sourcefolder)
     # the cell ids of this model start at 1, and sn3d reads the ids of Ye.txt as those of model.txt
     (sourcefolder / "Ye.txt").write_text("2\n1\t0.25\n1000\t0.45\n", encoding="utf-8")
+    (sourcefolder / "opacity.txt").write_text("2\n1 0.1\n1000 3.3\n", encoding="utf-8")
     modelfolder = tmp_path / "model"
     at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[sourcefolder], format_version=2, outputfile=modelfolder)
     dfversion2, metaversion2 = at.inputmodel.scan_modeldata(modelfolder, get_elemabundances=True)
@@ -4318,6 +4319,7 @@ def test_makeartismodel_converts_the_format_version_in_the_model_folder(tmp_path
         0
     ) == (0, 999)
     assert (modelfolder / "Ye.txt").read_text(encoding="utf-8").split()[1::2] == ["0", "999"]
+    assert (modelfolder / "opacity.txt").read_text(encoding="utf-8") == "2\n0 0.1\n999 3.3\n"
     # a version 2 model has no abundances.txt, and the columns of model.txt give the same element mass fractions
     assert not list(modelfolder.glob("abundances.txt*"))
     dfsource = at.inputmodel.scan_modeldata(sourcefolder, get_elemabundances=True)[0]

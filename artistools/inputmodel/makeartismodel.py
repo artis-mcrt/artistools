@@ -1,6 +1,7 @@
 """Build an ARTIS input model by downscaling, dimension-reducing, or rescaling an existing model."""
 
 import argparse
+import re
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
@@ -22,7 +23,6 @@ from artistools.inputmodel.energyinputfiles import ENERGY_FILE_NAMES
 from artistools.inputmodel.energyinputfiles import make_energy_files
 from artistools.inputmodel.modelfromhydro import get_griddata_output_file_names
 from artistools.inputmodel.modelfromhydro import makemodelfromgriddata
-from artistools.inputmodel.opacityinputfile import write_ye_file
 from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions_or_none
 from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
 from artistools.misc import addarg_darkmode
@@ -36,8 +36,8 @@ from artistools.misc import firstexisting_or_none
 from artistools.misc import get_model_coordinates
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
+from artistools.misc import print_saved
 from artistools.misc import print_warning
-from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
 from artistools.misc import SPHERICAL_EDGE_COORDINATES
 
@@ -130,6 +130,29 @@ def get_dimreduce_outputfolder(outputfile: Path | None, modelpath: Path, ndim_ou
     )
 
 
+# the files of a model folder that give a value for a cell id, with the count of the rows on the first line
+CELL_ID_FILE_NAMES = ("Ye.txt", "opacity.txt")
+
+
+def get_lines_with_lower_cell_ids(filepath: Path, firstinputcellid: int) -> list[str]:
+    """Return the lines of Ye.txt or opacity.txt with each cell id decreased by firstinputcellid.
+
+    The first line of such a file gives the count of the rows, and each other line starts with a cell id. The text
+    after the cell id does not change, thus each value keeps its digits.
+    """
+    lines = filepath.read_text(encoding="utf-8").splitlines()
+    newlines = lines[:1]
+    for line in lines[1:]:
+        if not line.strip():
+            continue
+        cellidmatch = re.match(r"(\s*)(\d+)(.*)", line)
+        if cellidmatch is None:
+            msg = f"{filepath}: each line after the first line must start with a cell id, not {line!r}"
+            raise ValueError(msg)
+        newlines.append(f"{cellidmatch[1]}{int(cellidmatch[2]) - firstinputcellid}{cellidmatch[3]}")
+    return newlines
+
+
 def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int) -> None:
     """Convert the model.txt of a model to the format version formatversion, and write it into outputfolder.
 
@@ -167,20 +190,20 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
     dfelabundances = scan_initelemabundances(modelpath, printwarningsonly=True).collect() if haselements else None
 
     dfgridcontributions = None
-    dfye = None
+    cellidfilelines: dict[str, list[str]] = {}
     if formatversion == 2 and dfmodel["inputcellid"].min() != 0:
         # each file of a model has the same cell ids, and version 2 has cell ids from 0
-        print("  Version 2 has cell ids from 0, thus gridcontributions.txt and Ye.txt get the same ids.")
+        print("  Version 2 has cell ids from 0, thus gridcontributions.txt, Ye.txt, and opacity.txt get the same ids.")
         firstinputcellid = dfmodel["inputcellid"].min()
+        assert isinstance(firstinputcellid, int)
         dfmodel, dfelabundances, dfgridcontributions = with_cell_ids_from_zero(
             dfmodel, dfelabundances, get_gridparticlecontributions_or_none(modelpath)
         )
-        yefilepath = get_model_text_folder(modelpath) / "Ye.txt"
-        if yefilepath.is_file():
-            # sn3d reads the cell ids of Ye.txt as those of model.txt, thus an old id gives the value to the next cell
-            dfye = read_wsv(yefilepath, has_header=False, skip_rows=1, new_columns=["inputcellid", "Ye"]).with_columns(
-                pl.col("inputcellid").cast(pl.Int32) - firstinputcellid
-            )
+        # sn3d reads the cell ids of Ye.txt as those of model.txt, thus an old id gives the value to the next cell
+        for filename in CELL_ID_FILE_NAMES:
+            cellidfilepath = get_model_text_folder(modelpath) / filename
+            if cellidfilepath.is_file():
+                cellidfilelines[filename] = get_lines_with_lower_cell_ids(cellidfilepath, firstinputcellid)
 
     if formatversion == 2:
         print(
@@ -198,15 +221,16 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
     )
     if dfgridcontributions is not None:
         save_gridparticlecontributions(dfgridcontributions, outputfolder / "gridcontributions.txt")
-    if dfye is not None:
-        write_ye_file(outputfolder, dfye)
+    for filename, lines in cellidfilelines.items():
+        (outputfolder / filename).write_text("\n".join(lines) + "\n", encoding="utf-8")
+        print_saved(outputfolder / filename)
 
 
 def get_converted_file_names(modelpaths: Sequence[Path], formatversion: int | None) -> Sequence[str]:
     """Return the names of the files that convert_model_format writes for these models.
 
     A conversion to version 1 also writes abundances.txt. A conversion to version 2 deletes abundances.txt, and it
-    also writes gridcontributions.txt and Ye.txt if the cell ids of a model do not start at 0.
+    also writes gridcontributions.txt, Ye.txt, and opacity.txt if the cell ids of a model do not start at 0.
     """
     if formatversion != 2:
         return ("model.txt", "abundances.txt")
@@ -216,7 +240,7 @@ def get_converted_file_names(modelpaths: Sequence[Path], formatversion: int | No
     ]
     if all(firstcellid == 0 for firstcellid in firstcellids):
         return ("model.txt", "abundances.txt")
-    return (*MODEL_FILE_NAMES, "Ye.txt")
+    return (*MODEL_FILE_NAMES, *CELL_ID_FILE_NAMES)
 
 
 def get_model_output_folders(args: argparse.Namespace, modelpath_given: bool) -> dict[str, list[Path]]:
