@@ -1674,7 +1674,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             dfgridcontributions=dfgridcontributions,
         )
 
-    save_initelemabundances(dfelabundances=dfelabundances, outpath=args.outputfile)
-    save_modeldata(dfmodel=dfmodel, modelmeta=modelmeta, outpath=args.outputfile)
+    # a version 1 model also gets abundances.txt, and a version 2 model gets otherstable columns in model.txt
+    save_modeldata(dfmodel=dfmodel, modelmeta=modelmeta, outpath=args.outputfile, dfelabundances=dfelabundances)
     if dfgridcontributions is not None:
         save_gridparticlecontributions(dfgridcontributions, args.outputfile)

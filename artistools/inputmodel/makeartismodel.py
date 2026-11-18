@@ -12,7 +12,6 @@ from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import dimension_reduce_model
 from artistools.inputmodel.core import get_model_text_folder
 from artistools.inputmodel.core import MODEL_FILE_NAMES
-from artistools.inputmodel.core import save_initelemabundances
 from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.core import scan_initelemabundances
 from artistools.inputmodel.core import scan_modeldata
@@ -74,11 +73,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         type=int,
         choices=[1, 2],
         default=None,
-        help="The format version of the model.txt that the command writes. Without a different action, the command"
-        " converts the model.txt of the model path, in the model folder or in the -o folder. With --dimensionreduce,"
+        help="The format version of the model.txt that the command writes. If the command has no other action,"
+        " it converts the model.txt of each model, in its model folder or in the -o folder. With --dimensionreduce,"
         " the reduced model gets this version. Version 2 starts with the line 'format_version 2' and has a header"
-        " of keys with the cell edges. An sn3d that is older than version 2 does not read it. A 2D spherical or 3D"
-        " spherical model has version 2 only",
+        " of keys with the cell edges, and its model has no abundances.txt. An older sn3d, which does not know format"
+        " version 2, cannot read such a file. A 2D spherical or a 3D spherical model has version 2 only",
     )
 
     parser.add_argument(
@@ -132,7 +131,7 @@ def get_dimreduce_outputfolder(outputfile: Path | None, modelpath: Path, ndim_ou
 
 
 def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int) -> None:
-    """Write the model.txt of a model again in a format version, into outputfolder.
+    """Convert the model.txt of a model to the format version formatversion, and write it into outputfolder.
 
     The cells keep their sequence and their values to the Float32 precision that artistools reads. Version 1 gives
     the position of each cell in columns, and version 2 gives the cell edges in the header.
@@ -142,7 +141,7 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
     if formatversion == 1 and coordinates in SPHERICAL_EDGE_COORDINATES:
         exit_with_error(
             f"Format version 1 of model.txt has no {coordinates} coordinates",
-            "A 2D spherical or 3D spherical model has format version 2 only",
+            "A 2D spherical or a 3D spherical model has format version 2 only",
         )
     print(
         f"The model.txt of {modelpath} has format version {modelmeta['formatversion']} and {coordinates} coordinates."
@@ -160,17 +159,19 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
     customcols = [col for col in dfmodel.columns if col not in gridcolumns and not col.startswith(("pos_", "vel_"))]
     outputfolder.mkdir(exist_ok=True, parents=True)
 
+    # the element mass fractions come from abundances.txt (version 1) or from the columns of model.txt (version 2)
+    haselements = (
+        modelmeta["formatversion"] == 2
+        or firstexisting_or_none("abundances.txt", folder=get_model_text_folder(modelpath), tryzipped=True) is not None
+    )
+    dfelabundances = scan_initelemabundances(modelpath, printwarningsonly=True).collect() if haselements else None
+
     if formatversion == 2 and dfmodel["inputcellid"].min() != 0:
         # each file of a model has the same cell ids, and version 2 has cell ids from 0
-        print("  Version 2 has cell ids from 0, thus abundances.txt and gridcontributions.txt get the same ids.")
-        hasabundances = firstexisting_or_none("abundances.txt", folder=modelpath, tryzipped=True) is not None
+        print("  Version 2 has cell ids from 0, thus gridcontributions.txt and Ye.txt get the same ids.")
         dfmodel, dfelabundances, dfgridcontributions = with_cell_ids_from_zero(
-            dfmodel,
-            scan_initelemabundances(modelpath).collect() if hasabundances else None,
-            get_gridparticlecontributions_or_none(modelpath),
+            dfmodel, dfelabundances, get_gridparticlecontributions_or_none(modelpath)
         )
-        if dfelabundances is not None:
-            save_initelemabundances(dfelabundances, outpath=outputfolder)
         if dfgridcontributions is not None:
             save_gridparticlecontributions(dfgridcontributions, outputfolder / "gridcontributions.txt")
         yefilepath = get_model_text_folder(modelpath) / "Ye.txt"
@@ -180,24 +181,36 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
             firstinputcellid = lzmodel.select(pl.col("inputcellid").min()).collect().item()
             write_ye_file(outputfolder, dfye.with_columns(pl.col("inputcellid").cast(pl.Int32) - firstinputcellid))
 
+    if formatversion == 2:
+        print(
+            "  Version 2 has no abundances.txt. The mass fraction of an element is the sum of its nuclide columns and"
+            " of its column X_<element>_otherstable."
+        )
+    # with dfelabundances, version 1 also gets abundances.txt, and version 2 gets the otherstable columns
     save_modeldata(
-        dfmodel, outpath=outputfolder, modelmeta=modelmeta | {"formatversion": formatversion}, extracols=customcols
+        dfmodel,
+        outpath=outputfolder,
+        modelmeta=modelmeta | {"formatversion": formatversion},
+        extracols=customcols,
+        dfelabundances=dfelabundances,
     )
 
 
 def get_converted_file_names(modelpaths: Sequence[Path], formatversion: int | None) -> Sequence[str]:
     """Return the names of the files that convert_model_format writes for these models.
 
-    A conversion to version 2 also writes abundances.txt, gridcontributions.txt, and Ye.txt if the cell ids of a
-    model do not start at 0.
+    A conversion to version 1 also writes abundances.txt. A conversion to version 2 deletes abundances.txt, and it
+    also writes gridcontributions.txt and Ye.txt if the cell ids of a model do not start at 0.
     """
     if formatversion != 2:
-        return ("model.txt",)
+        return ("model.txt", "abundances.txt")
     firstcellids = [
         scan_modeldata(modelpath, printwarningsonly=True)[0].select(pl.col("inputcellid").min()).collect().item()
         for modelpath in modelpaths
     ]
-    return ("model.txt",) if all(firstcellid == 0 for firstcellid in firstcellids) else (*MODEL_FILE_NAMES, "Ye.txt")
+    if all(firstcellid == 0 for firstcellid in firstcellids):
+        return ("model.txt", "abundances.txt")
+    return (*MODEL_FILE_NAMES, "Ye.txt")
 
 
 def get_model_output_folders(args: argparse.Namespace, modelpath_given: bool) -> dict[str, list[Path]]:
@@ -221,7 +234,7 @@ def get_model_output_folders(args: argparse.Namespace, modelpath_given: bool) ->
     if args.format_version is not None and args.dimensionreduce is None:
         if args.outputfile is not None and len(args.modelpath) > 1:
             exit_with_error(
-                "-o names one folder, and each model path writes a model.txt",
+                "-o names one folder, but the command writes one model.txt for each model path",
                 "Give one model path with -o, or give no -o to convert each model.txt in its model folder",
             )
         outputfolders["convertformat"] = [
@@ -310,8 +323,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 if dfgridcontributions_zero is not None:
                     dfgridcontributions_out = dfgridcontributions_zero
             assert dfelabundances_out is not None
-            save_initelemabundances(dfelabundances_out, outpath=outdir)
-            save_modeldata(dfmodel=dfmodel_out, modelmeta=modelmeta_out, outpath=outdir)
+            # a version 1 model also gets abundances.txt, and a version 2 model gets otherstable columns
+            save_modeldata(
+                dfmodel=dfmodel_out, modelmeta=modelmeta_out, outpath=outdir, dfelabundances=dfelabundances_out
+            )
             # the function gives an empty frame for a model with no contributions, thus test the input
             if dfgridcontributions is not None:
                 save_gridparticlecontributions(dfgridcontributions_out, outdir / "gridcontributions.txt")

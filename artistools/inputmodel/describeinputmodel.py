@@ -76,7 +76,8 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
     dfmodel = add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta).select(
         cs.by_name(dfmodel.collect_schema().names()) | cs.by_name("rho", "mass_g", "vel_r_mid", "kinetic_en_erg")
     )
-    dfmodel = dfmodel.filter(pl.col("rho") > 0.0)
+    # the element columns of a version 2 model already hold the mass of the otherstable columns
+    dfmodel = dfmodel.filter(pl.col("rho") > 0.0).drop(cs.ends_with("_otherstable"))
 
     if args.noabund:
         dfmodel = dfmodel.drop(cs.starts_with("X_"), strict=False)

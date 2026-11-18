@@ -405,8 +405,10 @@ The main parameters are `t_model_init_days`, `vmax_cmps` (cm/s), `dimensions`, `
 `spherical3d`. Use `coordinates` to select the code for a model. Each of the values 2 and 3 of `dimensions` has two
 possible values of `coordinates`.
 
-The parameter `formatversion` is 1 or 2. A `model.txt` of version 2 starts with the line `format_version 2`, gives
-the cell edges of each axis in its header, and has cell ids (`inputcellid`) from 0. For such a file, the parameters
+The parameter `formatversion` is 1 or 2. A `model.txt` of format version 2 starts with the line
+`format_version 2`. Its header gives the cell edges of each axis, and its cell ids (`inputcellid`) start at 0. Such a
+model has no `abundances.txt`: the mass fraction of an element is the sum of its nuclide columns and of its column
+`X_<element>_otherstable`, and `scan_modeldata(..., get_elemabundances=True)` gives that sum. For such a file, the parameters
 also hold the lists of the edges, e.g. `vel_r_edges_kmps` or `vel_x_edges_kmps`. The columns of a 1D, a 2D
 cylindrical, or a 3D Cartesian model are the same for the two versions.
 

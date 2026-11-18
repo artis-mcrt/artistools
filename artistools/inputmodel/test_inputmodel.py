@@ -2312,9 +2312,11 @@ def test_save_modeldata_writes_the_extra_columns(
         "tracercount": [3, 4],
         "mycolumn": [5.0, 6.0],
     })
-    extracolsarg = {} if extracols is None else {"extracols": extracols}
     at.inputmodel.save_modeldata(
-        dfmodel, outpath=tmp_path, modelmeta={"dimensions": 1, "t_model_init_days": 1.0}, **extracolsarg
+        dfmodel,
+        outpath=tmp_path,
+        modelmeta={"dimensions": 1, "t_model_init_days": 1.0},
+        extracols=() if extracols is None else extracols,
     )
 
     lzdfmodel_written, _ = at.inputmodel.core.scan_modelfile_text(tmp_path / "model.txt.zst")
@@ -4249,6 +4251,42 @@ def test_format_version_2_gives_the_cells_of_version_1(coordinates: str, tmp_pat
     pltest.assert_frame_equal(at.inputmodel.scan_modeldata(tmp_path)[0].collect(), cells[2])
 
 
+def test_otherstable_columns_give_the_element_mass_fractions() -> None:
+    """A version 2 model.txt has no abundances.txt, and sn3d sums the nuclide columns and the otherstable column.
+
+    Thus the otherstable column of an element holds the mass fraction that its nuclide columns do not hold. An
+    element gets no column if its nuclide columns hold its mass fraction to the Float32 rounding.
+    """
+    dfmodel = pl.DataFrame({
+        "inputcellid": [0, 1],
+        "rho": [1e-12, 2e-12],
+        "X_Fegroup": [1.0, 1.0],
+        "X_Ni56": [0.5, 0.25],
+        "X_Ni57": [0.0, 0.25],
+        "X_Co56": [0.25, 0.125],
+    })
+    dfelabundances = pl.DataFrame({
+        "inputcellid": [0, 1],
+        "X_Fe": [0.125, 0.0],
+        "X_Co": [0.25, 0.125 * (1 + 1e-7)],
+        "X_Ni": [0.625, 0.5],
+    })
+    dfwithotherstable = at.inputmodel.core.with_otherstable_columns(dfmodel, dfelabundances)
+    assert [col for col in dfwithotherstable.columns if col.endswith("_otherstable")] == [
+        "X_Fe_otherstable",
+        "X_Ni_otherstable",
+    ]
+    assert dfwithotherstable["X_Fe_otherstable"].to_list() == [0.125, 0.0]
+    assert dfwithotherstable["X_Ni_otherstable"].to_list() == [0.125, 0.0]
+    dfelements = at.inputmodel.core.get_elemabundances_of_model_columns(dfwithotherstable.lazy()).collect()
+    for elcol in ("X_Fe", "X_Co", "X_Ni"):
+        assert dfelements[elcol].to_list() == pytest.approx(dfelabundances[elcol].to_list(), rel=1e-6)
+
+    # sn3d stops if the nuclide columns of an element hold more than the element
+    with pytest.raises(ValueError, match=r"The nuclide columns of Ni hold up to 0\.125 more"):
+        at.inputmodel.core.with_otherstable_columns(dfmodel, dfelabundances.with_columns(X_Ni=pl.lit(0.375)))
+
+
 def test_version_2_edges_of_a_cartesian_grid_must_have_equal_steps() -> None:
     """A Cartesian grid has equal cells to one vmax in sn3d and in artistools, thus other edges are an error."""
     edgekeys = at.misc.MODEL_EDGE_KEYS["cartesian3d"]
@@ -4280,6 +4318,8 @@ def test_makeartismodel_converts_the_format_version_in_the_model_folder(tmp_path
         0
     ) == (0, 999)
     assert (modelfolder / "Ye.txt").read_text(encoding="utf-8").split()[1::2] == ["0", "999"]
+    # a version 2 model has no abundances.txt, and the columns of model.txt give the same element mass fractions
+    assert not list(modelfolder.glob("abundances.txt*"))
     dfsource = at.inputmodel.scan_modeldata(sourcefolder, get_elemabundances=True)[0]
     pltest.assert_series_equal(
         dfversion2.select("X_Fe").collect().to_series(), dfsource.select("X_Fe").collect().to_series()
@@ -4298,6 +4338,12 @@ def test_makeartismodel_converts_the_format_version_in_the_model_folder(tmp_path
     at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[modelfolder], format_version=1, force=True)
     dfmodel, modelmeta = at.inputmodel.scan_modeldata(modelfolder)
     assert modelmeta["formatversion"] == 1
+    # the version 1 model has abundances.txt again, with the element mass fractions of the source
+    pltest.assert_series_equal(
+        at.inputmodel.scan_initelemabundances(modelfolder).select("X_Fe").collect().to_series(),
+        dfsource.select("X_Fe").collect().to_series(),
+        rel_tol=1e-6,
+    )
     assert "pos_x_min" in dfmodel.collect_schema().names()
 
     (modelfolder / "model.txt.zst").unlink()

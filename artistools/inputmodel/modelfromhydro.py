@@ -34,9 +34,11 @@ from artistools.misc import addarg_timedays
 from artistools.misc import addarg_unsupported
 from artistools.misc import confirm_overwrite
 from artistools.misc import exit_with_error
+from artistools.misc import get_model_coordinates
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
+from artistools.misc import SPHERICAL_EDGE_COORDINATES
 from artistools.misc import validate_model_edges
 from artistools.misc import zopen
 
@@ -493,17 +495,25 @@ def makemodelfromgriddata(
     if dfgridcontributions is not None:
         save_gridparticlecontributions(dfgridcontributions, Path(outputpath, "gridcontributions.txt"))
 
-    if dfelabundances is not None:
+    # a spherical model has format version 2, which has no abundances.txt. Its model.txt gives the elements
+    hasabundancefile = get_model_coordinates(modelmeta) not in SPHERICAL_EDGE_COORDINATES
+    if dfelabundances is None and hasabundancefile:
+        save_empty_abundance_file(outputfilepath=outputpath, npts_model=len(dfmodel))
+    elif dfelabundances is not None and hasabundancefile:
         save_initelemabundances(
             dfelabundances=dfelabundances, outpath=outputpath, headercommentlines=modelmeta["headercommentlines"]
         )
-    else:
-        save_empty_abundance_file(outputfilepath=outputpath, npts_model=len(dfmodel))
 
     if "tracercount" in dfmodel:
         dfmodel = dfmodel.with_columns(pl.col("tracercount").cast(pl.Int32))
 
-    save_modeldata(outpath=outputpath, dfmodel=dfmodel, modelmeta=modelmeta)
+    # a version 2 model gets the element mass fractions as otherstable columns of model.txt
+    save_modeldata(
+        outpath=outputpath,
+        dfmodel=dfmodel,
+        modelmeta=modelmeta,
+        dfelabundances=None if hasabundancefile else dfelabundances,
+    )
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:

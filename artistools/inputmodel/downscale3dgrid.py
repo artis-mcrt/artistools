@@ -12,7 +12,6 @@ import polars as pl
 import polars.selectors as cs
 
 from artistools.constants import day_to_s
-from artistools.inputmodel.core import save_initelemabundances
 from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.core import scan_initelemabundances
 from artistools.inputmodel.core import scan_modeldata
@@ -93,7 +92,6 @@ def make_downscaled_3d_grid(
     outputfolder = get_downscale_outputfolder(modelpath, outputgridsize, outputfolder)
     outputfolder.mkdir(exist_ok=True)
     smallmodelfile = outputfolder / "model.txt"
-    smallabundancefile = outputfolder / "abundances.txt"
 
     abundcols = [x for x in dfmodel.columns if x.startswith("X_")]
     elemcolnames = [col for col in dfelemabund.columns if col.startswith("X_")]
@@ -144,11 +142,9 @@ def make_downscaled_3d_grid(
         "vmax_cmps": vmax,
     }
 
+    # a version 1 model also gets abundances.txt, and a version 2 model gets otherstable columns in model.txt
     print("Writing model file")
-    save_modeldata(dfmodel_small, outpath=smallmodelfile, modelmeta=modelmeta_small)
-
-    print("Writing abundance file")
-    save_initelemabundances(dfelemabund_small, outpath=smallabundancefile)
+    save_modeldata(dfmodel_small, outpath=smallmodelfile, modelmeta=modelmeta_small, dfelabundances=dfelemabund_small)
 
     if plot:
         print("Making diagnostic plot")

@@ -355,7 +355,7 @@ def get_model_format_version(firstline: str, modelfilepath: Path | str) -> int:
     if tokens[1:] != ["2"]:
         msg = (
             f"{modelfilepath}: the format version {' '.join(tokens[1:])!r} is not known. This version of artistools"
-            " reads version 2, and version 1, which has no format_version line"
+            " reads format version 2, and format version 1, which has no format_version line"
         )
         raise ValueError(msg)
     return 2
@@ -388,7 +388,7 @@ def parse_npts_line(line: str, modelfilepath: Path | str) -> list[int]:
 
 
 # The edge lists in the header of a version 2 model.txt, in the sequence of the file. The index of the first axis
-# changes fastest in the sequence of the cells. Only spherical2d and spherical3d have no version 1 format
+# changes fastest in the sequence of the cells. The coordinates spherical2d and spherical3d have format version 2 only
 MODEL_EDGE_KEYS: t.Final["Mapping[str, tuple[str, ...]]"] = MappingProxyType({
     "spherical1d": ("vel_r_edges_kmps",),
     "cylindrical2d": ("vel_rcyl_edges_kmps", "vel_z_edges_kmps"),
@@ -401,7 +401,8 @@ ALL_MODEL_EDGE_KEYS = tuple(dict.fromkeys(key for edgekeys in MODEL_EDGE_KEYS.va
 SPHERICAL_EDGE_COORDINATES = ("spherical2d", "spherical3d")
 # sn3d and artistools hold these grids with cells of equal width, from -vmax (0 for the cylindrical radius) to vmax
 UNIFORM_EDGE_COORDINATES = ("cylindrical2d", "cartesian3d")
-# the largest difference of an edge from its uniform value, as a fraction of vmax. sn3d has the same limit
+# the largest difference of an edge from its place on a grid with cells of equal width, as a fraction of vmax. sn3d
+# has the same limit
 UNIFORM_EDGE_RTOL = 1e-9
 # sn3d accepts the same difference between the last angular edge and pi or 2 pi
 ANGLE_EDGE_ATOL_RADIANS = 1e-8
@@ -458,7 +459,7 @@ def require_cartesian3d_model(modelmeta: "Mapping[str, t.Any]", requirement: str
 def validate_model_edges(
     coordinates: str, edgelists: "Mapping[str, Sequence[float] | None]", source: Path | str
 ) -> dict[str, list[float]]:
-    """Return the cell edges of a version 2 model for its coordinates, with the last angles exactly pi and 2 pi.
+    """Return the cell edges of a version 2 file, with the last angles exactly pi and 2 pi.
 
     edgelists must hold each key of MODEL_EDGE_KEYS for the coordinates, and no other edge key. These are the rules:
 
@@ -466,7 +467,7 @@ def validate_model_edges(
     - The last polar angle is pi and the last azimuthal angle is 2 pi, to ANGLE_EDGE_ATOL_RADIANS. A polar angle
       at pi / 2, to the same tolerance, becomes exactly pi / 2 before the check, as in sn3d.
     - A cylindrical2d or cartesian3d grid has cells of equal width. The lists of x, y, and z are from -vmax to
-      vmax, with one vmax for each axis. A cartesian3d grid has the same count of cells on each axis.
+      vmax, and all the axes have the same vmax. A cartesian3d grid has the same count of cells on each axis.
 
     source is the file or the caller that the error names.
     """
@@ -520,8 +521,8 @@ def validate_model_edges(
             if not np.allclose(values, uniformedges, rtol=0.0, atol=UNIFORM_EDGE_RTOL * vmax_kmps):
                 msg = (
                     f"{source}: the values of {key} must have equal steps from {firstedge!r} to {vmax_kmps!r}, which"
-                    f" is the last value of {edgekeys[0]}. sn3d and artistools read a {coordinates} grid with cells"
-                    " of equal width and one vmax only"
+                    f" is the last value of {edgekeys[0]}. sn3d and artistools read a {coordinates} grid only with"
+                    " cells of equal width and the same vmax on each axis"
                 )
                 raise ValueError(msg)
         if coordinates == "cartesian3d" and len({len(values) for values in edges.values()}) != 1:
@@ -532,7 +533,7 @@ def validate_model_edges(
 
 
 def get_cell_counts_of_edges(coordinates: str, edges: "Mapping[str, Sequence[float]]") -> dict[str, int]:
-    """Return the metadata keys of the cell counts, e.g. ncoordgridrcyl, for the cell edges of a version 2 model."""
+    """Return the metadata keys of the cell counts, e.g. ncoordgridrcyl, for the cell edges of a version 2 file."""
     counts = {f"ncoordgrid{key.split('_')[-3]}": len(edges[key]) - 1 for key in MODEL_EDGE_KEYS[coordinates]}
     # a 1D model has npts_model only, and the reader of a 3D Cartesian model also gives the count of one axis
     if coordinates == "spherical1d":
@@ -549,8 +550,8 @@ def read_keyword_model_header(
 
     modelfile is at the line after the line "format_version 2". Each header line is a key and its values, and the
     keys can come in any sequence. The key columns gives the column names and ends the header. The function gives a
-    warning for a key that it does not know, and it ignores that key. Thus a later version of the format can add a
-    key. The key headercommentlines of the metadata holds each comment line of the header.
+    warning for a key that it does not know, and it ignores that key. Thus a later version of ARTIS can add a
+    key to format version 2. The key headercommentlines of the metadata holds each comment line of the header.
     """
     commentlines: list[str] = []
     keyvalues: dict[str, list[str]] = {}
@@ -614,7 +615,7 @@ def read_keyword_model_header(
     ]
     if columns[:2] != ["inputcellid", "rho"] or len(set(columns)) != len(columns) or positioncolumns:
         msg = (
-            f"{modelfilepath}: the first two columns of a version 2 model must be inputcellid and rho. Each column"
+            f"{modelfilepath}: the first two columns of a version 2 file must be inputcellid and rho. Each column"
             " name must be different, and the cell edges of the header replace each position column. The columns"
             f" are {' '.join(columns)!r}"
         )

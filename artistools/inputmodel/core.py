@@ -6,6 +6,7 @@ import gc
 import json
 import math
 import os
+import re
 import time
 import typing as t
 import warnings
@@ -45,6 +46,7 @@ from artistools.misc import path_is_codecomparison
 from artistools.misc import polars_source
 from artistools.misc import print_detail
 from artistools.misc import print_saved
+from artistools.misc import print_warning
 from artistools.misc import read_keyword_model_header
 from artistools.misc import read_parquet_cache_metadata
 from artistools.misc import read_wsv
@@ -126,7 +128,7 @@ def read_noncomment_line(fmodel: t.IO[str], headercommentlines: list[str]) -> tu
 def add_position_columns_of_edges(
     dfmodel: pl.LazyFrame, modelmeta: dict[str, t.Any], firstinputcellid: int
 ) -> pl.LazyFrame:
-    """Return the cells of a version 2 model with the position columns that the version 1 file of its coordinates has.
+    """Return the cells of a version 2 file with the position columns of version 1 for its coordinates.
 
     A version 2 file gives the cell edges in its header and no position column. The code after the reader needs the
     columns of version 1: vel_r_max_kmps and logrho (1D), pos_rcyl_mid and pos_z_mid (2D cylindrical), and pos_x_min,
@@ -296,11 +298,11 @@ def scan_modelfile_text(
     t_model_init_seconds = modelmeta["t_model_init_days"] * day_to_s
     if formatversion == 2 and ncols_line_even != len(columns or []):
         msg = (
-            f"{filename}: the first cell line holds {ncols_line_even} values, but the column line names"
-            f" {len(columns or [])} columns. A cell of a version 2 model has one line"
+            f"{filename}: the first cell line holds {ncols_line_even} values, but the key columns gives"
+            f" {len(columns or [])} names. A cell has one line in format version 2"
         )
         raise ValueError(msg)
-    # the header of a version 2 model gives no cell count. Thus the reader takes one row more than the edges give,
+    # the header of a version 2 file gives no cell count. Thus the reader takes one row more than the edges give,
     # and the check below finds an extra row
     maxrowcount = npts_model + 1 if formatversion == 2 else npts_model
 
@@ -1317,9 +1319,111 @@ def get_standard_columns(
     return cols
 
 
+# A column X_<element>_otherstable of a version 2 model.txt holds the mass fraction of the stable isotopes of the
+# element that have no nuclide column. Such a file has no abundances.txt
+OTHERSTABLE_SUFFIX = "_otherstable"
+# sn3d stops if the nuclide columns of an element hold this much more than the mass fraction of the element
+OTHERSTABLE_NEGATIVE_LIMIT = 1e-2
+# a remainder below this fraction of the mass fraction of the element is rounding of the Float32 values
+OTHERSTABLE_ROUNDING_RTOL = 1e-5
+
+
 def customcolsortkey(col: str) -> tuple[float, int]:
-    """Sort nuclide mass fraction columns by atomic number then mass number, and other columns last."""
+    """Sort nuclide mass fraction columns by atomic number then mass number, and other columns last.
+
+    The otherstable column of an element comes after its nuclide columns.
+    """
+    if col.startswith("X_") and col.endswith(OTHERSTABLE_SUFFIX):
+        return (get_atomic_number(col.removeprefix("X_").removesuffix(OTHERSTABLE_SUFFIX)), 10**6)
     return get_z_a_nucname(col) if col.startswith("X_") else (math.inf, 0)
+
+
+def get_element_columns_of_model(colnames: Sequence[str]) -> dict[int, list[str]]:
+    """Return the nuclide columns and the otherstable column of each element of a model, by atomic number.
+
+    X_Fegroup, the free neutrons (X_n1), and an element column such as X_Fe are in no list.
+    """
+    elementcols: dict[int, list[str]] = {}
+    for col in colnames:
+        if col.startswith("X_") and col.endswith(OTHERSTABLE_SUFFIX):
+            atomic_number = get_atomic_number(col.removeprefix("X_").removesuffix(OTHERSTABLE_SUFFIX))
+        elif re.fullmatch(r"X_[A-Za-z]+\d+", col):
+            atomic_number = get_z_a_nucname(col)[0]
+        else:
+            continue
+        if atomic_number > 0:
+            elementcols.setdefault(atomic_number, []).append(col)
+    return elementcols
+
+
+def get_elemabundances_of_model_columns(dfmodel: pl.LazyFrame) -> pl.LazyFrame:
+    """Return the mass fraction of each element of each cell, as sn3d calculates it for a version 2 model.txt.
+
+    The mass fraction of an element is the sum of its nuclide columns and of its column X_<element>_otherstable.
+    The result has the columns of scan_initelemabundances: inputcellid, and X_H to the last element (Z = 30 or more).
+    """
+    elementcols = get_element_columns_of_model(dfmodel.collect_schema().names())
+    max_atomic_number = max([30, *elementcols])
+    return dfmodel.select(
+        "inputcellid",
+        *[
+            (pl.sum_horizontal(elementcols[atomic_number]) if atomic_number in elementcols else pl.lit(0.0))
+            .cast(pl.Float32)
+            .alias(f"X_{get_elsymbol(atomic_number)}")
+            for atomic_number in range(1, max_atomic_number + 1)
+        ],
+    )
+
+
+def with_otherstable_columns(dfmodel: pl.DataFrame, dfelabundances: pl.DataFrame) -> pl.DataFrame:
+    """Return the cells of a model with the columns X_<element>_otherstable that give the element mass fractions.
+
+    A version 2 model.txt has no abundances.txt. sn3d takes the mass fraction of an element as the sum of its nuclide
+    columns and of its otherstable column. Thus the otherstable value of an element is its mass fraction in
+    dfelabundances minus the sum of its nuclide columns in dfmodel. The function stops if the nuclide columns hold
+    more than the element by OTHERSTABLE_NEGATIVE_LIMIT. A remainder below OTHERSTABLE_ROUNDING_RTOL of the element
+    is rounding and becomes 0, and an element with no remainder in any cell gets no column.
+    """
+    dfmodel = dfmodel.drop(cs.ends_with(OTHERSTABLE_SUFFIX))
+    elementcols = get_element_columns_of_model(dfmodel.columns)
+    hasdensity = pl.col("rho") > 0 if "rho" in dfmodel.columns else pl.lit(value=True)
+    remainders = {}
+    for elcol in dfelabundances.columns:
+        if elcol == "inputcellid":
+            continue
+        nuclidecols = elementcols.get(get_atomic_number(elcol.removeprefix("X_")), [])
+        elmassfrac = pl.col(elcol).fill_null(0.0).cast(pl.Float64)
+        remainder = elmassfrac - (
+            pl.sum_horizontal([pl.col(col).cast(pl.Float64) for col in nuclidecols]) if nuclidecols else pl.lit(0.0)
+        )
+        remainders[f"{elcol}{OTHERSTABLE_SUFFIX}"] = (
+            pl
+            .when(hasdensity & (remainder.abs() > OTHERSTABLE_ROUNDING_RTOL * elmassfrac))
+            .then(remainder)
+            .otherwise(0.0)
+        )
+    nuclidecolsofmodel = [col for cols in elementcols.values() for col in cols]
+    dfremainders = (
+        dfmodel
+        .select("inputcellid", *(["rho"] if "rho" in dfmodel.columns else []), *nuclidecolsofmodel)
+        .join(dfelabundances, on="inputcellid", how="left", maintain_order="left")
+        .select(**remainders)
+    )
+    lowest: dict[str, float] = dfremainders.select(pl.all().min().fill_null(0.0)).row(0, named=True)
+    highest: dict[str, float] = dfremainders.select(pl.all().max().fill_null(0.0)).row(0, named=True)
+    for col, lowestremainder in lowest.items():
+        if lowestremainder < -OTHERSTABLE_NEGATIVE_LIMIT:
+            msg = (
+                f"The nuclide columns of {col.removeprefix('X_').removesuffix(OTHERSTABLE_SUFFIX)} hold up to"
+                f" {-lowestremainder:.3g} more mass fraction than the element has in the element abundances"
+            )
+            raise ValueError(msg)
+    otherstablecols = [col for col, highestremainder in highest.items() if highestremainder > 0.0]
+    print(
+        f"  {len(otherstablecols)} elements get an otherstable column, which is the element mass fraction minus the sum"
+        f" of the nuclide columns. A remainder below {OTHERSTABLE_ROUNDING_RTOL:g} of the element is rounding."
+    )
+    return dfmodel.with_columns(dfremainders.select(pl.col(otherstablecols).clip(lower_bound=0.0).cast(pl.Float32)))
 
 
 def write_artis_csv(df: pl.DataFrame, fileobj: t.IO[bytes]) -> None:
@@ -1437,8 +1541,8 @@ def get_version2_headerlines(inputcellids: pl.Series, modelmeta: dict[str, t.Any
     """Return the key lines of a version 2 model.txt, from the key coordinates to the last list of edges.
 
     The function checks the cell edges of the metadata and the sorted cell ids against them. The cell ids of a
-    version 2 model are 0 to N - 1. It sets the cell
-    counts, and for spherical2d and spherical3d also vmax_cmps and firstinputcellid, in the metadata. Each edge
+    version 2 file are 0 to N - 1, where N is the count of the cells. The function sets the cell counts in the
+    metadata, and for spherical2d and spherical3d also vmax_cmps and firstinputcellid. Each edge
     has the shortest text that gives its float again, e.g. 0.7. A line has a comment only for information that
     its key does not give.
     """
@@ -1464,9 +1568,9 @@ def get_version2_headerlines(inputcellids: pl.Series, modelmeta: dict[str, t.Any
     if inputcellids.len() != npts_model or not (inputcellids == pl.int_range(npts_model, eager=True)).all():
         msg = (
             f"The cell edges give {gridshape} = {npts_model} cells, but the model has {inputcellids.len()} cells with"
-            f" the first inputcellid {inputcellids.item(0) if inputcellids.len() else None}. In format version 2, the"
-            f" inputcellid values are 0 to {npts_model - 1}, and the index of {firstaxis} changes fastest. Give the"
-            " same cell ids to abundances.txt and gridcontributions.txt, e.g. with with_cell_ids_from_zero"
+            f" the first cell id {inputcellids.item(0) if inputcellids.len() else None}. In format version 2, the cell"
+            f" ids are 0 to {npts_model - 1}, and the index of {firstaxis} changes fastest. Give the same cell ids to"
+            " gridcontributions.txt and Ye.txt, e.g. call with_cell_ids_from_zero"
         )
         raise ValueError(msg)
 
@@ -1486,7 +1590,9 @@ def get_version2_headerlines(inputcellids: pl.Series, modelmeta: dict[str, t.Any
 
 
 def with_rho_of_1d_model(dfmodel: pl.DataFrame) -> pl.DataFrame:
-    """Return the cells of a 1D model with the column rho [g/cm3], which a version 2 file holds in place of logrho.
+    """Return the cells of a 1D model with the column rho [g/cm3].
+
+    A version 2 file holds rho in place of logrho.
 
     A version 1 file gives logrho only. A dataframe can hold both columns, e.g. from a version 2 file. The function
     then stops if they do not agree, because it cannot know which column a caller changed.
@@ -1508,8 +1614,9 @@ def with_cell_ids_from_zero(
 ) -> tuple[pl.DataFrame, pl.DataFrame | None, pl.DataFrame | None]:
     """Return the cells, the element abundances, and the particle contributions with cell ids that start at 0.
 
-    The cell ids of model.txt are 0 to N - 1 in format version 2. abundances.txt and gridcontributions.txt of the
-    same model must hold the same ids, thus one call changes all three dataframes by the first id of dfmodel.
+    The cell ids of model.txt are 0 to N - 1 in format version 2, where N is the count of the cells.
+    gridcontributions.txt of the same model must hold the same ids, and dfelabundances must agree with dfmodel. Thus
+    one call changes all three dataframes by the first id of dfmodel.
     """
     firstinputcellid = dfmodel["inputcellid"].min()
     assert isinstance(firstinputcellid, int)
@@ -1549,9 +1656,15 @@ def save_modeldata(
     outpath: Path | str | None = None,
     modelmeta: dict[str, t.Any] | None = None,
     extracols: Sequence[str] = (),
+    dfelabundances: pl.DataFrame | pl.LazyFrame | None = None,
     **kwargs: t.Any,
 ) -> None:
     """Write model.txt, a snapshot of the density and the composition, from the cell properties and the metadata.
+
+    dfelabundances holds the element mass fractions of the cells, in the format of scan_initelemabundances. For
+    format version 1, the function then also writes abundances.txt. Format version 2 has no abundances.txt: the
+    function writes a column X_<element>_otherstable for each element whose nuclide columns do not hold its mass
+    fraction (see with_otherstable_columns), and it deletes an abundances.txt of the output folder.
 
     The metadata gives values such as the time after the explosion. The file gets zstd compression, and the extension
     .zst, e.g. model.txt.zst for model.txt or for model.txt.gz. ARTIS reads such a file directly.
@@ -1597,17 +1710,20 @@ def save_modeldata(
     Each list of edges has one value more than the count of the cells on that axis, and it increases. A list of r,
     rcyl, theta, or phi starts at 0. The last polar angle is pi, and the last azimuthal angle is 2 pi. The polar
     angle theta is from the +z axis, and the azimuthal angle is phi = atan2(y, x). A cylindrical or a Cartesian grid
-    has cells of equal width from -vmax (0 for rcyl) to vmax, because sn3d and artistools hold no other such grid.
+    has cells of equal width from -vmax (0 for rcyl) to vmax. sn3d and artistools hold no other grid of these types.
     For these two, the function makes the edges from vmax_cmps and stops if a position column does not agree.
 
-    The cells of version 2 have no position column. The inputcellid of a cell is its index in the grid of the edges,
-    from 0, and the index of the first axis changes fastest, e.g. i_r + n_r * (i_theta + n_theta * i_phi). Thus
-    dfmodel must have the cell ids 0 to N - 1 for version 2, and abundances.txt and gridcontributions.txt of the
-    model must hold the same ids (see with_cell_ids_from_zero). A cell with no line is empty, thus the function
-    writes no line for a cell with rho = 0. A file needs one cell line, thus a model with no density keeps the
-    line of its first cell. A 1D cell has rho and not logrho.
+    The cells of a version 2 file have no position column. The cell id is the index of the cell in the grid of the
+    edges, from 0. The index of the first axis changes fastest, e.g. i_r + n_r * (i_theta + n_theta * i_phi). Thus
+    dfmodel must have the cell ids 0 to N - 1 for version 2, where N is the count of the cells. gridcontributions.txt
+    and Ye.txt of the model must hold the same ids (see with_cell_ids_from_zero). A cell with no line is empty, thus
+    the function writes no line for an empty cell (rho = 0). A file needs one cell line, thus a model with no density
+    keeps the line of its first cell. Each version 2 file holds rho, and no version 2 file holds logrho.
 
-    The mass fractions of abundances.txt must be true mass fractions, because sn3d does not normalise them.
+    A version 2 model has no abundances.txt. sn3d takes the mass fraction of an element as the sum of its nuclide
+    columns and of its column X_<element>_otherstable, e.g. X_Ni56 + X_Ni58 + X_Ni_otherstable. Give dfelabundances
+    to get the otherstable columns. Each mass fraction is a true mass fraction, because sn3d does not normalise the
+    values of a cell.
 
     model.txt holds these comments:
 
@@ -1659,6 +1775,23 @@ def save_modeldata(
         # the cell ids of version 2 start at 0. artistools gives the first cell of a version 1 file the id 1
         dfmodel = dfmodel.with_columns(inputcellid=pl.col("modelgridindex") + (0 if formatversion == 2 else 1))
         colnames = [*colnames, "inputcellid"]
+
+    outputfolder = resolve_outputfile(outpath, "model.txt").parent
+    oldabundancefiles = [path for path in get_file_copies(outputfolder / "abundances.txt") if path.is_file()]
+    if formatversion == 2:
+        if dfelabundances is not None:
+            dfmodel = with_otherstable_columns(dfmodel.lazy().collect(), dfelabundances.lazy().collect())
+            colnames = dfmodel.columns
+        elif oldabundancefiles:
+            msg = (
+                f"{outputfolder} holds abundances.txt, and a model of format version 2 has no such file. Give"
+                " dfelabundances, or delete the file if the nuclide columns already give each element"
+            )
+            raise ValueError(msg)
+    else:
+        # only format version 2 has otherstable columns
+        dfmodel = dfmodel.lazy().drop(cs.ends_with(OTHERSTABLE_SUFFIX))
+        colnames = dfmodel.collect_schema().names()
 
     # the Ni57 and Co57 columns are optional, but their position counts. They must come before
     # every other custom column
@@ -1807,6 +1940,13 @@ def save_modeldata(
 
     remove_parquet_cache(modelfilepath)
     print_saved(modelfilepath)
+    if dfelabundances is not None and formatversion == 1:
+        save_initelemabundances(dfelabundances, outpath=modelfilepath.parent)
+    elif formatversion == 2:
+        for oldabundancefile in oldabundancefiles:
+            oldabundancefile.unlink()
+            remove_parquet_cache(oldabundancefile)
+            print(f"Deleted {oldabundancefile}, because the model.txt of format version 2 gives the element masses")
     print_detail(f"Took {time.perf_counter() - timestart:.1f} seconds")
 
 
@@ -1860,8 +2000,25 @@ def read_onespace_abundances(textfilepath: Path, ncolumns: int) -> pl.DataFrame 
 
 
 def scan_initelemabundances(modelpath: Path | str = ".", printwarningsonly: bool = False) -> pl.LazyFrame:
-    """Return a table of elemental mass fractions by cell from abundances."""
-    textfilepath = firstexisting("abundances.txt", folder=get_model_text_folder(modelpath), tryzipped=True)
+    """Return a table of elemental mass fractions by cell.
+
+    The table comes from abundances.txt. A model.txt of format version 2 has no abundances.txt, and the table is
+    then the sum of the nuclide columns and the otherstable column of each element, as in sn3d.
+    """
+    modelfolder = get_model_text_folder(modelpath)
+    modelfilepath = firstexisting_or_none("model.txt", folder=modelfolder, tryzipped=True)
+    if modelfilepath is not None:
+        with zopen(modelfilepath) as fmodel:
+            formatversion = get_model_format_version(fmodel.readline(), modelfilepath)
+        if formatversion == 2:
+            if firstexisting_or_none("abundances.txt", folder=modelfolder, tryzipped=True) is not None:
+                print_warning(
+                    f"{modelfolder} holds abundances.txt, but its model.txt has format version 2, which gives the"
+                    " element mass fractions. artistools does not read abundances.txt, and sn3d stops for it"
+                )
+            return get_elemabundances_of_model_columns(scan_modeldata(modelpath, printwarningsonly=True)[0])
+
+    textfilepath = firstexisting("abundances.txt", folder=modelfolder, tryzipped=True)
 
     def read_text() -> tuple[pl.LazyFrame, dict[str, str]]:
         if not printwarningsonly:
