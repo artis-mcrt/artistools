@@ -2,6 +2,7 @@
 
 import argparse
 import re
+import shutil
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
@@ -225,20 +226,38 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
         (outputfolder / filename).write_text("\n".join(lines) + "\n", encoding="utf-8")
         print_saved(outputfolder / filename)
 
+    sourcefolder = get_model_text_folder(modelpath)
+    if outputfolder.resolve() != sourcefolder.resolve():
+        # a different output folder also gets each file with cell ids that needs no change, thus the model is complete
+        unchangedfiles = [
+            sourcefolder / filename
+            for filename in CELL_ID_FILE_NAMES
+            if filename not in cellidfilelines and (sourcefolder / filename).is_file()
+        ]
+        contributionsfile = firstexisting_or_none("gridcontributions.txt", folder=sourcefolder, tryzipped=True)
+        if dfgridcontributions is None and contributionsfile is not None:
+            unchangedfiles.append(contributionsfile)
+        for sourcefile in unchangedfiles:
+            shutil.copy2(sourcefile, outputfolder / sourcefile.name)
+            print(f"Copied {sourcefile.name} to {outputfolder}, because its cell ids need no change")
 
-def get_converted_file_names(modelpaths: Sequence[Path], formatversion: int | None) -> Sequence[str]:
+
+def get_converted_file_names(
+    modelpaths: Sequence[Path], formatversion: int | None, hasoutputfolder: bool
+) -> Sequence[str]:
     """Return the names of the files that convert_model_format writes for these models.
 
     A conversion to version 1 also writes abundances.txt. A conversion to version 2 deletes abundances.txt, and it
-    also writes gridcontributions.txt, Ye.txt, and opacity.txt if the cell ids of a model do not start at 0.
+    also writes gridcontributions.txt, Ye.txt, and opacity.txt if the cell ids of a model do not start at 0. A
+    conversion into a different folder (hasoutputfolder) always copies or writes these three files.
     """
     if formatversion != 2:
-        return ("model.txt", "abundances.txt")
+        return (*MODEL_FILE_NAMES, *CELL_ID_FILE_NAMES) if hasoutputfolder else ("model.txt", "abundances.txt")
     firstcellids = [
         scan_modeldata(modelpath, printwarningsonly=True)[0].select(pl.col("inputcellid").min()).collect().item()
         for modelpath in modelpaths
     ]
-    if all(firstcellid == 0 for firstcellid in firstcellids):
+    if all(firstcellid == 0 for firstcellid in firstcellids) and not hasoutputfolder:
         return ("model.txt", "abundances.txt")
     return (*MODEL_FILE_NAMES, *CELL_ID_FILE_NAMES)
 
@@ -301,7 +320,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         "makeenergyinputfiles": ENERGY_FILE_NAMES,
     }
     if "convertformat" in outputfolders:
-        outputfilenames["convertformat"] = get_converted_file_names(args.modelpath, args.format_version)
+        outputfilenames["convertformat"] = get_converted_file_names(
+            args.modelpath, args.format_version, hasoutputfolder=args.outputfile is not None
+        )
     for action, folders in outputfolders.items():
         confirm_overwrite(folders, outputfilenames.get(action, MODEL_FILE_NAMES), force=args.force)
 

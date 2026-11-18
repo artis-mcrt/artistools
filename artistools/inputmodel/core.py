@@ -343,27 +343,33 @@ def scan_modelfile_text(
 
     dfmodelfast: pl.DataFrame | None = None
     if onelinepercellformat and all(has_single_space_separators(line) for line in (data_line_even, data_line_odd)):
-        dfmodelfast = pl.read_csv(
-            polars_source(filename),
-            separator=" ",
-            new_columns=columns,
-            n_rows=maxrowcount,
-            has_header=False,
-            # skip_rows does not count a comment line if comment_prefix is set, and skip_lines counts each line
-            skip_rows=0 if formatversion == 2 else numheaderrows,
-            skip_lines=numheaderrows if formatversion == 2 else 0,
-            comment_prefix="#" if formatversion == 2 else None,
-            schema={col: pl.Int32 if col == "inputcellid" else pl.Float32 for col in columns},
-            truncate_ragged_lines=True,
-            # a trailing space gives an empty last field. polars 2 raises if a line has more fields than column names
-            extra_columns="ignore",
-            # a header comment can hold one quotation mark, e.g. 5" model. A reader that takes it as a quote
-            # skips the rows to the next quotation mark, and the data lines then go with the header
-            quote_char=None,
-            glob=False,
-        )
+        try:
+            dfmodelfast = pl.read_csv(
+                polars_source(filename),
+                separator=" ",
+                new_columns=columns,
+                n_rows=maxrowcount,
+                has_header=False,
+                # skip_rows does not count a comment line if comment_prefix is set, and skip_lines counts each line
+                skip_rows=0 if formatversion == 2 else numheaderrows,
+                skip_lines=numheaderrows if formatversion == 2 else 0,
+                comment_prefix="#" if formatversion == 2 else None,
+                schema={col: pl.Int32 if col == "inputcellid" else pl.Float32 for col in columns},
+                # A trailing space gives an empty last field. Version 1 ignores each field after the last column.
+                # sn3d stops for such a field in version 2, thus the reader raises and the slow reader takes the file
+                truncate_ragged_lines=formatversion == 1,
+                extra_columns="ignore" if formatversion == 1 else "raise",
+                # a header comment can hold one quotation mark, e.g. 5" model. A reader that takes it as a quote
+                # skips the rows to the next quotation mark, and the data lines then go with the header
+                quote_char=None,
+                glob=False,
+            )
+        except pl.exceptions.PolarsError:
+            if formatversion == 1:
+                raise
+            dfmodelfast = None
         # the test of the separators reads two lines. An extra space in a later line gives a null and moves the values
-        if dfmodelfast.null_count().sum_horizontal().item() > 0:
+        if dfmodelfast is not None and dfmodelfast.null_count().sum_horizontal().item() > 0:
             dfmodelfast = None
 
     if dfmodelfast is not None:
@@ -374,13 +380,19 @@ def scan_modelfile_text(
     else:
         # a cell of dfmodelraw can span two lines. One read of the full file and a slice after it
         # prevent a second read
-        dfmodelraw = read_wsv(
-            filename,
-            has_header=False,
-            skip_rows=numheaderrows,
-            comment_prefix="#" if formatversion == 2 else None,
-            new_columns=[str(i) for i in range(max(ncols_line_even, ncols_line_odd))],
-        )
+        try:
+            dfmodelraw = read_wsv(
+                filename,
+                has_header=False,
+                skip_rows=numheaderrows,
+                comment_prefix="#" if formatversion == 2 else None,
+                new_columns=[str(i) for i in range(max(ncols_line_even, ncols_line_odd))],
+            )
+        except pl.exceptions.SchemaError:
+            if formatversion == 1:
+                raise
+            msg = f"{filename}: a cell line has more values than the key columns gives names"
+            raise ValueError(msg) from None
 
         dfmodel = (
             (dfmodelraw if onelinepercellformat else dfmodelraw[: npts_model * 2 : 2])
@@ -414,17 +426,22 @@ def scan_modelfile_text(
 
     # In version 1, sn3d stops for a file with too few cells. It takes the id of the first cell (0 or 1) as the start
     # of the cell index, and each id after it must be one more than the id before it
-    cellcount, firstinputcellid, lastinputcellid, idsareconsecutive = (
+    cellcount, firstinputcellid, lastinputcellid, idsareconsecutive, hasnullvalue = (
         dfmodel
         .select(
             cellcount=pl.len(),
             firstinputcellid=pl.col("inputcellid").first(),
             lastinputcellid=pl.col("inputcellid").last(),
             idsareconsecutive=(pl.col("inputcellid") == pl.col("inputcellid").first() + pl.int_range(pl.len())).all(),
+            hasnullvalue=pl.any_horizontal(pl.all().is_null()).any(),
         )
         .collect()
         .row(0)
     )
+    if formatversion == 2 and hasnullvalue:
+        # sn3d stops for such a line
+        msg = f"{filename}: a cell line has fewer values than the key columns gives names"
+        raise ValueError(msg)
     if cellcount > npts_model:
         msg = (
             f"{filename}: found more than {npts_model} cells, but the cell edges of the header give {npts_model} cells"

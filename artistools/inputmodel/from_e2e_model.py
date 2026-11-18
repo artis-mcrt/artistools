@@ -1367,11 +1367,17 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "-ngridrcyl", type=int, default=25, help="The number of cells in radial direction the ARTIS model shall have"
+        "-ngridrcyl",
+        type=int,
+        default=None,
+        help="The number of cells in radial direction the ARTIS model shall have (default 25)",
     )
 
     parser.add_argument(
-        "-ngridz", type=int, default=50, help="The number of cells in z direction the ARTIS model shall have"
+        "-ngridz",
+        type=int,
+        default=None,
+        help="The number of cells in z direction the ARTIS model shall have (default 50)",
     )
 
     parser.add_argument("--mapto3D", action="store_true", help="Final grid will be 3D. Requires --ngridx and --ngridy")
@@ -1401,15 +1407,15 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-ngridx",
         type=int,
-        default=50,
-        help="The number of cells in x direction the ARTIS model shall have (from -vmax to +vmax)",
+        default=None,
+        help="The number of cells in x direction the ARTIS model shall have (from -vmax to +vmax, default 50)",
     )
 
     parser.add_argument(
         "-ngridy",
         type=int,
-        default=50,
-        help="The number of cells in y direction the ARTIS model shall have (from -vmax to +vmax)",
+        default=None,
+        help="The number of cells in y direction the ARTIS model shall have (from -vmax to +vmax, default 50)",
     )
 
     parser.add_argument("--nonutrapping", action="store_true", help="Exclude neutrino energy from the snapshot energy")
@@ -1506,7 +1512,9 @@ def validate_grid_dimensions(args: argparse.Namespace) -> None:
     """Stop at grid arguments that do not agree, before the command does its work.
 
     --coordinates must agree with --mapto3D, and a flag of a spherical grid needs --coordinates spherical. A
-    Cartesian model that stays 3D needs equal dimensions, because the model writer needs a cubic grid.
+    spherical grid takes no cell count of a cylindrical or a Cartesian grid. A Cartesian model that stays 3D needs
+    equal dimensions, because the model writer needs a cubic grid. The function also gives each cell count that
+    the user did not give its default value.
     """
     defaultcoordinates = "cartesian" if args.mapto3D else "cylindrical"
     if args.coordinates not in {None, "spherical", defaultcoordinates}:
@@ -1514,7 +1522,19 @@ def validate_grid_dimensions(args: argparse.Namespace) -> None:
             f"--coordinates {args.coordinates} does not agree with {'--mapto3D' if args.mapto3D else 'a 2D model'}",
             "A 2D model is cylindrical or spherical, and a model with --mapto3D is cartesian or spherical",
         )
+    # a flag with no value gets its default here, thus the check knows the flags that the user gave
+    griddefaults = {"ngridrcyl": 25, "ngridz": 50, "ngridx": 50, "ngridy": 50}
+    givenflags = [f"--{name}" for name in griddefaults if getattr(args, name) is not None]
+    for name, defaultcount in griddefaults.items():
+        if getattr(args, name) is None:
+            setattr(args, name, defaultcount)
     if args.coordinates == "spherical":
+        if givenflags:
+            exit_with_error(
+                f"{', '.join(givenflags)} {'applies' if len(givenflags) == 1 else 'apply'} to a cylindrical or a"
+                " Cartesian grid, and --coordinates spherical makes a spherical grid",
+                "Give --ngrid-r, --ngrid-theta, and --ngrid-phi for a spherical grid",
+            )
         return
     if any(count is not None for count in (args.ngrid_r, args.ngrid_theta, args.ngrid_phi)):
         exit_with_error(

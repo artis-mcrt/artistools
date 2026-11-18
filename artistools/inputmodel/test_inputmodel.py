@@ -4159,6 +4159,8 @@ def test_spherical_model_reader_takes_cell_ids_from_zero(tmp_path: Path, capsys:
         ("3 4e-12 1 0 0 0 0", ("3 4e-12 1 0 0 0 0", "4 5e-12 1 0 0 0 0"), "more than 4 cells"),
         ("3 4e-12 1 0 0 0 0", ("2 4e-12 1 0 0 0 0",), "must increase from each cell line to the next"),
         ("3 4e-12 1 0 0 0 0", ("4 4e-12 1 0 0 0 0",), "each inputcellid must be from 0 to 3"),
+        ("3 4e-12 1 0 0 0 0", ("3 4e-12 1 0 0 0 0 0.5",), "a cell line has more values than the key columns"),
+        ("3 4e-12 1 0 0 0 0", ("3 4e-12 1 0 0 0",), "a cell line has fewer values than the key columns"),
         (
             "columns inputcellid rho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48",
             ("phi_edges_radians 0 6.283185307179586", "columns inputcellid rho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48"),
@@ -4350,6 +4352,14 @@ def test_makeartismodel_converts_the_format_version_in_the_model_folder(tmp_path
     assert dfreduced.select(
         firstid=pl.col("inputcellid").min(), hasnoabundance=pl.col("X_Fe").is_null().any()
     ).collect().row(0) == (0, False)
+
+    # a conversion into a different folder also copies the files whose cell ids need no change
+    version1folder = tmp_path / "version1"
+    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[modelfolder], format_version=1, outputfile=version1folder)
+    for filename in ("Ye.txt", "opacity.txt"):
+        assert (version1folder / filename).read_text(encoding="utf-8") == (modelfolder / filename).read_text(
+            encoding="utf-8"
+        )
 
     at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[modelfolder], format_version=1, force=True)
     dfmodel, modelmeta = at.inputmodel.scan_modeldata(modelfolder)
