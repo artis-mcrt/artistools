@@ -4208,12 +4208,14 @@ def test_dimension_reduce_of_a_spherical_model_sums_complete_cells() -> None:
         })
 
 
-def test_spherical_deposit_agrees_with_a_sum_over_all_cells() -> None:
-    """The deposit of the spherical map finds each cell mid-point in a kernel, and it keeps the mass of a particle.
+@pytest.mark.parametrize("normalisekernelweights", [False, True])
+def test_spherical_deposit_agrees_with_a_sum_over_all_cells(normalisekernelweights: bool) -> None:
+    """The deposit of the spherical map finds each cell mid-point in a kernel, for both deposit methods.
 
     The deposit searches a region of r, theta, and phi around a particle. The region must hold the kernel also at
-    the polar axis, across phi = 0, and at the centre. A particle with no cell mid-point in its kernel gives its
-    mass to the cell that holds it.
+    the polar axis, across phi = 0, and at the centre. The default method is the kernel sum of the Cartesian map.
+    With normalised weights, the grid keeps the mass of each particle inside it, and a particle with no cell
+    mid-point in its kernel gives its mass to the cell that holds it.
     """
     from artistools.inputmodel.maptogrid import get_spherical_cell_volumes
     from artistools.inputmodel.maptogrid import get_spherical_deposit
@@ -4237,11 +4239,13 @@ def test_spherical_deposit_agrees_with_a_sum_over_all_cells() -> None:
         ],
         rng.uniform(-550.0, 550.0, (40, 3)),
     ))
-    h = np.concatenate(([150.0, 80.0, 80.0, 100.0, 60.0, 100.0, 1e-3, 120.0], rng.uniform(20.0, 300.0, 40)))
+    h = np.concatenate(([150.0, 80.0, 80.0, 100.0, 60.0, 400.0, 1e-3, 120.0], rng.uniform(20.0, 300.0, 40)))
     mass = rng.uniform(1.0, 2.0, len(h))
     wij = get_wij()
 
-    pairparticle, paircell, pairmass, weightsums = get_spherical_deposit(position, h, mass, edges, wij)
+    pairparticle, paircell, pairmass, weightsums = get_spherical_deposit(
+        position, h, mass, edges, wij, normalisekernelweights
+    )
 
     r_mid, theta_mid, phi_mid = np.meshgrid(*((edge[:-1] + edge[1:]) / 2.0 for edge in edges), indexing="ij")
     cellposition = np.stack(
@@ -4255,12 +4259,15 @@ def test_spherical_deposit_agrees_with_a_sum_over_all_cells() -> None:
     volumes = get_spherical_cell_volumes(*edges).ravel(order="F")
     expected = np.zeros((len(h), volumes.size))
     for n in range(len(h)):
-        if np.linalg.norm(position[n]) > r_outer:
-            continue
         dis2 = np.sum((cellposition - position[n]) ** 2, axis=1)
         weights = np.where(dis2 < (2.0 * h[n]) ** 2, kernelvals2(np.minimum(dis2, 4.0 * h[n] ** 2), h[n], wij), 0.0)
         weights *= volumes
-        if weights.sum() > 0.0:
+        if not normalisekernelweights:
+            # the density of a cell is the sum of mass times kernel value, as in the Cartesian map
+            expected[n] = mass[n] * weights
+        elif np.linalg.norm(position[n]) > r_outer:
+            continue
+        elif weights.sum() > 0.0:
             expected[n] = mass[n] * weights / weights.sum()
         else:
             radius = float(np.linalg.norm(position[n]))
@@ -4285,17 +4292,25 @@ def test_spherical_deposit_agrees_with_a_sum_over_all_cells() -> None:
     np.testing.assert_allclose(actual, expected, rtol=1e-9, atol=1e-12)
 
     isinside = np.linalg.norm(position, axis=1) <= r_outer
-    assert np.isnan(weightsums[~isinside]).all()
-    assert not actual[~isinside].any()
     assert weightsums[6] == pytest.approx(0.0, abs=0.0)
-    np.testing.assert_allclose(actual.sum(axis=1)[isinside], mass[isinside], rtol=1e-12)
+    if normalisekernelweights:
+        assert np.isnan(weightsums[~isinside]).all()
+        assert not actual[~isinside].any()
+        np.testing.assert_allclose(actual.sum(axis=1)[isinside], mass[isinside], rtol=1e-12)
+    else:
+        # the particle outside the grid has cell mid-points in its kernel, and the particle with a very small
+        # kernel has none
+        assert actual[~isinside].any()
+        assert not actual[6].any()
+        np.testing.assert_allclose(actual.sum(axis=1), mass * weightsums, rtol=1e-12)
 
 
 def test_spherical_map_gives_each_particle_the_cell_of_its_direction(tmp_path: Path) -> None:
     """The cell order and the angles of the spherical map agree with the reader of the model.
 
     A particle on the +z axis has theta = 0. A particle near the -y axis has phi = atan2(y, x) near 3 pi / 2. The
-    kernels hold no cell mid-point, thus each particle gives its mass to the cell that holds it.
+    kernels hold no cell mid-point. With normalised kernel weights, each particle then gives its mass to the cell
+    that holds it.
     """
     from artistools.inputmodel.maptogrid import maptogrid
 
@@ -4325,6 +4340,7 @@ def test_spherical_map_gives_each_particle_the_cell_of_its_direction(tmp_path: P
         modifysmoothinglength="False",
         coordinates="spherical",
         sphericalgridshape=gridshape,
+        normalisekernelweights=True,
     )
     at.inputmodel.modelfromhydro.main(
         argsraw=[], gridfolderpath=tmp_path, outputpath=tmp_path / "model", dimensions=3, timedays=0.1
@@ -4352,10 +4368,13 @@ def test_spherical_map_gives_each_particle_the_cell_of_its_direction(tmp_path: P
 def test_spherical_map_and_cartesian_map_give_the_same_shell_masses(tmp_path: Path) -> None:
     """The two maps of one snapshot estimate the same density field, thus their radial shells hold equal masses.
 
-    The kernel of each particle is inside both grids and wider than a cell. The spherical map then keeps the mass
-    pmass * rho / rho_rst of each particle exactly, and the kernel sum of the Cartesian map gives that mass to 1e-3.
-    The cumulative mass of the shells agrees to less than 0.05 of the total mass. The two values are not equal,
-    because the Cartesian cells do not follow the shells.
+    The kernel of each particle is inside both grids and wider than a cell. The kernel sum of the Cartesian map then
+    gives the mass pmass * rho / rho_rst of the particles to 1e-3. The spherical map has the same method by default,
+    and its cells have different sizes, thus it gives that mass to 0.03. With normalised kernel weights, the
+    spherical map keeps that mass exactly.
+
+    The cumulative mass of the shells of each spherical map agrees with the Cartesian map to less than 0.05 of the
+    total mass. The values are not equal, because the Cartesian cells do not follow the shells.
     """
     from artistools.inputmodel.maptogrid import get_spherical_cell_volumes
     from artistools.inputmodel.maptogrid import maptogrid
@@ -4381,8 +4400,12 @@ def test_spherical_map_and_cartesian_map_give_the_same_shell_masses(tmp_path: Pa
         values[20] = 0.3  # ye
         snapshotlines.append(" ".join(str(value) for value in values))
 
-    for coordinates in ("cartesian", "spherical"):
-        folder = tmp_path / coordinates
+    for foldername, coordinates, normalisekernelweights in (
+        ("cartesian", "cartesian", False),
+        ("spherical", "spherical", False),
+        ("spherical_normalised", "spherical", True),
+    ):
+        folder = tmp_path / foldername
         folder.mkdir()
         (folder / "ejectasnapshot.dat").write_text("\n".join(snapshotlines) + "\n", encoding="utf-8")
         maptogrid(
@@ -4394,6 +4417,7 @@ def test_spherical_map_and_cartesian_map_give_the_same_shell_masses(tmp_path: Pa
             modifysmoothinglength="False",
             coordinates=coordinates,
             sphericalgridshape=(ncoordgrid // 2, 10, 20),
+            normalisekernelweights=normalisekernelweights,
         )
 
     dfcartesian = at.misc.read_wsv(tmp_path / "cartesian" / "grid.dat", skip_rows=3)
@@ -4406,14 +4430,15 @@ def test_spherical_map_and_cartesian_map_give_the_same_shell_masses(tmp_path: Pa
     headerlines = (tmp_path / "spherical" / "grid.dat").read_text(encoding="utf-8").splitlines()[2:5]
     r_edges, theta_edges, phi_edges = (np.array(line.split()[1:], dtype=np.float64) for line in headerlines)
     cellvolumes = get_spherical_cell_volumes(r_edges, theta_edges, phi_edges).ravel(order="F")
-    dfspherical = at.misc.read_wsv(tmp_path / "spherical" / "grid.dat", skip_rows=5)
-    shellmass_spherical = (
-        (dfspherical["rho"].to_numpy() * cellvolumes).reshape((len(r_edges) - 1, -1), order="F").sum(axis=1)
-    )
     shellmass_cartesian, _ = np.histogram(cellradius, bins=r_edges, weights=cellmass_cartesian)
 
     particlemass = float(np.sum(pmass * rho_on_rho_rst))
-    assert math.isclose(shellmass_spherical.sum(), particlemass, rel_tol=1e-12)
     assert math.isclose(cellmass_cartesian.sum(), particlemass, rel_tol=1e-3)
-    cumulativedifference = np.cumsum(shellmass_spherical - shellmass_cartesian) / particlemass
-    assert np.abs(cumulativedifference).max() < 0.05
+    for foldername, mass_rtol in (("spherical", 0.03), ("spherical_normalised", 1e-12)):
+        dfspherical = at.misc.read_wsv(tmp_path / foldername / "grid.dat", skip_rows=5)
+        shellmass_spherical = (
+            (dfspherical["rho"].to_numpy() * cellvolumes).reshape((len(r_edges) - 1, -1), order="F").sum(axis=1)
+        )
+        assert math.isclose(shellmass_spherical.sum(), particlemass, rel_tol=mass_rtol), foldername
+        cumulativedifference = np.cumsum(shellmass_spherical - shellmass_cartesian) / particlemass
+        assert np.abs(cumulativedifference).max() < 0.05, foldername

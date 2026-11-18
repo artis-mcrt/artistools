@@ -130,6 +130,7 @@ def get_spherical_deposit(
     mass: npt.NDArray[np.float64],
     edges: tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]],
     wij: npt.NDArray[np.float64],
+    normalisekernelweights: bool = False,
 ) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.int64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:
     """Return the mass that each particle gives to each cell of a spherical grid.
 
@@ -137,13 +138,19 @@ def get_spherical_deposit(
     result holds the particle index, the cell index, and the mass of each pair, and the sum of the weights of each
     particle. The cell index is i_r + n_r * (i_theta + n_theta * i_phi).
 
-    A particle gives its mass to the cells whose mid-points are in its kernel, which has the radius 2h. The weight of
-    a cell is the kernel value at its mid-point times its volume. The function normalises the weights of a particle
-    to a sum of 1. Thus the grid holds exactly the mass of each particle inside the outer radius.
+    A particle gives mass to the cells whose mid-points are in its kernel, which has the radius 2h. The weight of a
+    cell is the kernel value at its mid-point times its volume.
 
-    A particle with no cell mid-point in its kernel gives all its mass to the cell that holds it. Its sum of weights
-    is zero. A particle outside the outer radius gives no mass, and its sum of weights is NaN. The particle with the
-    largest radius is at the outer radius for a grid to that radius, and it is inside the grid.
+    The default method is the method of the Cartesian map. The mass of a pair is the mass of the particle times the
+    weight, thus the density of a cell is the sum of mass times kernel value over the particles. The sum of the
+    weights of a particle is 1 only if the cells resolve its kernel, thus the grid does not hold exactly the mass of
+    the particles. A particle outside the grid gives mass to each cell mid-point in its kernel.
+
+    With normalisekernelweights, the function normalises the weights of a particle to a sum of 1. A particle with no
+    cell mid-point in its kernel gives all its mass to the cell that holds it, and its sum of weights is zero. A
+    particle outside the outer radius gives no mass, and its sum of weights is NaN. Thus the grid holds exactly the
+    mass of each particle inside the outer radius. The particle with the largest radius is at the outer radius for a
+    grid to that radius, and it is inside the grid.
     """
     r_edges, theta_edges, phi_edges = edges
     ngridr, ngridtheta, ngridphi = (len(axisedges) - 1 for axisedges in edges)
@@ -167,7 +174,8 @@ def get_spherical_deposit(
     paircells: list[npt.NDArray[np.int64]] = [np.empty(0, dtype=np.int64)]
     pairmasses: list[npt.NDArray[np.float64]] = [np.empty(0)]
 
-    for n in np.flatnonzero(r_particle <= r_edges[-1]).tolist():
+    particleindices = np.flatnonzero(r_particle <= r_edges[-1]) if normalisekernelweights else np.arange(len(h))
+    for n in particleindices.tolist():
         kernelradius = 2.0 * float(h[n])
         r_p, theta_p, phi_p = float(r_particle[n]), float(theta_particle[n]), float(phi_particle[n])
 
@@ -195,13 +203,17 @@ def get_spherical_deposit(
         ) + costheta_mid[thetaindices, np.newaxis] * math.cos(theta_p)
         r_cells = r_mid[rstart:rend, np.newaxis, np.newaxis]
         dis2 = np.maximum(r_cells**2 + r_p**2 - 2.0 * r_cells * r_p * cosangle, 0.0)
-        box_r, box_theta, box_phi = np.nonzero(dis2 < kernelradius**2)
+        box_r, box_theta, box_phi = np.nonzero(dis2 <= kernelradius**2)
         cell_r, cell_theta, cell_phi = box_r + rstart, thetaindices[box_theta], phiindices[box_phi]
         weights = kernelvals2(dis2[box_r, box_theta, box_phi], float(h[n]), wij) * volumes[cell_r, cell_theta, cell_phi]
         weightsum = float(weights.sum())
         weightsums[n] = weightsum
 
-        if weightsum > 0.0:
+        if not normalisekernelweights:
+            # as in the Cartesian map, each cell mid-point in the kernel makes a pair, also with a weight of zero
+            paircells.append(cell_r + ngridr * (cell_theta + ngridtheta * cell_phi))
+            pairmasses.append(mass[n] * weights)
+        elif weightsum > 0.0:
             hasweight = weights > 0.0
             paircells.append((cell_r + ngridr * (cell_theta + ngridtheta * cell_phi))[hasweight])
             pairmasses.append(mass[n] * weights[hasweight] / weightsum)
@@ -231,11 +243,14 @@ def map_particles_to_spherical_grid(
     r_outer: float,
     dtextra: float,
     logprint: Callable[..., None],
+    normalisekernelweights: bool = False,
 ) -> None:
     """Map SPH particles to a spherical grid of r, theta, and phi, and write grid.dat and gridcontributions.txt.zst.
 
-    dfparticles holds the columns id, x, y, z, h, mass, and ye of the particles, with the smoothing length after
-    the option of --modifysmoothinglength. gridshape gives the cell counts n_r, n_theta, and n_phi.
+    dfparticles holds the columns id, x, y, z, h, pmass, mass, and ye of the particles, with the smoothing length
+    after the option of --modifysmoothinglength. mass is pmass * rho / rho_rst, which is the mass that the particle
+    gives to the density field. gridshape gives the cell counts n_r, n_theta, and n_phi. get_spherical_deposit
+    describes the default method and the method of normalisekernelweights.
     """
     edges = get_spherical_grid_edges(r_outer, *gridshape)
     volumes = get_spherical_cell_volumes(*edges)
@@ -249,12 +264,22 @@ def map_particles_to_spherical_grid(
         f" edges are uniform from 0 to {r_outer}. The polar edges are uniform in cos(theta), thus the cells of one"
         " shell have equal volumes. The azimuthal edges are uniform"
     )
-    logprint(
-        "Deposit method: normalised kernel. A particle gives its mass to the cells whose mid-points are in its kernel"
-        " of radius 2h. The weight of a cell is the cubic spline kernel at its mid-point times its volume. The deposit"
-        " normalises the weights of a particle to a sum of 1. The mid-point of a cell is the mean of its edges in r,"
-        " theta, and phi. A particle with no cell mid-point in its kernel gives all its mass to the cell that holds it"
-    )
+    if normalisekernelweights:
+        logprint(
+            "Deposit method: normalised kernel weights (--normalise-kernel-weights). A particle gives its mass to the"
+            " cells whose mid-points are in its kernel of radius 2h. The weight of a cell is the cubic spline kernel at"
+            " its mid-point times its volume. The deposit normalises the weights of a particle to a sum of 1. A"
+            " particle with no cell mid-point in its kernel gives all its mass to the cell that holds it. A particle"
+            " outside the outer radius gives no mass. The Cartesian map does not have this method"
+        )
+    else:
+        logprint(
+            "Deposit method: kernel sample at the cell mid-point, which is the method of the Cartesian map. The density"
+            " of a cell is the sum over the particles of pmass * rho / rho_rst * W(d, h). W is the cubic spline"
+            " kernel, d is the distance from the cell mid-point to the particle, and h is the smoothing length. The"
+            " mass on the grid is the mass of the particles only if the cells resolve each kernel"
+        )
+    logprint("The mid-point of a cell is the mean of its edges in r, theta, and phi")
     logprint(
         "Assumption: the mass of a particle on the grid is pmass * rho / rho_rst, the same factor as the Cartesian"
         " map (source: maptogrid.f90 of A. Bauswein)"
@@ -262,19 +287,21 @@ def map_particles_to_spherical_grid(
 
     particlemass = dfparticles["mass"].to_numpy()
     particleye = dfparticles["ye"].to_numpy()
+    position = dfparticles.select("x", "y", "z").to_numpy()
     pairparticle, paircell, pairmass, weightsums = get_spherical_deposit(
-        dfparticles.select("x", "y", "z").to_numpy(), dfparticles["h"].to_numpy(), particlemass, edges, get_wij()
+        position, dfparticles["h"].to_numpy(), particlemass, edges, get_wij(), normalisekernelweights
     )
 
-    isinside = ~np.isnan(weightsums)
-    usesfallback = weightsums == 0.0
+    isinside = np.sqrt(np.sum(position**2, axis=1)) <= r_outer
+    hasnocellinkernel = isinside & ~(weightsums > 0.0)
     logprint(
         f"Particles inside the outer radius: {np.count_nonzero(isinside)} of {len(weightsums)}, with the mass"
-        f" {particlemass[isinside].sum()} of {particlemass.sum()}. A particle outside gives no mass to the grid"
+        f" pmass * rho / rho_rst = {particlemass[isinside].sum()} of {particlemass.sum()}"
     )
     logprint(
-        f"Particles with no cell mid-point in the kernel: {np.count_nonzero(usesfallback)}, with the mass"
-        f" {particlemass[usesfallback].sum()}"
+        "Particles inside the outer radius with no cell mid-point in the kernel:"
+        f" {np.count_nonzero(hasnocellinkernel)}, with the mass {particlemass[hasnocellinkernel].sum()}. "
+        + ("Each one gives its mass to the cell that holds it" if normalisekernelweights else "They give no mass")
     )
     if np.any(weightsums > 0.0):
         quantiles = np.quantile(weightsums[weightsums > 0.0], [0.05, 0.5, 0.95])
@@ -308,8 +335,11 @@ def map_particles_to_spherical_grid(
     logprint(f"Saved {gridcontribpath}")
 
     gridmass = float(np.sum(cellrho * volumes.ravel(order="F")))
+    totmass = float(dfparticles["pmass"].sum())
+    logprint(f"Fraction of total mass on grid {gridmass / totmass}")
     logprint(
-        f"Mass on grid from rho*V: {gridmass}. Mass pmass * rho / rho_rst of the particles inside the outer radius:"
+        f"{'WARNING!' if gridmass / totmass < 0.9 else ''} mass on grid from rho*V: {gridmass} mass of particles:"
+        f" {totmass}. Mass pmass * rho / rho_rst of the particles inside the outer radius:"
         f" {particlemass[isinside].sum()}"
     )
     nempty = int(np.count_nonzero(cellmass == 0.0))
@@ -344,11 +374,13 @@ def maptogrid(
     samplelowercorner: bool = False,
     coordinates: str = "cartesian",
     sphericalgridshape: tuple[int, int, int] = SPHERICAL_GRID_SHAPE_DEFAULT,
+    normalisekernelweights: bool = False,
 ) -> None:
     """Map an SPH ejecta snapshot to a grid and write grid.dat and gridcontributions.txt.zst.
 
     The coordinates cartesian give an ncoordgrid^3 Cartesian grid. The coordinates spherical give a grid of r,
-    theta, and phi with the cell counts of sphericalgridshape, and map_particles_to_spherical_grid makes it.
+    theta, and phi with the cell counts of sphericalgridshape, and map_particles_to_spherical_grid makes it. Both
+    maps use one deposit method, unless normalisekernelweights selects the normalised weights for a spherical map.
 
     samplelowercorner evaluates the kernel at the lower corner of each cell, as artistools did before. Use it only
     to make a grid.dat again that an older version of artistools wrote.
@@ -465,6 +497,7 @@ def maptogrid(
                 h=pl.Series(
                     get_modified_smoothing_lengths(h, dfsnapshot["dis"].to_numpy(), rmean, hmean, modifysmoothinglength)
                 ),
+                pmass="pmass",
                 mass=pl.col("pmass") * pl.col("rho") / pl.col("rho_rst"),
                 ye="ye",
             ),
@@ -472,6 +505,7 @@ def maptogrid(
             r_outer=setgrid_fractionrmax * rmax,
             dtextra=dtextra,
             logprint=logprint,
+            normalisekernelweights=normalisekernelweights,
         )
         return
 
@@ -704,8 +738,17 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         default="cartesian",
         choices=["cartesian", "spherical"],
         help="The coordinates of the grid. spherical gives cells in the radius r, the polar angle theta from the +z"
-        " axis, and the azimuthal angle phi. The cells are uniform in r, in cos(theta), and in phi. Each particle"
-        " inside the outer radius gives all its mass to the grid, with normalised kernel weights. (default: cartesian)",
+        " axis, and the azimuthal angle phi. The cells are uniform in r, in cos(theta), and in phi. Both coordinates"
+        " use one deposit method: the density of a cell is the kernel sum at its mid-point. (default: cartesian)",
+    )
+    parser.add_argument(
+        "--normalise-kernel-weights",
+        action="store_true",
+        help="For --coordinates spherical: use a different deposit method. Each particle inside the outer radius gives"
+        " all its mass to the grid. The weight of a cell is the kernel value at its mid-point times its volume. The"
+        " method normalises the weights of a particle to a sum of 1. A particle with no cell mid-point in its kernel"
+        " gives its mass to the cell that holds it. A particle outside the outer radius gives no mass. The default"
+        " method is the method of the Cartesian map, which does not keep the mass exactly",
     )
     parser.add_argument(
         "-ncoordgrid",
@@ -791,9 +834,9 @@ def get_spherical_grid_shape(args: argparse.Namespace) -> tuple[int, int, int]:
                 " Cartesian cell",
                 "For --coordinates spherical, give False, option2, option3, or option4",
             )
-    elif any(count is not None for count in gridcounts):
+    elif any(count is not None for count in gridcounts) or args.normalise_kernel_weights:
         exit_with_error(
-            "--ngrid-r, --ngrid-theta, and --ngrid-phi apply to a spherical grid only",
+            "--ngrid-r, --ngrid-theta, --ngrid-phi, and --normalise-kernel-weights apply to a spherical grid only",
             "Give --coordinates spherical, or give --ncoordgrid for a Cartesian grid",
         )
     # a count of 0 is a value of the user, thus only a count that the user did not give takes its default
@@ -826,4 +869,5 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         samplelowercorner=args.sample_cell_lower_corner,
         coordinates=args.coordinates,
         sphericalgridshape=sphericalgridshape,
+        normalisekernelweights=args.normalise_kernel_weights,
     )
