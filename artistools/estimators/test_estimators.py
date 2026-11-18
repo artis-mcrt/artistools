@@ -5003,7 +5003,7 @@ def test_a_model_with_no_estimators_gives_a_message(
         ),
         (
             {"modelpath": CLASSIC1DPATH, "plotlist": [["rho"]], "timestep": "5", "readonlymgi": "alongaxis"},
-            "-readonlymgi alongaxis needs a 3D model",
+            "-readonlymgi alongaxis needs a model with 3D Cartesian coordinates",
         ),
         ({"modelpath": modelpath_classic_3d, "plotlist": [["Te"]], "x": "time", "modelgridindex": "0"}, "no row"),
     ],

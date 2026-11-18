@@ -63,6 +63,7 @@ from artistools.misc import call_in_child_process
 from artistools.misc import exit_with_error
 from artistools.misc import format_range_list
 from artistools.misc import get_first_sentence
+from artistools.misc import get_model_coordinates
 from artistools.misc import get_runfolder_timesteps
 from artistools.misc import get_runfolders
 from artistools.misc import get_time_range
@@ -73,6 +74,7 @@ from artistools.misc import on_model_host
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_codecomparison
 from artistools.misc import resolve_modelpath
+from artistools.misc import SPHERICAL_EDGE_COORDINATES
 from artistools.nltepops import has_nlte_populations
 from artistools.plottools import DARKMODE_COLOURS
 from artistools.plottools import get_legend_entries_in_draw_order
@@ -473,12 +475,16 @@ def reload_model_data(viewer: "EstimatorViewer", modeldata: ModelData) -> None:
         viewer.values = viewer.select_positions(values, viewer.get_selection_positions())
 
 
-def get_geometry_choices(dimensions: int) -> list[str]:
-    """Return the keys in GEOMETRY_MODES that a model can plot.
+def get_geometry_choices(coordinates: str) -> list[str]:
+    """Return the keys in GEOMETRY_MODES that a model with these coordinates, e.g. cartesian3d, can plot.
 
-    A 1D or a 2D model has no axes, planes, lines, or projections, but it has the average around the z axis.
+    Only a 3D Cartesian model has axes, planes, lines, and projections. A 1D model and a 2D cylindrical model also
+    have the average around the z axis. plotestimators makes no image of a grid with spherical edges.
     """
-    return [mode for mode in GEOMETRY_MODES if dimensions == 3 or mode in {"all", "cells", "average"}]
+    if coordinates == "cartesian3d":
+        return list(GEOMETRY_MODES)
+    modes = {"all", "cells"} if coordinates in SPHERICAL_EDGE_COORDINATES else {"all", "cells", "average"}
+    return [mode for mode in GEOMETRY_MODES if mode in modes]
 
 
 def get_geometry_mode(values: "ControlValues") -> str:
@@ -699,6 +705,7 @@ class EstimatorViewer:
         # the size of the grid, which gives the edges of the cells that a selection of the window reads
         self.modelmeta: dict[str, t.Any] = get_modelmeta(self.modelpath)
         self.dimensions = int(self.modelmeta["dimensions"])
+        self.coordinates = get_model_coordinates(self.modelmeta)
         # the types of series that the model can plot from its NLTE populations. Only a 1D model gives the width in
         # velocity of each shell for the population for each unit of velocity
         self.nltetypes: tuple[str, ...] = (
@@ -1228,7 +1235,7 @@ def open_window(
     geometrybox = QtWidgets.QComboBox()
     # the box fills the width of the sidebar, and a narrow sidebar cuts its long texts
     geometrybox.setMinimumWidth(120)
-    for mode in get_geometry_choices(viewer.dimensions):
+    for mode in get_geometry_choices(viewer.coordinates):
         geometrybox.addItem(GEOMETRY_MODES[mode], mode)
     geometrybox.setToolTip(
         "The cells that the plot reads. x, y, and z are the velocity coordinates of the model grid. A 2D plane slice"

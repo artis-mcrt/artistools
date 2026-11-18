@@ -21,6 +21,7 @@ import polars as pl
 
 from artistools.constants import h_ev_s
 from artistools.constants import km_to_cm
+from artistools.misc.console import exit_with_error
 from artistools.misc.console import print_detail
 from artistools.misc.console import print_warning
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
@@ -403,6 +404,20 @@ def get_grid_max_radial_velocity_cmps(modelmeta: "Mapping[str, t.Any]") -> float
     """
     cornerfactor = {"cylindrical2d": math.sqrt(2.0), "cartesian3d": math.sqrt(3.0)}
     return float(modelmeta["vmax_cmps"]) * cornerfactor.get(get_model_coordinates(modelmeta), 1.0)
+
+
+def require_cartesian3d_model(modelmeta: "Mapping[str, t.Any]", requirement: str, helptext: str) -> None:
+    """Stop with an error if the model grid is not 3D Cartesian.
+
+    requirement starts the message and names the option or the command, e.g. "--slice needs". Such a feature reads
+    the cell positions on the x, y, and z axes, or the equal width of the cells.
+    """
+    coordinates = get_model_coordinates(modelmeta)
+    if coordinates != "cartesian3d":
+        exit_with_error(
+            f"{requirement} a model with 3D Cartesian coordinates, and this model has {coordinates} coordinates",
+            helptext,
+        )
 
 
 def validate_spherical_edges(

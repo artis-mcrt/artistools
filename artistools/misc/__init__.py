@@ -183,6 +183,7 @@ from artistools.misc.modelinfo import parse_vpkt_input as parse_vpkt_input
 from artistools.misc.modelinfo import print_modelpath as print_modelpath
 from artistools.misc.modelinfo import read_rank_outputfiles as read_rank_outputfiles
 from artistools.misc.modelinfo import read_spherical_model_header as read_spherical_model_header
+from artistools.misc.modelinfo import require_cartesian3d_model as require_cartesian3d_model
 from artistools.misc.modelinfo import scan_rankassignments as scan_rankassignments
 from artistools.misc.modelinfo import SPHERICAL_EDGE_COORDINATES as SPHERICAL_EDGE_COORDINATES
 from artistools.misc.modelinfo import validate_spherical_edges as validate_spherical_edges

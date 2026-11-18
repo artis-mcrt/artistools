@@ -99,6 +99,7 @@ from artistools.misc import format_frame_path
 from artistools.misc import get_bin_index_expr
 from artistools.misc import get_costheta_range
 from artistools.misc import get_filterfunc
+from artistools.misc import get_model_coordinates
 from artistools.misc import get_model_name
 from artistools.misc import get_time_range
 from artistools.misc import get_time_range_text
@@ -115,12 +116,14 @@ from artistools.misc import print_detail
 from artistools.misc import print_modelpath
 from artistools.misc import print_product
 from artistools.misc import print_warning
+from artistools.misc import require_cartesian3d_model
 from artistools.misc import resolve_frameset_paths
 from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_positional_modelpath
 from artistools.misc import resolve_slice_axis
 from artistools.misc import scan_timesteps
 from artistools.misc import SERIES_STYLE_KEYS
+from artistools.misc import SPHERICAL_EDGE_COORDINATES
 from artistools.misc import suggest_names
 from artistools.nltepops import has_nlte_populations
 from artistools.nltepops import read_nltepops
@@ -3337,10 +3340,15 @@ def prepare_snapshot(
         estimators = estimators.filter(pl.col("modelgridindex").is_in(args.modelgridindex or []))
 
     panels: list[ImagePanel] = []
-    if args.projection is not None and modelmeta["dimensions"] != 3:
+    coordinates = get_model_coordinates(modelmeta)
+    if args.dimensionreduce == 2 and coordinates in SPHERICAL_EDGE_COORDINATES:
         exit_with_error(
-            f"--projection needs a 3D model, and this model has {modelmeta['dimensions']} dimension(s)",
-            "Give --dimensionreduce 2 for the average around the z axis",
+            f"An image needs a Cartesian grid or a cylindrical grid, and this model has {coordinates} coordinates",
+            "Remove --dimensionreduce 2, --slice, and --projection to plot the variables against the radial velocity",
+        )
+    if args.projection is not None:
+        require_cartesian3d_model(
+            modelmeta, "--projection needs", "Give --dimensionreduce 2 for the average around the z axis"
         )
     if args.dimensionreduce == 2:
         panels = get_image_panels(plotlist, estimators.collect_schema().names(), args.poptype)

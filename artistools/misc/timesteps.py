@@ -21,6 +21,7 @@ from artistools.misc.fileio import polars_source_open
 from artistools.misc.fileio import read_wsv
 from artistools.misc.general import parse_float_range
 from artistools.misc.general import parse_range_list
+from artistools.misc.modelinfo import get_grid_max_radial_velocity_cmps
 from artistools.misc.modelinfo import get_inputparams
 from artistools.misc.modelinfo import get_model_logname
 from artistools.misc.modelpaths import clear_at_reload
@@ -545,12 +546,9 @@ def get_escaped_arrivalrange(modelpath: Path) -> tuple[int, float | int | None, 
 
     # find the earliest possible escape time and add the largest possible travel time
 
-    # for 2D and 3D models, the box corners are the maximum radius with (potentially) non-zero density
-    dimensions = modelmeta["dimensions"]
-    if dimensions not in {1, 2, 3}:
-        msg = "Model dimensions must be 1, 2, or 3"
-        raise ValueError(msg)
-    cornervmax = vmax * math.sqrt(dimensions)
+    # for a cylindrical model and a Cartesian model, the box corners are the maximum radius with (potentially)
+    # non-zero density. A spherical grid ends at vmax
+    cornervmax = get_grid_max_radial_velocity_cmps(modelmeta)
 
     # perfect initial conditions make t_arrive = tmin valid already. Light from the origin at tmin
     # escapes later, but the code subtracts that travel time, thus t_arrive stays tmin. The code

@@ -50,6 +50,7 @@ from artistools.misc import firstexisting_or_none
 from artistools.misc import get_artis_option
 from artistools.misc import get_file_identity
 from artistools.misc import get_file_state
+from artistools.misc import get_model_coordinates
 from artistools.misc import get_mpiranklist
 from artistools.misc import get_nonempty_cellcounts
 from artistools.misc import get_parquet_cache_name
@@ -67,7 +68,9 @@ from artistools.misc import parse_velocity_argument
 from artistools.misc import path_is_codecomparison
 from artistools.misc import print_warning
 from artistools.misc import rankbatch_parquet_staleness
+from artistools.misc import require_cartesian3d_model
 from artistools.misc import scan_timesteps
+from artistools.misc import SPHERICAL_EDGE_COORDINATES
 from artistools.misc import temporary_parts_folder
 from artistools.misc import write_parquet_atomic
 from artistools.rustext import estimparse_allranks_textbatches
@@ -1970,11 +1973,7 @@ def get_cells_of_slice(modelpath: Path, conditions: Sequence[tuple[str, float, s
     The host of a remote model reads it.
     """
     lzmodel, modelmeta = scan_modeldata(modelpath)
-    if modelmeta["dimensions"] != 3:
-        exit_with_error(
-            f"--slice needs a 3D model, and this model has {modelmeta['dimensions']} dimension(s)",
-            "Remove --slice to plot the variables against the velocity",
-        )
+    require_cartesian3d_model(modelmeta, "--slice needs", "Remove --slice to plot the variables against the velocity")
     vmax_cmps = float(modelmeta["vmax_cmps"])
     for axisname, velocity_cmps, label in conditions:
         if abs(velocity_cmps) >= vmax_cmps:
@@ -1994,12 +1993,11 @@ def get_cells_along_axis(modelpath: Path, args: argparse.Namespace) -> list[int]
     """Return the cells with matter on an axis or in a cone of a 3D model. The host of a remote model reads it."""
     lzmodel, modelmeta = scan_modeldata(modelpath)
     # the selection reads the positions of the cells on three axes, which only a 3D model gives
-    if modelmeta["dimensions"] != 3:
-        exit_with_error(
-            f"--readonlymgi {args.readonlymgi} needs a 3D model, and this model has {modelmeta['dimensions']}"
-            " dimension(s)",
-            "Remove --readonlymgi to plot every cell against the velocity",
-        )
+    require_cartesian3d_model(
+        modelmeta,
+        f"--readonlymgi {args.readonlymgi} needs",
+        "Remove --readonlymgi to plot every cell against the velocity",
+    )
     if args.readonlymgi == "alongaxis":
         print(f"Getting mgi along {args.axis} axis")
         dfmodel = lzmodel.select("modelgridindex", "rho", "pos_x_min", "pos_y_min", "pos_z_min").collect()
@@ -2063,6 +2061,9 @@ def get_cell_selection_description(args: argparse.Namespace, modelmeta: Mapping[
     grid. Thus the text gives the range of each coordinate of the selected cells. plotestimators logs this text, and
     its window shows it.
     """
+    # a grid with spherical edges has no corners, and the commands stop for a slice or an image of such a grid
+    if get_model_coordinates(modelmeta) in SPHERICAL_EDGE_COORDINATES:
+        return ""
     conditions = parse_slice_argument(args.slice) if args.slice is not None else []
     dimensions = int(modelmeta["dimensions"])
     vmaxtext = format_cell_edge(float(modelmeta["vmax_cmps"]), "c")

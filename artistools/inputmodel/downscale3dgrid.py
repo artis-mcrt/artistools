@@ -16,6 +16,7 @@ from artistools.inputmodel.core import save_initelemabundances
 from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.core import scan_initelemabundances
 from artistools.inputmodel.core import scan_modeldata
+from artistools.misc import require_cartesian3d_model
 from artistools.plottools import save_figure
 from artistools.plottools import set_mpl_style
 
@@ -75,6 +76,7 @@ def make_downscaled_3d_grid(
     modelpath = Path(modelpath)
 
     pldfmodel, modelmeta = scan_modeldata(modelpath)
+    require_cartesian3d_model(modelmeta, "The merge of cells to a smaller grid needs", "Give a 3D Cartesian model")
     # save_modeldata also writes Ye, q, and tracercount, thus the downscaled model must keep them
     modelcolnames = pldfmodel.collect_schema().names()
     massweightedcols = [col for col in ("Ye", "q") if col in modelcolnames]

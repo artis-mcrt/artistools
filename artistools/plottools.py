@@ -37,6 +37,8 @@ from artistools.constants import km_to_cm
 from artistools.misc import AUTO_VELOCITYUNIT_C_MIN_ON_C
 from artistools.misc import exit_with_error
 from artistools.misc import get_auto_velocity_unit
+from artistools.misc import get_grid_max_radial_velocity_cmps
+from artistools.misc import get_model_coordinates
 from artistools.misc import get_phibin_rank_ascending
 from artistools.misc import get_standard_flag
 from artistools.misc import get_viewingdirection_costhetabincount
@@ -2047,8 +2049,12 @@ def format_velocity(velocity_kmps: float, unit: t.Literal["kmps", "c"]) -> str:
 
 
 def get_grid_corner_velocity_kmps(modelmeta: Mapping[str, t.Any]) -> float:
-    """Return the radial velocity [km/s] of the corner of the model grid, which is vmax times sqrt(dimensions)."""
-    return float(modelmeta["vmax_cmps"]) / km_to_cm * math.sqrt(modelmeta["dimensions"])
+    """Return the largest radial velocity [km/s] of the model grid.
+
+    This is vmax for a spherical grid. A corner of a cylindrical grid is at sqrt(2) vmax, and a corner of a
+    Cartesian grid is at sqrt(3) vmax.
+    """
+    return get_grid_max_radial_velocity_cmps(modelmeta) / km_to_cm
 
 
 def get_cell_widths_kmps(modelmeta: Mapping[str, t.Any]) -> tuple[float, float, float]:
@@ -2080,8 +2086,9 @@ def get_velocity_bin_edges_kmps(
         _, modelmeta = scan_modeldata(modelpath, printwarningsonly=True)
         velocitymax_kmps = get_grid_corner_velocity_kmps(modelmeta)
         print_detail(
-            f"The velocity bins end at {format_velocity(velocitymax_kmps, unit)}, the corner of the model grid. This"
-            f" is vmax times the square root of the number of dimensions ({modelmeta['dimensions']})"
+            f"The velocity bins end at {format_velocity(velocitymax_kmps, unit)}, the largest radial velocity of the"
+            f" model grid. This is {velocitymax_kmps * km_to_cm / float(modelmeta['vmax_cmps']):.3f} times vmax for"
+            f" the {get_model_coordinates(modelmeta)} coordinates of the model"
         )
     return [velocitymax_kmps * index / nbins for index in range(nbins + 1)]
 

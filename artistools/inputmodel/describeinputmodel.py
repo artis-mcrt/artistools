@@ -25,12 +25,14 @@ from artistools.misc import addarg_modelgridindex
 from artistools.misc import addarg_modelpath
 from artistools.misc import get_artis_option
 from artistools.misc import get_grid_mapping
+from artistools.misc import get_model_coordinates
 from artistools.misc import get_single_modelgridindex
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import print_heading
 from artistools.misc import print_product
 from artistools.misc import print_warning
+from artistools.misc import SPHERICAL_EDGE_COORDINATES
 
 
 def calculate_model_electron_frac(dfmodel: pl.LazyFrame) -> float | None:
@@ -89,11 +91,26 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
     t_model_init_seconds = t_model_init_days * day_to_s
     print_product(args, f"Model is defined at {t_model_init_days} days ({t_model_init_seconds:.4f} seconds)")
 
-    if modelmeta["dimensions"] == 1:
+    coordinates = get_model_coordinates(modelmeta)
+    # only a cylindrical grid and a Cartesian grid have cells outside the radial velocity vmax
+    hascorners = coordinates in {"cylindrical2d", "cartesian3d"}
+    if coordinates == "spherical1d":
         print_product(
             args,
             f"Model contains {modelmeta['npts_model']} 1D spherical shells with vmax = {vmax / km_to_cm} km/s"
             f" ({vmax / C_cm_per_s:.2f} * c)",
+        )
+    elif coordinates in SPHERICAL_EDGE_COORDINATES:
+        nonemptycells = dfmodel.select(pl.len()).collect().item()
+        gridshape = " x ".join(
+            f"{modelmeta[f'ncoordgrid{axis}']} ({axis})"
+            for axis in ("r", "theta", "phi")
+            if f"ncoordgrid{axis}" in modelmeta
+        )
+        print_product(
+            args,
+            f"Model contains {modelmeta['npts_model']} cells ({nonemptycells} nonempty) on a {coordinates} grid of"
+            f" {gridshape} cells, with vmax = {vmax} cm/s ({vmax / C_cm_per_s:.2f} * c) as the outer radial velocity",
         )
     else:
         nonemptycells = dfmodel.select(pl.len()).collect().item()
@@ -136,7 +153,7 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
     except FileNotFoundError:
         # ARTIS maps a 3D model directly to the propagation grid. ARTIS can map a 1D or 2D model to a 3D grid,
         # and only grid.out gives the type of the grid
-        assoc_cells, direct_model_propgrid_map = None, modelmeta["dimensions"] == 3
+        assoc_cells, direct_model_propgrid_map = None, coordinates == "cartesian3d"
         if not direct_model_propgrid_map:
             print_warning(
                 f"{Path(modelpath, 'grid.out')} does not exist. Thus artistools cannot get the map of the model cells"
@@ -181,7 +198,7 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
 
     print_product(args, f"  {'M_tot_rho':19s} {mass_msun_rho:7.5f} MSun (density * volume)")
 
-    if modelmeta["dimensions"] > 1:
+    if hascorners:
         corner_mass = (
             dfmodel
             .select(["vel_r_mid", "mass_g"])

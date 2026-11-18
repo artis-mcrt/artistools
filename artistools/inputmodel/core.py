@@ -696,8 +696,9 @@ def get_spatial_scales(modelpath: Path) -> tuple[float, float, str]:
     # wid_init_* is the cell width at t_model. A width divided by t_model gives the width in velocity
     t_model_init_s = float(modelmeta["t_model_init_days"]) * day_to_s
     vmaxtext = f"the maximum velocity vmax = {vmax_cmps / km_to_cm:.0f} km/s ({vmax_cmps / C_cm_per_s:.3g}c)"
-    match modelmeta["dimensions"]:
-        case 1:
+    coordinates = get_model_coordinates(modelmeta)
+    match coordinates:
+        case "spherical1d":
             shellwidth = pl.col("vel_r_max_kmps") - pl.col("vel_r_min_kmps")
             shellwidths_kmps = (
                 add_derived_cols_to_modeldata(dfmodel, modelmeta)
@@ -719,7 +720,7 @@ def get_spatial_scales(modelpath: Path) -> tuple[float, float, str]:
                     f"The smallest spatial scale is the width of the narrowest shell, {smallest / km_to_cm:.0f} km/s."
                     f" The largest spatial scale is the width of the widest shell, {largest / km_to_cm:.0f} km/s"
                 )
-        case 2:
+        case "cylindrical2d":
             ncoordgridrcyl, ncoordgridz = int(modelmeta["ncoordgridrcyl"]), int(modelmeta["ncoordgridz"])
             rcylwidth = float(modelmeta["wid_init_rcyl"]) / t_model_init_s
             zwidth = float(modelmeta["wid_init_z"]) / t_model_init_s
@@ -735,7 +736,7 @@ def get_spatial_scales(modelpath: Path) -> tuple[float, float, str]:
                 " spatial scale is the diagonal of a cell in the plane of rcyl and z,"
                 f" sqrt(width_rcyl^2 + width_z^2) = {largest / km_to_cm:.0f} km/s"
             )
-        case _:
+        case "cartesian3d":
             cellwidths = [float(modelmeta[f"wid_init_{axis}"]) / t_model_init_s for axis in "xyz"]
             smallest, largest = min(cellwidths), math.hypot(*cellwidths)
             gridshape = " x ".join(str(modelmeta[f"ncoordgrid{axis}"]) for axis in "xyz")
@@ -748,6 +749,13 @@ def get_spatial_scales(modelpath: Path) -> tuple[float, float, str]:
                 " spatial scale is the diagonal of a cell, sqrt(width_x^2 + width_y^2 + width_z^2) ="
                 f" {largest / km_to_cm:.0f} km/s. This is the largest range of line-of-sight velocity in one cell"
             )
+        case _:
+            # the width of a cell along theta and phi increases with the radius, from zero at the centre
+            msg = (
+                f"The spatial scales of the grid have no definition for a model with {coordinates} coordinates."
+                " Give a number to --deltalogx"
+            )
+            raise ValueError(msg)
     return smallest, largest, f"{gridtext}. {scaletext}"
 
 

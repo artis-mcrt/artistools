@@ -29,6 +29,7 @@ from artistools.misc import addarg_output
 from artistools.misc import addarg_positional_items
 from artistools.misc import addarg_show
 from artistools.misc import addarg_sliceaxis
+from artistools.misc import get_model_coordinates
 from artistools.misc import import_optional
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
@@ -36,6 +37,7 @@ from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_positional_modelpath
 from artistools.misc import resolve_slice_axis
+from artistools.misc import SPHERICAL_EDGE_COORDINATES
 from artistools.plottools import save_figure
 
 type AxisType = t.Literal["x", "y", "z", "r", "rcyl"]
@@ -229,6 +231,12 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
     lzdfmodel, modelmeta = scan_modeldata(modelpath, get_elemabundances=get_elemabundances)
     if modelmeta["dimensions"] not in {2, 3}:
         msg = f"plotinitialcomposition plots a 2D or a 3D model, but the model in {modelpath} is 1D"
+        raise ValueError(msg)
+    if get_model_coordinates(modelmeta) in SPHERICAL_EDGE_COORDINATES:
+        msg = (
+            "plotinitialcomposition plots a slice of a Cartesian grid or a cylindrical grid, but the model in"
+            f" {modelpath} has {get_model_coordinates(modelmeta)} coordinates"
+        )
         raise ValueError(msg)
 
     if "Ye" in args.plotvars and "Ye" not in lzdfmodel.collect_schema().names():

@@ -28,6 +28,7 @@ from artistools.misc import confirm_overwrite
 from artistools.misc import get_model_logname
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
+from artistools.misc import require_cartesian3d_model
 from artistools.misc import resolve_slice_axis
 
 
@@ -188,6 +189,9 @@ def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> 
     modelpath = normalize_path_list(args.modelpath)[0]
     logprint("Making 1D model from 3D model:", get_model_logname(modelpath))
     pldfmodel, modelmeta = scan_modeldata(modelpath=modelpath, get_elemabundances=True)
+    require_cartesian3d_model(
+        modelmeta, "A 1D model from a cone or an axis needs", "Give --dimensionreduce 1 to makeartismodel"
+    )
     args.t_model = modelmeta["t_model_init_days"]
     if args.makefromcone:
         logprint("From a cone")

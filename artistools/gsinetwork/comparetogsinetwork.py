@@ -40,6 +40,7 @@ from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import exit_with_error
 from artistools.misc import get_artis_option
 from artistools.misc import get_grid_mapping
+from artistools.misc import get_model_coordinates
 from artistools.misc import get_model_name
 from artistools.misc import is_in_range
 from artistools.misc import output_data
@@ -84,10 +85,12 @@ def get_abundance_correction_factors(
             print("  The map of the model cells to the propagation grid is direct")
     except FileNotFoundError:
         # ARTIS maps a 1D or 2D model to a spherical, cylindrical, or Cartesian grid, and grid.out alone tells which
-        if modelmeta["dimensions"] != 3:
+        # ARTIS can also map a model with spherical2d or spherical3d coordinates to a Cartesian grid
+        if get_model_coordinates(modelmeta) != "cartesian3d":
             exit_with_error(
                 f"{Path(modelpath, 'grid.out')} does not exist. Thus artistools cannot get the map of the"
-                f" {modelmeta['dimensions']}D model cells to the propagation grid or the abundance correction factors",
+                f" {get_model_coordinates(modelmeta)} model cells to the propagation grid or the abundance correction"
+                " factors",
                 "Copy grid.out of the run into the model folder",
             )
         print("  No grid.out. A 3D model grid is also the propagation grid, thus the map is direct")
