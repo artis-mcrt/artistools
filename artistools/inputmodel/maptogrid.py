@@ -1,10 +1,11 @@
 # adapted from Fortran maptogrid.f90 and kernelmodule.f90
 # original Fortran code by Andreas Bauswein
-"""Map SPH ejecta particles onto a Cartesian grid using a cubic spline kernel."""
+"""Map SPH ejecta particles onto a Cartesian grid or a spherical grid using a cubic spline kernel."""
 
 import argparse
 import math
 import typing as t
+from collections.abc import Callable
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -15,10 +16,12 @@ import polars as pl
 from artistools.constants import geometric_time_to_s
 from artistools.inputmodel.core import savetologfile
 from artistools.inputmodel.modelfromhydro import read_ejectasnapshot
+from artistools.inputmodel.modelfromhydro import SPHERICAL_GRIDDAT_EDGE_KEYS
 from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
 from artistools.misc import addarg_force
 from artistools.misc import addarg_output
 from artistools.misc import confirm_overwrite
+from artistools.misc import exit_with_error
 from artistools.misc import parse_cli_args
 
 itable = 40000  # wie fein Kernelfkt interpoliert wird
@@ -69,6 +72,262 @@ def kernelvals2(
     return (wijlow + dwdx * dxx) * hmean31
 
 
+def get_modified_smoothing_lengths(
+    h: npt.NDArray[np.float64], dis: npt.NDArray[np.float64], rmean: float, hmean: float, modifysmoothinglength: str
+) -> npt.NDArray[np.float64]:
+    """Return the smoothing length of each particle for a spherical map, after the option of --modifysmoothinglength.
+
+    The options give the lengths that the Cartesian map gives. option1, option5, and option6 set the length from the
+    width of a Cartesian cell, thus a spherical map stops for them.
+    """
+    match modifysmoothinglength:
+        case "False":
+            return h
+        case "option2":
+            return np.maximum(h, 0.25 * dis)
+        case "option3":
+            return np.where(dis > 1.5 * rmean, np.maximum(h, 0.4 * dis), h)
+        case "option4":
+            return np.where(dis > rmean, np.maximum(h, 1.5 * hmean), h)
+        case _:
+            msg = (
+                f"--modifysmoothinglength {modifysmoothinglength} sets the smoothing length from the width of a"
+                " Cartesian cell. For --coordinates spherical, give False, option2, option3, or option4"
+            )
+            raise ValueError(msg)
+
+
+def get_spherical_grid_edges(
+    r_outer: float, ngridr: int, ngridtheta: int, ngridphi: int
+) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    """Return the edges of the cells of a spherical grid in the radius, the polar angle, and the azimuthal angle.
+
+    The radial edges and the azimuthal edges are uniform. The polar edges are uniform in cos(theta), thus the
+    cells of one shell have equal volumes.
+    """
+    theta_edges = np.arccos(np.linspace(1.0, -1.0, ngridtheta + 1))
+    phi_edges = np.linspace(0.0, 2.0 * math.pi, ngridphi + 1)
+    # arccos(-1) and the last value of linspace can differ from pi and 2 pi in the last bit
+    theta_edges[-1] = math.pi
+    phi_edges[-1] = 2.0 * math.pi
+    return np.linspace(0.0, r_outer, ngridr + 1), theta_edges, phi_edges
+
+
+def get_spherical_cell_volumes(
+    r_edges: npt.NDArray[np.float64], theta_edges: npt.NDArray[np.float64], phi_edges: npt.NDArray[np.float64]
+) -> npt.NDArray[np.float64]:
+    """Return the volume of each cell of a spherical grid, with the shape (n_r, n_theta, n_phi)."""
+    radialpart = (r_edges[1:] ** 3 - r_edges[:-1] ** 3) / 3.0
+    polarpart = np.cos(theta_edges[:-1]) - np.cos(theta_edges[1:])
+    return radialpart[:, np.newaxis, np.newaxis] * polarpart[np.newaxis, :, np.newaxis] * np.diff(phi_edges)
+
+
+def get_spherical_deposit(
+    position: npt.NDArray[np.float64],
+    h: npt.NDArray[np.float64],
+    mass: npt.NDArray[np.float64],
+    edges: tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]],
+    wij: npt.NDArray[np.float64],
+) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.int64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:
+    """Return the mass that each particle gives to each cell of a spherical grid, as pairs of a particle and a cell.
+
+    position has one row of x, y, and z for each particle, and edges holds the cell edges in r, theta, and phi. The
+    result holds the particle index, the cell index, and the mass of each pair, and the sum of the weights of each
+    particle. The cell index is i_r + n_r * (i_theta + n_theta * i_phi).
+
+    A particle gives its mass to the cells whose mid-points are in its kernel, which has the radius 2h. The weight of
+    a cell is the kernel value at its mid-point times its volume, and the weights of one particle are normalised to a
+    sum of 1. Thus the grid holds exactly the mass of each particle inside the outer radius. A particle with no cell
+    mid-point in its kernel gives all its mass to the cell that contains it, and its sum of weights is zero. A
+    particle at or outside the outer radius gives no mass, and its sum of weights is NaN.
+    """
+    r_edges, theta_edges, phi_edges = edges
+    ngridr, ngridtheta, ngridphi = (len(axisedges) - 1 for axisedges in edges)
+    r_mid, theta_mid, phi_mid = ((axisedges[:-1] + axisedges[1:]) / 2.0 for axisedges in edges)
+    sintheta_mid, costheta_mid = np.sin(theta_mid), np.cos(theta_mid)
+    # a search of three copies of the azimuthal mid-points finds a range that goes through phi = 0
+    phi_mid_periodic = np.concatenate((phi_mid - 2.0 * math.pi, phi_mid, phi_mid + 2.0 * math.pi))
+    volumes = get_spherical_cell_volumes(r_edges, theta_edges, phi_edges)
+    alltheta, allphi = np.arange(ngridtheta), np.arange(ngridphi)
+
+    r_particle = np.sqrt(np.sum(position**2, axis=1))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        costheta_particle = np.where(r_particle > 0.0, position[:, 2] / r_particle, 1.0)
+    theta_particle = np.arccos(np.clip(costheta_particle, -1.0, 1.0))
+    phi_particle = np.arctan2(position[:, 1], position[:, 0]) % (2.0 * math.pi)
+    # the remainder of a small negative angle rounds to 2 pi, which is the angle 0
+    phi_particle[phi_particle >= 2.0 * math.pi] = 0.0
+
+    weightsums = np.full(len(h), math.nan)
+    pairparticles: list[npt.NDArray[np.int64]] = [np.empty(0, dtype=np.int64)]
+    paircells: list[npt.NDArray[np.int64]] = [np.empty(0, dtype=np.int64)]
+    pairmasses: list[npt.NDArray[np.float64]] = [np.empty(0)]
+
+    for n in np.flatnonzero(r_particle < r_edges[-1]).tolist():
+        kernelradius = 2.0 * float(h[n])
+        r_p, theta_p, phi_p = float(r_particle[n]), float(theta_particle[n]), float(phi_particle[n])
+
+        # the kernel is inside a cone around the direction of the particle with the half angle asin(2h / r). A kernel
+        # that holds the origin reaches each direction, and a kernel that holds the z axis reaches each phi
+        thetaindices, phiindices = alltheta, allphi
+        if kernelradius < r_p:
+            halfangle = math.asin(kernelradius / r_p)
+            thetaindices = np.arange(
+                np.searchsorted(theta_mid, theta_p - halfangle, side="left"),
+                np.searchsorted(theta_mid, theta_p + halfangle, side="right"),
+            )
+            if theta_p - halfangle > 0.0 and theta_p + halfangle < math.pi:
+                phihalfrange = math.asin(min(1.0, math.sin(halfangle) / math.sin(theta_p)))
+                phistart = int(np.searchsorted(phi_mid_periodic, phi_p - phihalfrange, side="left"))
+                phiend = int(np.searchsorted(phi_mid_periodic, phi_p + phihalfrange, side="right"))
+                if phiend - phistart < ngridphi:
+                    phiindices = np.arange(phistart, phiend) % ngridphi
+        rstart = int(np.searchsorted(r_mid, r_p - kernelradius, side="left"))
+        rend = int(np.searchsorted(r_mid, r_p + kernelradius, side="right"))
+
+        # the distance to a cell mid-point is a Cartesian distance, from the law of cosines
+        cosangle = sintheta_mid[thetaindices, np.newaxis] * math.sin(theta_p) * np.cos(
+            phi_mid[phiindices] - phi_p
+        ) + costheta_mid[thetaindices, np.newaxis] * math.cos(theta_p)
+        r_cells = r_mid[rstart:rend, np.newaxis, np.newaxis]
+        dis2 = np.maximum(r_cells**2 + r_p**2 - 2.0 * r_cells * r_p * cosangle, 0.0)
+        box_r, box_theta, box_phi = np.nonzero(dis2 < kernelradius**2)
+        cell_r, cell_theta, cell_phi = box_r + rstart, thetaindices[box_theta], phiindices[box_phi]
+        weights = kernelvals2(dis2[box_r, box_theta, box_phi], float(h[n]), wij) * volumes[cell_r, cell_theta, cell_phi]
+        weightsum = float(weights.sum())
+        weightsums[n] = weightsum
+
+        if weightsum > 0.0:
+            hasweight = weights > 0.0
+            paircells.append((cell_r + ngridr * (cell_theta + ngridtheta * cell_phi))[hasweight])
+            pairmasses.append(mass[n] * weights[hasweight] / weightsum)
+        else:
+            # a cell holds its lower edge, and the last cell of an axis also holds the upper edge of the grid
+            index_r, index_theta, index_phi = (
+                min(int(np.searchsorted(axisedges, value, side="right")) - 1, len(axisedges) - 2)
+                for axisedges, value in zip(edges, (r_p, theta_p, phi_p), strict=True)
+            )
+            paircells.append(np.array([index_r + ngridr * (index_theta + ngridtheta * index_phi)], dtype=np.int64))
+            pairmasses.append(np.array([mass[n]]))
+        pairparticles.append(np.full(paircells[-1].size, n, dtype=np.int64))
+
+        # one small array for each particle costs much memory for millions of particles
+        if len(paircells) > 65536:
+            pairparticles = [np.concatenate(pairparticles)]
+            paircells = [np.concatenate(paircells)]
+            pairmasses = [np.concatenate(pairmasses)]
+
+    return np.concatenate(pairparticles), np.concatenate(paircells), np.concatenate(pairmasses), weightsums
+
+
+def map_particles_to_spherical_grid(
+    outputfolderpath: Path,
+    dfparticles: pl.DataFrame,
+    gridshape: tuple[int, int, int],
+    r_outer: float,
+    dtextra: float,
+    logprint: Callable[..., None],
+) -> None:
+    """Map SPH particles onto a spherical grid of r, theta, and phi, and write grid.dat and gridcontributions.txt.zst.
+
+    dfparticles holds the columns id, x, y, z, h, mass, and ye of the particles, with the smoothing length after
+    the option of --modifysmoothinglength. gridshape gives the cell counts n_r, n_theta, and n_phi.
+    """
+    edges = get_spherical_grid_edges(r_outer, *gridshape)
+    volumes = get_spherical_cell_volumes(*edges)
+    ncells = volumes.size
+    logprint(
+        "Coordinates: spherical. theta is the polar angle from the +z axis, and phi = atan2(y, x) is the azimuthal"
+        " angle. The index of a cell is i_r + n_r * (i_theta + n_theta * i_phi)"
+    )
+    logprint(
+        f"Grid: n_r x n_theta x n_phi = {' x '.join(str(count) for count in gridshape)} = {ncells} cells. The radial"
+        f" edges are uniform from 0 to {r_outer}. The polar edges are uniform in cos(theta), thus the cells of one"
+        " shell have equal volumes. The azimuthal edges are uniform"
+    )
+    logprint(
+        "Deposit method: normalised kernel. A particle gives its mass to the cells whose mid-points are in its kernel"
+        " of radius 2h. The weight of a cell is the cubic spline kernel at its mid-point times its volume, and the"
+        " weights of a particle are normalised to a sum of 1. The mid-point of a cell is the mean of its edges in r,"
+        " theta, and phi. A particle with no cell mid-point in its kernel gives all its mass to the cell that holds it"
+    )
+    logprint(
+        "Assumption: the mass of a particle on the grid is pmass * rho / rho_rst, the same factor as the Cartesian"
+        " map (source: maptogrid.f90 of A. Bauswein)"
+    )
+
+    particlemass = dfparticles["mass"].to_numpy()
+    particleye = dfparticles["ye"].to_numpy()
+    pairparticle, paircell, pairmass, weightsums = get_spherical_deposit(
+        dfparticles.select("x", "y", "z").to_numpy(), dfparticles["h"].to_numpy(), particlemass, edges, get_wij()
+    )
+
+    isinside = ~np.isnan(weightsums)
+    usesfallback = weightsums == 0.0
+    logprint(
+        f"Particles inside the outer radius: {np.count_nonzero(isinside)} of {len(weightsums)}, with the mass"
+        f" {particlemass[isinside].sum()} of {particlemass.sum()}. A particle outside gives no mass to the grid"
+    )
+    logprint(
+        f"Particles with no cell mid-point in the kernel: {np.count_nonzero(usesfallback)}, with the mass"
+        f" {particlemass[usesfallback].sum()}"
+    )
+    if np.any(weightsums > 0.0):
+        quantiles = np.quantile(weightsums[weightsums > 0.0], [0.05, 0.5, 0.95])
+        logprint(
+            "Sum of kernel times cell volume of a particle before the normalisation (1 for a kernel that the cells"
+            f" resolve): 5% quantile {quantiles[0]:.3g}, median {quantiles[1]:.3g}, 95% quantile {quantiles[2]:.3g}"
+        )
+    logprint(
+        f"Pairs of a particle and a cell: {pairmass.size}, which is"
+        f" {pairmass.size / max(1, np.count_nonzero(isinside)):.1f} for each particle inside the outer radius"
+    )
+
+    cellmass = np.bincount(paircell, weights=pairmass, minlength=ncells)
+    cellyemass = np.bincount(paircell, weights=pairmass * particleye[pairparticle], minlength=ncells)
+    celltracercount = np.bincount(paircell, minlength=ncells)
+    # the order of the flat arrays has the radial index fastest, which is the Fortran order of [i_r, i_theta, i_phi]
+    cellrho = cellmass / volumes.ravel(order="F")
+    with np.errstate(divide="ignore", invalid="ignore"):
+        cellye = np.where(cellmass > 0.0, cellyemass / cellmass, 0.0)
+
+    gridcontribpath = save_gridparticlecontributions(
+        pl.DataFrame({
+            "particleid": dfparticles["id"].to_numpy()[pairparticle],
+            "cellindex": paircell + 1,
+            "frac_of_cellmass": pairmass / cellmass[paircell],
+        }),
+        Path(outputfolderpath, "gridcontributions.txt"),
+        float_precision=None,
+    )
+    logprint(f"Saved {gridcontribpath}")
+
+    gridmass = float(np.sum(cellrho * volumes.ravel(order="F")))
+    logprint(
+        f"Mass on grid from rho*V: {gridmass}. Mass pmass * rho / rho_rst of the particles inside the outer radius:"
+        f" {particlemass[isinside].sum()}"
+    )
+    nempty = int(np.count_nonzero(cellmass == 0.0))
+    logprint(f"Number of cells with rho=0 {nempty}, total num of cells {ncells}, fraction {nempty / ncells}")
+
+    with Path(outputfolderpath, "grid.dat").open("w", encoding="utf-8") as fgrid:
+        fgrid.write("coordinates spherical3d\n")
+        fgrid.write(f"dtextra_geomunits {dtextra} # extra time after explosion simulation ended (in geom units)\n")
+        fgrid.writelines(
+            f"{key} {' '.join(f'{edge:.17g}' for edge in axisedges.tolist())}\n"
+            for key, axisedges in zip(SPHERICAL_GRIDDAT_EDGE_KEYS, edges, strict=True)
+        )
+        fgrid.write(" gridindex    rho    Ye    tracercount\n")
+        fgrid.writelines(
+            f"{gridindex:8d} {rho} {ye} {tracercount}\n"
+            for gridindex, rho, ye, tracercount in zip(
+                range(1, ncells + 1), cellrho.tolist(), cellye.tolist(), celltracercount.tolist(), strict=True
+            )
+        )
+
+    logprint(f"Saved {outputfolderpath / 'grid.dat'}")
+
+
 def maptogrid(
     ejectasnapshotpath: Path,
     outputfolderpath: Path | str,
@@ -78,8 +337,13 @@ def maptogrid(
     setgrid_fractionrmax: float = 0.5,
     modifysmoothinglength: str = "option4",
     samplelowercorner: bool = False,
+    coordinates: str = "cartesian",
+    sphericalgridshape: tuple[int, int, int] = (25, 16, 32),
 ) -> None:
-    """Map an SPH ejecta snapshot onto an ncoordgrid^3 Cartesian grid and write grid.dat and gridcontributions.txt.zst.
+    """Map an SPH ejecta snapshot onto a grid and write grid.dat and gridcontributions.txt.zst.
+
+    The coordinates cartesian give an ncoordgrid^3 Cartesian grid. The coordinates spherical give a grid of r,
+    theta, and phi with the cell counts of sphericalgridshape, and map_particles_to_spherical_grid makes it.
 
     samplelowercorner evaluates the kernel at the lower corner of each cell, as artistools did before. Use it only
     to make a grid.dat again that an older version of artistools wrote.
@@ -97,7 +361,8 @@ def maptogrid(
 
     wij = get_wij()
 
-    assert ncoordgrid % 2 == 0
+    if coordinates == "cartesian":
+        assert ncoordgrid % 2 == 0
 
     snapshot_columns_used = ["id", "h", "x", "y", "z", "vx", "vy", "vz", "pmass", "rho", "p", "rho_rst", "ye"]
 
@@ -106,7 +371,8 @@ def maptogrid(
     )
 
     logprint(dfsnapshot)
-    logprint(f"Ncoordgrid: {ncoordgrid}")
+    if coordinates == "cartesian":
+        logprint(f"Ncoordgrid: {ncoordgrid}")
 
     assert len(dfsnapshot.columns) == len(snapshot_columns_used)
 
@@ -182,6 +448,28 @@ def maptogrid(
         f"setgrid_fractionrmax={setgrid_fractionrmax}: gridmax is set to {setgrid_fractionrmax}*rmax"
         " of the SPH particles"
     )
+    if coordinates == "spherical":
+        logprint(f"Modifysmoothinglength: {modifysmoothinglength}")
+        map_particles_to_spherical_grid(
+            outputfolderpath,
+            dfsnapshot.select(
+                "id",
+                "x",
+                "y",
+                "z",
+                h=pl.Series(
+                    get_modified_smoothing_lengths(h, dfsnapshot["dis"].to_numpy(), rmean, hmean, modifysmoothinglength)
+                ),
+                mass=pl.col("pmass") * pl.col("rho") / pl.col("rho_rst"),
+                ye="ye",
+            ),
+            sphericalgridshape,
+            r_outer=setgrid_fractionrmax * rmax,
+            dtextra=dtextra,
+            logprint=logprint,
+        )
+        return
+
     # x0 is a fraction of the largest radius of the SPH particles
     x0 = -setgrid_fractionrmax * rmax
 
@@ -407,8 +695,30 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     parser.add_argument("-inputpath", "-i", default=".", help="The path to the ejectasnapshot")
     parser.add_argument(
-        "-ncoordgrid", type=int, default=50, help="The number of grid positions per axis (numcells = ncoordgrid^3)"
+        "--coordinates",
+        default="cartesian",
+        choices=["cartesian", "spherical"],
+        help="The coordinates of the grid. spherical gives cells in the radius r, the polar angle theta from the +z"
+        " axis, and the azimuthal angle phi. The cells are uniform in r, in cos(theta), and in phi. Each particle"
+        " inside the outer radius gives all its mass to the grid, with normalised kernel weights. (default: cartesian)",
     )
+    parser.add_argument(
+        "-ncoordgrid",
+        type=int,
+        default=None,
+        help="The number of grid positions per axis of a Cartesian grid (numcells = ncoordgrid^3, default: 50)",
+    )
+    for axis, description, default in (
+        ("r", "radial shells", 25),
+        ("theta", "cells along the polar angle", 16),
+        ("phi", "cells along the azimuthal angle", 32),
+    ):
+        parser.add_argument(
+            f"--ngrid{axis}",
+            type=int,
+            default=None,
+            help=f"The number of {description} of a spherical grid (default: {default})",
+        )
     parser.add_argument(
         "-dtextra_seconds",
         type=float,
@@ -420,7 +730,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-setgrid_fractionrmax",
         type=float,
         default=0.5,
-        help="Setup grid to have max equal to fraction of particle rmax",
+        help="Setup grid to have max equal to fraction of particle rmax. The max is the half width of a Cartesian"
+        " grid, and the outer radius of a spherical grid",
     )
     parser.add_argument(
         "-downsamplefactor",
@@ -457,19 +768,43 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
-    """Map tracer particle trajectories to a Cartesian grid."""
+    """Map tracer particle trajectories to a Cartesian grid or a spherical grid."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+
+    sphericalcounts = {axis: getattr(args, f"ngrid{axis}") for axis in ("r", "theta", "phi")}
+    if args.coordinates == "spherical":
+        if args.ncoordgrid is not None or args.sample_cell_lower_corner:
+            exit_with_error(
+                "--ncoordgrid and --sample_cell_lower_corner apply to a Cartesian grid only",
+                "For --coordinates spherical, give --ngridr, --ngridtheta, and --ngridphi",
+            )
+        if args.modifysmoothinglength in {"option1", "option5", "option6"}:
+            exit_with_error(
+                f"--modifysmoothinglength {args.modifysmoothinglength} sets the smoothing length from the width of a"
+                " Cartesian cell",
+                "For --coordinates spherical, give False, option2, option3, or option4",
+            )
+    elif any(count is not None for count in sphericalcounts.values()):
+        exit_with_error(
+            "--ngridr, --ngridtheta, and --ngridphi apply to a spherical grid only",
+            "Give --coordinates spherical, or give --ncoordgrid for a Cartesian grid",
+        )
+    sphericalgridshape = (sphericalcounts["r"] or 25, sphericalcounts["theta"] or 16, sphericalcounts["phi"] or 32)
+    if min(sphericalgridshape) < 1:
+        exit_with_error("--ngridr, --ngridtheta, and --ngridphi must each be 1 or more")
 
     ejectasnapshotpath = Path(args.inputpath, "ejectasnapshot.dat")
     confirm_overwrite([args.outputfile], ("grid.dat", "gridcontributions.txt"), force=args.force)
 
     maptogrid(
         ejectasnapshotpath=ejectasnapshotpath,
-        ncoordgrid=args.ncoordgrid,
+        ncoordgrid=50 if args.ncoordgrid is None else args.ncoordgrid,
         outputfolderpath=args.outputfile,
         downsamplefactor=args.downsamplefactor,
         dtextra_seconds=args.dtextra_seconds,
         setgrid_fractionrmax=args.setgrid_fractionrmax,
         modifysmoothinglength=args.modifysmoothinglength,
         samplelowercorner=args.sample_cell_lower_corner,
+        coordinates=args.coordinates,
+        sphericalgridshape=sphericalgridshape,
     )

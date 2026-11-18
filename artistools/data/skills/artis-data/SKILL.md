@@ -387,7 +387,11 @@ model, `t_model_init_days`. The columns are:
 
 - `inputcellid` and `modelgridindex` (the index of the cell in the estimators);
 - `rho` (3D and 2D, g/cm^3) or `logrho` (1D, the log10 of the density);
-- `pos_x_min`, `pos_y_min`, and `pos_z_min` (3D, the corner of the cell, cm), or `vel_r_max_kmps` (1D, km/s);
+- the position columns, which change with the coordinates of the model:
+  - `vel_r_max_kmps` (1D spherical, km/s);
+  - `pos_rcyl_mid` and `pos_z_mid` (2D cylindrical, the mid-point of the cell, cm);
+  - `pos_x_min`, `pos_y_min`, and `pos_z_min` (3D Cartesian, the corner of the cell, cm);
+  - no position column (2D spherical and 3D spherical). The parameters hold the edges of the cells, see below;
 - `X_<nuclide>` (the mass fractions of the radioactive nuclides, e.g. `X_Ni56`) and `X_Fegroup`;
 - `X_<El>` (the mass fractions of the elements). Give `get_elemabundances=True` to read these columns. They come from
   `abundances.txt`.
@@ -396,7 +400,16 @@ model, `t_model_init_days`. The columns are:
 `rho` and `logrho` for each number of dimensions, `mass_g`, `volume`, and the velocities, e.g. `vel_r_mid` (cm/s) and
 `vel_r_mid_on_c`. Call it before you filter the rows. A 1D cell takes its inner velocity from the row before it.
 
-The main parameters are `t_model_init_days`, `vmax_cmps` (cm/s), `dimensions`, and `npts_model` (the number of cells).
+The main parameters are `t_model_init_days`, `vmax_cmps` (cm/s), `dimensions`, `npts_model` (the number of cells), and
+`coordinates`. The value of `coordinates` is `spherical1d`, `cylindrical2d`, `cartesian3d`, `spherical2d`, or
+`spherical3d`. Use `coordinates` to select the geometry, because `dimensions` = 2 or 3 has two possible geometries.
+
+A model with the coordinates `spherical2d` or `spherical3d` also has the parameters `vel_r_edges_kmps`,
+`theta_edges_rad`, and, for `spherical3d`, `phi_edges_rad`. Each list holds the edges of the cells on one axis. The polar
+angle theta is from the +z axis, and the azimuthal angle is phi = atan2(y, x). The index of a cell is
+`i_r + n_r * (i_theta + n_theta * i_phi)`. For such a model, `add_derived_cols_to_modeldata` gives `vel_r_min`,
+`vel_r_mid`, `vel_r_max`, `theta_min_rad`, `theta_max_rad`, `phi_min_rad`, `phi_max_rad`, and the velocity of the
+mid-point of the cell (`vel_x_mid`, `vel_y_mid`, `vel_z_mid`, and `vel_rcyl_mid`).
 
 Possible errors:
 

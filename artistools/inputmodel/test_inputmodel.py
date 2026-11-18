@@ -4002,3 +4002,420 @@ def test_from_e2e_model_rejects_unequal_3d_dimensions_before_a_write(tmp_path: P
     at.inputmodel.from_e2e_model.main(argsraw=[*gridargs, "-dimensions", "1", "-o", str(tmp_path / "model1d")])
     _, modelmeta1d = at.inputmodel.scan_modeldata(tmp_path / "model1d", printwarningsonly=True)
     assert modelmeta1d["dimensions"] == 1
+
+
+def get_random_spherical_model(coordinates: str) -> tuple[pl.DataFrame, dict[str, t.Any]]:
+    """Return a model with spherical cell edges that are not uniform and random cell values, and its metadata."""
+    rng = np.random.default_rng(seed=1)
+    modelmeta: dict[str, t.Any] = {
+        "coordinates": coordinates,
+        "dimensions": int(coordinates[-2]),
+        "t_model_init_days": 0.5,
+        "vel_r_edges_kmps": [0.0, 2000.0, 4500.0, 9000.0, 30000.0],
+        "theta_edges_rad": [*np.arccos([1.0, 0.4, -0.2]).tolist(), math.pi],
+        "vmax_cmps": 30000.0 * at.constants.km_to_cm,
+        "firstinputcellid": 1,
+        "headercommentlines": ["a comment of the user"],
+    }
+    ncells = 4 * 3
+    if coordinates == "spherical3d":
+        modelmeta["phi_edges_rad"] = [0.0, 1.0, 2.5, 4.0, 5.5, 2.0 * math.pi]
+        ncells *= 5
+    dfmodel = pl.DataFrame({
+        "inputcellid": pl.int_range(1, ncells + 1, eager=True, dtype=pl.Int32),
+        "rho": rng.random(ncells) * 1e-12,
+        "X_Fegroup": np.ones(ncells),
+        "X_Ni56": rng.random(ncells),
+        "X_Co56": np.zeros(ncells),
+        "X_Fe52": np.zeros(ncells),
+        "X_Cr48": np.zeros(ncells),
+        "Ye": rng.random(ncells),
+        "tracercount": rng.integers(0, 5, ncells).astype(np.int32),
+    })
+    return dfmodel, modelmeta
+
+
+@pytest.mark.parametrize("coordinates", ["spherical2d", "spherical3d"])
+def test_spherical_model_round_trip(tmp_path: Path, coordinates: str) -> None:
+    """A model with spherical edges keeps its edges, its cells, and its volume through a write and a read.
+
+    model.txt has no position column for these coordinates. Thus the edges of the header and the id of a cell give
+    each position, and an error in the cell order or in an edge shows in the volume and in the mid-points.
+    """
+    dfmodel, modelmeta = get_random_spherical_model(coordinates)
+    edgekeys = [key for key in ("vel_r_edges_kmps", "theta_edges_rad", "phi_edges_rad") if key in modelmeta]
+    edges_written = {key: list(modelmeta[key]) for key in edgekeys}
+
+    at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta=modelmeta)
+    lzmodel_read, modelmeta_read = at.inputmodel.scan_modeldata(tmp_path)
+
+    # the writer gives 17 significant digits, thus each edge comes back with no change
+    assert {key: modelmeta_read[key] for key in edgekeys} == edges_written
+    assert modelmeta_read["coordinates"] == coordinates
+    assert modelmeta_read["headercommentlines"] == ["a comment of the user"]
+    assert modelmeta_read["npts_model"] == dfmodel.height == at.misc.get_npts_model(tmp_path)
+    pltest.assert_frame_equal(
+        lzmodel_read.drop("modelgridindex").collect(), dfmodel, check_dtypes=False, rel_tol=1e-6, abs_tol=0.0
+    )
+
+    dfderived = at.inputmodel.add_derived_cols_to_modeldata(lzmodel_read, modelmeta_read).collect()
+    radius_outer = modelmeta_read["vmax_cmps"] * modelmeta_read["t_model_init_days"] * day_to_s
+    assert math.isclose(dfderived["volume"].sum(), 4.0 / 3.0 * math.pi * radius_outer**3, rel_tol=1e-12)
+    assert np.allclose(
+        np.hypot(dfderived["vel_rcyl_mid"].to_numpy(), dfderived["vel_z_mid"].to_numpy()),
+        dfderived["vel_r_mid"].to_numpy(),
+        rtol=1e-12,
+        atol=0.0,
+    )
+    if coordinates == "spherical3d":
+        assert np.allclose(
+            np.hypot(dfderived["vel_x_mid"].to_numpy(), dfderived["vel_y_mid"].to_numpy()),
+            dfderived["vel_rcyl_mid"].to_numpy(),
+            rtol=1e-12,
+            atol=0.0,
+        )
+
+    # the id of a cell gives its place in the grid, thus a selection of the rows in a different order gives the
+    # same values for these cells
+    isselected = pl.col("inputcellid") % 3 == 0
+    pltest.assert_frame_equal(
+        at.inputmodel.add_derived_cols_to_modeldata(
+            lzmodel_read.filter(isselected).sort("rho"), modelmeta_read
+        ).collect(),
+        dfderived.filter(isselected).sort("rho"),
+    )
+
+
+SPHERICAL2D_MODEL_LINES = (
+    "# a comment before the keys",
+    "coordinates spherical2d",
+    "# a comment between two keys",
+    "t_model_init_days 1.0  # an inline comment",
+    "vel_r_edges_kmps 0 1000 3000",
+    f"theta_edges_rad 0 1.5 {math.pi!r}",
+    "#inputcellid rho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48",
+    "0 1e-12 1 0 0 0 0",
+    "1 2e-12 1 0 0 0 0",
+    "2 3e-12 1 0 0 0 0",
+    "3 4e-12 1 0 0 0 0",
+)
+
+
+def test_spherical_model_reader_takes_cell_ids_from_zero(tmp_path: Path) -> None:
+    """The first cell id of a file sets the place of each cell, also with no modelgridindex column.
+
+    The reader also takes a comment line before each key line.
+    """
+    (tmp_path / "model.txt").write_text("\n".join(SPHERICAL2D_MODEL_LINES) + "\n", encoding="utf-8")
+    lzmodel, modelmeta = at.inputmodel.scan_modeldata(tmp_path)
+
+    assert modelmeta["firstinputcellid"] == 0
+    assert modelmeta["headercommentlines"] == ["a comment before the keys", "a comment between two keys"]
+    dfderived = at.inputmodel.add_derived_cols_to_modeldata(lzmodel.drop("modelgridindex"), modelmeta).collect()
+    # the radial index changes fastest, thus the cells 0 and 2 are in the inner shell
+    assert dfderived["vel_r_max"].to_list() == pytest.approx([1e8, 3e8, 1e8, 3e8])
+    assert dfderived["theta_min_rad"].to_list() == pytest.approx([0.0, 0.0, 1.5, 1.5])
+
+
+@pytest.mark.parametrize(
+    ("oldline", "newlines", "errortext"),
+    [
+        ("3 4e-12 1 0 0 0 0", ("3 4e-12 1 0 0 0 0", "4 5e-12 1 0 0 0 0"), "more than 4 cells"),
+        ("3 4e-12 1 0 0 0 0", (), "found only 3 cells"),
+        (
+            "#inputcellid rho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48",
+            ("phi_edges_rad 0 6.283185307179586", "#inputcellid rho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48"),
+            "takes no phi_edges_rad line",
+        ),
+        ("vel_r_edges_kmps 0 1000 3000", ("vel_r_edges_kmps 0 3000 1000",), "must increase"),
+        (f"theta_edges_rad 0 1.5 {math.pi!r}", ("theta_edges_rad 0 1.5 3.0",), "the last value of theta_edges_rad"),
+    ],
+)
+def test_spherical_model_reader_stops_for_a_wrong_file(
+    tmp_path: Path, oldline: str, newlines: tuple[str, ...], errortext: str
+) -> None:
+    """A spherical model.txt gives no cell count, thus the reader checks the rows against the edges of the header."""
+    lines = [newline for line in SPHERICAL2D_MODEL_LINES for newline in (newlines if line == oldline else (line,))]
+    (tmp_path / "model.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match=errortext):
+        at.inputmodel.scan_modeldata(tmp_path)
+
+
+def test_dimension_reduce_of_a_spherical_model_sums_complete_cells() -> None:
+    """A spherical3d model gives a spherical2d model, a 1D model, and one zone, each as a sum of complete cells.
+
+    Thus each output mass is exact. The contributions of the particles change with the masses of the cells.
+    """
+    dfmodel, modelmeta = get_random_spherical_model("spherical3d")
+    gridshape = (4, 3, 5)
+    cellmass = (
+        at.inputmodel
+        .add_derived_cols_to_modeldata(dfmodel, modelmeta)
+        .select("mass_g")
+        .collect()
+        .to_series()
+        .to_numpy()
+        .reshape(gridshape, order="F")
+    )
+    cellni56 = dfmodel["X_Ni56"].to_numpy().reshape(gridshape, order="F")
+    # the first particle gives 0.25 of the mass of each cell, and a second particle of each cell gives the other part
+    dfgridcontributions = pl.DataFrame({
+        "particleid": [*([1] * dfmodel.height), *range(2, dfmodel.height + 2)],
+        "cellindex": [*dfmodel["inputcellid"], *dfmodel["inputcellid"]],
+        "frac_of_cellmass": [*([0.25] * dfmodel.height), *([0.75] * dfmodel.height)],
+    })
+
+    expectedcoordinates = {2: "spherical2d", 1: "spherical1d", 0: "spherical1d"}
+    summedaxes: dict[int, tuple[int, ...]] = {2: (2,), 1: (1, 2), 0: (0, 1, 2)}
+    for outputdimensions, axes in summedaxes.items():
+        dfmodel_out, _, dfcontributions_out, modelmeta_out = at.inputmodel.dimension_reduce_model(
+            dfmodel, outputdimensions, dfgridcontributions=dfgridcontributions, modelmeta=dict(modelmeta)
+        )
+        expectedmass = cellmass.sum(axis=axes).ravel(order="F")
+        np.testing.assert_allclose(dfmodel_out["mass_g"].to_numpy(), expectedmass, rtol=1e-12)
+        np.testing.assert_allclose(
+            dfmodel_out["X_Ni56"].to_numpy(),
+            (cellmass * cellni56).sum(axis=axes).ravel(order="F") / expectedmass,
+            rtol=1e-12,
+        )
+        # the density of an output cell and the volume from the output metadata give the same mass again
+        np.testing.assert_allclose(
+            at.inputmodel
+            .add_derived_cols_to_modeldata(dfmodel_out.drop("mass_g"), modelmeta_out)
+            .select("mass_g")
+            .collect()
+            .to_series()
+            .to_numpy(),
+            expectedmass,
+            rtol=1e-12,
+        )
+        assert modelmeta_out["coordinates"] == expectedcoordinates[outputdimensions]
+        assert "phi_edges_rad" not in modelmeta_out
+        if outputdimensions == 1:
+            assert dfmodel_out["vel_r_max_kmps"].to_list() == modelmeta["vel_r_edges_kmps"][1:]
+
+        np.testing.assert_allclose(
+            dfcontributions_out.filter(pl.col("particleid") == 1).sort("cellindex")["frac_of_cellmass"].to_numpy(),
+            0.25,
+            rtol=1e-12,
+        )
+        # the second particle of the first input cell gives a part of the first output cell
+        assert dfcontributions_out.filter(pl.col("particleid") == 2).row(0, named=True) == pytest.approx({
+            "particleid": 2,
+            "cellindex": 1,
+            "frac_of_cellmass": 0.75 * cellmass[0, 0, 0] / expectedmass[0],
+        })
+
+
+def test_spherical_deposit_agrees_with_a_sum_over_all_cells() -> None:
+    """The deposit of the spherical map finds each cell mid-point in a kernel, and it keeps the mass of a particle.
+
+    The deposit searches a region of r, theta, and phi around a particle. The region must hold the kernel also at
+    the polar axis, across phi = 0, and at the centre. A particle with no cell mid-point in its kernel gives its
+    mass to the cell that holds it.
+    """
+    from artistools.inputmodel.maptogrid import get_spherical_cell_volumes
+    from artistools.inputmodel.maptogrid import get_spherical_deposit
+    from artistools.inputmodel.maptogrid import get_spherical_grid_edges
+    from artistools.inputmodel.maptogrid import get_wij
+    from artistools.inputmodel.maptogrid import kernelvals2
+
+    r_outer = 1000.0
+    edges = get_spherical_grid_edges(r_outer, 6, 5, 8)
+    rng = np.random.default_rng(seed=3)
+    # near the +z axis, on each side of phi = 0, near the centre, near the outer radius, outside the grid, with a
+    # kernel that holds no cell mid-point, and near the -z axis
+    position = np.vstack((
+        [
+            [5.0, 3.0, 600.0],
+            [400.0, 2.0, 50.0],
+            [400.0, -2.0, 50.0],
+            [3.0, -4.0, 5.0],
+            [0.0, 990.0, 10.0],
+            [0.0, 0.0, 1200.0],
+            [-300.0, 200.0, -100.0],
+            [1.0, 0.0, -700.0],
+        ],
+        rng.uniform(-550.0, 550.0, (40, 3)),
+    ))
+    h = np.concatenate(([150.0, 80.0, 80.0, 100.0, 60.0, 100.0, 1e-3, 120.0], rng.uniform(20.0, 300.0, 40)))
+    mass = rng.uniform(1.0, 2.0, len(h))
+    wij = get_wij()
+
+    pairparticle, paircell, pairmass, weightsums = get_spherical_deposit(position, h, mass, edges, wij)
+
+    r_mid, theta_mid, phi_mid = np.meshgrid(*((edge[:-1] + edge[1:]) / 2.0 for edge in edges), indexing="ij")
+    cellposition = np.stack(
+        (
+            r_mid * np.sin(theta_mid) * np.cos(phi_mid),
+            r_mid * np.sin(theta_mid) * np.sin(phi_mid),
+            r_mid * np.cos(theta_mid),
+        ),
+        axis=-1,
+    ).reshape((-1, 3), order="F")
+    volumes = get_spherical_cell_volumes(*edges).ravel(order="F")
+    expected = np.zeros((len(h), volumes.size))
+    for n in range(len(h)):
+        if np.linalg.norm(position[n]) >= r_outer:
+            continue
+        dis2 = np.sum((cellposition - position[n]) ** 2, axis=1)
+        weights = np.where(dis2 < (2.0 * h[n]) ** 2, kernelvals2(np.minimum(dis2, 4.0 * h[n] ** 2), h[n], wij), 0.0)
+        weights *= volumes
+        if weights.sum() > 0.0:
+            expected[n] = mass[n] * weights / weights.sum()
+        else:
+            radius = float(np.linalg.norm(position[n]))
+            index_r, index_theta, index_phi = (
+                int(np.searchsorted(edge, value, side="right")) - 1
+                for edge, value in zip(
+                    edges,
+                    (
+                        radius,
+                        math.acos(position[n, 2] / radius),
+                        math.atan2(position[n, 1], position[n, 0]) % (2.0 * math.pi),
+                    ),
+                    strict=True,
+                )
+            )
+            expected[n, index_r + 6 * (index_theta + 5 * index_phi)] = mass[n]
+
+    actual = np.zeros_like(expected)
+    np.add.at(actual, (pairparticle, paircell), pairmass)
+    # a cell mid-point at the edge of a kernel has a weight near zero, and the two distance formulas can put it on
+    # different sides of the edge
+    np.testing.assert_allclose(actual, expected, rtol=1e-9, atol=1e-12)
+
+    isinside = np.linalg.norm(position, axis=1) < r_outer
+    assert np.isnan(weightsums[~isinside]).all()
+    assert not actual[~isinside].any()
+    assert weightsums[6] == pytest.approx(0.0, abs=0.0)
+    np.testing.assert_allclose(actual.sum(axis=1)[isinside], mass[isinside], rtol=1e-12)
+
+
+def test_spherical_map_gives_each_particle_the_cell_of_its_direction(tmp_path: Path) -> None:
+    """The cell order and the angles of the spherical map agree with the reader of the model.
+
+    A particle on the +z axis has theta = 0. A particle near the -y axis has phi = atan2(y, x) near 3 pi / 2. The
+    kernels hold no cell mid-point, thus each particle gives its mass to the cell that holds it.
+    """
+    from artistools.inputmodel.maptogrid import maptogrid
+
+    def snapshotline(particleid: int, position: tuple[float, float, float]) -> str:
+        values = [0.0] * 31
+        values[0] = particleid
+        values[1] = 1.0  # h
+        values[2:5] = position
+        for column in (14, 15, 16, 17):  # pmass, rho, p, rho_rst
+            values[column] = 1.0
+        values[20] = 0.3  # ye
+        return " ".join(str(value) for value in values)
+
+    (tmp_path / "ejectasnapshot.dat").write_text(
+        snapshotline(1, (0.0, 0.0, 1000.0)) + "\n" + snapshotline(2, (100.0, -1000.0, 100.0)) + "\n", encoding="utf-8"
+    )
+    # the snapshot is 20000 time units after the merger, thus the velocities are below the speed of light
+    (tmp_path / "test_info.dat").write_text("0 0 20000.0\n", encoding="utf-8")
+    (tmp_path / "tmerger.txt").write_text("# time of merger in geom units\n0.0\n", encoding="utf-8")
+
+    gridshape = (4, 4, 8)
+    maptogrid(
+        tmp_path / "ejectasnapshot.dat",
+        tmp_path,
+        dtextra_seconds=0.0,
+        setgrid_fractionrmax=1.5,
+        modifysmoothinglength="False",
+        coordinates="spherical",
+        sphericalgridshape=gridshape,
+    )
+    at.inputmodel.modelfromhydro.main(
+        argsraw=[], gridfolderpath=tmp_path, outputpath=tmp_path / "model", dimensions=3, timedays=0.1
+    )
+
+    lzmodel, modelmeta = at.inputmodel.scan_modeldata(tmp_path / "model")
+    assert tuple(modelmeta[f"ncoordgrid{axis}"] for axis in ("r", "theta", "phi")) == gridshape
+    dfcells = (
+        at.inputmodel
+        .add_derived_cols_to_modeldata(lzmodel, modelmeta)
+        .filter(pl.col("rho") > 0.0)
+        .sort("modelgridindex")
+        .collect()
+    )
+    # both particles are in the third shell. The first one is in the first cell of theta and of phi. The second one
+    # is in the cell with 60 <= theta < 90 degrees and 270 <= phi < 315 degrees
+    assert dfcells["modelgridindex"].to_list() == [2, 2 + 4 * (1 + 4 * 6)]
+    onaxis, nearminusy = dfcells.rows(named=True)
+    assert onaxis["vel_z_mid"] > onaxis["vel_rcyl_mid"] > 0.0
+    assert nearminusy["vel_y_mid"] < 0.0 < nearminusy["vel_x_mid"] < -nearminusy["vel_y_mid"]
+    assert nearminusy["vel_z_mid"] > 0.0
+    np.testing.assert_allclose(dfcells["mass_g"].to_numpy(), dfcells.item(0, "mass_g"), rtol=1e-6)
+
+
+def test_spherical_map_and_cartesian_map_give_the_same_shell_masses(tmp_path: Path) -> None:
+    """The two maps of one snapshot estimate the same density field, thus their radial shells hold equal masses.
+
+    The kernel of each particle is inside both grids and wider than a cell. The spherical map then keeps the mass
+    pmass * rho / rho_rst of each particle exactly, and the kernel sum of the Cartesian map gives that mass to 1e-3.
+    The cumulative mass of the shells agrees to less than 0.05 of the total mass. The two values are not equal,
+    because the Cartesian cells do not follow the shells.
+    """
+    from artistools.inputmodel.maptogrid import get_spherical_cell_volumes
+    from artistools.inputmodel.maptogrid import maptogrid
+
+    rng = np.random.default_rng(seed=7)
+    particlecount, ncoordgrid, r_outer = 400, 20, 1000.0
+    direction = rng.normal(size=(particlecount, 3))
+    position = direction / np.linalg.norm(direction, axis=1)[:, np.newaxis]
+    position *= (600.0 * np.cbrt(rng.random(particlecount)))[:, np.newaxis]
+    # the largest radius of the particles sets the size of the grids
+    position[0] = (600.0, 0.0, 0.0)
+    pmass = 1.0 + rng.random(particlecount)
+    rho_on_rho_rst = 0.5 + 0.5 * rng.random(particlecount)
+    snapshotlines = []
+    for particleindex in range(particlecount):
+        values = [0.0] * 31
+        values[0] = particleindex + 1
+        values[1] = 150.0  # h
+        values[2:5] = position[particleindex].tolist()
+        values[14] = pmass[particleindex]
+        values[15] = rho_on_rho_rst[particleindex]  # rho
+        values[17] = 1.0  # rho_rst
+        values[20] = 0.3  # ye
+        snapshotlines.append(" ".join(str(value) for value in values))
+
+    for coordinates in ("cartesian", "spherical"):
+        folder = tmp_path / coordinates
+        folder.mkdir()
+        (folder / "ejectasnapshot.dat").write_text("\n".join(snapshotlines) + "\n", encoding="utf-8")
+        maptogrid(
+            folder / "ejectasnapshot.dat",
+            folder,
+            ncoordgrid=ncoordgrid,
+            dtextra_seconds=0.0,
+            setgrid_fractionrmax=r_outer / 600.0,
+            modifysmoothinglength="False",
+            coordinates=coordinates,
+            sphericalgridshape=(ncoordgrid // 2, 10, 20),
+        )
+
+    dfcartesian = at.misc.read_wsv(tmp_path / "cartesian" / "grid.dat", skip_rows=3)
+    cellwidth = 2.0 * r_outer / ncoordgrid
+    cellradius = np.sqrt(
+        sum((dfcartesian[f"pos_{axis}_min"].to_numpy() + cellwidth / 2.0) ** 2 for axis in ("x", "y", "z"))
+    )
+    cellmass_cartesian = dfcartesian["rho"].to_numpy() * cellwidth**3
+
+    headerlines = (tmp_path / "spherical" / "grid.dat").read_text(encoding="utf-8").splitlines()[2:5]
+    r_edges, theta_edges, phi_edges = (np.array(line.split()[1:], dtype=np.float64) for line in headerlines)
+    cellvolumes = get_spherical_cell_volumes(r_edges, theta_edges, phi_edges).ravel(order="F")
+    dfspherical = at.misc.read_wsv(tmp_path / "spherical" / "grid.dat", skip_rows=5)
+    shellmass_spherical = (
+        (dfspherical["rho"].to_numpy() * cellvolumes).reshape((len(r_edges) - 1, -1), order="F").sum(axis=1)
+    )
+    shellmass_cartesian, _ = np.histogram(cellradius, bins=r_edges, weights=cellmass_cartesian)
+
+    particlemass = float(np.sum(pmass * rho_on_rho_rst))
+    assert math.isclose(shellmass_spherical.sum(), particlemass, rel_tol=1e-12)
+    assert math.isclose(cellmass_cartesian.sum(), particlemass, rel_tol=1e-3)
+    cumulativedifference = np.cumsum(shellmass_spherical - shellmass_cartesian) / particlemass
+    assert np.abs(cumulativedifference).max() < 0.05

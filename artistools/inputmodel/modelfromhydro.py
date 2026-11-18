@@ -37,6 +37,7 @@ from artistools.misc import exit_with_error
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
+from artistools.misc import validate_spherical_edges
 from artistools.misc import zopen
 
 
@@ -139,14 +140,110 @@ def get_snapshot_time_geomunits(pathtogriddata: Path | str) -> tuple[float, floa
     return simulation_end_time_geomunits, mergertime_geomunits
 
 
+# the keys of the edge lists in the grid.dat of a spherical map. The radial edges are in geometric units
+SPHERICAL_GRIDDAT_EDGE_KEYS = ("r_edges_geomunits", "theta_edges_rad", "phi_edges_rad")
+
+
+def read_spherical_griddat_file(
+    pathtogriddata: str | Path, targetmodeltime_days: float | None = None
+) -> tuple[pl.DataFrame, float, float, float, dict[str, t.Any]]:
+    """Read the grid.dat of a spherical map, and return the same values as read_griddat_file.
+
+    The header gives the key coordinates, the extra time, and the cell edges in r, theta, and phi. The cells have no
+    position column. A radial edge is a velocity in the model, thus a different model time changes only the density.
+    """
+    griddatfilepath = Path(pathtogriddata) / "grid.dat"
+    simulation_end_time_geomunits, mergertime_geomunits = get_snapshot_time_geomunits(pathtogriddata)
+
+    headerkeys = ("coordinates", "dtextra_geomunits", *SPHERICAL_GRIDDAT_EDGE_KEYS)
+    headervalues: dict[str, list[str]] = {}
+    with zopen(griddatfilepath) as gridfile:
+        for key in headerkeys:
+            line = gridfile.readline()
+            tokens = line.split("#", 1)[0].split()
+            if tokens[:1] != [key]:
+                exit_with_error(
+                    f"{griddatfilepath}: expected the key {key}, not the line {line!r}",
+                    f"The header of a spherical grid.dat gives the keys {', '.join(headerkeys)}, in this order",
+                )
+            headervalues[key] = tokens[1:]
+    if headervalues["coordinates"] != ["spherical3d"]:
+        exit_with_error(
+            f"{griddatfilepath}: the coordinates {' '.join(headervalues['coordinates'])!r} are not known",
+            "A grid.dat with the key coordinates has the value spherical3d",
+        )
+
+    t_model_sec = (
+        (simulation_end_time_geomunits - mergertime_geomunits) + float(headervalues["dtextra_geomunits"][0])
+    ) * geometric_time_to_s
+    t_mergertime_s = mergertime_geomunits * geometric_time_to_s
+    vel_r_edges_kmps, theta_edges_rad, phi_edges_rad = validate_spherical_edges(
+        [float(edge) * geometric_length_to_km / t_model_sec for edge in headervalues["r_edges_geomunits"]],
+        [float(edge) for edge in headervalues["theta_edges_rad"]],
+        [float(edge) for edge in headervalues["phi_edges_rad"]],
+        griddatfilepath,
+    )
+    assert phi_edges_rad is not None
+    vmax = vel_r_edges_kmps[-1] * km_to_cm
+
+    griddata = (
+        read_wsv(griddatfilepath, comment_prefix="#", skip_rows=len(headerkeys))
+        .rename({"gridindex": "inputcellid"})
+        .with_columns(cs.by_name("rho", "Ye", require_all=False).fill_null(0.0))
+        .with_columns(pl.col("rho") * geometric_density_to_g_per_cm3)
+    )
+    gridshape = (len(vel_r_edges_kmps) - 1, len(theta_edges_rad) - 1, len(phi_edges_rad) - 1)
+    if math.prod(gridshape) != griddata.height:
+        exit_with_error(
+            f"grid.dat holds {griddata.height} cells, but its cell edges give"
+            f" {' x '.join(str(count) for count in gridshape)} = {math.prod(gridshape)} cells"
+        )
+
+    t_model_days = t_model_sec / day_to_s
+    print(f"t_model in days {t_model_days} ({t_model_sec} s)")
+    print(f"vmax {vmax:.2e} cm/s ({vmax / CLIGHT:.2f} * c) is the outer radial velocity of the spherical grid")
+    if targetmodeltime_days is not None:
+        griddata = scale_model_to_time(
+            targetmodeltime_days=targetmodeltime_days, t_model_days=t_model_days, dfmodel=griddata
+        )
+        t_model_days = targetmodeltime_days
+
+    print(
+        f"Grid model is n_r x n_theta x n_phi = {' x '.join(str(count) for count in gridshape)}"
+        f" = {griddata.height} cells"
+    )
+    modelmeta = {
+        "coordinates": "spherical3d",
+        "dimensions": 3,
+        "t_model_init_days": t_model_days,
+        "vmax_cmps": vmax,
+        "vel_r_edges_kmps": vel_r_edges_kmps,
+        "theta_edges_rad": theta_edges_rad,
+        "phi_edges_rad": phi_edges_rad,
+        "firstinputcellid": 1,
+        "headercommentlines": [f"gridfolder: {Path(pathtogriddata).resolve().parts[-1]}"],
+    }
+    griddata = griddata.with_columns(
+        add_derived_cols_to_modeldata(griddata, modelmeta).select("mass_g").collect().to_series()
+    )
+    print(f"Max tracers in a cell {griddata['tracercount'].max()}")
+
+    return griddata, t_model_days, t_mergertime_s, vmax, modelmeta
+
+
 def read_griddat_file(
     pathtogriddata: str | Path, targetmodeltime_days: float | None = None
 ) -> tuple[pl.DataFrame, float, float, float, dict[str, t.Any]]:
     """Read grid.dat and return the cell data, the model and merger times, vmax, and the model metadata.
 
-    When targetmodeltime_days is given, the grid is expanded homologously to that time.
+    When targetmodeltime_days is given, the grid is expanded homologously to that time. The grid.dat of a spherical
+    map starts with the key coordinates, and read_spherical_griddat_file reads it.
     """
     griddatfilepath = Path(pathtogriddata) / "grid.dat"
+
+    with zopen(griddatfilepath) as gridfile:
+        if gridfile.readline().split()[:1] == ["coordinates"]:
+            return read_spherical_griddat_file(pathtogriddata, targetmodeltime_days)
 
     # Get simulation time for ejecta snapshot
     simulation_end_time_geomunits, mergertime_geomunits = get_snapshot_time_geomunits(pathtogriddata)
@@ -221,6 +318,7 @@ def read_griddat_file(
     print(f"Max tracers in a cell {max_tracercount}")
 
     modelmeta = {
+        "coordinates": "cartesian3d",
         "dimensions": 3,
         "t_model_init_days": t_model_days,
         "vmax_cmps": vmax,
@@ -272,7 +370,8 @@ def add_mass_to_center(griddata: pl.DataFrame, modelmeta: dict[str, t.Any]) -> p
         " Nagataki & Bauswein 2022, MNRAS, 509, 1377-1412, doi:10.1093/mnras/stab2861"
     )
 
-    showcols = ["inputcellid", "pos_x_min", "pos_y_min", "pos_z_min", "rho"]
+    # a spherical map has no position column
+    showcols = [col for col in ("inputcellid", "pos_x_min", "pos_y_min", "pos_z_min", "rho") if col in griddata.columns]
     print("Inner empty cells")
     print(griddata.filter(inhole).select(showcols))
 
@@ -336,6 +435,8 @@ def makemodelfromgriddata(
         for key in modelmeta:
             if key == "vmax_cmps" or key.startswith("wid_init_"):
                 modelmeta[key] *= scalevelocity
+        if "vel_r_edges_kmps" in modelmeta:
+            modelmeta["vel_r_edges_kmps"] = [edge * scalevelocity for edge in modelmeta["vel_r_edges_kmps"]]
         operationmsg = (
             f"velocities are scaled by a factor of {scalevelocity} (with density scaled by 1/f^3 to conserve mass)."
             f" vmax/c changed from {vmax_cmps_old / CLIGHT:.2f} to {modelmeta['vmax_cmps'] / CLIGHT:.2f}"
@@ -419,8 +520,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         default=3,
         type=int,
         help=(
-            "The number of dimensions: 0 for one-zone spherical, 1 for spherically symmetric 1D,"
-            " 2 for 2D cylindrical, 3 for 3D Cartesian"
+            "The number of dimensions: 0 for one-zone spherical, 1 for spherically symmetric 1D, 2 for 2D, and 3 for"
+            " 3D. A Cartesian grid.dat gives a 2D cylindrical model or a 3D Cartesian model. A spherical grid.dat"
+            " (maptogrid --coordinates spherical) gives a 2D spherical model or a 3D spherical model"
         ),
     )
     # -t means -timedays on every command, thus the time of the snapshot takes that name

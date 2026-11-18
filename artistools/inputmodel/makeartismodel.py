@@ -58,7 +58,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         default=None,
         type=int,
         choices=[0, 1, 2],
-        help="The number of dimensions: 0 for one-zone, 1 for spherically symmetric 1D, 2 for 2D Cylindrical",
+        help="The number of dimensions: 0 for one-zone, 1 for spherically symmetric 1D, and 2 for 2D. A 3D Cartesian"
+        " model gives a 2D cylindrical model, and a 3D spherical model gives a 2D spherical model",
     )
 
     parser.add_argument(

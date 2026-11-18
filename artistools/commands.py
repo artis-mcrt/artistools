@@ -410,8 +410,14 @@ subcommandtree: CommandTree = {
         ),
         "maptogrid": CommandSpec(
             "inputmodel.maptogrid",
-            helptext="Map tracer particle trajectories to a Cartesian grid.",
-            examples=(("-i . --ncoordgrid 50", "a grid of 50 cells on each axis from ejectasnapshot.dat"),),
+            helptext="Map tracer particle trajectories to a Cartesian grid or a spherical grid.",
+            examples=(
+                ("-i . --ncoordgrid 50", "a grid of 50 cells on each axis from ejectasnapshot.dat"),
+                (
+                    "-i . --coordinates spherical --ngridr 25 --ngridtheta 16 --ngridphi 32",
+                    "a spherical grid of 25 shells, 16 polar cells, and 32 azimuthal cells",
+                ),
+            ),
             exampletestfolder="kilonova",
         ),
         "opacityfile": CommandSpec(
