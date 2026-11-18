@@ -281,9 +281,20 @@ def scan_modelfile_text(
                 columns = line.lstrip("#").split()
                 line = fmodel.readline()
 
+        # a comment line or an empty line can come before each cell line of format version 2, as in sn3d
+        while formatversion == 2 and line and (not line.strip() or line.lstrip().startswith("#")):
+            # the readers below start at the first cell line
+            numheaderrows += 1
+            line = fmodel.readline()
         data_line_even = line
         ncols_line_even = len(data_line_even.split())
         data_line_odd = fmodel.readline()
+        while (
+            formatversion == 2
+            and data_line_odd
+            and (not data_line_odd.strip() or data_line_odd.lstrip().startswith("#"))
+        ):
+            data_line_odd = fmodel.readline()
         ncols_line_odd = len(data_line_odd.split())
 
     if ncols_line_even == 0:
@@ -338,7 +349,10 @@ def scan_modelfile_text(
             new_columns=columns,
             n_rows=maxrowcount,
             has_header=False,
-            skip_rows=numheaderrows,
+            # skip_rows does not count a comment line if comment_prefix is set, and skip_lines counts each line
+            skip_rows=0 if formatversion == 2 else numheaderrows,
+            skip_lines=numheaderrows if formatversion == 2 else 0,
+            comment_prefix="#" if formatversion == 2 else None,
             schema={col: pl.Int32 if col == "inputcellid" else pl.Float32 for col in columns},
             truncate_ragged_lines=True,
             # a trailing space gives an empty last field. polars 2 raises if a line has more fields than column names
@@ -364,6 +378,7 @@ def scan_modelfile_text(
             filename,
             has_header=False,
             skip_rows=numheaderrows,
+            comment_prefix="#" if formatversion == 2 else None,
             new_columns=[str(i) for i in range(max(ncols_line_even, ncols_line_odd))],
         )
 

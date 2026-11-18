@@ -465,7 +465,8 @@ def validate_model_edges(
 
     - Each list increases. A list of r, rcyl, theta, or phi starts at exactly 0.
     - The last polar angle is pi and the last azimuthal angle is 2 pi, to ANGLE_EDGE_ATOL_RADIANS. A polar angle
-      at pi / 2, to the same tolerance, becomes exactly pi / 2 before the check, as in sn3d.
+      at pi / 2, to the same tolerance, becomes exactly pi / 2 before the check, as in sn3d. Two polar angles must
+      have different cosines.
     - A cylindrical2d or cartesian3d grid has cells of equal width. The lists of x, y, and z are from -vmax to
       vmax, and all the axes have the same vmax. A cartesian3d grid has the same count of cells on each axis.
 
@@ -511,6 +512,16 @@ def validate_model_edges(
             values[-1] = lastangles[key]
         if not all(lower < upper for lower, upper in itertools.pairwise(values)):
             msg = f"{source}: the values of {key} must increase from each value to the next"
+            raise ValueError(msg)
+
+    if "theta_edges_radians" in edges:
+        # sn3d takes a polar edge as its cosine, and a polar edge very near the z axis has the cosine of the axis
+        cosines = [math.cos(edge) for edge in edges["theta_edges_radians"]]
+        if not all(lower > upper for lower, upper in itertools.pairwise(cosines)):
+            msg = (
+                f"{source}: two values of theta_edges_radians have the same cosine, thus the polar cell between them"
+                " is too thin for the precision of the numbers"
+            )
             raise ValueError(msg)
 
     if coordinates in UNIFORM_EDGE_COORDINATES:

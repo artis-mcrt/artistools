@@ -4117,7 +4117,11 @@ def test_spherical_model_reader_takes_cell_ids_from_zero(tmp_path: Path, capsys:
 
     # the keys can come in any sequence before the key columns, and a key that artistools does not know gets a warning
     lines = [SPHERICAL2D_MODEL_LINES[0], "key_of_a_later_version 1", *reversed(SPHERICAL2D_MODEL_LINES[1:6])]
-    (tmp_path / "model.txt").write_text("\n".join([*lines, *SPHERICAL2D_MODEL_LINES[6:]]) + "\n", encoding="utf-8")
+    # a comment line or an empty line can come before each cell line
+    celllines = ["# a comment before the first cell", "", *SPHERICAL2D_MODEL_LINES[6:8], "# a comment", ""]
+    (tmp_path / "model.txt").write_text(
+        "\n".join([*lines, *celllines, *SPHERICAL2D_MODEL_LINES[8:]]) + "\n", encoding="utf-8"
+    )
     dfreordered, metareordered = at.inputmodel.scan_modeldata(tmp_path)
     pltest.assert_frame_equal(dfreordered.collect(), lzmodel.collect())
     assert metareordered["theta_edges_radians"] == modelmeta["theta_edges_radians"]
@@ -4163,6 +4167,11 @@ def test_spherical_model_reader_takes_cell_ids_from_zero(tmp_path: Path, capsys:
         ("columns inputcellid rho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48", (), "must end with the key columns"),
         ("t_model_init_days 1.0  # an inline comment", (), "the header has no key t_model_init_days"),
         ("vel_r_edges_kmps 0 1000 3000", ("vel_r_edges_kmps 0 3000 1000",), "must increase"),
+        (
+            f"theta_edges_radians 0 1.5 {math.pi!r}",
+            (f"theta_edges_radians 0 1e-10 1.5 {math.pi!r}",),
+            "two values of theta_edges_radians have the same cosine",
+        ),
         ("format_version 2", (), "needs the line 'format_version 2' as the first line"),
         ("format_version 2", ("# a comment", "format_version 2"), "must be the first line of the file"),
         ("format_version 2", ("format_version 3",), "the format version '3' is not known"),
