@@ -1385,7 +1385,7 @@ def save_modeldata(
 
     The cells have no position column. The index of a cell is i_r + n_r * (i_theta + n_theta * i_phi), thus the
     radial index changes fastest. The mass fractions of abundances.txt must be true mass fractions, because sn3d
-    does not normalise them for these coordinates.
+    does not normalise them.
 
     model.txt holds these comments:
 

@@ -429,12 +429,16 @@ def validate_spherical_edges(
     """Return the cell edges of a spherical2d or spherical3d grid, with the last angles exactly pi and 2 pi.
 
     Each list must start at exactly 0 and increase. The last polar angle must be pi and the last azimuthal angle
-    must be 2 pi, to ANGLE_EDGE_ATOL_RAD. phi_edges_rad is None for a spherical2d grid. source is the file or the
-    caller that the error names.
+    must be 2 pi, to ANGLE_EDGE_ATOL_RAD. A polar angle at pi / 2, to the same tolerance, becomes exactly pi / 2
+    before the check, as in sn3d. phi_edges_rad is None for a spherical2d grid. source is the file or the caller
+    that the error names.
     """
     edgelists: dict[str, list[float]] = {
         "vel_r_edges_kmps": [float(edge) for edge in vel_r_edges_kmps],
-        "theta_edges_rad": [float(edge) for edge in theta_edges_rad],
+        "theta_edges_rad": [
+            math.pi / 2.0 if abs(float(edge) - math.pi / 2.0) <= ANGLE_EDGE_ATOL_RAD else float(edge)
+            for edge in theta_edges_rad
+        ],
     }
     if phi_edges_rad is not None:
         edgelists["phi_edges_rad"] = [float(edge) for edge in phi_edges_rad]

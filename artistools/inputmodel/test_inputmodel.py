@@ -4129,6 +4129,12 @@ def test_spherical_model_reader_takes_cell_ids_from_zero(tmp_path: Path) -> None
         ),
         ("vel_r_edges_kmps 0 1000 3000", ("vel_r_edges_kmps 0 3000 1000",), "must increase"),
         (f"theta_edges_rad 0 1.5 {math.pi!r}", ("theta_edges_rad 0 1.5 3.0",), "the last value of theta_edges_rad"),
+        # both edges become exactly pi / 2, as in sn3d, and the cell between them then has no volume
+        (
+            f"theta_edges_rad 0 1.5 {math.pi!r}",
+            (f"theta_edges_rad 0 {math.pi / 2 - 4e-9!r} {math.pi / 2 + 4e-9!r} {math.pi!r}",),
+            "theta_edges_rad must increase",
+        ),
     ],
 )
 def test_spherical_model_reader_stops_for_a_wrong_file(
