@@ -30,6 +30,7 @@ from artistools.misc import firstexisting_or_none
 from artistools.misc import get_bin_index_expr
 from artistools.misc import get_file_copies
 from artistools.misc import get_file_identity
+from artistools.misc import get_model_coordinates
 from artistools.misc import get_parquet_cache_name
 from artistools.misc import is_remote_path
 from artistools.misc import modelpath_cache
@@ -41,9 +42,12 @@ from artistools.misc import polars_source
 from artistools.misc import print_detail
 from artistools.misc import print_saved
 from artistools.misc import read_parquet_cache_metadata
+from artistools.misc import read_spherical_model_header
 from artistools.misc import read_wsv
 from artistools.misc import resolve_modelpath
 from artistools.misc import resolve_outputfile
+from artistools.misc import SPHERICAL_EDGE_COORDINATES
+from artistools.misc import validate_spherical_edges
 from artistools.misc import with_compressed_extension
 from artistools.misc import without_compressed_extension
 from artistools.misc import write_file_atomic
@@ -131,64 +135,90 @@ def scan_modelfile_text(
         ncoordgridz: int = 0
 
         line, numheaderrows = read_noncomment_line(fmodel, modelmeta["headercommentlines"])
-        cellcounts = parse_npts_line(line, filename)
-        if len(cellcounts) == 2:
-            modelmeta["dimensions"] = 2
-            ncoordgridr, ncoordgridz = cellcounts
-            modelmeta["ncoordgridrcyl"] = ncoordgridr
-            modelmeta["ncoordgridz"] = ncoordgridz
-            npts_model = ncoordgridr * ncoordgridz
+        columns: list[str] | None = None
+        hassphericaledges = line.split()[:1] == ["coordinates"]
+        if hassphericaledges:
+            sphericalmeta, columns, linecount = read_spherical_model_header(fmodel, line, filename)
+            numheaderrows += linecount
+            # save_modeldata writes these lines again, thus a kept copy gives each line two times
+            modelmeta["headercommentlines"] += [
+                commentline
+                for commentline in sphericalmeta.pop("headercommentlines")
+                if not is_writer_comment(commentline)
+            ]
+            modelmeta |= sphericalmeta
+            npts_model = modelmeta["npts_model"]
             if not printwarningsonly:
-                print(f"  Detected 2D model file with n_r * n_z = {ncoordgridr} x {ncoordgridz} = {npts_model} cells")
+                gridshape = " x ".join(
+                    str(modelmeta[key])
+                    for key in ("ncoordgridr", "ncoordgridtheta", "ncoordgridphi")
+                    if key in modelmeta
+                )
+                print(f"  Detected {modelmeta['coordinates']} model file with {gridshape} = {npts_model} cells")
+            line = fmodel.readline()
         else:
-            npts_model = cellcounts[0]
-
-        modelmeta["npts_model"] = npts_model
-        line, linecount = read_noncomment_line(fmodel, modelmeta["headercommentlines"])
-        numheaderrows += linecount
-        try:
-            modelmeta["t_model_init_days"] = float(line.split("#", 1)[0])
-        except ValueError:
-            msg = f"In {filename}, the line after the cell count must give the time of the model in days, not {line!r}"
-            raise ValueError(msg) from None
-        t_model_init_seconds = modelmeta["t_model_init_days"] * day_to_s
-
-        line = fmodel.readline()
-        # if the next line is a single float then the model is 2D or 3D (vmax)
-        try:
-            modelmeta["vmax_cmps"] = float(line.split("#", 1)[0])
-        except ValueError:
-            assert modelmeta.get("dimensions", -1) != 2, "2D model should have a vmax line here"
-            if "dimensions" not in modelmeta:
-                if not printwarningsonly:
-                    print(f"  Detected 1D model file with {npts_model} radial zones")
-                modelmeta["dimensions"] = 1
-        else:
-            xmax_tmodel = modelmeta["vmax_cmps"] * t_model_init_seconds  # xmax = ymax = zmax
-            numheaderrows += 1
-            if "dimensions" not in modelmeta:  # not already detected as 2D
-                modelmeta["dimensions"] = 3
-                # number of grid cell steps along an axis (currently the same for xyz)
-                ncoordgridx = ncoordgridy = ncoordgridz = round(npts_model ** (1.0 / 3.0))
-                assert (ncoordgridx * ncoordgridy * ncoordgridz) == npts_model
-                modelmeta["ncoordgridx"] = ncoordgridx
-                modelmeta["ncoordgridy"] = ncoordgridy
+            cellcounts = parse_npts_line(line, filename)
+            if len(cellcounts) == 2:
+                modelmeta["dimensions"] = 2
+                ncoordgridr, ncoordgridz = cellcounts
+                modelmeta["ncoordgridrcyl"] = ncoordgridr
                 modelmeta["ncoordgridz"] = ncoordgridz
-                modelmeta["ncoordgrid"] = ncoordgridx
-
+                npts_model = ncoordgridr * ncoordgridz
                 if not printwarningsonly:
                     print(
-                        f"  Detected 3D model file with {ncoordgridx} x {ncoordgridy} x {ncoordgridz}"
-                        f" = {npts_model} cells"
+                        f"  Detected 2D model file with n_r * n_z = {ncoordgridr} x {ncoordgridz} = {npts_model} cells"
                     )
+            else:
+                npts_model = cellcounts[0]
+
+            modelmeta["npts_model"] = npts_model
+            line, linecount = read_noncomment_line(fmodel, modelmeta["headercommentlines"])
+            numheaderrows += linecount
+            try:
+                modelmeta["t_model_init_days"] = float(line.split("#", 1)[0])
+            except ValueError:
+                msg = (
+                    f"In {filename}, the line after the cell count must give the time of the model in days,"
+                    f" not {line!r}"
+                )
+                raise ValueError(msg) from None
 
             line = fmodel.readline()
+            # if the next line is a single float then the model is 2D or 3D (vmax)
+            try:
+                modelmeta["vmax_cmps"] = float(line.split("#", 1)[0])
+            except ValueError:
+                assert modelmeta.get("dimensions", -1) != 2, "2D model should have a vmax line here"
+                if "dimensions" not in modelmeta:
+                    if not printwarningsonly:
+                        print(f"  Detected 1D model file with {npts_model} radial zones")
+                    modelmeta["dimensions"] = 1
+            else:
+                # xmax = ymax = zmax
+                xmax_tmodel = modelmeta["vmax_cmps"] * (modelmeta["t_model_init_days"] * day_to_s)
+                numheaderrows += 1
+                if "dimensions" not in modelmeta:  # not already detected as 2D
+                    modelmeta["dimensions"] = 3
+                    # number of grid cell steps along an axis (currently the same for xyz)
+                    ncoordgridx = ncoordgridy = ncoordgridz = round(npts_model ** (1.0 / 3.0))
+                    assert (ncoordgridx * ncoordgridy * ncoordgridz) == npts_model
+                    modelmeta["ncoordgridx"] = ncoordgridx
+                    modelmeta["ncoordgridy"] = ncoordgridy
+                    modelmeta["ncoordgridz"] = ncoordgridz
+                    modelmeta["ncoordgrid"] = ncoordgridx
 
-        columns = None
-        if line.startswith("#"):
-            numheaderrows += 1
-            columns = line.lstrip("#").split()
-            line = fmodel.readline()
+                    if not printwarningsonly:
+                        print(
+                            f"  Detected 3D model file with {ncoordgridx} x {ncoordgridy} x {ncoordgridz}"
+                            f" = {npts_model} cells"
+                        )
+
+                line = fmodel.readline()
+
+            if line.startswith("#"):
+                numheaderrows += 1
+                columns = line.lstrip("#").split()
+                line = fmodel.readline()
 
         data_line_even = line
         ncols_line_even = len(data_line_even.split())
@@ -199,8 +229,20 @@ def scan_modelfile_text(
         msg = f"{filename}: found only 0 cells instead of {npts_model} expected."
         raise ValueError(msg)
 
+    modelmeta["coordinates"] = get_model_coordinates(modelmeta)
+    t_model_init_seconds = modelmeta["t_model_init_days"] * day_to_s
+    if hassphericaledges and ncols_line_even != len(columns or []):
+        msg = (
+            f"{filename}: the first cell line holds {ncols_line_even} values, but the column line names"
+            f" {len(columns or [])} columns. A cell of a {modelmeta['coordinates']} model has one line"
+        )
+        raise ValueError(msg)
+    # the header of a model with spherical edges gives no cell count, thus one row more than the edges give must
+    # show as an error and not go out of the read
+    maxrowcount = npts_model + 1 if hassphericaledges else npts_model
+
     if columns is None:
-        columns = get_standard_columns(modelmeta["dimensions"], includenico57=True, pos_unknown=True)
+        columns = get_standard_columns(modelmeta["coordinates"], includenico57=True, pos_unknown=True)
         # last two abundances are optional
         assert columns is not None
         if ncols_line_even == ncols_line_odd and (ncols_line_even + ncols_line_odd) > len(columns):
@@ -229,7 +271,7 @@ def scan_modelfile_text(
             polars_source(filename),
             separator=" ",
             new_columns=columns,
-            n_rows=npts_model,
+            n_rows=maxrowcount,
             has_header=False,
             skip_rows=numheaderrows,
             schema={col: pl.Int32 if col == "inputcellid" else pl.Float32 for col in columns},
@@ -277,7 +319,7 @@ def scan_modelfile_text(
                 raise ValueError(msg)
             dfmodel = pl.concat([dfmodel, dfmodeloddlines], how="horizontal")
 
-        dfmodel = dfmodel.head(npts_model).with_columns(pl.exclude("inputcellid").cast(pl.Float32)).lazy()
+        dfmodel = dfmodel.head(maxrowcount).with_columns(pl.exclude("inputcellid").cast(pl.Float32)).lazy()
 
     # an old model.txt names the electron fraction cellYe, and Ye is the name everywhere after this point
     dfmodel = dfmodel.sort("inputcellid").rename({"velocity_outer": "vel_r_max_kmps", "cellYe": "Ye"}, strict=False)
@@ -294,6 +336,11 @@ def scan_modelfile_text(
         .collect()
         .row(0)
     )
+    if cellcount > npts_model:
+        msg = (
+            f"{filename}: found more than {npts_model} cells, but the cell edges of the header give {npts_model} cells"
+        )
+        raise ValueError(msg)
     if cellcount != npts_model:
         msg = f"{filename}: found only {cellcount} cells instead of {npts_model} expected."
         raise ValueError(msg)
@@ -301,7 +348,11 @@ def scan_modelfile_text(
         msg = f"{filename}: the inputcellid values must start at 0 or 1 and increase by one from each cell to the next"
         raise ValueError(msg)
 
-    if modelmeta["dimensions"] == 1:
+    if hassphericaledges:
+        # the file gives no position of a cell, thus the index of a cell in the grid of the edges comes from its id
+        modelmeta["firstinputcellid"] = firstinputcellid
+
+    elif modelmeta["dimensions"] == 1:
         vmax_kmps = dfmodel.select(pl.col("vel_r_max_kmps").max()).collect().item()
         assert isinstance(vmax_kmps, float)
         modelmeta["vmax_cmps"] = vmax_kmps * km_to_cm
@@ -471,7 +522,8 @@ def scan_modelfile_text(
 # which is model.txt and abundances.txt. Increase it for a change that makes an older cache file
 # incorrect, e.g. a new column or a different data type in either one. Version 2 checks the cell count and the
 # cell ids of model.txt, and it puts the second line of a cell beside the first line in the order of the file.
-CACHEVERSION = 2
+# Version 3 gives the key coordinates in the metadata of each model.
+CACHEVERSION = 3
 
 
 def scan_parquet_cache(
@@ -878,6 +930,83 @@ LOGRHO_FROM_RHO = pl.when(pl.col("rho") > 0).then(pl.max_horizontal(-99, pl.col(
 RHO_FROM_LOGRHO = pl.when(pl.col("logrho") > -98).then(10 ** pl.col("logrho")).otherwise(0.0)
 
 
+def get_spherical_cell_indices(
+    colnames: Sequence[str], modelmeta: dict[str, t.Any]
+) -> tuple[pl.Expr, pl.Expr, pl.Expr]:
+    """Return the radial, polar, and azimuthal index of each cell of a spherical2d or spherical3d model.
+
+    The radial index changes fastest: the index of a cell is i_r + n_r * (i_theta + n_theta * i_phi). The cell
+    index is modelgridindex if colnames holds it. If not, it is inputcellid minus the id of the first cell of
+    the file. Thus the rows can be a selection of the cells in each order. The azimuthal index of a spherical2d
+    model is 0.
+    """
+    ncoordgridr = len(modelmeta["vel_r_edges_kmps"]) - 1
+    ncoordgridtheta = len(modelmeta["theta_edges_rad"]) - 1
+    cellindex = (
+        pl.col("modelgridindex")
+        if "modelgridindex" in colnames
+        else pl.col("inputcellid") - modelmeta.get("firstinputcellid", 1)
+    ).cast(pl.Int64)
+    return (
+        cellindex % ncoordgridr,
+        (cellindex // ncoordgridr) % ncoordgridtheta,
+        cellindex // (ncoordgridr * ncoordgridtheta),
+    )
+
+
+def add_spherical_derived_cols(dfmodel: pl.LazyFrame, modelmeta: dict[str, t.Any]) -> pl.LazyFrame:
+    """Add the bounds, the mid-point, the volume, and the kinetic energy of each cell of a spherical grid.
+
+    The cell edges of the metadata give each value, because model.txt has no position column for the coordinates
+    spherical2d and spherical3d. The mid-point of a cell is the mean of its edges in r, theta, and phi. A
+    spherical2d cell is a ring around the z axis, and its mid-point is in the plane of rcyl and z.
+    """
+    t_model_init_seconds = modelmeta["t_model_init_days"] * day_to_s
+    i_r, i_theta, i_phi = get_spherical_cell_indices(dfmodel.collect_schema().names(), modelmeta)
+
+    def edge_at(key: str, index: pl.Expr, scale: float = 1.0) -> pl.Expr:
+        return pl.lit(pl.Series(modelmeta[key], dtype=pl.Float64) * scale).gather(index)
+
+    pos_scale = km_to_cm * t_model_init_seconds
+    dfmodel = dfmodel.with_columns(
+        pos_r_min=edge_at("vel_r_edges_kmps", i_r, pos_scale),
+        pos_r_max=edge_at("vel_r_edges_kmps", i_r + 1, pos_scale),
+        theta_min_rad=edge_at("theta_edges_rad", i_theta),
+        theta_max_rad=edge_at("theta_edges_rad", i_theta + 1),
+    ).with_columns(pos_r_mid=(pl.col("pos_r_min") + pl.col("pos_r_max")) / 2.0)
+
+    theta_mid = (pl.col("theta_min_rad") + pl.col("theta_max_rad")) / 2.0
+    midpointcols = {
+        "pos_rcyl_mid": pl.col("pos_r_mid") * theta_mid.sin(),
+        "pos_z_mid": pl.col("pos_r_mid") * theta_mid.cos(),
+    }
+    azimuthal_width: pl.Expr | float = 2.0 * math.pi
+    if "phi_edges_rad" in modelmeta:
+        dfmodel = dfmodel.with_columns(
+            phi_min_rad=edge_at("phi_edges_rad", i_phi), phi_max_rad=edge_at("phi_edges_rad", i_phi + 1)
+        )
+        phi_mid = (pl.col("phi_min_rad") + pl.col("phi_max_rad")) / 2.0
+        midpointcols |= {
+            "pos_x_mid": midpointcols["pos_rcyl_mid"] * phi_mid.cos(),
+            "pos_y_mid": midpointcols["pos_rcyl_mid"] * phi_mid.sin(),
+        }
+        azimuthal_width = pl.col("phi_max_rad") - pl.col("phi_min_rad")
+
+    solid_angle = (pl.col("theta_min_rad").cos() - pl.col("theta_max_rad").cos()) * azimuthal_width
+    return dfmodel.with_columns(
+        **midpointcols,
+        volume=(pl.col("pos_r_max").pow(3) - pl.col("pos_r_min").pow(3)) / 3.0 * solid_angle,
+        # 1/2 rho v^2 with v = r / t, integrated over the cell
+        kinetic_en_erg_r=(
+            pl.col("rho")
+            * t_model_init_seconds**-2
+            * (pl.col("pos_r_max").pow(5) - pl.col("pos_r_min").pow(5))
+            / 10.0
+            * solid_angle
+        ),
+    )
+
+
 def add_derived_cols_to_modeldata(dfmodel: pl.DataFrame | pl.LazyFrame, modelmeta: dict[str, t.Any]) -> pl.LazyFrame:
     """Add each column that follows from the columns of the model file, e.g. the volume and the mass of each cell.
 
@@ -890,7 +1019,7 @@ def add_derived_cols_to_modeldata(dfmodel: pl.DataFrame | pl.LazyFrame, modelmet
     original_cols = dfmodel.collect_schema().names()
 
     t_model_init_seconds = modelmeta["t_model_init_days"] * day_to_s
-    dimensions = modelmeta["dimensions"]
+    coordinates = get_model_coordinates(modelmeta)
 
     # rho is the source of logrho, because a caller changes the density as rho. A 1D model file gives logrho only,
     # thus a dataframe without rho gets it from logrho first
@@ -899,8 +1028,8 @@ def add_derived_cols_to_modeldata(dfmodel: pl.DataFrame | pl.LazyFrame, modelmet
     dfmodel = dfmodel.with_columns(logrho=LOGRHO_FROM_RHO)
 
     axes: list[str] = []
-    match dimensions:
-        case 1:
+    match coordinates:
+        case "spherical1d":
             axes = ["r"]
 
             dfmodel = (
@@ -931,7 +1060,7 @@ def add_derived_cols_to_modeldata(dfmodel: pl.DataFrame | pl.LazyFrame, modelmet
                 )
             )
 
-        case 2:
+        case "cylindrical2d":
             axes = ["rcyl", "z"]
 
             assert t_model_init_seconds is not None
@@ -978,7 +1107,7 @@ def add_derived_cols_to_modeldata(dfmodel: pl.DataFrame | pl.LazyFrame, modelmet
                 ),
             )
 
-        case 3:
+        case "cartesian3d":
             axes = ["x", "y", "z"]
             for ax in axes:
                 if f"wid_init_{ax}" not in modelmeta:
@@ -1027,13 +1156,18 @@ def add_derived_cols_to_modeldata(dfmodel: pl.DataFrame | pl.LazyFrame, modelmet
                 for ax1, ax2, ax3 in (("x", "y", "z"), ("y", "z", "x"), ("z", "x", "y"))
             )
 
+        case "spherical2d" | "spherical3d":
+            # homologous expansion has only a radial velocity, thus the radial component is the full kinetic energy
+            axes = ["r"]
+            dfmodel = add_spherical_derived_cols(dfmodel, modelmeta)
+
         case _:
-            msg = f"Unhandled model dimensions: {dimensions}"
+            msg = f"Unhandled model coordinates: {coordinates}"
             raise ValueError(msg)
 
-    # get total kinetic energy from orthogonal components. Every coordinate system also gets a radial component, which
-    # would double-count the orthogonal ones, so only use "r" for 1D models where it is the sole axis
-    orthogonal_axes = ["r"] if dimensions == 1 else [ax for ax in axes if ax != "r"]
+    # get total kinetic energy from orthogonal components. A cylindrical model and a Cartesian model also get a
+    # radial position, which is not a component, thus "r" counts only where it is the sole axis
+    orthogonal_axes = [ax for ax in axes if ax != "r"] or ["r"]
     dfmodel = dfmodel.with_columns(
         kinetic_en_erg=(pl.sum_horizontal(pl.col(f"kinetic_en_erg_{ax}") for ax in orthogonal_axes))
     )
@@ -1049,22 +1183,28 @@ def add_derived_cols_to_modeldata(dfmodel: pl.DataFrame | pl.LazyFrame, modelmet
     )
 
 
-def get_standard_columns(dimensions: int, includenico57: bool = False, pos_unknown: bool = False) -> list[str]:
-    """Get standard (artis classic) columns for modeldata DataFrame."""
+def get_standard_columns(coordinates: str, includenico57: bool = False, pos_unknown: bool = False) -> list[str]:
+    """Return the standard columns of model.txt for a coordinate system, e.g. cartesian3d.
+
+    A model with spherical2d or spherical3d coordinates has no position column, because the header gives the
+    edges of the cells.
+    """
     cols: list[str] = []
-    match dimensions:
-        case 1:
+    match coordinates:
+        case "spherical1d":
             cols = ["inputcellid", "vel_r_max_kmps", "logrho"]
-        case 2:
+        case "cylindrical2d":
             cols = ["inputcellid", "pos_rcyl_mid", "pos_z_mid", "rho"]
-        case 3:
+        case "cartesian3d":
             cols = (
                 ["inputcellid", "inputpos_a", "inputpos_b", "inputpos_c", "rho"]
                 if pos_unknown
                 else ["inputcellid", "pos_x_min", "pos_y_min", "pos_z_min", "rho"]
             )
+        case "spherical2d" | "spherical3d":
+            cols = ["inputcellid", "rho"]
         case _:
-            msg = f"Unhandled model dimensions: {dimensions}"
+            msg = f"Unhandled model coordinates: {coordinates}"
             raise ValueError(msg)
 
     cols += ["X_Fegroup", "X_Ni56", "X_Co56", "X_Fe52", "X_Cr48"]
@@ -1119,6 +1259,75 @@ def prepare_zstd_output(filepath: Path) -> Path:
     return zstdpath
 
 
+def get_spherical_headerlines(inputcellids: pl.Series, modelmeta: dict[str, t.Any]) -> list[tuple[str, str]]:
+    """Return the key lines of a spherical2d or spherical3d model.txt, each as the key with its values and a comment.
+
+    The function checks the cell edges of the metadata and the sorted cell ids against them. It sets the cell
+    counts, vmax_cmps, and firstinputcellid of the metadata. The edges have 17 significant digits, thus a reader
+    gets each float again.
+    """
+    coordinates = modelmeta["coordinates"]
+    missingkeys = [
+        key
+        for key in ("vel_r_edges_kmps", "theta_edges_rad", *(["phi_edges_rad"] if coordinates == "spherical3d" else []))
+        if modelmeta.get(key) is None
+    ]
+    if missingkeys:
+        msg = f"A {coordinates} model needs the cell edges {', '.join(missingkeys)} in the metadata"
+        raise ValueError(msg)
+    if coordinates == "spherical2d" and modelmeta.get("phi_edges_rad") is not None:
+        msg = "A spherical2d model takes no phi_edges_rad. Give the coordinates spherical3d, or remove the key"
+        raise ValueError(msg)
+
+    vel_r_edges_kmps, theta_edges_rad, phi_edges_rad = validate_spherical_edges(
+        modelmeta["vel_r_edges_kmps"], modelmeta["theta_edges_rad"], modelmeta.get("phi_edges_rad"), "save_modeldata"
+    )
+    vmax_cmps = vel_r_edges_kmps[-1] * km_to_cm
+    if modelmeta.get("vmax_cmps") is not None and not math.isclose(modelmeta["vmax_cmps"], vmax_cmps, rel_tol=1e-6):
+        msg = (
+            f"vmax_cmps = {modelmeta['vmax_cmps']:.8e} cm/s does not agree with the last value of vel_r_edges_kmps,"
+            f" {vel_r_edges_kmps[-1]!r} km/s"
+        )
+        raise ValueError(msg)
+
+    edgelists = {"vel_r_edges_kmps": vel_r_edges_kmps, "theta_edges_rad": theta_edges_rad}
+    cellcounts = {"ncoordgridr": len(vel_r_edges_kmps) - 1, "ncoordgridtheta": len(theta_edges_rad) - 1}
+    if phi_edges_rad is not None:
+        edgelists["phi_edges_rad"] = phi_edges_rad
+        cellcounts["ncoordgridphi"] = len(phi_edges_rad) - 1
+    gridshape = " x ".join(str(count) for count in cellcounts.values())
+    npts_model = math.prod(cellcounts.values())
+    print(f" {coordinates} grid size: {inputcellids.len()} ({gridshape})")
+
+    firstinputcellid = inputcellids.item(0) if inputcellids.len() else 1
+    if (
+        inputcellids.len() != npts_model
+        or firstinputcellid not in {0, 1}
+        or not (inputcellids == firstinputcellid + pl.int_range(npts_model, eager=True)).all()
+    ):
+        msg = (
+            f"The cell edges give {gridshape} = {npts_model} cells, but the model has {inputcellids.len()} cells."
+            " The inputcellid values must start at 0 or 1 and increase by one from each cell to the next, with the"
+            " radial index of a cell as the fastest index"
+        )
+        raise ValueError(msg)
+
+    modelmeta |= edgelists | cellcounts | {"vmax_cmps": vmax_cmps, "firstinputcellid": firstinputcellid}
+    edgecomments = {
+        "vel_r_edges_kmps": "radial velocities of the shell edges [km/s]",
+        "theta_edges_rad": "polar angles of the cell edges from the +z axis [rad]",
+        "phi_edges_rad": "azimuthal angles of the cell edges, phi = atan2(y, x) [rad]",
+    }
+    return [
+        (f"coordinates {coordinates}", f"cell order: radial index fastest, {gridshape} cells"),
+        (f"t_model_init_days {modelmeta['t_model_init_days']}", "time of the snapshot [day]"),
+        *[
+            (f"{key} {' '.join(f'{edge:.17g}' for edge in edges)}", edgecomments[key])
+            for key, edges in edgelists.items()
+        ],
+    ]
+
+
 def save_modeldata(
     dfmodel: pl.LazyFrame | pl.DataFrame,
     outpath: Path | str | None = None,
@@ -1136,16 +1345,30 @@ def save_modeldata(
     dfmodel must contain columns inputcellid, vel_r_max_kmps, logrho, X_Fegroup, X_Ni56, X_Co56, X_Fe52, X_Cr48
     modelmeta is not required
 
-    2D
+    2D cylindrical
     -------
     dfmodel must contain columns inputcellid, pos_rcyl_mid, pos_z_mid, rho, X_Fegroup, X_Ni56, X_Co56, X_Fe52, X_Cr48
     modelmeta must define: vmax_cmps, ncoordgridrcyl and ncoordgridz
 
-    3D
+    3D Cartesian
     -------
     dfmodel must contain columns inputcellid, pos_x_min, pos_y_min, pos_z_min, rho, X_Fegroup, X_Ni56, X_Co56,
     X_Fe52, X_Cr48
     modelmeta must define: vmax_cmps
+
+    2D spherical and 3D spherical
+    -------
+    dfmodel must contain columns inputcellid, rho, X_Fegroup, X_Ni56, X_Co56, X_Fe52, X_Cr48
+    modelmeta must define: coordinates (spherical2d or spherical3d), vel_r_edges_kmps, theta_edges_rad, and for
+    spherical3d also phi_edges_rad
+
+    These two coordinate systems have a different file format. The header gives a key on each line, in this
+    order: coordinates, t_model_init_days, vel_r_edges_kmps, theta_edges_rad, and phi_edges_rad (spherical3d
+    only). Each list of edges has one value more than the count of the cells on that axis. It starts at 0 and
+    increases. The last polar angle is pi, and the last azimuthal angle is 2 pi. The polar angle theta is from
+    the +z axis, and the azimuthal angle is phi = atan2(y, x). The cells have no position column. The index of a
+    cell is i_r + n_r * (i_theta + n_theta * i_phi), thus the radial index changes fastest. The mass fractions
+    of abundances.txt must be true mass fractions, because sn3d does not normalise them for these coordinates.
 
     model.txt holds these comments:
 
@@ -1180,20 +1403,24 @@ def save_modeldata(
     headercommentlines = modelmeta.get("headercommentlines")
     vmax = modelmeta.get("vmax_cmps")
 
-    if modelmeta.get("dimensions") is None:
+    # the columns give the dimensions of an older coordinate system. The columns of a spherical2d model and a
+    # spherical3d model give no geometry, thus the caller names those coordinates
+    if modelmeta.get("dimensions") is None and modelmeta.get("coordinates") is None:
         modelmeta["dimensions"] = get_dfmodel_dimensions(dfmodel)
 
-    if modelmeta["dimensions"] not in {1, 2, 3}:
+    if modelmeta.get("dimensions") not in {None, 1, 2, 3}:
         msg = f"dimensions must be 1, 2, or 3, not {modelmeta['dimensions']}"
         raise ValueError(msg)
+
+    coordinates = get_model_coordinates(modelmeta)
+    modelmeta["coordinates"] = coordinates
+    modelmeta["dimensions"] = int(coordinates[-2])
 
     colnames = dfmodel.collect_schema().names()
 
     # the Ni57 and Co57 columns are optional, but their position counts. They must come before
     # every other custom column
-    standardcols = get_standard_columns(
-        modelmeta["dimensions"], includenico57=("X_Ni57" in colnames or "X_Co57" in colnames)
-    )
+    standardcols = get_standard_columns(coordinates, includenico57=("X_Ni57" in colnames or "X_Co57" in colnames))
     writtencustomcols = {"Ye", "q", "tracercount", *extracols}
     customcols = sorted(
         (col for col in colnames if col not in standardcols and (col.startswith("X_") or col in writtencustomcols)),
@@ -1218,34 +1445,44 @@ def save_modeldata(
 
     timestart = time.perf_counter()
     tmodelline = (str(modelmeta["t_model_init_days"]), "t_model_init_days: time of the snapshot [day]")
-    if modelmeta["dimensions"] == 1:
-        print(f" 1D grid radial bins: {dfmodel_npts_model}")
-        strunits = "vel_r_max_kmps [km/s], logrho = log10(rho [g/cm^3]) at t_model_init_days"
-        headerlines = [(str(dfmodel_npts_model), "npts_model: number of radial cells"), tmodelline]
+    match coordinates:
+        case "spherical1d":
+            print(f" 1D grid radial bins: {dfmodel_npts_model}")
+            strunits = "vel_r_max_kmps [km/s], logrho = log10(rho [g/cm^3]) at t_model_init_days"
+            headerlines = [(str(dfmodel_npts_model), "npts_model: number of radial cells"), tmodelline]
 
-    elif modelmeta["dimensions"] == 2:
-        print(f" 2D grid size: {dfmodel_npts_model} ({modelmeta['ncoordgridrcyl']} x {modelmeta['ncoordgridz']})")
-        assert modelmeta["ncoordgridrcyl"] * modelmeta["ncoordgridz"] == dfmodel_npts_model
-        strunits = "pos_rcyl_mid and pos_z_mid [cm], rho [g/cm^3], all at t_model_init_days"
-        headerlines = [
-            (
-                f"{modelmeta['ncoordgridrcyl']} {modelmeta['ncoordgridz']}",
-                "ncoordgridrcyl ncoordgridz: number of cells along the cylindrical radius and along the z axis",
-            ),
-            tmodelline,
-            (f"{vmax:.8e}", "vmax_cmps: maximum velocity along the radius and the z axis [cm/s]"),
-        ]
+        case "cylindrical2d":
+            print(f" 2D grid size: {dfmodel_npts_model} ({modelmeta['ncoordgridrcyl']} x {modelmeta['ncoordgridz']})")
+            assert modelmeta["ncoordgridrcyl"] * modelmeta["ncoordgridz"] == dfmodel_npts_model
+            strunits = "pos_rcyl_mid and pos_z_mid [cm], rho [g/cm^3], all at t_model_init_days"
+            headerlines = [
+                (
+                    f"{modelmeta['ncoordgridrcyl']} {modelmeta['ncoordgridz']}",
+                    "ncoordgridrcyl ncoordgridz: number of cells along the cylindrical radius and along the z axis",
+                ),
+                tmodelline,
+                (f"{vmax:.8e}", "vmax_cmps: maximum velocity along the radius and the z axis [cm/s]"),
+            ]
 
-    else:
-        griddimension = round(dfmodel_npts_model ** (1.0 / 3.0))
-        print(f" 3D grid size: {dfmodel_npts_model} ({griddimension}^3)")
-        assert griddimension**3 == dfmodel_npts_model
-        strunits = "pos_x_min, pos_y_min, and pos_z_min [cm], rho [g/cm^3], all at t_model_init_days"
-        headerlines = [
-            (str(dfmodel_npts_model), f"npts_model: number of cells ({griddimension}^3 Cartesian grid)"),
-            tmodelline,
-            (f"{vmax:.8e}", "vmax_cmps: maximum velocity along each axis [cm/s]"),
-        ]
+        case "cartesian3d":
+            griddimension = round(dfmodel_npts_model ** (1.0 / 3.0))
+            print(f" 3D grid size: {dfmodel_npts_model} ({griddimension}^3)")
+            assert griddimension**3 == dfmodel_npts_model
+            strunits = "pos_x_min, pos_y_min, and pos_z_min [cm], rho [g/cm^3], all at t_model_init_days"
+            headerlines = [
+                (str(dfmodel_npts_model), f"npts_model: number of cells ({griddimension}^3 Cartesian grid)"),
+                tmodelline,
+                (f"{vmax:.8e}", "vmax_cmps: maximum velocity along each axis [cm/s]"),
+            ]
+
+        case "spherical2d" | "spherical3d":
+            dfmodel = dfmodel.sort("inputcellid")
+            strunits = "rho [g/cm^3] at t_model_init_days"
+            headerlines = get_spherical_headerlines(dfmodel["inputcellid"], modelmeta)
+
+        case _:
+            msg = f"Unhandled model coordinates: {coordinates}"
+            raise ValueError(msg)
 
     modelfilepath = prepare_zstd_output(resolve_outputfile(outpath, "model.txt"))
 
@@ -1508,7 +1745,11 @@ def dimension_reduce_model(
     modelmeta: dict[str, t.Any],
     **kwargs: t.Any,
 ) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame, dict[str, t.Any]]:
-    """Convert a 3D Cartesian grid model to a 1D spherical model or a 2D cylindrical model.
+    """Convert a model to fewer dimensions: to a 2D model, a 1D spherical model, or a model with one zone.
+
+    A 3D Cartesian model gives a 2D cylindrical model. Each cell goes to the output cell that holds its mid-point.
+    A model with spherical2d or spherical3d coordinates gives a spherical2d model or a 1D model with the same
+    radial edges. Each output cell is then a sum of complete cells, thus the mass of each output cell is exact.
 
     The function can also change the particle gridcontributions and the table of the elemental abundances to agree
     with the new model.
@@ -1517,7 +1758,11 @@ def dimension_reduce_model(
 
     dfmodel = dfmodel.lazy()
 
-    modelmeta_out = {k: v for k, v in modelmeta.items() if not k.startswith(("ncoord", "wid_init"))}
+    hassphericaledges = get_model_coordinates(modelmeta) in SPHERICAL_EDGE_COORDINATES
+    edgekeys = ("vel_r_edges_kmps", "theta_edges_rad", "phi_edges_rad", "firstinputcellid")
+    modelmeta_out = {
+        k: v for k, v in modelmeta.items() if not k.startswith(("ncoord", "wid_init")) and k not in edgekeys
+    }
 
     assert all(
         key not in modelmeta_out or modelmeta_out[key] == kwargs[key] for key in kwargs
@@ -1532,6 +1777,17 @@ def dimension_reduce_model(
     ndim_in = modelmeta["dimensions"]
     assert ndim_in > outputdimensions
     modelmeta_out["dimensions"] = max(outputdimensions, 1)
+    if outputdimensions < 2:
+        modelmeta_out["coordinates"] = "spherical1d"
+    elif hassphericaledges:
+        modelmeta_out |= {
+            "coordinates": "spherical2d",
+            "vel_r_edges_kmps": modelmeta["vel_r_edges_kmps"],
+            "theta_edges_rad": modelmeta["theta_edges_rad"],
+            "firstinputcellid": 1,
+        }
+    else:
+        modelmeta_out["coordinates"] = "cylindrical2d"
 
     in_ngridpoints = modelmeta.get("npts_model", dfmodel.select(pl.len()).collect().item())
     assert isinstance(in_ngridpoints, int)
@@ -1547,7 +1803,18 @@ def dimension_reduce_model(
         cs.by_name(inputcols) | cs.starts_with("vel_") | cs.by_name("mass_g")
     )
 
-    if outputdimensions == 0:
+    # the second axis of a 2D output is z for cylindrical coordinates and theta for spherical coordinates
+    if hassphericaledges:
+        in_n_r, in_n_theta, _ = get_spherical_cell_indices(inputcols, modelmeta)
+        ncoordgridr = len(modelmeta["vel_r_edges_kmps"]) - 1 if outputdimensions > 0 else 1
+        ncoordgridz = len(modelmeta["theta_edges_rad"]) - 1 if outputdimensions == 2 else 1
+        dfmodel_out = dfmodel_out.with_columns(
+            out_n_r=(in_n_r if outputdimensions > 0 else pl.lit(0)).cast(pl.Int32),
+            out_n_z=(in_n_theta if outputdimensions == 2 else pl.lit(0)).cast(pl.Int32),
+        )
+        if outputdimensions == 1:
+            modelmeta_out["ncoordgridr"] = ncoordgridr
+    elif outputdimensions == 0:
         ncoordgridr = 1
         ncoordgridz = 1
     elif outputdimensions == 1:
@@ -1582,13 +1849,15 @@ def dimension_reduce_model(
     # "r" is the cylindrical radius in 2D, or the spherical radius in 1D
     vel_r_bins = [vmax * n / ncoordgridr for n in range(ncoordgridr + 1)]
 
-    col_vel_r = pl.col("vel_rcyl_mid") if outputdimensions == 2 else pl.col("vel_r_mid")
-    # the bins are closed on the left, because the centre cell of an odd grid has a mid-point velocity of zero.
-    # A bin that is closed on the right puts that cell below the first bin, and the filter then drops its mass
-    dfmodel_out = dfmodel_out.with_columns(get_bin_index_expr(col_vel_r, vel_r_bins).alias("out_n_r"))
+    if not hassphericaledges:
+        col_vel_r = pl.col("vel_rcyl_mid") if outputdimensions == 2 else pl.col("vel_r_mid")
+        # the bins are closed on the left, because the centre cell of an odd grid has a mid-point velocity of zero.
+        # A bin that is closed on the right puts that cell below the first bin, and the filter then drops its mass
+        dfmodel_out = dfmodel_out.with_columns(get_bin_index_expr(col_vel_r, vel_r_bins).alias("out_n_r"))
+        if outputdimensions == 2:
+            dfmodel_out = dfmodel_out.with_columns(get_bin_index_expr(pl.col("vel_z_mid"), vel_z_bins).alias("out_n_z"))
     isinoutputgrid = pl.col("out_n_r").is_between(0, ncoordgridr - 1)
     if outputdimensions == 2:
-        dfmodel_out = dfmodel_out.with_columns(get_bin_index_expr(pl.col("vel_z_mid"), vel_z_bins).alias("out_n_z"))
         isinoutputgrid &= pl.col("out_n_z").is_between(0, ncoordgridz - 1)
     isinoutputgrid = isinoutputgrid.fill_null(value=False)
 
@@ -1664,10 +1933,15 @@ def dimension_reduce_model(
     )
 
     if outputdimensions == 2:
-        dfmodel_out = dfmodel_out.with_columns(
-            pos_rcyl_mid=(pl.col("out_n_r") + 0.5) * (xmax / ncoordgridr),
-            pos_z_mid=(pl.col("out_n_z") + 0.5) * (2 * xmax / ncoordgridz) - xmax,
-        )
+        # a spherical2d model has no position column, because its metadata holds the cell edges
+        if not hassphericaledges:
+            dfmodel_out = dfmodel_out.with_columns(
+                pos_rcyl_mid=(pl.col("out_n_r") + 0.5) * (xmax / ncoordgridr),
+                pos_z_mid=(pl.col("out_n_z") + 0.5) * (2 * xmax / ncoordgridz) - xmax,
+            )
+    elif hassphericaledges and outputdimensions == 1:
+        shell_vel_r_max_kmps = pl.Series(modelmeta["vel_r_edges_kmps"][1:], dtype=pl.Float64)
+        dfmodel_out = dfmodel_out.with_columns(vel_r_max_kmps=pl.lit(shell_vel_r_max_kmps).gather(pl.col("out_n_r")))
     else:
         dfmodel_out = dfmodel_out.with_columns(vel_r_max_kmps=(pl.col("out_n_r") + 1) * (vmax / ncoordgridr) / km_to_cm)
 

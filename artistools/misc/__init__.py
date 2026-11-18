@@ -161,8 +161,10 @@ from artistools.misc.modelinfo import get_artis_option as get_artis_option
 from artistools.misc.modelinfo import get_artis_options as get_artis_options
 from artistools.misc.modelinfo import get_artis_source_text as get_artis_source_text
 from artistools.misc.modelinfo import get_grid_mapping as get_grid_mapping
+from artistools.misc.modelinfo import get_grid_max_radial_velocity_cmps as get_grid_max_radial_velocity_cmps
 from artistools.misc.modelinfo import get_inputfilepath as get_inputfilepath
 from artistools.misc.modelinfo import get_inputparams as get_inputparams
+from artistools.misc.modelinfo import get_model_coordinates as get_model_coordinates
 from artistools.misc.modelinfo import get_model_logname as get_model_logname
 from artistools.misc.modelinfo import get_model_name as get_model_name
 from artistools.misc.modelinfo import get_mpiranklist as get_mpiranklist
@@ -180,7 +182,10 @@ from artistools.misc.modelinfo import parse_npts_line as parse_npts_line
 from artistools.misc.modelinfo import parse_vpkt_input as parse_vpkt_input
 from artistools.misc.modelinfo import print_modelpath as print_modelpath
 from artistools.misc.modelinfo import read_rank_outputfiles as read_rank_outputfiles
+from artistools.misc.modelinfo import read_spherical_model_header as read_spherical_model_header
 from artistools.misc.modelinfo import scan_rankassignments as scan_rankassignments
+from artistools.misc.modelinfo import SPHERICAL_EDGE_COORDINATES as SPHERICAL_EDGE_COORDINATES
+from artistools.misc.modelinfo import validate_spherical_edges as validate_spherical_edges
 from artistools.misc.modelinfo import VpktConfig as VpktConfig
 from artistools.misc.modelpaths import clear_at_reload as clear_at_reload
 from artistools.misc.modelpaths import clear_reload_caches as clear_reload_caches

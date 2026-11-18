@@ -2,6 +2,7 @@
 
 import contextlib
 import dataclasses as dc
+import itertools
 import math
 import re
 import typing as t
@@ -19,6 +20,7 @@ import numpy.typing as npt
 import polars as pl
 
 from artistools.constants import h_ev_s
+from artistools.constants import km_to_cm
 from artistools.misc.console import print_detail
 from artistools.misc.console import print_warning
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
@@ -345,16 +347,213 @@ def parse_npts_line(line: str, modelfilepath: Path | str) -> list[int]:
     """Return the one or two cell counts from the first line of model.txt after the comments.
 
     One number is the cell count. Two numbers are the 2D counts along the cylindrical radius and along
-    the z axis. The line can end with an inline comment, as the lines of input.txt do.
+    the z axis. The line can end with an inline comment, as the lines of input.txt do. A model with spherical2d
+    or spherical3d coordinates has the key coordinates on this line, and read_spherical_model_header reads it.
     """
     cellcounts: list[int] = []
     # a token that is not an integer leaves the list empty, and the error below then names the file
     with contextlib.suppress(ValueError):
         cellcounts = [int(token) for token in line.split("#", 1)[0].split()]
     if len(cellcounts) not in {1, 2}:
-        msg = f"The first line of {modelfilepath} after the comments must hold one or two integers, not {line!r}"
+        msg = (
+            f"The first line of {modelfilepath} after the comments must hold one or two integers, or the key"
+            f" coordinates, not {line!r}"
+        )
         raise ValueError(msg)
     return cellcounts
+
+
+# the coordinate systems of model.txt. The last two have a header of keys and lists of cell edges
+MODEL_COORDINATES = ("spherical1d", "cylindrical2d", "cartesian3d", "spherical2d", "spherical3d")
+SPHERICAL_EDGE_COORDINATES = ("spherical2d", "spherical3d")
+SPHERICAL_HEADER_KEYS = ("coordinates", "t_model_init_days", "vel_r_edges_kmps", "theta_edges_rad", "phi_edges_rad")
+# sn3d accepts the same difference between the last angular edge and pi or 2 pi
+ANGLE_EDGE_ATOL_RAD = 1e-8
+
+
+def get_model_coordinates(modelmeta: "Mapping[str, t.Any]") -> str:
+    """Return the coordinate system of a model, which is one of MODEL_COORDINATES.
+
+    The readers of model.txt set the key coordinates. A caller that makes the metadata gives only the
+    dimensions of an older coordinate system, thus 1, 2, and 3 give spherical1d, cylindrical2d, and cartesian3d.
+    """
+    dimensions = modelmeta.get("dimensions")
+    coordinates = modelmeta.get("coordinates")
+    if coordinates is None:
+        coordinates_of_dimensions = {1: "spherical1d", 2: "cylindrical2d", 3: "cartesian3d"}
+        if dimensions not in coordinates_of_dimensions:
+            msg = f"dimensions must be 1, 2, or 3, not {dimensions}"
+            raise ValueError(msg)
+        return coordinates_of_dimensions[dimensions]
+
+    if coordinates not in MODEL_COORDINATES:
+        msg = f"The coordinates {coordinates!r} are not known. The choices are {', '.join(MODEL_COORDINATES)}"
+        raise ValueError(msg)
+    if dimensions is not None and dimensions != int(coordinates[-2]):
+        msg = f"The coordinates {coordinates} do not agree with dimensions = {dimensions}"
+        raise ValueError(msg)
+    return str(coordinates)
+
+
+def get_grid_max_radial_velocity_cmps(modelmeta: "Mapping[str, t.Any]") -> float:
+    """Return the largest radial velocity of the model grid [cm/s].
+
+    A spherical grid ends at vmax. A corner of a cylindrical grid is at sqrt(2) vmax, and a corner of a
+    Cartesian grid is at sqrt(3) vmax.
+    """
+    cornerfactor = {"cylindrical2d": math.sqrt(2.0), "cartesian3d": math.sqrt(3.0)}
+    return float(modelmeta["vmax_cmps"]) * cornerfactor.get(get_model_coordinates(modelmeta), 1.0)
+
+
+def validate_spherical_edges(
+    vel_r_edges_kmps: Sequence[float],
+    theta_edges_rad: Sequence[float],
+    phi_edges_rad: Sequence[float] | None,
+    source: Path | str,
+) -> tuple[list[float], list[float], list[float] | None]:
+    """Return the cell edges of a spherical2d or spherical3d grid, with the exact pi and 2 pi as the last angles.
+
+    Each list must start at exactly 0 and increase. The last polar angle must be pi and the last azimuthal angle
+    must be 2 pi, to ANGLE_EDGE_ATOL_RAD. phi_edges_rad is None for a spherical2d grid. source is the file or the
+    caller that the error names.
+    """
+    edgelists: dict[str, list[float]] = {
+        "vel_r_edges_kmps": [float(edge) for edge in vel_r_edges_kmps],
+        "theta_edges_rad": [float(edge) for edge in theta_edges_rad],
+    }
+    if phi_edges_rad is not None:
+        edgelists["phi_edges_rad"] = [float(edge) for edge in phi_edges_rad]
+
+    lastangles = {"theta_edges_rad": math.pi, "phi_edges_rad": 2.0 * math.pi}
+    for key, edges in edgelists.items():
+        if len(edges) < 2 or not all(math.isfinite(edge) for edge in edges):
+            msg = f"{source}: {key} must hold two or more finite values"
+            raise ValueError(msg)
+        if edges[0] != 0.0:
+            msg = f"{source}: the first value of {key} must be 0, not {edges[0]!r}"
+            raise ValueError(msg)
+        if key in lastangles:
+            if abs(edges[-1] - lastangles[key]) > ANGLE_EDGE_ATOL_RAD:
+                msg = (
+                    f"{source}: the last value of {key} must be {lastangles[key]!r}"
+                    f" ({'pi' if key == 'theta_edges_rad' else '2 pi'}), not {edges[-1]!r}"
+                )
+                raise ValueError(msg)
+            edges[-1] = lastangles[key]
+        if not all(lower < upper for lower, upper in itertools.pairwise(edges)):
+            msg = f"{source}: the values of {key} must increase from each value to the next"
+            raise ValueError(msg)
+
+    return edgelists["vel_r_edges_kmps"], edgelists["theta_edges_rad"], edgelists.get("phi_edges_rad")
+
+
+def read_spherical_model_header(
+    modelfile: t.IO[str], coordinatesline: str, modelfilepath: Path | str
+) -> tuple[dict[str, t.Any], list[str], int]:
+    """Return the metadata, the column names, and the count of the lines read, for a spherical2d or spherical3d model.
+
+    coordinatesline is the first line of model.txt after the comments, which holds the key coordinates. The
+    function reads to the line of the column names, which starts with #inputcellid. The key headercommentlines of
+    the metadata holds each other comment line that comes before that line.
+    """
+    commentlines: list[str] = []
+    linecount = 0
+
+    def read_header_line() -> str:
+        """Return the next key line or the column line, or an empty string at the end of the file."""
+        nonlocal linecount
+        while True:
+            line = modelfile.readline()
+            linecount += 1
+            stripped = line.strip()
+            if not line or line.startswith("#inputcellid") or (stripped and not stripped.startswith("#")):
+                return line
+            if stripped:
+                commentlines.append(line.lstrip().removeprefix("#").removeprefix(" ").removesuffix("\n"))
+
+    def read_key_values(expectedkey: str, line: str | None = None) -> list[str]:
+        if line is None:
+            line = read_header_line()
+        tokens = line.split("#", 1)[0].split()
+        if not tokens or tokens[0] != expectedkey:
+            msg = (
+                f"{modelfilepath}: expected the key {expectedkey}, not the line {line!r}. The keys of a model with"
+                f" spherical2d or spherical3d coordinates are {', '.join(SPHERICAL_HEADER_KEYS)} (spherical3d only),"
+                " in this order"
+            )
+            raise ValueError(msg)
+        return tokens[1:]
+
+    def read_floats(expectedkey: str) -> list[float]:
+        valuetokens = read_key_values(expectedkey)
+        try:
+            return [float(token) for token in valuetokens]
+        except ValueError:
+            msg = f"{modelfilepath}: each value of the key {expectedkey} must be a number, not {valuetokens!r}"
+            raise ValueError(msg) from None
+
+    coordinatetokens = read_key_values("coordinates", coordinatesline)
+    if len(coordinatetokens) != 1 or coordinatetokens[0] not in SPHERICAL_EDGE_COORDINATES:
+        msg = (
+            f"{modelfilepath}: the key coordinates must have one value. The choices are"
+            f" {' and '.join(SPHERICAL_EDGE_COORDINATES)}, not {' '.join(coordinatetokens)!r}"
+        )
+        raise ValueError(msg)
+    coordinates = coordinatetokens[0]
+
+    timevalues = read_floats("t_model_init_days")
+    if len(timevalues) != 1 or not timevalues[0] > 0.0:
+        msg = f"{modelfilepath}: the key t_model_init_days must have one value above 0, not {timevalues!r}"
+        raise ValueError(msg)
+
+    vel_r_edges_kmps, theta_edges_rad, phi_edges_rad = validate_spherical_edges(
+        read_floats("vel_r_edges_kmps"),
+        read_floats("theta_edges_rad"),
+        read_floats("phi_edges_rad") if coordinates == "spherical3d" else None,
+        modelfilepath,
+    )
+
+    columnline = read_header_line()
+    if not columnline.startswith("#inputcellid"):
+        if columnline.split()[:1] == ["phi_edges_rad"]:
+            msg = f"{modelfilepath}: a spherical2d model takes no phi_edges_rad line"
+            raise ValueError(msg)
+        msg = (
+            f"{modelfilepath}: a line that starts with #inputcellid and gives the column names must follow the"
+            f" keys of a {coordinates} model, not the line {columnline!r}"
+        )
+        raise ValueError(msg)
+
+    columns = columnline.removeprefix("#").split()
+    positioncolumns = [
+        col for col in columns if col.startswith(("pos_", "vel_")) or col in {"logrho", "velocity_outer"}
+    ]
+    if columns[:2] != ["inputcellid", "rho"] or len(set(columns)) != len(columns) or positioncolumns:
+        msg = (
+            f"{modelfilepath}: the first two columns of a {coordinates} model must be inputcellid and rho. Each column"
+            " name must be different, and the cell edges of the header replace each position column. The column line"
+            f" is {columnline!r}"
+        )
+        raise ValueError(msg)
+
+    modelmeta: dict[str, t.Any] = {
+        "headercommentlines": commentlines,
+        "coordinates": coordinates,
+        "dimensions": int(coordinates[-2]),
+        "t_model_init_days": timevalues[0],
+        "vel_r_edges_kmps": vel_r_edges_kmps,
+        "theta_edges_rad": theta_edges_rad,
+        "ncoordgridr": len(vel_r_edges_kmps) - 1,
+        "ncoordgridtheta": len(theta_edges_rad) - 1,
+        "vmax_cmps": vel_r_edges_kmps[-1] * km_to_cm,
+    }
+    npts_model = modelmeta["ncoordgridr"] * modelmeta["ncoordgridtheta"]
+    if phi_edges_rad is not None:
+        modelmeta["phi_edges_rad"] = phi_edges_rad
+        modelmeta["ncoordgridphi"] = len(phi_edges_rad) - 1
+        npts_model *= modelmeta["ncoordgridphi"]
+    modelmeta["npts_model"] = npts_model
+    return modelmeta, columns, linecount
 
 
 @modelpath_cache(maxsize=8)
@@ -365,7 +564,10 @@ def get_npts_model(modelpath: Path) -> int:
         Path(modelpath) if Path(modelpath).is_file() else firstexisting("model.txt", folder=modelpath, tryzipped=True)
     )
     with zopen(modelfilepath) as modelfile:
-        return math.prod(parse_npts_line(readnoncommentline(modelfile), modelfilepath))
+        line = readnoncommentline(modelfile)
+        if line.split()[:1] == ["coordinates"]:
+            return int(read_spherical_model_header(modelfile, line, modelfilepath)[0]["npts_model"])
+        return math.prod(parse_npts_line(line, modelfilepath))
 
 
 def get_inputfilepath(modelpath: Path | str) -> Path:

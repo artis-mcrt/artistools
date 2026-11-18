@@ -73,7 +73,7 @@ def get_empty_3d_model(
         ])
     )
 
-    standardcols = get_standard_columns(3, includenico57=includenico57)
+    standardcols = get_standard_columns("cartesian3d", includenico57=includenico57)
 
     dfmodel = dfmodel.with_columns([
         pl.lit(0.0, dtype=pl.Float32).alias(colname)
@@ -2318,7 +2318,7 @@ def test_save_modeldata_writes_the_extra_columns(
     )
 
     lzdfmodel_written, _ = at.inputmodel.core.scan_modelfile_text(tmp_path / "model.txt.zst")
-    standardcols = at.inputmodel.core.get_standard_columns(1)
+    standardcols = at.inputmodel.core.get_standard_columns("spherical1d")
     assert lzdfmodel_written.collect_schema().names() == [*standardcols, "X_Sr89", *expectedcustomcols]
 
 
