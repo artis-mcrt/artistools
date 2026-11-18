@@ -4169,8 +4169,13 @@ def test_spherical_model_reader_takes_cell_ids_from_zero(tmp_path: Path, capsys:
         ("vel_r_edges_kmps 0 1000 3000", ("vel_r_edges_kmps 0 3000 1000",), "must increase"),
         (
             f"theta_edges_radians 0 1.5 {math.pi!r}",
-            (f"theta_edges_radians 0 1e-10 1.5 {math.pi!r}",),
+            (f"theta_edges_radians 0 1.02e-8 1.5 {math.pi!r}",),
             "two values of theta_edges_radians have the same cosine",
+        ),
+        (
+            f"theta_edges_radians 0 1.5 {math.pi!r}",
+            (f"theta_edges_radians 0 1.5 {1.5 + 1e-10!r} {math.pi!r}",),
+            "each cell of theta_edges_radians must be wider than 1e-08 rad",
         ),
         ("format_version 2", (), "needs the line 'format_version 2' as the first line"),
         ("format_version 2", ("# a comment", "format_version 2"), "must be the first line of the file"),
