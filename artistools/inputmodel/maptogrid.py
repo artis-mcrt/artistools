@@ -72,6 +72,10 @@ def kernelvals2(
     return (wijlow + dwdx * dxx) * hmean31
 
 
+# the default cell counts n_r, n_theta, and n_phi of a spherical grid
+SPHERICAL_GRID_SHAPE_DEFAULT = (25, 16, 32)
+
+
 def get_modified_smoothing_lengths(
     h: npt.NDArray[np.float64], dis: npt.NDArray[np.float64], rmean: float, hmean: float, modifysmoothinglength: str
 ) -> npt.NDArray[np.float64]:
@@ -80,21 +84,19 @@ def get_modified_smoothing_lengths(
     The options give the lengths that the Cartesian map gives. option1, option5, and option6 set the length from the
     width of a Cartesian cell, thus a spherical map stops for them.
     """
-    match modifysmoothinglength:
-        case "False":
-            return h
-        case "option2":
-            return np.maximum(h, 0.25 * dis)
-        case "option3":
-            return np.where(dis > 1.5 * rmean, np.maximum(h, 0.4 * dis), h)
-        case "option4":
-            return np.where(dis > rmean, np.maximum(h, 1.5 * hmean), h)
-        case _:
-            msg = (
-                f"--modifysmoothinglength {modifysmoothinglength} sets the smoothing length from the width of a"
-                " Cartesian cell. For --coordinates spherical, give False, option2, option3, or option4"
-            )
-            raise ValueError(msg)
+    if modifysmoothinglength == "False":
+        return h
+    if modifysmoothinglength == "option2":
+        return np.maximum(h, 0.25 * dis)
+    if modifysmoothinglength == "option3":
+        return np.where(dis > 1.5 * rmean, np.maximum(h, 0.4 * dis), h)
+    if modifysmoothinglength == "option4":
+        return np.where(dis > rmean, np.maximum(h, 1.5 * hmean), h)
+    msg = (
+        f"--modifysmoothinglength {modifysmoothinglength} sets the smoothing length from the width of a Cartesian"
+        " cell. For --coordinates spherical, give False, option2, option3, or option4"
+    )
+    raise ValueError(msg)
 
 
 def get_spherical_grid_edges(
@@ -341,7 +343,7 @@ def maptogrid(
     modifysmoothinglength: str = "option4",
     samplelowercorner: bool = False,
     coordinates: str = "cartesian",
-    sphericalgridshape: tuple[int, int, int] = (25, 16, 32),
+    sphericalgridshape: tuple[int, int, int] = SPHERICAL_GRID_SHAPE_DEFAULT,
 ) -> None:
     """Map an SPH ejecta snapshot to a grid and write grid.dat and gridcontributions.txt.zst.
 
@@ -711,13 +713,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         default=None,
         help="The number of cells on each axis of a Cartesian grid (the grid has ncoordgrid^3 cells, default: 50)",
     )
-    for axis, description, default in (
-        ("r", "radial shells", 25),
-        ("theta", "cells along the polar angle", 16),
-        ("phi", "cells along the azimuthal angle", 32),
+    for (axis, description), default in zip(
+        (("r", "radial shells"), ("theta", "cells along the polar angle"), ("phi", "cells along the azimuthal angle")),
+        SPHERICAL_GRID_SHAPE_DEFAULT,
+        strict=True,
     ):
         parser.add_argument(
-            f"--ngrid{axis}",
+            f"--ngrid-{axis}",
             type=int,
             default=None,
             help=f"The number of {description} of a spherical grid (default: {default})",
@@ -770,16 +772,18 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_force(parser)
 
 
-def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
-    """Map tracer particle trajectories to a Cartesian grid or a spherical grid."""
-    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+def get_spherical_grid_shape(args: argparse.Namespace) -> tuple[int, int, int]:
+    """Return the cell counts n_r, n_theta, and n_phi of a spherical grid from the arguments.
 
-    sphericalcounts = {axis: getattr(args, f"ngrid{axis}") for axis in ("r", "theta", "phi")}
+    The function stops with an error for an argument that does not apply to the coordinates of the map, and for a
+    cell count below 1. A count that the user does not give gets its default value.
+    """
+    gridcounts = (args.ngrid_r, args.ngrid_theta, args.ngrid_phi)
     if args.coordinates == "spherical":
         if args.ncoordgrid is not None or args.sample_cell_lower_corner:
             exit_with_error(
                 "--ncoordgrid and --sample_cell_lower_corner apply to a Cartesian grid only",
-                "For --coordinates spherical, give --ngridr, --ngridtheta, and --ngridphi",
+                "For --coordinates spherical, give --ngrid-r, --ngrid-theta, and --ngrid-phi",
             )
         if args.modifysmoothinglength in {"option1", "option5", "option6"}:
             exit_with_error(
@@ -787,14 +791,26 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 " Cartesian cell",
                 "For --coordinates spherical, give False, option2, option3, or option4",
             )
-    elif any(count is not None for count in sphericalcounts.values()):
+    elif any(count is not None for count in gridcounts):
         exit_with_error(
-            "--ngridr, --ngridtheta, and --ngridphi apply to a spherical grid only",
+            "--ngrid-r, --ngrid-theta, and --ngrid-phi apply to a spherical grid only",
             "Give --coordinates spherical, or give --ncoordgrid for a Cartesian grid",
         )
-    sphericalgridshape = (sphericalcounts["r"] or 25, sphericalcounts["theta"] or 16, sphericalcounts["phi"] or 32)
-    if min(sphericalgridshape) < 1:
-        exit_with_error("--ngridr, --ngridtheta, and --ngridphi must each be 1 or more")
+    # a count of 0 is a value of the user, thus only a count that the user did not give takes its default
+    ngrid_r, ngrid_theta, ngrid_phi = (
+        default if count is None else count
+        for count, default in zip(gridcounts, SPHERICAL_GRID_SHAPE_DEFAULT, strict=True)
+    )
+    if min(ngrid_r, ngrid_theta, ngrid_phi) < 1:
+        exit_with_error("--ngrid-r, --ngrid-theta, and --ngrid-phi must each be 1 or more")
+    return ngrid_r, ngrid_theta, ngrid_phi
+
+
+def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
+    """Map tracer particle trajectories to a Cartesian grid or a spherical grid."""
+    args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+
+    sphericalgridshape = get_spherical_grid_shape(args)
 
     ejectasnapshotpath = Path(args.inputpath, "ejectasnapshot.dat")
     confirm_overwrite([args.outputfile], ("grid.dat", "gridcontributions.txt"), force=args.force)
