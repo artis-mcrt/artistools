@@ -1602,8 +1602,8 @@ def test_a_position_in_a_spherical_grid_gets_the_cell_of_its_radius_and_angles()
         "dimensions": 3,
         "t_model_init_days": 1.0,
         "vel_r_edges_kmps": r_edges_kmps,
-        "theta_edges_rad": theta_edges,
-        "phi_edges_rad": phi_edges,
+        "theta_edges_radians": theta_edges,
+        "phi_edges_radians": phi_edges,
         "vmax_cmps": 9000.0e5,
     }
     t_s = 5.0e4

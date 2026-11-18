@@ -250,7 +250,8 @@ def map_particles_to_spherical_grid(
     dfparticles holds the columns id, x, y, z, h, pmass, mass, and ye of the particles, with the smoothing length
     after the option of --modifysmoothinglength. mass is pmass * rho / rho_rst, which is the mass that the particle
     gives to the density field. gridshape gives the cell counts n_r, n_theta, and n_phi. get_spherical_deposit
-    describes the default method and the method of normalisekernelweights.
+    describes the default method and the method of normalisekernelweights. The cell ids of both files start at 0, as
+    format version 2 of model.txt needs. The files of a Cartesian map have cell ids from 1.
     """
     edges = get_spherical_grid_edges(r_outer, *gridshape)
     volumes = get_spherical_cell_volumes(*edges)
@@ -326,7 +327,8 @@ def map_particles_to_spherical_grid(
     gridcontribpath = save_gridparticlecontributions(
         pl.DataFrame({
             "particleid": dfparticles["id"].to_numpy()[pairparticle],
-            "cellindex": paircell + 1,
+            # the cell ids of a spherical model start at 0, as format version 2 of model.txt needs
+            "cellindex": paircell,
             "frac_of_cellmass": pairmass / cellmass[paircell],
         }),
         Path(outputfolderpath, "gridcontributions.txt"),
@@ -356,7 +358,7 @@ def map_particles_to_spherical_grid(
         fgrid.writelines(
             f"{gridindex:8d} {rho} {ye} {tracercount}\n"
             for gridindex, rho, ye, tracercount in zip(
-                range(1, ncells + 1), cellrho.tolist(), cellye.tolist(), celltracercount.tolist(), strict=True
+                range(ncells), cellrho.tolist(), cellye.tolist(), celltracercount.tolist(), strict=True
             )
         )
 

@@ -37,7 +37,7 @@ from artistools.misc import exit_with_error
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
-from artistools.misc import validate_spherical_edges
+from artistools.misc import validate_model_edges
 from artistools.misc import zopen
 
 
@@ -141,7 +141,7 @@ def get_snapshot_time_geomunits(pathtogriddata: Path | str) -> tuple[float, floa
 
 
 # the keys of the edge lists in the grid.dat of a spherical map. The radial edges are in geometric units
-SPHERICAL_GRIDDAT_EDGE_KEYS = ("r_edges_geomunits", "theta_edges_rad", "phi_edges_rad")
+SPHERICAL_GRIDDAT_EDGE_KEYS = ("r_edges_geomunits", "theta_edges_radians", "phi_edges_radians")
 
 
 def read_spherical_griddat_file(
@@ -150,7 +150,8 @@ def read_spherical_griddat_file(
     """Read the grid.dat of a spherical map, and return the same values as read_griddat_file.
 
     The header gives the key coordinates, the extra time, and the cell edges in r, theta, and phi. The cells have no
-    position column. A radial edge is a velocity in the model, thus a different model time changes only the density.
+    position column, and gridindex starts at 0, as the cell ids of format version 2 of model.txt do. A radial edge is
+    a velocity in the model, thus a different model time changes only the density.
     """
     griddatfilepath = Path(pathtogriddata) / "grid.dat"
     simulation_end_time_geomunits, mergertime_geomunits = get_snapshot_time_geomunits(pathtogriddata)
@@ -177,13 +178,18 @@ def read_spherical_griddat_file(
         (simulation_end_time_geomunits - mergertime_geomunits) + float(headervalues["dtextra_geomunits"][0])
     ) * geometric_time_to_s
     t_mergertime_s = mergertime_geomunits * geometric_time_to_s
-    vel_r_edges_kmps, theta_edges_rad, phi_edges_rad = validate_spherical_edges(
-        [float(edge) * geometric_length_to_km / t_model_sec for edge in headervalues["r_edges_geomunits"]],
-        [float(edge) for edge in headervalues["theta_edges_rad"]],
-        [float(edge) for edge in headervalues["phi_edges_rad"]],
+    edges = validate_model_edges(
+        "spherical3d",
+        {
+            "vel_r_edges_kmps": [
+                float(edge) * geometric_length_to_km / t_model_sec for edge in headervalues["r_edges_geomunits"]
+            ],
+            "theta_edges_radians": [float(edge) for edge in headervalues["theta_edges_radians"]],
+            "phi_edges_radians": [float(edge) for edge in headervalues["phi_edges_radians"]],
+        },
         griddatfilepath,
     )
-    assert phi_edges_rad is not None
+    vel_r_edges_kmps, theta_edges_radians, phi_edges_radians = edges.values()
     vmax = vel_r_edges_kmps[-1] * km_to_cm
 
     griddata = (
@@ -192,7 +198,7 @@ def read_spherical_griddat_file(
         .with_columns(cs.by_name("rho", "Ye", require_all=False).fill_null(0.0))
         .with_columns(pl.col("rho") * geometric_density_to_g_per_cm3)
     )
-    gridshape = (len(vel_r_edges_kmps) - 1, len(theta_edges_rad) - 1, len(phi_edges_rad) - 1)
+    gridshape = (len(vel_r_edges_kmps) - 1, len(theta_edges_radians) - 1, len(phi_edges_radians) - 1)
     if math.prod(gridshape) != griddata.height:
         exit_with_error(
             f"grid.dat holds {griddata.height} cells, but its cell edges give"
@@ -218,9 +224,9 @@ def read_spherical_griddat_file(
         "t_model_init_days": t_model_days,
         "vmax_cmps": vmax,
         "vel_r_edges_kmps": vel_r_edges_kmps,
-        "theta_edges_rad": theta_edges_rad,
-        "phi_edges_rad": phi_edges_rad,
-        "firstinputcellid": 1,
+        "theta_edges_radians": theta_edges_radians,
+        "phi_edges_radians": phi_edges_radians,
+        "firstinputcellid": 0,
         "headercommentlines": [f"gridfolder: {Path(pathtogriddata).resolve().parts[-1]}"],
     }
     griddata = griddata.with_columns(

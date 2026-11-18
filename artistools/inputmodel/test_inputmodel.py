@@ -3955,7 +3955,7 @@ def test_abundance_write_failure_keeps_the_previous_file(tmp_path: Path, extensi
     abundance = pl.DataFrame({"inputcellid": [1], "X_H": [1.0]})
     if failure == "validation":
         abundance = abundance.with_columns(pl.lit(2).alias("inputcellid"))
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError, match="must start at 0 or 1"):
             at.inputmodel.save_initelemabundances(abundance, outpath=output)
     else:
         msg = "Write failed"
@@ -4012,17 +4012,17 @@ def get_random_spherical_model(coordinates: str) -> tuple[pl.DataFrame, dict[str
         "dimensions": int(coordinates[-2]),
         "t_model_init_days": 0.5,
         "vel_r_edges_kmps": [0.0, 2000.0, 4500.0, 9000.0, 30000.0],
-        "theta_edges_rad": [*np.arccos([1.0, 0.4, -0.2]).tolist(), math.pi],
+        "theta_edges_radians": [*np.arccos([1.0, 0.4, -0.2]).tolist(), math.pi],
         "vmax_cmps": 30000.0 * at.constants.km_to_cm,
-        "firstinputcellid": 1,
+        "firstinputcellid": 0,
         "headercommentlines": ["a comment of the user"],
     }
     ncells = 4 * 3
     if coordinates == "spherical3d":
-        modelmeta["phi_edges_rad"] = [0.0, 1.0, 2.5, 4.0, 5.5, 2.0 * math.pi]
+        modelmeta["phi_edges_radians"] = [0.0, 1.0, 2.5, 4.0, 5.5, 2.0 * math.pi]
         ncells *= 5
     dfmodel = pl.DataFrame({
-        "inputcellid": pl.int_range(1, ncells + 1, eager=True, dtype=pl.Int32),
+        "inputcellid": pl.int_range(ncells, eager=True, dtype=pl.Int32),
         "rho": rng.random(ncells) * 1e-12,
         "X_Fegroup": np.ones(ncells),
         "X_Ni56": rng.random(ncells),
@@ -4043,7 +4043,7 @@ def test_spherical_model_round_trip(tmp_path: Path, coordinates: str) -> None:
     each position. An error in the cell order or in an edge shows in the volume and in the mid-points.
     """
     dfmodel, modelmeta = get_random_spherical_model(coordinates)
-    edgekeys = [key for key in ("vel_r_edges_kmps", "theta_edges_rad", "phi_edges_rad") if key in modelmeta]
+    edgekeys = [key for key in ("vel_r_edges_kmps", "theta_edges_radians", "phi_edges_radians") if key in modelmeta]
     edges_written = {key: list(modelmeta[key]) for key in edgekeys}
 
     at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta=modelmeta)
@@ -4087,13 +4087,14 @@ def test_spherical_model_round_trip(tmp_path: Path, coordinates: str) -> None:
 
 
 SPHERICAL2D_MODEL_LINES = (
+    "format_version 2",
     "# a comment before the keys",
     "coordinates spherical2d",
     "# a comment between two keys",
     "t_model_init_days 1.0  # an inline comment",
     "vel_r_edges_kmps 0 1000 3000",
-    f"theta_edges_rad 0 1.5 {math.pi!r}",
-    "#inputcellid rho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48",
+    f"theta_edges_radians 0 1.5 {math.pi!r}",
+    "columns inputcellid rho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48",
     "0 1e-12 1 0 0 0 0",
     "1 2e-12 1 0 0 0 0",
     "2 3e-12 1 0 0 0 0",
@@ -4101,7 +4102,7 @@ SPHERICAL2D_MODEL_LINES = (
 )
 
 
-def test_spherical_model_reader_takes_cell_ids_from_zero(tmp_path: Path) -> None:
+def test_spherical_model_reader_takes_cell_ids_from_zero(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """The first cell id of a file sets the index of each cell, also with no modelgridindex column.
 
     The reader also takes a comment line before each key line.
@@ -4111,29 +4112,56 @@ def test_spherical_model_reader_takes_cell_ids_from_zero(tmp_path: Path) -> None
 
     assert modelmeta["firstinputcellid"] == 0
     assert modelmeta["headercommentlines"] == ["a comment before the keys", "a comment between two keys"]
+
+    # the keys can come in any sequence before the key columns, and a key that artistools does not know gets a warning
+    lines = [SPHERICAL2D_MODEL_LINES[0], "key_of_a_later_version 1", *reversed(SPHERICAL2D_MODEL_LINES[1:6])]
+    (tmp_path / "model.txt").write_text("\n".join([*lines, *SPHERICAL2D_MODEL_LINES[6:]]) + "\n", encoding="utf-8")
+    dfreordered, metareordered = at.inputmodel.scan_modeldata(tmp_path)
+    pltest.assert_frame_equal(dfreordered.collect(), lzmodel.collect())
+    assert metareordered["theta_edges_radians"] == modelmeta["theta_edges_radians"]
+    captured = capsys.readouterr()
+    assert "does not know the key key_of_a_later_version" in captured.out + captured.err
+
+    # a cell with no line is empty in format version 2
+    lines = [line for line in SPHERICAL2D_MODEL_LINES if line != "2 3e-12 1 0 0 0 0"]
+    (tmp_path / "model.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    dfwithabsentcell = at.inputmodel.scan_modeldata(tmp_path)[0].collect()
+    assert dfwithabsentcell["inputcellid"].to_list() == [0, 1, 2, 3]
+    assert dfwithabsentcell["rho"].to_list() == pytest.approx([1e-12, 2e-12, 0.0, 4e-12])
+    assert dfwithabsentcell["X_Fegroup"].to_list() == [1.0, 1.0, 0.0, 1.0]
     dfderived = at.inputmodel.add_derived_cols_to_modeldata(lzmodel.drop("modelgridindex"), modelmeta).collect()
     # the radial index changes fastest, thus the cells 0 and 2 are in the inner shell
     assert dfderived["vel_r_max"].to_list() == pytest.approx([1e8, 3e8, 1e8, 3e8])
-    assert dfderived["theta_min_rad"].to_list() == pytest.approx([0.0, 0.0, 1.5, 1.5])
+    assert dfderived["theta_min_radians"].to_list() == pytest.approx([0.0, 0.0, 1.5, 1.5])
 
 
 @pytest.mark.parametrize(
     ("oldline", "newlines", "errortext"),
     [
         ("3 4e-12 1 0 0 0 0", ("3 4e-12 1 0 0 0 0", "4 5e-12 1 0 0 0 0"), "more than 4 cells"),
-        ("3 4e-12 1 0 0 0 0", (), "found only 3 cells"),
+        ("3 4e-12 1 0 0 0 0", ("2 4e-12 1 0 0 0 0",), "each cell can have one line only"),
+        ("3 4e-12 1 0 0 0 0", ("4 4e-12 1 0 0 0 0",), "each inputcellid must be from 0 to 3"),
         (
-            "#inputcellid rho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48",
-            ("phi_edges_rad 0 6.283185307179586", "#inputcellid rho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48"),
-            "takes no phi_edges_rad line",
+            "columns inputcellid rho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48",
+            ("phi_edges_radians 0 6.283185307179586", "columns inputcellid rho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48"),
+            "takes no phi_edges_radians",
         ),
+        ("columns inputcellid rho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48", (), "must end with the key columns"),
+        ("t_model_init_days 1.0  # an inline comment", (), "the header has no key t_model_init_days"),
         ("vel_r_edges_kmps 0 1000 3000", ("vel_r_edges_kmps 0 3000 1000",), "must increase"),
-        (f"theta_edges_rad 0 1.5 {math.pi!r}", ("theta_edges_rad 0 1.5 3.0",), "the last value of theta_edges_rad"),
+        ("format_version 2", (), "needs the line 'format_version 2' as the first line"),
+        ("format_version 2", ("# a comment", "format_version 2"), "must be the first line of the file"),
+        ("format_version 2", ("format_version 3",), "the format version '3' is not known"),
+        (
+            f"theta_edges_radians 0 1.5 {math.pi!r}",
+            ("theta_edges_radians 0 1.5 3.0",),
+            "the last value of theta_edges_radians",
+        ),
         # both edges become exactly pi / 2, as in sn3d, and the cell between them then has no volume
         (
-            f"theta_edges_rad 0 1.5 {math.pi!r}",
-            (f"theta_edges_rad 0 {math.pi / 2 - 4e-9!r} {math.pi / 2 + 4e-9!r} {math.pi!r}",),
-            "theta_edges_rad must increase",
+            f"theta_edges_radians 0 1.5 {math.pi!r}",
+            (f"theta_edges_radians 0 {math.pi / 2 - 4e-9!r} {math.pi / 2 + 4e-9!r} {math.pi!r}",),
+            "theta_edges_radians must increase",
         ),
     ],
 )
@@ -4146,6 +4174,101 @@ def test_spherical_model_reader_stops_for_a_wrong_file(
 
     with pytest.raises(ValueError, match=errortext):
         at.inputmodel.scan_modeldata(tmp_path)
+
+
+@pytest.mark.parametrize("coordinates", ["spherical1d", "cylindrical2d", "cartesian3d"])
+def test_format_version_2_gives_the_cells_of_version_1(coordinates: str, tmp_path: Path) -> None:
+    """A model in format version 2 gives the cells and the metadata of the same model in format version 1.
+
+    A version 2 file has the cell edges in its header and no position column, thus the reader makes the position
+    columns of version 1 from the edges. sn3d makes the grid of a 2D cylindrical or a 3D Cartesian model from vmax,
+    thus that value must be exactly equal in the two versions.
+    """
+    lzmodel, modelmeta = at.inputmodel.scan_modeldata(
+        at.get_path("testdata") / ("test-classicmode_1d" if coordinates == "spherical1d" else "test-classicmode_3d")
+    )
+    dfmodel = lzmodel.collect()
+    if coordinates == "cylindrical2d":
+        dfmodel, _, _, modelmeta = at.inputmodel.dimension_reduce_model(
+            dfmodel, outputdimensions=2, modelmeta=modelmeta
+        )
+
+    cells: dict[int, pl.DataFrame] = {}
+    metas: dict[int, dict[str, t.Any]] = {}
+    for formatversion in (1, 2):
+        folder = tmp_path / f"version{formatversion}"
+        folder.mkdir()
+        # the cell ids of the test model start at 1, and version 2 has cell ids from 0
+        dfcells = at.inputmodel.with_cell_ids_from_zero(dfmodel)[0] if formatversion == 2 else dfmodel
+        at.inputmodel.save_modeldata(dfcells, outpath=folder, modelmeta=modelmeta | {"formatversion": formatversion})
+        lzcells, metas[formatversion] = at.inputmodel.scan_modeldata(folder)
+        cells[formatversion] = lzcells.collect()
+
+    with at.zopen(tmp_path / "version2" / "model.txt.zst") as fmodel:
+        assert fmodel.readline() == "format_version 2\n"
+    assert metas[1]["formatversion"] == 1
+    assert metas[2]["formatversion"] == 2
+    assert metas[2]["coordinates"] == coordinates
+
+    positioncols = [col for col in cells[1].columns if col.startswith(("pos_", "vel_")) or col == "logrho"]
+    assert positioncols
+    othercols = [col for col in cells[1].columns if col not in {*positioncols, "inputcellid"}]
+    pltest.assert_frame_equal(cells[1].select(othercols), cells[2].select(othercols))
+    assert cells[1]["inputcellid"].to_list() == [inputcellid + 1 for inputcellid in cells[2]["inputcellid"]]
+    if coordinates == "spherical1d":
+        # version 1 gives vel_r_max_kmps with two decimal places and logrho with eight
+        assert np.allclose(cells[1]["vel_r_max_kmps"], cells[2]["vel_r_max_kmps"], rtol=0.0, atol=0.006)
+        assert np.allclose(cells[1]["logrho"], cells[2]["logrho"], rtol=0.0, atol=1e-6)
+        assert metas[2]["vmax_cmps"] == pytest.approx(metas[1]["vmax_cmps"], rel=1e-6)
+    else:
+        xmax = metas[1]["vmax_cmps"] * metas[1]["t_model_init_days"] * 86400
+        for col in positioncols:
+            assert np.allclose(cells[1][col], cells[2][col], rtol=0.0, atol=1e-6 * xmax), col
+        assert metas[2]["vmax_cmps"] == metas[1]["vmax_cmps"]
+
+    edgekeys = at.misc.MODEL_EDGE_KEYS[coordinates]
+    assert {key for key in metas[2] if key not in metas[1]} == set(edgekeys)
+    for key, value in metas[1].items():
+        if key not in {"formatversion", "vmax_cmps"}:
+            assert metas[2][key] == value, key
+
+    # version 2 keeps each value that it holds, thus a second write gives the same cells
+    at.inputmodel.save_modeldata(cells[2], outpath=tmp_path, modelmeta=metas[2])
+    pltest.assert_frame_equal(at.inputmodel.scan_modeldata(tmp_path)[0].collect(), cells[2])
+
+
+def test_version_2_edges_of_a_cartesian_grid_must_have_equal_steps() -> None:
+    """A Cartesian grid has equal cells to one vmax in sn3d and in artistools, thus other edges are an error."""
+    edgekeys = at.misc.MODEL_EDGE_KEYS["cartesian3d"]
+    uniformedges = {key: [-3000.0, -1000.0, 1000.0, 3000.0] for key in edgekeys}
+    assert at.misc.validate_model_edges("cartesian3d", uniformedges, "test") == uniformedges
+
+    for wrongedges in ([-3000.0, -1500.0, 1000.0, 3000.0], [-2000.0, -666.0, 666.0, 2000.0]):
+        with pytest.raises(ValueError, match="must have equal steps"):
+            at.misc.validate_model_edges("cartesian3d", uniformedges | {"vel_z_edges_kmps": wrongedges}, "test")
+    with pytest.raises(ValueError, match="same count of values"):
+        at.misc.validate_model_edges("cartesian3d", uniformedges | {"vel_y_edges_kmps": [-3000.0, 0.0, 3000.0]}, "test")
+
+
+def test_makeartismodel_converts_the_format_version_in_the_model_folder(tmp_path: Path) -> None:
+    """--format-version alone writes model.txt again in its folder, and a spherical model has no version 1."""
+    modelfolder = tmp_path / "model"
+    at.inputmodel.makeartismodel.main(
+        argsraw=[],
+        modelpath=[at.get_path("testdata") / "test-classicmode_3d"],
+        format_version=2,
+        outputfile=modelfolder,
+    )
+    assert at.inputmodel.scan_modeldata(modelfolder)[1]["formatversion"] == 2
+    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[modelfolder], format_version=1, force=True)
+    dfmodel, modelmeta = at.inputmodel.scan_modeldata(modelfolder)
+    assert modelmeta["formatversion"] == 1
+    assert "pos_x_min" in dfmodel.collect_schema().names()
+
+    (modelfolder / "model.txt.zst").unlink()
+    (modelfolder / "model.txt").write_text("\n".join(SPHERICAL2D_MODEL_LINES) + "\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[modelfolder], format_version=1, force=True)
 
 
 def test_dimension_reduce_of_a_spherical_model_sums_complete_cells() -> None:
@@ -4197,7 +4320,7 @@ def test_dimension_reduce_of_a_spherical_model_sums_complete_cells() -> None:
             rtol=1e-12,
         )
         assert modelmeta_out["coordinates"] == expectedcoordinates[outputdimensions]
-        assert "phi_edges_rad" not in modelmeta_out
+        assert "phi_edges_radians" not in modelmeta_out
         if outputdimensions == 1:
             assert dfmodel_out["vel_r_max_kmps"].to_list() == modelmeta["vel_r_edges_kmps"][1:]
 
@@ -4206,10 +4329,11 @@ def test_dimension_reduce_of_a_spherical_model_sums_complete_cells() -> None:
             0.25,
             rtol=1e-12,
         )
-        # the second particle of the first input cell gives a part of the first output cell
+        # the second particle of the first input cell gives a part of the first output cell. The cell ids start at 0
+        # for a spherical2d model (format version 2), and at 1 for the 1D model that artistools writes
         assert dfcontributions_out.filter(pl.col("particleid") == 2).row(0, named=True) == pytest.approx({
             "particleid": 2,
-            "cellindex": 1,
+            "cellindex": 0 if outputdimensions == 2 else 1,
             "frac_of_cellmass": 0.75 * cellmass[0, 0, 0] / expectedmass[0],
         })
 

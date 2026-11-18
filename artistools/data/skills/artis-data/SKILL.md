@@ -405,14 +405,19 @@ The main parameters are `t_model_init_days`, `vmax_cmps` (cm/s), `dimensions`, `
 `spherical3d`. Use `coordinates` to select the code for a model. Each of the values 2 and 3 of `dimensions` has two
 possible values of `coordinates`.
 
-A model with the coordinates `spherical2d` or `spherical3d` also has the parameters `vel_r_edges_kmps`,
-`theta_edges_rad`, and, for `spherical3d`, `phi_edges_rad`. Each list holds the edges of the cells on one axis. The polar
-angle theta is from the +z axis, and the azimuthal angle is phi = atan2(y, x). The index of a cell is
+The parameter `formatversion` is 1 or 2. A `model.txt` of version 2 starts with the line `format_version 2`, gives
+the cell edges of each axis in its header, and has cell ids (`inputcellid`) from 0. For such a file, the parameters
+also hold the lists of the edges, e.g. `vel_r_edges_kmps` or `vel_x_edges_kmps`. The columns of a 1D, a 2D
+cylindrical, or a 3D Cartesian model are the same for the two versions.
+
+A model with the coordinates `spherical2d` or `spherical3d` has version 2 only. Its parameters are
+`vel_r_edges_kmps`, `theta_edges_radians`, and, for `spherical3d`, `phi_edges_radians`. Each list holds the edges of
+the cells on one axis. The polar angle theta is from the +z axis, and the azimuthal angle is phi = atan2(y, x). The index of a cell is
 `i_r + n_r * (i_theta + n_theta * i_phi)`. For such a model, `add_derived_cols_to_modeldata` gives these columns:
 
 - `vel_r_min`, `vel_r_mid`, and `vel_r_max`;
-- `theta_min_rad` and `theta_max_rad`;
-- `phi_min_rad` and `phi_max_rad` (`spherical3d` only);
+- `theta_min_radians` and `theta_max_radians`;
+- `phi_min_radians` and `phi_max_radians` (`spherical3d` only);
 - the velocity of the mid-point of the cell: `vel_rcyl_mid` and `vel_z_mid`, and for `spherical3d` also `vel_x_mid` and
   `vel_y_mid`.
 

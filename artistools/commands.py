@@ -375,7 +375,13 @@ subcommandtree: CommandTree = {
         "makeartismodel": CommandSpec(
             "inputmodel.makeartismodel",
             helptext="Tools to create an ARTIS input model.",
-            examples=(("--modelpath . --dimensionreduce 1", "a spherically symmetric 1D model from a 3D model"),),
+            examples=(
+                ("--modelpath . --dimensionreduce 1", "a spherically symmetric 1D model from a 3D model"),
+                (
+                    "--modelpath . --format-version 2 -o version2",
+                    "the model.txt of the model in format version 2, in the folder version2",
+                ),
+            ),
             exampletestfolder="test-classicmode_3d",
         ),
         "makeartismodel1dslicefromcone": CommandSpec(

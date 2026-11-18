@@ -28,6 +28,7 @@ from artistools.inputmodel.core import save_initelemabundances
 from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.core import scan_initelemabundances
 from artistools.inputmodel.core import scan_modeldata
+from artistools.inputmodel.core import with_cell_ids_from_zero
 from artistools.inputmodel.maptogrid import get_spherical_cell_volumes
 from artistools.inputmodel.maptogrid import get_spherical_grid_edges
 from artistools.inputmodel.maptogrid import SPHERICAL_GRID_SHAPE_DEFAULT
@@ -710,12 +711,18 @@ def map_to_spherical_artis_model(
         "t_model_init_days": t_model_init_s / day_to_s,
         "vmax_cmps": vmax_cmps,
         "vel_r_edges_kmps": (r_edges_cm / t_model_init_s / km_to_cm).tolist(),
-        "theta_edges_rad": theta_edges.tolist(),
-        "firstinputcellid": 1,
+        "theta_edges_radians": theta_edges.tolist(),
+        "firstinputcellid": 0,
     }
     if model_dim == 3:
-        modelmeta["phi_edges_rad"] = phi_edges.tolist()
-    return dfmodel, pl.DataFrame(dictelabunds), modelmeta, dfgridcontributions
+        modelmeta["phi_edges_radians"] = phi_edges.tolist()
+    # format version 2 of model.txt has cell ids from 0, and the other files of the model need the same ids
+    dfmodel, dfelabundances, dfgridcontributions = with_cell_ids_from_zero(
+        dfmodel, pl.DataFrame(dictelabunds), dfgridcontributions
+    )
+    assert dfelabundances is not None
+    assert dfgridcontributions is not None
+    return dfmodel, dfelabundances, modelmeta, dfgridcontributions
 
 
 # function added by Luke and Gerrit

@@ -10,11 +10,13 @@ import polars as pl
 from artistools.constants import Msun_to_g
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import dimension_reduce_model
+from artistools.inputmodel.core import get_model_text_folder
 from artistools.inputmodel.core import MODEL_FILE_NAMES
 from artistools.inputmodel.core import save_initelemabundances
 from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.core import scan_initelemabundances
 from artistools.inputmodel.core import scan_modeldata
+from artistools.inputmodel.core import with_cell_ids_from_zero
 from artistools.inputmodel.downscale3dgrid import get_downscale_outputfolder
 from artistools.inputmodel.downscale3dgrid import make_downscaled_3d_grid
 from artistools.inputmodel.energyinputfiles import ENERGY_FILE_NAMES
@@ -30,10 +32,13 @@ from artistools.misc import addarg_output
 from artistools.misc import addarg_show
 from artistools.misc import confirm_overwrite
 from artistools.misc import exit_with_error
+from artistools.misc import firstexisting_or_none
+from artistools.misc import get_model_coordinates
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
+from artistools.misc import SPHERICAL_EDGE_COORDINATES
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -60,6 +65,18 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         choices=[0, 1, 2],
         help="The number of dimensions: 0 for one-zone, 1 for spherically symmetric 1D, and 2 for 2D. A 3D Cartesian"
         " model gives a 2D cylindrical model, and a 3D spherical model gives a 2D spherical model",
+    )
+
+    parser.add_argument(
+        "--format-version",
+        type=int,
+        choices=[1, 2],
+        default=None,
+        help="The format version of the model.txt that the command writes. Without a different action, the command"
+        " converts the model.txt of the model path, in the model folder or in the -o folder. With --dimensionreduce,"
+        " the reduced model gets this version. Version 2 starts with the line 'format_version 2' and has a header"
+        " of keys with the cell edges. An sn3d that is older than version 2 does not read it. A 2D spherical or 3D"
+        " spherical model has version 2 only",
     )
 
     parser.add_argument(
@@ -112,6 +129,69 @@ def get_dimreduce_outputfolder(outputfile: Path | None, modelpath: Path, ndim_ou
     )
 
 
+def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int) -> None:
+    """Write the model.txt of a model again in a format version, into outputfolder.
+
+    The cells keep their sequence and their values to the Float32 precision that artistools reads. Version 1 gives
+    the position of each cell in columns, and version 2 gives the cell edges in the header.
+    """
+    lzmodel, modelmeta = scan_modeldata(modelpath)
+    coordinates = get_model_coordinates(modelmeta)
+    if formatversion == 1 and coordinates in SPHERICAL_EDGE_COORDINATES:
+        exit_with_error(
+            f"Format version 1 of model.txt has no {coordinates} coordinates",
+            "A 2D spherical or 3D spherical model has format version 2 only",
+        )
+    print(
+        f"The model.txt of {modelpath} has format version {modelmeta['formatversion']} and {coordinates} coordinates."
+        f" The command writes it in format version {formatversion}."
+    )
+    if formatversion == 2:
+        print("  Version 2 gives the cell edges as velocities [km/s] in its header, and each cell has rho [g/cm3].")
+    else:
+        print("  Version 1 gives the position of each cell in columns. A 1D cell has log10(rho [g/cm3]).")
+    print("  Each value has the Float32 precision that artistools reads, which is 8 significant figures.")
+
+    # save_modeldata can write the file that the query scans, thus the read is complete before the write
+    dfmodel = lzmodel.collect()
+    gridcolumns = {"inputcellid", "modelgridindex", "rho", "logrho"}
+    customcols = [col for col in dfmodel.columns if col not in gridcolumns and not col.startswith(("pos_", "vel_"))]
+    outputfolder.mkdir(exist_ok=True, parents=True)
+
+    if formatversion == 2 and dfmodel["inputcellid"].min() != 0:
+        # each file of a model has the same cell ids, and version 2 has cell ids from 0
+        print("  Version 2 has cell ids from 0, thus abundances.txt and gridcontributions.txt get the same ids.")
+        hasabundances = firstexisting_or_none("abundances.txt", folder=modelpath, tryzipped=True) is not None
+        dfmodel, dfelabundances, dfgridcontributions = with_cell_ids_from_zero(
+            dfmodel,
+            scan_initelemabundances(modelpath).collect() if hasabundances else None,
+            get_gridparticlecontributions_or_none(modelpath),
+        )
+        if dfelabundances is not None:
+            save_initelemabundances(dfelabundances, outpath=outputfolder)
+        if dfgridcontributions is not None:
+            save_gridparticlecontributions(dfgridcontributions, outputfolder / "gridcontributions.txt")
+
+    save_modeldata(
+        dfmodel, outpath=outputfolder, modelmeta=modelmeta | {"formatversion": formatversion}, extracols=customcols
+    )
+
+
+def get_converted_file_names(modelpaths: Sequence[Path], formatversion: int | None) -> Sequence[str]:
+    """Return the names of the files that convert_model_format writes for these models.
+
+    A conversion to version 2 also writes abundances.txt and gridcontributions.txt if the cell ids of a model do
+    not start at 0.
+    """
+    if formatversion != 2:
+        return ("model.txt",)
+    firstcellids = [
+        scan_modeldata(modelpath, printwarningsonly=True)[0].select(pl.col("inputcellid").min()).collect().item()
+        for modelpath in modelpaths
+    ]
+    return ("model.txt",) if all(firstcellid == 0 for firstcellid in firstcellids) else MODEL_FILE_NAMES
+
+
 def get_model_output_folders(args: argparse.Namespace, modelpath_given: bool) -> dict[str, list[Path]]:
     """Return the folders that get the output files, for each action of args."""
     if args.downscale3dgrid:
@@ -130,6 +210,16 @@ def get_model_output_folders(args: argparse.Namespace, modelpath_given: bool) ->
         ]
     if args.makeenergyinputfiles:
         outputfolders["makeenergyinputfiles"] = [Path(args.outputfile or Path())]
+    if args.format_version is not None and args.dimensionreduce is None:
+        if args.outputfile is not None and len(args.modelpath) > 1:
+            exit_with_error(
+                "-o names one folder, and each model path writes a model.txt",
+                "Give one model path with -o, or give no -o to convert each model.txt in its model folder",
+            )
+        outputfolders["convertformat"] = [
+            Path(args.outputfile) if args.outputfile is not None else get_model_text_folder(modelpath)
+            for modelpath in args.modelpath
+        ]
     return outputfolders
 
 
@@ -145,11 +235,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.dimensionreduce is not None,
         args.makemodelfromgriddata,
         args.makeenergyinputfiles,
+        args.format_version is not None,
     )
     if not any(actions):
         exit_with_error(
             "The command needs an action",
-            "Give --downscale3dgrid, --dimensionreduce, --makemodelfromgriddata, or --makeenergyinputfiles",
+            "Give --downscale3dgrid, --dimensionreduce, --format-version, --makemodelfromgriddata, or"
+            " --makeenergyinputfiles",
         )
 
     outputfolders = get_model_output_folders(args, modelpath_given)
@@ -157,6 +249,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         "makemodelfromgriddata": get_griddata_output_file_names(args.getcellopacityfromYe),
         "makeenergyinputfiles": ENERGY_FILE_NAMES,
     }
+    if "convertformat" in outputfolders:
+        outputfilenames["convertformat"] = get_converted_file_names(args.modelpath, args.format_version)
     for action, folders in outputfolders.items():
         confirm_overwrite(folders, outputfilenames.get(action, MODEL_FILE_NAMES), force=args.force)
 
@@ -195,12 +289,17 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 *modelmeta.get("headercommentlines", []),
                 f"Dimension reduced from {ndim_in}-dimensional model",
             ]
+            if args.format_version is not None:
+                modelmeta_out["formatversion"] = args.format_version
             assert dfelabundances_out is not None
             save_initelemabundances(dfelabundances_out, outpath=outdir)
             save_modeldata(dfmodel=dfmodel_out, modelmeta=modelmeta_out, outpath=outdir)
             # the function gives an empty frame for a model with no contributions, thus test the input
             if dfgridcontributions is not None:
                 save_gridparticlecontributions(dfgridcontributions_out, outdir / "gridcontributions.txt")
+
+    for modelpath, outdir in zip(args.modelpath, outputfolders.get("convertformat", []), strict=False):
+        convert_model_format(modelpath, outdir, args.format_version)
 
     if args.makemodelfromgriddata:
         makemodelfromgriddata(

@@ -24,15 +24,19 @@ from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g
+from artistools.misc import ALL_MODEL_EDGE_KEYS
 from artistools.misc import exit_with_error
 from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_bin_index_expr
+from artistools.misc import get_cell_counts_of_edges
 from artistools.misc import get_file_copies
 from artistools.misc import get_file_identity
 from artistools.misc import get_model_coordinates
+from artistools.misc import get_model_format_version
 from artistools.misc import get_parquet_cache_name
 from artistools.misc import is_remote_path
+from artistools.misc import MODEL_EDGE_KEYS
 from artistools.misc import modelpath_cache
 from artistools.misc import MTIME_TOLERANCE_S
 from artistools.misc import on_model_host
@@ -41,13 +45,14 @@ from artistools.misc import path_is_codecomparison
 from artistools.misc import polars_source
 from artistools.misc import print_detail
 from artistools.misc import print_saved
+from artistools.misc import read_keyword_model_header
 from artistools.misc import read_parquet_cache_metadata
-from artistools.misc import read_spherical_model_header
 from artistools.misc import read_wsv
 from artistools.misc import resolve_modelpath
 from artistools.misc import resolve_outputfile
 from artistools.misc import SPHERICAL_EDGE_COORDINATES
-from artistools.misc import validate_spherical_edges
+from artistools.misc import UNIFORM_EDGE_COORDINATES
+from artistools.misc import validate_model_edges
 from artistools.misc import with_compressed_extension
 from artistools.misc import without_compressed_extension
 from artistools.misc import write_file_atomic
@@ -118,6 +123,57 @@ def read_noncomment_line(fmodel: t.IO[str], headercommentlines: list[str]) -> tu
     return line, linecount
 
 
+def add_position_columns_of_edges(
+    dfmodel: pl.LazyFrame, modelmeta: dict[str, t.Any], firstinputcellid: int
+) -> pl.LazyFrame:
+    """Return the cells of a version 2 model with the position columns that the version 1 file of its coordinates has.
+
+    A version 2 file gives the cell edges in its header and no position column. The code after the reader needs the
+    columns of version 1: vel_r_max_kmps and logrho (1D), pos_rcyl_mid and pos_z_mid (2D cylindrical), and pos_x_min,
+    pos_y_min, and pos_z_min (3D Cartesian). A 1D model also keeps rho. A spherical2d or spherical3d model has no
+    such column, because add_spherical_derived_cols reads the edges.
+    """
+    coordinates = modelmeta["coordinates"]
+    if coordinates in SPHERICAL_EDGE_COORDINATES:
+        return dfmodel
+
+    cellindex = pl.col("inputcellid") - firstinputcellid
+    kmps_to_cm_tmodel = km_to_cm * modelmeta["t_model_init_days"] * day_to_s
+
+    def edge_values(edgekey: str, axisindex: pl.Expr, offset: int = 0) -> pl.Expr:
+        return pl.lit(pl.Series(modelmeta[edgekey], dtype=pl.Float64)).gather(axisindex + offset)
+
+    match coordinates:
+        case "spherical1d":
+            positioncols = {"vel_r_max_kmps": edge_values("vel_r_edges_kmps", cellindex, 1), "logrho": LOGRHO_FROM_RHO}
+        case "cylindrical2d":
+            n_rcyl = modelmeta["ncoordgridrcyl"]
+            index_rcyl, index_z = cellindex % n_rcyl, cellindex // n_rcyl
+            positioncols = {
+                "pos_rcyl_mid": (
+                    edge_values("vel_rcyl_edges_kmps", index_rcyl) + edge_values("vel_rcyl_edges_kmps", index_rcyl, 1)
+                )
+                / 2.0
+                * kmps_to_cm_tmodel,
+                "pos_z_mid": (edge_values("vel_z_edges_kmps", index_z) + edge_values("vel_z_edges_kmps", index_z, 1))
+                / 2.0
+                * kmps_to_cm_tmodel,
+            }
+        case _:
+            n_x, n_y = modelmeta["ncoordgridx"], modelmeta["ncoordgridy"]
+            positioncols = {
+                "pos_x_min": edge_values("vel_x_edges_kmps", cellindex % n_x) * kmps_to_cm_tmodel,
+                "pos_y_min": edge_values("vel_y_edges_kmps", (cellindex // n_x) % n_y) * kmps_to_cm_tmodel,
+                "pos_z_min": edge_values("vel_z_edges_kmps", cellindex // (n_x * n_y)) * kmps_to_cm_tmodel,
+            }
+
+    othercols = [col for col in dfmodel.collect_schema().names() if col not in {"inputcellid", "rho", *positioncols}]
+    rho_and_logrho = ["logrho", "rho"] if coordinates == "spherical1d" else ["rho"]
+    return dfmodel.with_columns(expr.cast(pl.Float32).alias(col) for col, expr in positioncols.items()).select(
+        "inputcellid", *[col for col in positioncols if col != "logrho"], *rho_and_logrho, *othercols
+    )
+
+
 def scan_modelfile_text(
     filename: Path | str, printwarningsonly: bool = False
 ) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
@@ -126,37 +182,40 @@ def scan_modelfile_text(
         print(f"Reading {filename}")
 
     with zopen(filename) as fmodel:
+        formatversion = get_model_format_version(fmodel.readline(), filename)
+
+    with zopen(filename) as fmodel:
         onelinepercellformat: bool | None = None
 
-        modelmeta: dict[str, t.Any] = {"headercommentlines": []}
+        modelmeta: dict[str, t.Any] = {"headercommentlines": [], "formatversion": formatversion}
         xmax_tmodel: float | int = 0.0
         ncoordgridx: int = 0
         ncoordgridy: int = 0
         ncoordgridz: int = 0
 
-        line, numheaderrows = read_noncomment_line(fmodel, modelmeta["headercommentlines"])
         columns: list[str] | None = None
-        hassphericaledges = line.split()[:1] == ["coordinates"]
-        if hassphericaledges:
-            sphericalmeta, columns, linecount = read_spherical_model_header(fmodel, line, filename)
-            numheaderrows += linecount
+        if formatversion == 2:
+            fmodel.readline()
+            modelmeta, columns, linecount = read_keyword_model_header(fmodel, filename)
+            numheaderrows = 1 + linecount
             # save_modeldata writes these lines again, thus a kept copy gives each line two times
-            modelmeta["headercommentlines"] += [
-                commentline
-                for commentline in sphericalmeta.pop("headercommentlines")
-                if not is_writer_comment(commentline)
+            modelmeta["headercommentlines"] = [
+                commentline for commentline in modelmeta["headercommentlines"] if not is_writer_comment(commentline)
             ]
-            modelmeta |= sphericalmeta
             npts_model = modelmeta["npts_model"]
             if not printwarningsonly:
                 gridshape = " x ".join(
-                    str(modelmeta[key])
-                    for key in ("ncoordgridr", "ncoordgridtheta", "ncoordgridphi")
-                    if key in modelmeta
+                    str(len(modelmeta[key]) - 1) for key in MODEL_EDGE_KEYS[modelmeta["coordinates"]]
                 )
-                print(f"  Detected {modelmeta['coordinates']} model file with {gridshape} = {npts_model} cells")
+                print(
+                    f"  Detected {modelmeta['coordinates']} model file of format version 2 with {gridshape} ="
+                    f" {npts_model} cells"
+                )
+            if modelmeta["coordinates"] in UNIFORM_EDGE_COORDINATES:
+                xmax_tmodel = modelmeta["vmax_cmps"] * (modelmeta["t_model_init_days"] * day_to_s)
             line = fmodel.readline()
         else:
+            line, numheaderrows = read_noncomment_line(fmodel, modelmeta["headercommentlines"])
             cellcounts = parse_npts_line(line, filename)
             if len(cellcounts) == 2:
                 modelmeta["dimensions"] = 2
@@ -231,15 +290,15 @@ def scan_modelfile_text(
 
     modelmeta["coordinates"] = get_model_coordinates(modelmeta)
     t_model_init_seconds = modelmeta["t_model_init_days"] * day_to_s
-    if hassphericaledges and ncols_line_even != len(columns or []):
+    if formatversion == 2 and ncols_line_even != len(columns or []):
         msg = (
             f"{filename}: the first cell line holds {ncols_line_even} values, but the column line names"
-            f" {len(columns or [])} columns. A cell of a {modelmeta['coordinates']} model has one line"
+            f" {len(columns or [])} columns. A cell of a version 2 model has one line"
         )
         raise ValueError(msg)
-    # the header of a spherical2d or spherical3d model gives no cell count. Thus the reader takes one row more than
-    # the edges give, and the check below finds an extra row
-    maxrowcount = npts_model + 1 if hassphericaledges else npts_model
+    # the header of a version 2 model gives no cell count. Thus the reader takes one row more than the edges give,
+    # and the check below finds an extra row
+    maxrowcount = npts_model + 1 if formatversion == 2 else npts_model
 
     if columns is None:
         columns = get_standard_columns(modelmeta["coordinates"], includenico57=True, pos_unknown=True)
@@ -324,14 +383,16 @@ def scan_modelfile_text(
     # an old model.txt names the electron fraction cellYe, and Ye is the name everywhere after this point
     dfmodel = dfmodel.sort("inputcellid").rename({"velocity_outer": "vel_r_max_kmps", "cellYe": "Ye"}, strict=False)
 
-    # sn3d stops for a file with too few cells. It takes the id of the first cell (0 or 1) as the start of the
-    # cell index, and each id after it must be one more than the id before it
-    cellcount, firstinputcellid, idsareconsecutive = (
+    # In version 1, sn3d stops for a file with too few cells. It takes the id of the first cell (0 or 1) as the start
+    # of the cell index, and each id after it must be one more than the id before it
+    cellcount, firstinputcellid, lastinputcellid, idsareconsecutive, idsaredifferent = (
         dfmodel
         .select(
             cellcount=pl.len(),
             firstinputcellid=pl.col("inputcellid").first(),
+            lastinputcellid=pl.col("inputcellid").last(),
             idsareconsecutive=(pl.col("inputcellid") == pl.col("inputcellid").first() + pl.int_range(pl.len())).all(),
+            idsaredifferent=pl.col("inputcellid").is_unique().all(),
         )
         .collect()
         .row(0)
@@ -341,21 +402,41 @@ def scan_modelfile_text(
             f"{filename}: found more than {npts_model} cells, but the cell edges of the header give {npts_model} cells"
         )
         raise ValueError(msg)
-    if cellcount != npts_model:
+    if formatversion == 2:
+        # the id of a cell is its index in the grid of the edges, from 0. A cell with no line is empty
+        if firstinputcellid < 0 or lastinputcellid >= npts_model or not idsaredifferent:
+            msg = (
+                f"{filename}: the cell edges of the header give {npts_model} cells, thus each inputcellid must be"
+                f" from 0 to {npts_model - 1}, and each cell can have one line only"
+            )
+            raise ValueError(msg)
+        if cellcount < npts_model:
+            if not printwarningsonly:
+                print(f"  {npts_model - cellcount} cells have no line, and they are empty (rho = 0)")
+            dfmodel = (
+                pl
+                .LazyFrame({"inputcellid": pl.int_range(npts_model, dtype=pl.Int32, eager=True)})
+                .join(dfmodel, on="inputcellid", how="left", maintain_order="left")
+                .with_columns(pl.exclude("inputcellid").fill_null(0.0))
+            )
+        firstinputcellid = 0
+        dfmodel = add_position_columns_of_edges(dfmodel, modelmeta, firstinputcellid)
+    elif cellcount != npts_model:
         msg = f"{filename}: found only {cellcount} cells instead of {npts_model} expected."
         raise ValueError(msg)
-    if firstinputcellid not in {0, 1} or not idsareconsecutive:
+    elif firstinputcellid not in {0, 1} or not idsareconsecutive:
         msg = f"{filename}: the inputcellid values must start at 0 or 1 and increase by one from each cell to the next"
         raise ValueError(msg)
 
-    if hassphericaledges:
+    if modelmeta["coordinates"] in SPHERICAL_EDGE_COORDINATES:
         # the file gives no position of a cell, thus the index of a cell in the grid of the edges comes from its id
         modelmeta["firstinputcellid"] = firstinputcellid
 
     elif modelmeta["dimensions"] == 1:
-        vmax_kmps = dfmodel.select(pl.col("vel_r_max_kmps").max()).collect().item()
-        assert isinstance(vmax_kmps, float)
-        modelmeta["vmax_cmps"] = vmax_kmps * km_to_cm
+        if formatversion == 1:
+            vmax_kmps = dfmodel.select(pl.col("vel_r_max_kmps").max()).collect().item()
+            assert isinstance(vmax_kmps, float)
+            modelmeta["vmax_cmps"] = vmax_kmps * km_to_cm
 
     elif modelmeta["dimensions"] == 2:
         wid_init_rcyl = modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridrcyl"]
@@ -522,8 +603,8 @@ def scan_modelfile_text(
 # which is model.txt and abundances.txt. Increase it for a change that makes an older cache file
 # incorrect, e.g. a new column or a different data type in either one. Version 2 checks the cell count and the
 # cell ids of model.txt, and it puts the second line of a cell beside the first line in the order of the file.
-# Version 3 gives the key coordinates in the metadata of each model.
-CACHEVERSION = 3
+# Version 3 gives the key coordinates in the metadata of each model. Version 4 gives the key formatversion.
+CACHEVERSION = 4
 
 
 def scan_parquet_cache(
@@ -949,7 +1030,7 @@ def get_spherical_cell_indices(
     model is 0.
     """
     ncoordgridr = len(modelmeta["vel_r_edges_kmps"]) - 1
-    ncoordgridtheta = len(modelmeta["theta_edges_rad"]) - 1
+    ncoordgridtheta = len(modelmeta["theta_edges_radians"]) - 1
     cellindex = (
         pl.col("modelgridindex")
         if "modelgridindex" in colnames
@@ -979,28 +1060,28 @@ def add_spherical_derived_cols(dfmodel: pl.LazyFrame, modelmeta: dict[str, t.Any
     dfmodel = dfmodel.with_columns(
         pos_r_min=edge_at("vel_r_edges_kmps", i_r, pos_scale),
         pos_r_max=edge_at("vel_r_edges_kmps", i_r + 1, pos_scale),
-        theta_min_rad=edge_at("theta_edges_rad", i_theta),
-        theta_max_rad=edge_at("theta_edges_rad", i_theta + 1),
+        theta_min_radians=edge_at("theta_edges_radians", i_theta),
+        theta_max_radians=edge_at("theta_edges_radians", i_theta + 1),
     ).with_columns(pos_r_mid=(pl.col("pos_r_min") + pl.col("pos_r_max")) / 2.0)
 
-    theta_mid = (pl.col("theta_min_rad") + pl.col("theta_max_rad")) / 2.0
+    theta_mid = (pl.col("theta_min_radians") + pl.col("theta_max_radians")) / 2.0
     midpointcols = {
         "pos_rcyl_mid": pl.col("pos_r_mid") * theta_mid.sin(),
         "pos_z_mid": pl.col("pos_r_mid") * theta_mid.cos(),
     }
     azimuthal_width: pl.Expr | float = 2.0 * math.pi
-    if "phi_edges_rad" in modelmeta:
+    if "phi_edges_radians" in modelmeta:
         dfmodel = dfmodel.with_columns(
-            phi_min_rad=edge_at("phi_edges_rad", i_phi), phi_max_rad=edge_at("phi_edges_rad", i_phi + 1)
+            phi_min_radians=edge_at("phi_edges_radians", i_phi), phi_max_radians=edge_at("phi_edges_radians", i_phi + 1)
         )
-        phi_mid = (pl.col("phi_min_rad") + pl.col("phi_max_rad")) / 2.0
+        phi_mid = (pl.col("phi_min_radians") + pl.col("phi_max_radians")) / 2.0
         midpointcols |= {
             "pos_x_mid": midpointcols["pos_rcyl_mid"] * phi_mid.cos(),
             "pos_y_mid": midpointcols["pos_rcyl_mid"] * phi_mid.sin(),
         }
-        azimuthal_width = pl.col("phi_max_rad") - pl.col("phi_min_rad")
+        azimuthal_width = pl.col("phi_max_radians") - pl.col("phi_min_radians")
 
-    solid_angle = (pl.col("theta_min_rad").cos() - pl.col("theta_max_rad").cos()) * azimuthal_width
+    solid_angle = (pl.col("theta_min_radians").cos() - pl.col("theta_max_radians").cos()) * azimuthal_width
     return dfmodel.with_columns(
         **midpointcols,
         volume=(pl.col("pos_r_max").pow(3) - pl.col("pos_r_min").pow(3)) / 3.0 * solid_angle,
@@ -1191,14 +1272,19 @@ def add_derived_cols_to_modeldata(dfmodel: pl.DataFrame | pl.LazyFrame, modelmet
     )
 
 
-def get_standard_columns(coordinates: str, includenico57: bool = False, pos_unknown: bool = False) -> list[str]:
+def get_standard_columns(
+    coordinates: str, includenico57: bool = False, pos_unknown: bool = False, formatversion: int = 1
+) -> list[str]:
     """Return the standard columns of model.txt for the coordinates of a model, e.g. cartesian3d.
 
-    A model with spherical2d or spherical3d coordinates has no position column, because the header gives the
-    edges of the cells.
+    A version 2 file has no position column, because the header gives the edges of the cells. A model with
+    spherical2d or spherical3d coordinates has version 2 only.
     """
     cols: list[str] = []
-    match coordinates:
+    if coordinates not in MODEL_EDGE_KEYS:
+        msg = f"The coordinates {coordinates!r} are not known"
+        raise ValueError(msg)
+    match coordinates if formatversion == 1 else "version2":
         case "spherical1d":
             cols = ["inputcellid", "vel_r_max_kmps", "logrho"]
         case "cylindrical2d":
@@ -1209,11 +1295,8 @@ def get_standard_columns(coordinates: str, includenico57: bool = False, pos_unkn
                 if pos_unknown
                 else ["inputcellid", "pos_x_min", "pos_y_min", "pos_z_min", "rho"]
             )
-        case "spherical2d" | "spherical3d":
-            cols = ["inputcellid", "rho"]
         case _:
-            msg = f"The coordinates {coordinates!r} are not known"
-            raise ValueError(msg)
+            cols = ["inputcellid", "rho"]
 
     cols += ["X_Fegroup", "X_Ni56", "X_Co56", "X_Fe52", "X_Cr48"]
 
@@ -1267,73 +1350,187 @@ def prepare_zstd_output(filepath: Path) -> Path:
     return zstdpath
 
 
-def get_spherical_headerlines(inputcellids: pl.Series, modelmeta: dict[str, t.Any]) -> list[tuple[str, str]]:
-    """Return the key lines of a spherical2d or spherical3d model.txt, each as the key with its values and a comment.
+def get_kmps_of_cmps(velocity_cmps: float) -> float:
+    """Return the velocity [km/s] that gives velocity_cmps [cm/s] again when a reader multiplies it by km_to_cm.
 
-    The function checks the cell edges of the metadata and the sorted cell ids against them. It sets the cell
-    counts, vmax_cmps, and firstinputcellid of the metadata. The edges have 17 significant digits, thus a reader
-    gets each float again.
+    A plain division can give a value that is one bit different after the multiplication. sn3d then gets a different
+    vmax from the version 2 file than from the version 1 file of the same model.
+    """
+    velocity_kmps = velocity_cmps / km_to_cm
+    for candidate in (velocity_kmps, math.nextafter(velocity_kmps, math.inf), math.nextafter(velocity_kmps, -math.inf)):
+        if candidate * km_to_cm == velocity_cmps:
+            return candidate
+    return velocity_kmps
+
+
+def get_edges_of_position_columns(dfmodel: pl.DataFrame, modelmeta: dict[str, t.Any]) -> dict[str, list[float]]:
+    """Return the cell edges of version 2 for a spherical1d, cylindrical2d, or cartesian3d model.
+
+    dfmodel holds the cells in the sequence of inputcellid. The edges of a 1D model are the values of vel_r_max_kmps
+    after 0. The edges of the other two have equal steps to vmax_cmps of the metadata. The function stops if a
+    position column of dfmodel does not agree with these edges.
     """
     coordinates = modelmeta["coordinates"]
-    missingkeys = [
-        key
-        for key in ("vel_r_edges_kmps", "theta_edges_rad", *(["phi_edges_rad"] if coordinates == "spherical3d" else []))
-        if modelmeta.get(key) is None
-    ]
-    if missingkeys:
-        msg = f"A {coordinates} model needs the cell edges {', '.join(missingkeys)} in the metadata"
-        raise ValueError(msg)
-    if coordinates == "spherical2d" and modelmeta.get("phi_edges_rad") is not None:
-        msg = "A spherical2d model takes no phi_edges_rad. Give the coordinates spherical3d, or remove the key"
-        raise ValueError(msg)
+    if coordinates == "spherical1d":
+        # str gives the shortest text of a Float32, e.g. 14315.06 and not 14315.0595703125
+        vel_r_max_kmps = dfmodel["vel_r_max_kmps"].cast(pl.Float32).to_numpy()
+        edges_kmps = [0.0, *[float(str(vel_kmps)) for vel_kmps in vel_r_max_kmps]]
+        # the edges of the metadata have the full precision of the file that gave them. Use them if no caller
+        # changed the column
+        metaedges = modelmeta.get("vel_r_edges_kmps")
+        if (
+            metaedges is not None
+            and len(metaedges) == len(edges_kmps)
+            and np.array_equal(np.asarray(metaedges, dtype=np.float32)[1:], vel_r_max_kmps)
+        ):
+            edges_kmps = [float(edge) for edge in metaedges]
+        return {"vel_r_edges_kmps": edges_kmps}
 
-    vel_r_edges_kmps, theta_edges_rad, phi_edges_rad = validate_spherical_edges(
-        modelmeta["vel_r_edges_kmps"], modelmeta["theta_edges_rad"], modelmeta.get("phi_edges_rad"), "save_modeldata"
+    vmax_kmps = get_kmps_of_cmps(modelmeta["vmax_cmps"])
+    if coordinates == "cylindrical2d":
+        cellcounts = {"rcyl": modelmeta["ncoordgridrcyl"], "z": modelmeta["ncoordgridz"]}
+    else:
+        griddimension = round(dfmodel.height ** (1.0 / 3.0))
+        cellcounts = dict.fromkeys(("x", "y", "z"), griddimension)
+    if math.prod(cellcounts.values()) != dfmodel.height:
+        gridshape = " x ".join(str(count) for count in cellcounts.values())
+        msg = f"A {coordinates} grid of {gridshape} cells cannot hold {dfmodel.height} cells"
+        raise ValueError(msg)
+    edges = {
+        f"vel_{axis}_edges_kmps": np.linspace(0.0 if axis == "rcyl" else -vmax_kmps, vmax_kmps, count + 1).tolist()
+        for axis, count in cellcounts.items()
+    }
+
+    # a version 2 file gives no position of a cell, thus a cell in the wrong place of the sequence has no other check
+    modelmeta_edges = modelmeta | edges | {f"ncoordgrid{axis}": count for axis, count in cellcounts.items()}
+    dfexpected = add_position_columns_of_edges(
+        dfmodel.lazy().select("inputcellid", "rho"), modelmeta_edges, dfmodel["inputcellid"].item(0)
+    ).collect()
+    t_model_init_seconds = modelmeta["t_model_init_days"] * day_to_s
+    for col in dfexpected.columns:
+        if col.startswith("pos_") and col in dfmodel.columns:
+            axis = col.split("_")[1]
+            cellwidth = (edges[f"vel_{axis}_edges_kmps"][1] - edges[f"vel_{axis}_edges_kmps"][0]) * km_to_cm
+            maxoffby = (dfmodel[col] - dfexpected[col]).abs().max()
+            assert isinstance(maxoffby, float)
+            if maxoffby > 0.5 * cellwidth * t_model_init_seconds:
+                msg = (
+                    f"{col} is up to {maxoffby:.3e} cm from the position that the cell ids give on a grid of equal"
+                    f" cells to vmax_cmps = {modelmeta['vmax_cmps']:.8e} cm/s"
+                )
+                raise ValueError(msg)
+    return edges
+
+
+def get_version2_headerlines(inputcellids: pl.Series, modelmeta: dict[str, t.Any]) -> list[str]:
+    """Return the key lines of a version 2 model.txt, from the key coordinates to the last list of edges.
+
+    The function checks the cell edges of the metadata and the sorted cell ids against them. The cell ids of a
+    version 2 model are 0 to N - 1. It sets the cell
+    counts, and for spherical2d and spherical3d also vmax_cmps and firstinputcellid, in the metadata. Each edge
+    has the shortest text that gives its float again, e.g. 0.7. A line has a comment only for information that
+    its key does not give.
+    """
+    coordinates = modelmeta["coordinates"]
+    edgekeys = MODEL_EDGE_KEYS[coordinates]
+    edges = validate_model_edges(
+        coordinates, {key: modelmeta.get(key) for key in ALL_MODEL_EDGE_KEYS}, "save_modeldata"
     )
-    vmax_cmps = vel_r_edges_kmps[-1] * km_to_cm
+    vmax_cmps = edges[edgekeys[0]][-1] * km_to_cm
     if modelmeta.get("vmax_cmps") is not None and not math.isclose(modelmeta["vmax_cmps"], vmax_cmps, rel_tol=1e-6):
         msg = (
-            f"vmax_cmps = {modelmeta['vmax_cmps']:.8e} cm/s does not agree with the last value of vel_r_edges_kmps,"
-            f" {vel_r_edges_kmps[-1]!r} km/s"
+            f"vmax_cmps = {modelmeta['vmax_cmps']:.8e} cm/s does not agree with the last value of {edgekeys[0]},"
+            f" {edges[edgekeys[0]][-1]!r} km/s"
         )
         raise ValueError(msg)
 
-    edgelists = {"vel_r_edges_kmps": vel_r_edges_kmps, "theta_edges_rad": theta_edges_rad}
-    cellcounts = {"ncoordgridr": len(vel_r_edges_kmps) - 1, "ncoordgridtheta": len(theta_edges_rad) - 1}
-    if phi_edges_rad is not None:
-        edgelists["phi_edges_rad"] = phi_edges_rad
-        cellcounts["ncoordgridphi"] = len(phi_edges_rad) - 1
-    gridshape = " x ".join(str(count) for count in cellcounts.values())
-    npts_model = math.prod(cellcounts.values())
+    cellcounts = [len(edges[key]) - 1 for key in edgekeys]
+    gridshape = " x ".join(str(count) for count in cellcounts)
+    npts_model = math.prod(cellcounts)
     print(f" {coordinates} grid size: {inputcellids.len()} ({gridshape})")
 
-    firstinputcellid = inputcellids.item(0) if inputcellids.len() else 1
-    if (
-        inputcellids.len() != npts_model
-        or firstinputcellid not in {0, 1}
-        or not (inputcellids == firstinputcellid + pl.int_range(npts_model, eager=True)).all()
-    ):
+    firstaxis = edgekeys[0].split("_")[1]
+    if inputcellids.len() != npts_model or not (inputcellids == pl.int_range(npts_model, eager=True)).all():
         msg = (
-            f"The cell edges give {gridshape} = {npts_model} cells, but the model has {inputcellids.len()} cells."
-            " The inputcellid values must start at 0 or 1 and increase by one from each cell to the next. The radial"
-            " index of a cell must change fastest"
+            f"The cell edges give {gridshape} = {npts_model} cells, but the model has {inputcellids.len()} cells with"
+            f" the first inputcellid {inputcellids.item(0) if inputcellids.len() else None}. In format version 2, the"
+            f" inputcellid values are 0 to {npts_model - 1}, and the index of {firstaxis} changes fastest. Give the"
+            " same cell ids to abundances.txt and gridcontributions.txt, e.g. with with_cell_ids_from_zero"
         )
         raise ValueError(msg)
 
-    modelmeta |= edgelists | cellcounts | {"vmax_cmps": vmax_cmps, "firstinputcellid": firstinputcellid}
+    modelmeta |= edges | get_cell_counts_of_edges(coordinates, edges)
+    if coordinates in SPHERICAL_EDGE_COORDINATES:
+        modelmeta |= {"vmax_cmps": vmax_cmps, "firstinputcellid": 0}
+    cellordercomment = f", the index of {firstaxis} changes fastest" if len(edgekeys) > 1 else ""
     edgecomments = {
-        "vel_r_edges_kmps": "radial velocities of the shell edges [km/s]",
-        "theta_edges_rad": "polar angles of the cell edges from the +z axis [rad]",
-        "phi_edges_rad": "azimuthal angles of the cell edges, phi = atan2(y, x) [rad]",
+        "theta_edges_radians": "  # the polar angle from the +z axis",
+        "phi_edges_radians": "  # the azimuthal angle phi = atan2(y, x)",
     }
     return [
-        (f"coordinates {coordinates}", f"cell order: radial index fastest, {gridshape} cells"),
-        (f"t_model_init_days {modelmeta['t_model_init_days']}", "time of the snapshot [day]"),
-        *[
-            (f"{key} {' '.join(f'{edge:.17g}' for edge in edges)}", edgecomments[key])
-            for key, edges in edgelists.items()
-        ],
+        f"coordinates {coordinates}  # {gridshape} cells{cellordercomment}",
+        f"t_model_init_days {modelmeta['t_model_init_days']}",
+        *[f"{key} {' '.join(repr(edge) for edge in edges[key])}{edgecomments.get(key, '')}" for key in edgekeys],
     ]
+
+
+def with_rho_of_1d_model(dfmodel: pl.DataFrame) -> pl.DataFrame:
+    """Return the cells of a 1D model with the column rho [g/cm3], which a version 2 file holds in place of logrho.
+
+    A version 1 file gives logrho only. A dataframe can hold both columns, e.g. from a version 2 file. The function
+    then stops if they do not agree, because it cannot know which column a caller changed.
+    """
+    if "rho" not in dfmodel.columns:
+        return dfmodel.with_columns(rho=RHO_FROM_LOGRHO.cast(pl.Float32))
+    maxlogdifference = dfmodel.select((LOGRHO_FROM_RHO - pl.col("logrho")).abs().max()).item()
+    if maxlogdifference is not None and maxlogdifference > 1e-4:
+        msg = (
+            f"The columns rho and logrho of the 1D model do not agree: log10(rho) and logrho have a difference of up"
+            f" to {maxlogdifference:.3g}. Change both columns, or drop one of them"
+        )
+        raise ValueError(msg)
+    return dfmodel
+
+
+def with_cell_ids_from_zero(
+    dfmodel: pl.DataFrame, dfelabundances: pl.DataFrame | None = None, dfgridcontributions: pl.DataFrame | None = None
+) -> tuple[pl.DataFrame, pl.DataFrame | None, pl.DataFrame | None]:
+    """Return the cells, the element abundances, and the particle contributions with cell ids that start at 0.
+
+    The cell ids of model.txt are 0 to N - 1 in format version 2. abundances.txt and gridcontributions.txt of the
+    same model must hold the same ids, thus one call changes all three dataframes by the first id of dfmodel.
+    """
+    firstinputcellid = dfmodel["inputcellid"].min()
+    assert isinstance(firstinputcellid, int)
+    if firstinputcellid == 0:
+        return dfmodel, dfelabundances, dfgridcontributions
+    return (
+        dfmodel.with_columns(pl.col("inputcellid") - firstinputcellid),
+        None if dfelabundances is None else dfelabundances.with_columns(pl.col("inputcellid") - firstinputcellid),
+        (
+            None
+            if dfgridcontributions is None
+            else dfgridcontributions.with_columns(pl.col("cellindex") - firstinputcellid)
+        ),
+    )
+
+
+def get_written_format_version(coordinates: str, modelmeta: dict[str, t.Any]) -> int:
+    """Return the format version that save_modeldata writes: the key formatversion of the metadata, or its default.
+
+    The default is 1, which each version of sn3d reads. A model with spherical2d or spherical3d coordinates has
+    version 2 only.
+    """
+    formatversion = modelmeta.get("formatversion")
+    if coordinates in SPHERICAL_EDGE_COORDINATES:
+        if formatversion == 1:
+            msg = f"Format version 1 of model.txt has no {coordinates} coordinates. Use format version 2"
+            raise ValueError(msg)
+        return 2
+    if formatversion not in {None, 1, 2}:
+        msg = f"formatversion must be 1 or 2, not {formatversion!r}"
+        raise ValueError(msg)
+    return int(formatversion or 1)
 
 
 def save_modeldata(
@@ -1367,34 +1564,47 @@ def save_modeldata(
     2D spherical and 3D spherical
     -------
     dfmodel must contain columns inputcellid, rho, X_Fegroup, X_Ni56, X_Co56, X_Fe52, X_Cr48
-    modelmeta must define: coordinates (spherical2d or spherical3d), vel_r_edges_kmps, theta_edges_rad, and for
-    spherical3d also phi_edges_rad
+    modelmeta must define: coordinates (spherical2d or spherical3d), vel_r_edges_kmps, theta_edges_radians, and for
+    spherical3d also phi_edges_radians
 
-    The coordinates spherical2d and spherical3d have a different file format. The header gives one key on each
-    line, in this order:
+    The format version
+    -------
+    The key formatversion of modelmeta gives the version of the file: 1 or 2. Without the key, a 1D, a 2D
+    cylindrical, or a 3D Cartesian model gets version 1, which each version of sn3d reads. scan_modeldata sets the
+    key, thus a model that a command reads and writes again keeps its version. A 2D spherical or a 3D spherical model
+    has version 2 only.
 
-    - coordinates;
+    A version 2 file starts with the line "format_version 2". Its header has one key on each line, in any sequence,
+    and the key columns ends the header:
+
+    - coordinates: spherical1d, cylindrical2d, cartesian3d, spherical2d, or spherical3d;
     - t_model_init_days;
-    - vel_r_edges_kmps;
-    - theta_edges_rad;
-    - phi_edges_rad (spherical3d only).
+    - the cell edges of each axis: vel_r_edges_kmps (and theta_edges_radians, phi_edges_radians), or
+      vel_rcyl_edges_kmps and vel_z_edges_kmps, or vel_x_edges_kmps, vel_y_edges_kmps, and vel_z_edges_kmps;
+    - columns: inputcellid, rho, and the other column names.
 
-    Each list of edges has one value more than the count of the cells on that axis. It starts at 0 and increases.
-    The last polar angle is pi, and the last azimuthal angle is 2 pi. The polar angle theta is from the +z axis,
-    and the azimuthal angle is phi = atan2(y, x).
+    Each list of edges has one value more than the count of the cells on that axis, and it increases. A list of r,
+    rcyl, theta, or phi starts at 0. The last polar angle is pi, and the last azimuthal angle is 2 pi. The polar
+    angle theta is from the +z axis, and the azimuthal angle is phi = atan2(y, x). A cylindrical or a Cartesian grid
+    has cells of equal width from -vmax (0 for rcyl) to vmax, because sn3d and artistools hold no other such grid.
+    For these two, the function makes the edges from vmax_cmps and stops if a position column does not agree.
 
-    The cells have no position column. The index of a cell is i_r + n_r * (i_theta + n_theta * i_phi), thus the
-    radial index changes fastest. The mass fractions of abundances.txt must be true mass fractions, because sn3d
-    does not normalise them.
+    The cells of version 2 have no position column. The inputcellid of a cell is its index in the grid of the edges,
+    from 0, and the index of the first axis changes fastest, e.g. i_r + n_r * (i_theta + n_theta * i_phi). Thus
+    dfmodel must have the cell ids 0 to N - 1 for version 2, and abundances.txt and gridcontributions.txt of the
+    model must hold the same ids (see with_cell_ids_from_zero). A cell with no line is empty, thus the function
+    writes no line for a cell with rho = 0. A 1D cell has rho and not logrho.
+
+    The mass fractions of abundances.txt must be true mass fractions, because sn3d does not normalise them.
 
     model.txt holds these comments:
 
     - a comment line that gives the creation time;
     - a comment line that gives the column units;
-    - an inline comment after each header value;
-    - a comment line that gives the column names.
+    - in version 1, an inline comment after each header value, and a comment line that gives the column names;
+    - in version 2, an inline comment only for information that the key does not give, e.g. the grid shape.
 
-    For a 1D model or a 2D model, sn3d reads these column names from v2024.04.
+    For a 1D model or a 2D model of version 1, sn3d reads these column names from v2024.04.
 
     The function deletes the parquet cache of the file that it writes. A LazyFrame from scan_modeldata of the same
     file can scan that cache, thus collect such a LazyFrame before this call.
@@ -1404,9 +1614,6 @@ def save_modeldata(
     other column, e.g. no derived column.
     """
     assert isinstance(dfmodel, (pl.LazyFrame, pl.DataFrame))
-    colnames_in = dfmodel.collect_schema().names()
-    if "inputcellid" not in colnames_in and "modelgridindex" in colnames_in:
-        dfmodel = dfmodel.with_columns(inputcellid=pl.col("modelgridindex") + 1)
 
     if modelmeta is None:
         modelmeta = {}
@@ -1433,14 +1640,23 @@ def save_modeldata(
     modelmeta["coordinates"] = coordinates
     modelmeta["dimensions"] = int(coordinates[-2])
 
+    formatversion = get_written_format_version(coordinates, modelmeta)
+    modelmeta["formatversion"] = formatversion
     colnames = dfmodel.collect_schema().names()
+    if "inputcellid" not in colnames and "modelgridindex" in colnames:
+        # the cell ids of version 2 start at 0. artistools gives the first cell of a version 1 file the id 1
+        dfmodel = dfmodel.with_columns(inputcellid=pl.col("modelgridindex") + (0 if formatversion == 2 else 1))
+        colnames = [*colnames, "inputcellid"]
 
     # the Ni57 and Co57 columns are optional, but their position counts. They must come before
     # every other custom column
-    standardcols = get_standard_columns(coordinates, includenico57=("X_Ni57" in colnames or "X_Co57" in colnames))
+    includenico57 = "X_Ni57" in colnames or "X_Co57" in colnames
+    # version 1 gives the position columns of dfmodel. The edges of a version 2 header come from the same columns
+    inputcols = get_standard_columns(coordinates, includenico57=includenico57)
+    standardcols = get_standard_columns(coordinates, includenico57=includenico57, formatversion=formatversion)
     writtencustomcols = {"Ye", "q", "tracercount", *extracols}
     customcols = sorted(
-        (col for col in colnames if col not in standardcols and (col.startswith("X_") or col in writtencustomcols)),
+        (col for col in colnames if col not in inputcols and (col.startswith("X_") or col in writtencustomcols)),
         key=customcolsortkey,
     )
 
@@ -1448,11 +1664,17 @@ def save_modeldata(
     dfmodel = (
         dfmodel
         .lazy()
-        .with_columns(pl.lit(0.0).alias(col) for col in standardcols if col.startswith("X_") and col not in colnames)
-        .select(*standardcols, *customcols)
+        .with_columns(pl.lit(0.0).alias(col) for col in inputcols if col.startswith("X_") and col not in colnames)
+        .select(*inputcols, *(["rho"] if "rho" in colnames and "rho" not in inputcols else []), *customcols)
         .with_columns(pl.col("inputcellid").cast(pl.Int32))
         .collect()
     )
+    if formatversion == 2:
+        dfmodel = dfmodel.sort("inputcellid")
+        if coordinates not in SPHERICAL_EDGE_COORDINATES:
+            modelmeta |= get_edges_of_position_columns(dfmodel, modelmeta)
+        if coordinates == "spherical1d":
+            dfmodel = with_rho_of_1d_model(dfmodel)
 
     dfmodel_npts_model = dfmodel.height
     if "npts_model" in modelmeta:
@@ -1462,7 +1684,9 @@ def save_modeldata(
 
     timestart = time.perf_counter()
     tmodelline = (str(modelmeta["t_model_init_days"]), "t_model_init_days: time of the snapshot [day]")
-    match coordinates:
+    # the lines of numbers of a version 1 header. A version 2 header has key lines in their place
+    headerlines: list[tuple[str, str]] = []
+    match coordinates if formatversion == 1 else "version2":
         case "spherical1d":
             print(f" 1D grid radial bins: {dfmodel_npts_model}")
             strunits = "vel_r_max_kmps [km/s], logrho = log10(rho [g/cm^3]) at t_model_init_days"
@@ -1492,14 +1716,8 @@ def save_modeldata(
                 (f"{vmax:.8e}", "vmax_cmps: maximum velocity along each axis [cm/s]"),
             ]
 
-        case "spherical2d" | "spherical3d":
-            dfmodel = dfmodel.sort("inputcellid")
-            strunits = "rho [g/cm^3] at t_model_init_days"
-            headerlines = get_spherical_headerlines(dfmodel["inputcellid"], modelmeta)
-
         case _:
-            msg = f"The coordinates {coordinates!r} are not known"
-            raise ValueError(msg)
+            strunits = "rho [g/cm^3] at t_model_init_days"
 
     modelfilepath = prepare_zstd_output(resolve_outputfile(outpath, "model.txt"))
 
@@ -1508,11 +1726,15 @@ def save_modeldata(
         # other comment line comes before those values. sn3d reads the numbers at the start of a header
         # line, thus an inline comment can follow them
         headertextlines = [
+            # a reader finds the version on the first line. A version 1 file has no such line
+            *(["format_version 2"] if formatversion == 2 else []),
             *[f"# {line}" for line in headercommentlines or []],
             get_created_comment(),
             f"# {UNITS_COMMENT_PREFIX} {strunits}. {UNITS_COMMENT_END}",
             *[f"{strvalue:<24} # {comment}" for strvalue, comment in headerlines],
-            f"#{' '.join([*standardcols, *customcols])}",
+            *(get_version2_headerlines(dfmodel["inputcellid"], modelmeta) if formatversion == 2 else []),
+            # the key columns ends a version 2 header. A version 1 file gives the names in a comment line
+            f"{'columns ' if formatversion == 2 else '#'}{' '.join([*standardcols, *customcols])}",
         ]
 
         abundandcustomcols = [*[col for col in standardcols if col.startswith("X_")], *customcols]
@@ -1520,7 +1742,7 @@ def save_modeldata(
         isintcol = [not dfmodel.schema[col].is_float() for col in abundandcustomcols]
         ismassfraccol = [col.startswith("X_") for col in abundandcustomcols]
         strzeroabund = " ".join(["0" if isint else "0.0" for isint in isintcol])
-        if modelmeta["dimensions"] == 1:
+        if coordinates == "spherical1d" and formatversion == 1:
             celllines = []
             for inputcellid, vel_r_max_kmps, logrho, *abundandcustomcolvals in dfmodel.select([
                 "inputcellid",
@@ -1556,6 +1778,9 @@ def save_modeldata(
             # startcols are the standard ones, but excluding any abundances
             startcols = [col for col in standardcols if not col.startswith("X_")]
             dfmodel = dfmodel.select([*startcols, *abundandcustomcols])
+            if formatversion == 2:
+                # a cell with no line is empty in version 2, thus the file needs no line for a cell with no density
+                dfmodel = dfmodel.filter(pl.col("rho") > 0)
             # fast polars writer
             # set abundances to null for cells with zero density (so that shorter form "0.0" can be written)
             dfmodel = dfmodel.with_columns(
@@ -1661,7 +1886,7 @@ def save_initelemabundances(
     The file name gets the extension .zst, as in save_modeldata.
 
     columns must be:
-        - inputcellid: integer index to match model.txt (starting from 1)
+        - inputcellid: integer index to match model.txt (starting from 0 or 1)
         - X_i: mass fraction of element with two-letter code 'i' (e.g., X_H, X_He, H_Li, ...).
     """
     timestart = time.perf_counter()
@@ -1675,8 +1900,19 @@ def save_initelemabundances(
     )
     assert isinstance(dfelabundances, pl.DataFrame)
 
-    assert dfelabundances["inputcellid"].min() == 1
-    assert dfelabundances["inputcellid"].max() == len(dfelabundances)
+    # the cell ids are those of model.txt: from 1 or from 0 in format version 1, and from 0 in format version 2
+    firstinputcellid = dfelabundances["inputcellid"].min()
+    if (
+        firstinputcellid not in {0, 1}
+        or not (
+            dfelabundances["inputcellid"] == firstinputcellid + pl.int_range(dfelabundances.height, eager=True)
+        ).all()
+    ):
+        msg = (
+            "The inputcellid values of abundances.txt must start at 0 or 1 and increase by one from each cell to the"
+            " next"
+        )
+        raise ValueError(msg)
 
     atomic_numbers = {get_atomic_number(colname) for colname in dfelabundances.select(cs.starts_with("X_")).columns}
     max_atomic_number = max([30, *atomic_numbers])
@@ -1776,7 +2012,8 @@ def dimension_reduce_model(
     dfmodel = dfmodel.lazy()
 
     hassphericaledges = get_model_coordinates(modelmeta) in SPHERICAL_EDGE_COORDINATES
-    edgekeys = ("vel_r_edges_kmps", "theta_edges_rad", "phi_edges_rad", "firstinputcellid")
+    # the output has different coordinates, thus it gets the default format version of those coordinates
+    edgekeys = (*ALL_MODEL_EDGE_KEYS, "firstinputcellid", "formatversion")
     modelmeta_out = {
         k: v for k, v in modelmeta.items() if not k.startswith(("ncoord", "wid_init")) and k not in edgekeys
     }
@@ -1800,7 +2037,7 @@ def dimension_reduce_model(
         modelmeta_out |= {
             "coordinates": "spherical2d",
             "vel_r_edges_kmps": modelmeta["vel_r_edges_kmps"],
-            "theta_edges_rad": modelmeta["theta_edges_rad"],
+            "theta_edges_radians": modelmeta["theta_edges_radians"],
             "firstinputcellid": 1,
         }
     else:
@@ -1824,7 +2061,7 @@ def dimension_reduce_model(
     if hassphericaledges:
         in_n_r, in_n_theta, _ = get_spherical_cell_indices(inputcols, modelmeta)
         ncoordgridr = len(modelmeta["vel_r_edges_kmps"]) - 1 if outputdimensions > 0 else 1
-        ncoordgridz = len(modelmeta["theta_edges_rad"]) - 1 if outputdimensions == 2 else 1
+        ncoordgridz = len(modelmeta["theta_edges_radians"]) - 1 if outputdimensions == 2 else 1
         dfmodel_out = dfmodel_out.with_columns(
             out_n_r=(in_n_r if outputdimensions > 0 else pl.lit(0)).cast(pl.Int32),
             out_n_z=(in_n_theta if outputdimensions == 2 else pl.lit(0)).cast(pl.Int32),
@@ -2025,6 +2262,19 @@ def dimension_reduce_model(
 
     if dfelabundances is not None:
         assert modelmeta_out["npts_model"] == dfelabundances_out.select(pl.len()).item()
+
+    if modelmeta_out["coordinates"] in SPHERICAL_EDGE_COORDINATES:
+        # this model has format version 2 only, and that version has cell ids from 0
+        dfmodel_out, dfelabundances_zero, dfgridcontributions_zero = with_cell_ids_from_zero(
+            dfmodel_out,
+            dfelabundances_out if "inputcellid" in dfelabundances_out.columns else None,
+            dfgridcontributions_out if "cellindex" in dfgridcontributions_out.columns else None,
+        )
+        dfelabundances_out = dfelabundances_out if dfelabundances_zero is None else dfelabundances_zero
+        dfgridcontributions_out = (
+            dfgridcontributions_out if dfgridcontributions_zero is None else dfgridcontributions_zero
+        )
+        modelmeta_out["firstinputcellid"] = 0
 
     print(f"  Took {time.perf_counter() - timestart:.1f} seconds")
 

@@ -365,21 +365,21 @@ def get_spherical_modelgridindex_expr(
     sn3d uses the same rules.
     """
     ncoordgridr = len(modelmeta["vel_r_edges_kmps"]) - 1
-    ncoordgridtheta = len(modelmeta["theta_edges_rad"]) - 1
+    ncoordgridtheta = len(modelmeta["theta_edges_radians"]) - 1
 
     index_r = get_bin_index_expr(vel_r, [edge * km_to_cm for edge in modelmeta["vel_r_edges_kmps"]])
     index_r = pl.when(index_r.is_between(0, ncoordgridr - 1)).then(index_r)
 
     theta = pl.when(vel_r > 0.0).then((vel_z / vel_r).clip(-1.0, 1.0).arccos()).otherwise(0.0)
-    index_theta = get_bin_index_expr(theta, modelmeta["theta_edges_rad"])
+    index_theta = get_bin_index_expr(theta, modelmeta["theta_edges_radians"])
     index_theta = pl.when(index_theta >= ncoordgridtheta).then(ncoordgridtheta - 1).otherwise(index_theta)
 
     cellindex = index_theta * ncoordgridr + index_r
-    if "phi_edges_rad" in modelmeta:
+    if "phi_edges_radians" in modelmeta:
         phi = pl.arctan2(vel_y, vel_x)
         phi = pl.when(phi < 0.0).then(phi + 2.0 * math.pi).otherwise(phi)
         phi = pl.when(phi >= 2.0 * math.pi).then(0.0).otherwise(phi)
-        cellindex += get_bin_index_expr(phi, modelmeta["phi_edges_rad"]) * (ncoordgridr * ncoordgridtheta)
+        cellindex += get_bin_index_expr(phi, modelmeta["phi_edges_radians"]) * (ncoordgridr * ncoordgridtheta)
     return cellindex
 
 
