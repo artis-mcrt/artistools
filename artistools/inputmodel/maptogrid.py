@@ -1,6 +1,6 @@
 # adapted from Fortran maptogrid.f90 and kernelmodule.f90
 # original Fortran code by Andreas Bauswein
-"""Map SPH ejecta particles onto a Cartesian grid or a spherical grid using a cubic spline kernel."""
+"""Map SPH ejecta particles to a Cartesian grid or a spherical grid with a cubic spline kernel."""
 
 import argparse
 import math
@@ -129,18 +129,19 @@ def get_spherical_deposit(
     edges: tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]],
     wij: npt.NDArray[np.float64],
 ) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.int64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:
-    """Return the mass that each particle gives to each cell of a spherical grid, as pairs of a particle and a cell.
+    """Return the mass that each particle gives to each cell of a spherical grid.
 
     position has one row of x, y, and z for each particle, and edges holds the cell edges in r, theta, and phi. The
     result holds the particle index, the cell index, and the mass of each pair, and the sum of the weights of each
     particle. The cell index is i_r + n_r * (i_theta + n_theta * i_phi).
 
     A particle gives its mass to the cells whose mid-points are in its kernel, which has the radius 2h. The weight of
-    a cell is the kernel value at its mid-point times its volume, and the weights of one particle are normalised to a
-    sum of 1. Thus the grid holds exactly the mass of each particle inside the outer radius. A particle with no cell
-    mid-point in its kernel gives all its mass to the cell that contains it, and its sum of weights is zero. A
-    particle outside the outer radius gives no mass, and its sum of weights is NaN. The particle with the largest
-    radius is at the outer radius for a grid to that radius, and it is inside the grid.
+    a cell is the kernel value at its mid-point times its volume. The function normalises the weights of a particle
+    to a sum of 1. Thus the grid holds exactly the mass of each particle inside the outer radius.
+
+    A particle with no cell mid-point in its kernel gives all its mass to the cell that holds it. Its sum of weights
+    is zero. A particle outside the outer radius gives no mass, and its sum of weights is NaN. The particle with the
+    largest radius is at the outer radius for a grid to that radius, and it is inside the grid.
     """
     r_edges, theta_edges, phi_edges = edges
     ngridr, ngridtheta, ngridphi = (len(axisedges) - 1 for axisedges in edges)
@@ -169,7 +170,7 @@ def get_spherical_deposit(
         r_p, theta_p, phi_p = float(r_particle[n]), float(theta_particle[n]), float(phi_particle[n])
 
         # the kernel is inside a cone around the direction of the particle with the half angle asin(2h / r). A kernel
-        # that holds the origin reaches each direction, and a kernel that holds the z axis reaches each phi
+        # that holds the centre of the grid reaches each direction, and a kernel that holds the z axis reaches each phi
         thetaindices, phiindices = alltheta, allphi
         if kernelradius < r_p:
             halfangle = math.asin(kernelradius / r_p)
@@ -229,7 +230,7 @@ def map_particles_to_spherical_grid(
     dtextra: float,
     logprint: Callable[..., None],
 ) -> None:
-    """Map SPH particles onto a spherical grid of r, theta, and phi, and write grid.dat and gridcontributions.txt.zst.
+    """Map SPH particles to a spherical grid of r, theta, and phi, and write grid.dat and gridcontributions.txt.zst.
 
     dfparticles holds the columns id, x, y, z, h, mass, and ye of the particles, with the smoothing length after
     the option of --modifysmoothinglength. gridshape gives the cell counts n_r, n_theta, and n_phi.
@@ -248,8 +249,8 @@ def map_particles_to_spherical_grid(
     )
     logprint(
         "Deposit method: normalised kernel. A particle gives its mass to the cells whose mid-points are in its kernel"
-        " of radius 2h. The weight of a cell is the cubic spline kernel at its mid-point times its volume, and the"
-        " weights of a particle are normalised to a sum of 1. The mid-point of a cell is the mean of its edges in r,"
+        " of radius 2h. The weight of a cell is the cubic spline kernel at its mid-point times its volume. The deposit"
+        " normalises the weights of a particle to a sum of 1. The mid-point of a cell is the mean of its edges in r,"
         " theta, and phi. A particle with no cell mid-point in its kernel gives all its mass to the cell that holds it"
     )
     logprint(
@@ -276,8 +277,9 @@ def map_particles_to_spherical_grid(
     if np.any(weightsums > 0.0):
         quantiles = np.quantile(weightsums[weightsums > 0.0], [0.05, 0.5, 0.95])
         logprint(
-            "Sum of kernel times cell volume of a particle before the normalisation (1 for a kernel that the cells"
-            f" resolve): 5% quantile {quantiles[0]:.3g}, median {quantiles[1]:.3g}, 95% quantile {quantiles[2]:.3g}"
+            "Sum of the weights of a particle before the normalisation:"
+            f" 5% quantile {quantiles[0]:.3g}, median {quantiles[1]:.3g}, 95% quantile {quantiles[2]:.3g}."
+            " The sum is 1 for a kernel that the cells resolve"
         )
     logprint(
         f"Pairs of a particle and a cell: {pairmass.size}, which is"
@@ -341,7 +343,7 @@ def maptogrid(
     coordinates: str = "cartesian",
     sphericalgridshape: tuple[int, int, int] = (25, 16, 32),
 ) -> None:
-    """Map an SPH ejecta snapshot onto a grid and write grid.dat and gridcontributions.txt.zst.
+    """Map an SPH ejecta snapshot to a grid and write grid.dat and gridcontributions.txt.zst.
 
     The coordinates cartesian give an ncoordgrid^3 Cartesian grid. The coordinates spherical give a grid of r,
     theta, and phi with the cell counts of sphericalgridshape, and map_particles_to_spherical_grid makes it.
@@ -707,7 +709,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-ncoordgrid",
         type=int,
         default=None,
-        help="The number of grid positions per axis of a Cartesian grid (numcells = ncoordgrid^3, default: 50)",
+        help="The number of cells on each axis of a Cartesian grid (the grid has ncoordgrid^3 cells, default: 50)",
     )
     for axis, description, default in (
         ("r", "radial shells", 25),
@@ -731,8 +733,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-setgrid_fractionrmax",
         type=float,
         default=0.5,
-        help="Setup grid to have max equal to fraction of particle rmax. The max is the half width of a Cartesian"
-        " grid, and the outer radius of a spherical grid",
+        help="The size of the grid as a fraction of rmax, which is the largest radius of the particles. The size is the"
+        " half width of a Cartesian grid, and the outer radius of a spherical grid",
     )
     parser.add_argument(
         "-downsamplefactor",

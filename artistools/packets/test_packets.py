@@ -1615,11 +1615,15 @@ def test_a_position_in_a_spherical_grid_gets_the_cell_of_its_radius_and_angles()
         )
     )
     radius = r_mid * 1e5 * t_s
-    # the extra positions are: the -z axis, an angle below the x axis that rounds to phi = 2 pi, an angle of 0.1 rad
-    # below the x axis, the centre, the outer radius, and NaN
-    extra_x = [0.0, 3000e5 * t_s, 3000e5 * t_s, 0.0, 9000e5 * t_s, math.nan]
-    extra_y = [0.0, -1e-9, -300e5 * t_s, 0.0, 0.0, 0.0]
-    extra_z = [-3000e5 * t_s, 0.0, 0.0, 0.0, 0.0, 0.0]
+    extrapositions = [
+        (0.0, 0.0, -3000e5 * t_s),  # the -z axis
+        (3000e5 * t_s, -1e-9, 0.0),  # an angle below the x axis that rounds to phi = 2 pi
+        (3000e5 * t_s, -300e5 * t_s, 0.0),  # an angle of 0.1 rad below the x axis
+        (0.0, 0.0, 0.0),  # the centre
+        (9000e5 * t_s, 0.0, 0.0),  # the outer radius
+        (math.nan, 0.0, 0.0),  # NaN
+    ]
+    extra_x, extra_y, extra_z = (list(component) for component in zip(*extrapositions, strict=True))
     dfpackets = pl.DataFrame({
         "em_posx": [*(radius * np.sin(theta_mid) * np.cos(phi_mid)), *extra_x],
         "em_posy": [*(radius * np.sin(theta_mid) * np.sin(phi_mid)), *extra_y],

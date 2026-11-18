@@ -4037,10 +4037,10 @@ def get_random_spherical_model(coordinates: str) -> tuple[pl.DataFrame, dict[str
 
 @pytest.mark.parametrize("coordinates", ["spherical2d", "spherical3d"])
 def test_spherical_model_round_trip(tmp_path: Path, coordinates: str) -> None:
-    """A model with spherical edges keeps its edges, its cells, and its volume through a write and a read.
+    """A spherical2d or spherical3d model keeps its edges, its cells, and its volume through a write and a read.
 
     model.txt has no position column for these coordinates. Thus the edges of the header and the id of a cell give
-    each position, and an error in the cell order or in an edge shows in the volume and in the mid-points.
+    each position. An error in the cell order or in an edge shows in the volume and in the mid-points.
     """
     dfmodel, modelmeta = get_random_spherical_model(coordinates)
     edgekeys = [key for key in ("vel_r_edges_kmps", "theta_edges_rad", "phi_edges_rad") if key in modelmeta]
@@ -4075,8 +4075,8 @@ def test_spherical_model_round_trip(tmp_path: Path, coordinates: str) -> None:
             atol=0.0,
         )
 
-    # the id of a cell gives its place in the grid, thus a selection of the rows in a different order gives the
-    # same values for these cells
+    # the id of a cell gives its index in the grid. Thus a selection of the rows in a different order gives the
+    # same values
     isselected = pl.col("inputcellid") % 3 == 0
     pltest.assert_frame_equal(
         at.inputmodel.add_derived_cols_to_modeldata(
@@ -4102,7 +4102,7 @@ SPHERICAL2D_MODEL_LINES = (
 
 
 def test_spherical_model_reader_takes_cell_ids_from_zero(tmp_path: Path) -> None:
-    """The first cell id of a file sets the place of each cell, also with no modelgridindex column.
+    """The first cell id of a file sets the index of each cell, also with no modelgridindex column.
 
     The reader also takes a comment line before each key line.
     """
@@ -4224,18 +4224,16 @@ def test_spherical_deposit_agrees_with_a_sum_over_all_cells() -> None:
     r_outer = 1000.0
     edges = get_spherical_grid_edges(r_outer, 6, 5, 8)
     rng = np.random.default_rng(seed=3)
-    # near the +z axis, on each side of phi = 0, near the centre, near the outer radius, outside the grid, with a
-    # kernel that holds no cell mid-point, and near the -z axis
     position = np.vstack((
         [
-            [5.0, 3.0, 600.0],
-            [400.0, 2.0, 50.0],
-            [400.0, -2.0, 50.0],
-            [3.0, -4.0, 5.0],
-            [0.0, 990.0, 10.0],
-            [0.0, 0.0, 1200.0],
-            [-300.0, 200.0, -100.0],
-            [1.0, 0.0, -700.0],
+            [5.0, 3.0, 600.0],  # near the +z axis
+            [400.0, 2.0, 50.0],  # on one side of phi = 0
+            [400.0, -2.0, 50.0],  # on the other side of phi = 0
+            [3.0, -4.0, 5.0],  # near the centre
+            [0.0, 990.0, 10.0],  # near the outer radius
+            [0.0, 0.0, 1200.0],  # outside the grid
+            [-300.0, 200.0, -100.0],  # a kernel that holds no cell mid-point
+            [1.0, 0.0, -700.0],  # near the -z axis
         ],
         rng.uniform(-550.0, 550.0, (40, 3)),
     ))
@@ -4282,7 +4280,7 @@ def test_spherical_deposit_agrees_with_a_sum_over_all_cells() -> None:
 
     actual = np.zeros_like(expected)
     np.add.at(actual, (pairparticle, paircell), pairmass)
-    # a cell mid-point at the edge of a kernel has a weight near zero, and the two distance formulas can put it on
+    # a cell mid-point at the edge of a kernel has a weight near zero. The two distance formulas can put it on
     # different sides of the edge
     np.testing.assert_allclose(actual, expected, rtol=1e-9, atol=1e-12)
 

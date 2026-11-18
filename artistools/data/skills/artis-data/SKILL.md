@@ -402,14 +402,19 @@ model, `t_model_init_days`. The columns are:
 
 The main parameters are `t_model_init_days`, `vmax_cmps` (cm/s), `dimensions`, `npts_model` (the number of cells), and
 `coordinates`. The value of `coordinates` is `spherical1d`, `cylindrical2d`, `cartesian3d`, `spherical2d`, or
-`spherical3d`. Use `coordinates` to select the geometry, because `dimensions` = 2 or 3 has two possible geometries.
+`spherical3d`. Use `coordinates` to select the code for a model. Each of the values 2 and 3 of `dimensions` has two
+possible values of `coordinates`.
 
 A model with the coordinates `spherical2d` or `spherical3d` also has the parameters `vel_r_edges_kmps`,
 `theta_edges_rad`, and, for `spherical3d`, `phi_edges_rad`. Each list holds the edges of the cells on one axis. The polar
 angle theta is from the +z axis, and the azimuthal angle is phi = atan2(y, x). The index of a cell is
-`i_r + n_r * (i_theta + n_theta * i_phi)`. For such a model, `add_derived_cols_to_modeldata` gives `vel_r_min`,
-`vel_r_mid`, `vel_r_max`, `theta_min_rad`, `theta_max_rad`, `phi_min_rad`, `phi_max_rad`, and the velocity of the
-mid-point of the cell (`vel_x_mid`, `vel_y_mid`, `vel_z_mid`, and `vel_rcyl_mid`).
+`i_r + n_r * (i_theta + n_theta * i_phi)`. For such a model, `add_derived_cols_to_modeldata` gives these columns:
+
+- `vel_r_min`, `vel_r_mid`, and `vel_r_max`;
+- `theta_min_rad` and `theta_max_rad`;
+- `phi_min_rad` and `phi_max_rad` (`spherical3d` only);
+- the velocity of the mid-point of the cell: `vel_rcyl_mid` and `vel_z_mid`, and for `spherical3d` also `vel_x_mid` and
+  `vel_y_mid`.
 
 Possible errors:
 

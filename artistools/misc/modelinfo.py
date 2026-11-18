@@ -364,7 +364,7 @@ def parse_npts_line(line: str, modelfilepath: Path | str) -> list[int]:
     return cellcounts
 
 
-# the coordinate systems of model.txt. The last two have a header of keys and lists of cell edges
+# the coordinates that a model can have. The last two have a header of keys and lists of cell edges
 MODEL_COORDINATES = ("spherical1d", "cylindrical2d", "cartesian3d", "spherical2d", "spherical3d")
 SPHERICAL_EDGE_COORDINATES = ("spherical2d", "spherical3d")
 SPHERICAL_HEADER_KEYS = ("coordinates", "t_model_init_days", "vel_r_edges_kmps", "theta_edges_rad", "phi_edges_rad")
@@ -373,10 +373,10 @@ ANGLE_EDGE_ATOL_RAD = 1e-8
 
 
 def get_model_coordinates(modelmeta: "Mapping[str, t.Any]") -> str:
-    """Return the coordinate system of a model, which is one of MODEL_COORDINATES.
+    """Return the coordinates of a model, which are one of MODEL_COORDINATES.
 
-    The readers of model.txt set the key coordinates. A caller that makes the metadata gives only the
-    dimensions of an older coordinate system, thus 1, 2, and 3 give spherical1d, cylindrical2d, and cartesian3d.
+    The readers of model.txt set the key coordinates. A caller that makes the metadata can give the dimensions
+    only, thus 1, 2, and 3 give spherical1d, cylindrical2d, and cartesian3d.
     """
     dimensions = modelmeta.get("dimensions")
     coordinates = modelmeta.get("coordinates")
@@ -426,7 +426,7 @@ def validate_spherical_edges(
     phi_edges_rad: Sequence[float] | None,
     source: Path | str,
 ) -> tuple[list[float], list[float], list[float] | None]:
-    """Return the cell edges of a spherical2d or spherical3d grid, with the exact pi and 2 pi as the last angles.
+    """Return the cell edges of a spherical2d or spherical3d grid, with the last angles exactly pi and 2 pi.
 
     Each list must start at exactly 0 and increase. The last polar angle must be pi and the last azimuthal angle
     must be 2 pi, to ANGLE_EDGE_ATOL_RAD. phi_edges_rad is None for a spherical2d grid. source is the file or the

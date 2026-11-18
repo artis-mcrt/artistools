@@ -237,8 +237,8 @@ def scan_modelfile_text(
             f" {len(columns or [])} columns. A cell of a {modelmeta['coordinates']} model has one line"
         )
         raise ValueError(msg)
-    # the header of a model with spherical edges gives no cell count, thus one row more than the edges give must
-    # show as an error and not go out of the read
+    # the header of a spherical2d or spherical3d model gives no cell count. Thus the reader takes one row more than
+    # the edges give, and the check below finds an extra row
     maxrowcount = npts_model + 1 if hassphericaledges else npts_model
 
     if columns is None:
@@ -963,7 +963,7 @@ def get_spherical_cell_indices(
 
 
 def add_spherical_derived_cols(dfmodel: pl.LazyFrame, modelmeta: dict[str, t.Any]) -> pl.LazyFrame:
-    """Add the bounds, the mid-point, the volume, and the kinetic energy of each cell of a spherical grid.
+    """Add the bounds, the mid-point, the volume, and the kinetic energy of each cell of a grid with spherical edges.
 
     The cell edges of the metadata give each value, because model.txt has no position column for the coordinates
     spherical2d and spherical3d. The mid-point of a cell is the mean of its edges in r, theta, and phi. A
@@ -1170,11 +1170,11 @@ def add_derived_cols_to_modeldata(dfmodel: pl.DataFrame | pl.LazyFrame, modelmet
             dfmodel = add_spherical_derived_cols(dfmodel, modelmeta)
 
         case _:
-            msg = f"Unhandled model coordinates: {coordinates}"
+            msg = f"The coordinates {coordinates!r} are not known"
             raise ValueError(msg)
 
-    # get total kinetic energy from orthogonal components. A cylindrical model and a Cartesian model also get a
-    # radial position, which is not a component, thus "r" counts only where it is the sole axis
+    # the total kinetic energy is the sum of the orthogonal components. A cylindrical model and a Cartesian model
+    # also get a radial position, which is not a component. Thus "r" counts only where it is the sole axis
     orthogonal_axes = [ax for ax in axes if ax != "r"] or ["r"]
     dfmodel = dfmodel.with_columns(
         kinetic_en_erg=(pl.sum_horizontal(pl.col(f"kinetic_en_erg_{ax}") for ax in orthogonal_axes))
@@ -1192,7 +1192,7 @@ def add_derived_cols_to_modeldata(dfmodel: pl.DataFrame | pl.LazyFrame, modelmet
 
 
 def get_standard_columns(coordinates: str, includenico57: bool = False, pos_unknown: bool = False) -> list[str]:
-    """Return the standard columns of model.txt for a coordinate system, e.g. cartesian3d.
+    """Return the standard columns of model.txt for the coordinates of a model, e.g. cartesian3d.
 
     A model with spherical2d or spherical3d coordinates has no position column, because the header gives the
     edges of the cells.
@@ -1212,7 +1212,7 @@ def get_standard_columns(coordinates: str, includenico57: bool = False, pos_unkn
         case "spherical2d" | "spherical3d":
             cols = ["inputcellid", "rho"]
         case _:
-            msg = f"Unhandled model coordinates: {coordinates}"
+            msg = f"The coordinates {coordinates!r} are not known"
             raise ValueError(msg)
 
     cols += ["X_Fegroup", "X_Ni56", "X_Co56", "X_Fe52", "X_Cr48"]
@@ -1315,8 +1315,8 @@ def get_spherical_headerlines(inputcellids: pl.Series, modelmeta: dict[str, t.An
     ):
         msg = (
             f"The cell edges give {gridshape} = {npts_model} cells, but the model has {inputcellids.len()} cells."
-            " The inputcellid values must start at 0 or 1 and increase by one from each cell to the next, with the"
-            " radial index of a cell as the fastest index"
+            " The inputcellid values must start at 0 or 1 and increase by one from each cell to the next. The radial"
+            " index of a cell must change fastest"
         )
         raise ValueError(msg)
 
@@ -1370,13 +1370,22 @@ def save_modeldata(
     modelmeta must define: coordinates (spherical2d or spherical3d), vel_r_edges_kmps, theta_edges_rad, and for
     spherical3d also phi_edges_rad
 
-    These two coordinate systems have a different file format. The header gives a key on each line, in this
-    order: coordinates, t_model_init_days, vel_r_edges_kmps, theta_edges_rad, and phi_edges_rad (spherical3d
-    only). Each list of edges has one value more than the count of the cells on that axis. It starts at 0 and
-    increases. The last polar angle is pi, and the last azimuthal angle is 2 pi. The polar angle theta is from
-    the +z axis, and the azimuthal angle is phi = atan2(y, x). The cells have no position column. The index of a
-    cell is i_r + n_r * (i_theta + n_theta * i_phi), thus the radial index changes fastest. The mass fractions
-    of abundances.txt must be true mass fractions, because sn3d does not normalise them for these coordinates.
+    The coordinates spherical2d and spherical3d have a different file format. The header gives one key on each
+    line, in this order:
+
+    - coordinates;
+    - t_model_init_days;
+    - vel_r_edges_kmps;
+    - theta_edges_rad;
+    - phi_edges_rad (spherical3d only).
+
+    Each list of edges has one value more than the count of the cells on that axis. It starts at 0 and increases.
+    The last polar angle is pi, and the last azimuthal angle is 2 pi. The polar angle theta is from the +z axis,
+    and the azimuthal angle is phi = atan2(y, x).
+
+    The cells have no position column. The index of a cell is i_r + n_r * (i_theta + n_theta * i_phi), thus the
+    radial index changes fastest. The mass fractions of abundances.txt must be true mass fractions, because sn3d
+    does not normalise them for these coordinates.
 
     model.txt holds these comments:
 
@@ -1411,8 +1420,8 @@ def save_modeldata(
     headercommentlines = modelmeta.get("headercommentlines")
     vmax = modelmeta.get("vmax_cmps")
 
-    # the columns give the dimensions of an older coordinate system. The columns of a spherical2d model and a
-    # spherical3d model give no geometry, thus the caller names those coordinates
+    # the columns give the dimensions of a spherical1d, cylindrical2d, or cartesian3d model. The columns of a
+    # spherical2d model and a spherical3d model do not give the coordinates, thus the caller names them
     if modelmeta.get("dimensions") is None and modelmeta.get("coordinates") is None:
         modelmeta["dimensions"] = get_dfmodel_dimensions(dfmodel)
 
@@ -1489,7 +1498,7 @@ def save_modeldata(
             headerlines = get_spherical_headerlines(dfmodel["inputcellid"], modelmeta)
 
         case _:
-            msg = f"Unhandled model coordinates: {coordinates}"
+            msg = f"The coordinates {coordinates!r} are not known"
             raise ValueError(msg)
 
     modelfilepath = prepare_zstd_output(resolve_outputfile(outpath, "model.txt"))

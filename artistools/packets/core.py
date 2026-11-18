@@ -419,7 +419,7 @@ def get_modelgridindex_expr(
         return coordz * ncoordgridrcyl + coordrcyl
 
     if coordinates != "cartesian3d":
-        msg = f"Unhandled model coordinates: {coordinates}"
+        msg = f"The coordinates {coordinates!r} are not known"
         raise ValueError(msg)
 
     vwidth = float(modelmeta["wid_init"]) / t_model_s

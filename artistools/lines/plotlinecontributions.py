@@ -353,8 +353,8 @@ def get_trough_settings(args: argparse.Namespace, unit: t.Literal["kmps", "c"]) 
     # of the cells along x, y, and z
     require_cartesian3d_model(
         modelmeta,
-        "The trough estimate needs the velocity vector and the widths of each cell of",
-        "Remove --troughdirbin",
+        "The trough estimate needs",
+        "The estimate reads the velocity vector and the widths of each cell. Remove --troughdirbin",
     )
     photospherevelocity_kmps = args.photospherevelocity_kmps
     if photospherevelocity_kmps is None:
