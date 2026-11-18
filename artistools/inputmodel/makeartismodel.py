@@ -23,6 +23,7 @@ from artistools.inputmodel.energyinputfiles import ENERGY_FILE_NAMES
 from artistools.inputmodel.energyinputfiles import make_energy_files
 from artistools.inputmodel.modelfromhydro import get_griddata_output_file_names
 from artistools.inputmodel.modelfromhydro import makemodelfromgriddata
+from artistools.inputmodel.opacityinputfile import write_ye_file
 from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions_or_none
 from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
 from artistools.misc import addarg_darkmode
@@ -37,6 +38,7 @@ from artistools.misc import get_model_coordinates
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
+from artistools.misc import read_wsv
 from artistools.misc import resolve_outputfile
 from artistools.misc import SPHERICAL_EDGE_COORDINATES
 
@@ -171,6 +173,12 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
             save_initelemabundances(dfelabundances, outpath=outputfolder)
         if dfgridcontributions is not None:
             save_gridparticlecontributions(dfgridcontributions, outputfolder / "gridcontributions.txt")
+        yefilepath = get_model_text_folder(modelpath) / "Ye.txt"
+        if yefilepath.is_file():
+            # sn3d reads the cell ids of Ye.txt as those of model.txt, thus an old id gives the value to the next cell
+            dfye = read_wsv(yefilepath, has_header=False, skip_rows=1, new_columns=["inputcellid", "Ye"])
+            firstinputcellid = lzmodel.select(pl.col("inputcellid").min()).collect().item()
+            write_ye_file(outputfolder, dfye.with_columns(pl.col("inputcellid").cast(pl.Int32) - firstinputcellid))
 
     save_modeldata(
         dfmodel, outpath=outputfolder, modelmeta=modelmeta | {"formatversion": formatversion}, extracols=customcols
@@ -180,8 +188,8 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
 def get_converted_file_names(modelpaths: Sequence[Path], formatversion: int | None) -> Sequence[str]:
     """Return the names of the files that convert_model_format writes for these models.
 
-    A conversion to version 2 also writes abundances.txt and gridcontributions.txt if the cell ids of a model do
-    not start at 0.
+    A conversion to version 2 also writes abundances.txt, gridcontributions.txt, and Ye.txt if the cell ids of a
+    model do not start at 0.
     """
     if formatversion != 2:
         return ("model.txt",)
@@ -189,7 +197,7 @@ def get_converted_file_names(modelpaths: Sequence[Path], formatversion: int | No
         scan_modeldata(modelpath, printwarningsonly=True)[0].select(pl.col("inputcellid").min()).collect().item()
         for modelpath in modelpaths
     ]
-    return ("model.txt",) if all(firstcellid == 0 for firstcellid in firstcellids) else MODEL_FILE_NAMES
+    return ("model.txt",) if all(firstcellid == 0 for firstcellid in firstcellids) else (*MODEL_FILE_NAMES, "Ye.txt")
 
 
 def get_model_output_folders(args: argparse.Namespace, modelpath_given: bool) -> dict[str, list[Path]]:
@@ -291,6 +299,16 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             ]
             if args.format_version is not None:
                 modelmeta_out["formatversion"] = args.format_version
+            if args.format_version == 2:
+                # version 2 has cell ids from 0 in each file of the model
+                dfmodel_out, dfelabundances_zero, dfgridcontributions_zero = with_cell_ids_from_zero(
+                    dfmodel_out,
+                    dfelabundances_out,
+                    dfgridcontributions_out if "cellindex" in dfgridcontributions_out.columns else None,
+                )
+                dfelabundances_out = dfelabundances_zero if dfelabundances_zero is not None else dfelabundances_out
+                if dfgridcontributions_zero is not None:
+                    dfgridcontributions_out = dfgridcontributions_zero
             assert dfelabundances_out is not None
             save_initelemabundances(dfelabundances_out, outpath=outdir)
             save_modeldata(dfmodel=dfmodel_out, modelmeta=modelmeta_out, outpath=outdir)

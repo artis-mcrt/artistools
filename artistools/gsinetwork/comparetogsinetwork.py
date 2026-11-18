@@ -654,14 +654,11 @@ def get_dfcontribsparticledata(
     t_mergertime_s = mergertime_geomunits * geometric_time_to_s
     arr_time_gsi_s_incpremerger = np.array(arr_time_gsi_days) * day_to_s + t_mergertime_s
 
-    dfpartcontrib = (
-        get_gridparticlecontributions(modelpath)
-        .lazy()
-        .with_columns(modelgridindex=pl.col("cellindex") - 1)
-        .filter(pl.col("frac_of_cellmass") > 0)
-    ).join(
-        lzdfmodel.select(["modelgridindex", "cellmass_on_mtot"]),
-        on="modelgridindex",
+    # the cell ids of gridcontributions.txt are those of model.txt, which start at 1, or at 0 in format version 2
+    dfpartcontrib = (get_gridparticlecontributions(modelpath).lazy().filter(pl.col("frac_of_cellmass") > 0)).join(
+        lzdfmodel.select(["inputcellid", "modelgridindex", "cellmass_on_mtot"]),
+        left_on="cellindex",
+        right_on="inputcellid",
         how="inner",
         maintain_order="left",
     )

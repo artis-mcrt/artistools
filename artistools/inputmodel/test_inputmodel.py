@@ -4139,7 +4139,7 @@ def test_spherical_model_reader_takes_cell_ids_from_zero(tmp_path: Path, capsys:
     ("oldline", "newlines", "errortext"),
     [
         ("3 4e-12 1 0 0 0 0", ("3 4e-12 1 0 0 0 0", "4 5e-12 1 0 0 0 0"), "more than 4 cells"),
-        ("3 4e-12 1 0 0 0 0", ("2 4e-12 1 0 0 0 0",), "each cell can have one line only"),
+        ("3 4e-12 1 0 0 0 0", ("2 4e-12 1 0 0 0 0",), "must increase from each cell line to the next"),
         ("3 4e-12 1 0 0 0 0", ("4 4e-12 1 0 0 0 0",), "each inputcellid must be from 0 to 3"),
         (
             "columns inputcellid rho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48",
@@ -4251,15 +4251,38 @@ def test_version_2_edges_of_a_cartesian_grid_must_have_equal_steps() -> None:
 
 
 def test_makeartismodel_converts_the_format_version_in_the_model_folder(tmp_path: Path) -> None:
-    """--format-version alone writes model.txt again in its folder, and a spherical model has no version 1."""
+    """--format-version alone writes model.txt again in its folder, and a spherical model has no version 1.
+
+    The cell ids of version 2 start at 0. Thus a conversion gives the same ids to each file that holds cell ids, and
+    a reduced model of version 2 also has them.
+    """
+    sourcefolder = tmp_path / "source"
+    shutil.copytree(at.get_path("testdata") / "test-classicmode_3d", sourcefolder)
+    # the cell ids of this model start at 1, and sn3d reads the ids of Ye.txt as those of model.txt
+    (sourcefolder / "Ye.txt").write_text("2\n1\t0.25\n1000\t0.45\n", encoding="utf-8")
     modelfolder = tmp_path / "model"
-    at.inputmodel.makeartismodel.main(
-        argsraw=[],
-        modelpath=[at.get_path("testdata") / "test-classicmode_3d"],
-        format_version=2,
-        outputfile=modelfolder,
+    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[sourcefolder], format_version=2, outputfile=modelfolder)
+    dfversion2, metaversion2 = at.inputmodel.scan_modeldata(modelfolder, get_elemabundances=True)
+    assert metaversion2["formatversion"] == 2
+    assert dfversion2.select(firstid=pl.col("inputcellid").min(), lastid=pl.col("inputcellid").max()).collect().row(
+        0
+    ) == (0, 999)
+    assert (modelfolder / "Ye.txt").read_text(encoding="utf-8").split()[1::2] == ["0", "999"]
+    dfsource = at.inputmodel.scan_modeldata(sourcefolder, get_elemabundances=True)[0]
+    pltest.assert_series_equal(
+        dfversion2.select("X_Fe").collect().to_series(), dfsource.select("X_Fe").collect().to_series()
     )
-    assert at.inputmodel.scan_modeldata(modelfolder)[1]["formatversion"] == 2
+
+    reducedfolder = tmp_path / "reduced"
+    at.inputmodel.makeartismodel.main(
+        argsraw=[], modelpath=[sourcefolder], dimensionreduce=1, format_version=2, outputfile=reducedfolder
+    )
+    dfreduced, metareduced = at.inputmodel.scan_modeldata(next(reducedfolder.iterdir()), get_elemabundances=True)
+    assert metareduced["formatversion"] == 2
+    assert dfreduced.select(
+        firstid=pl.col("inputcellid").min(), hasnoabundance=pl.col("X_Fe").is_null().any()
+    ).collect().row(0) == (0, False)
+
     at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[modelfolder], format_version=1, force=True)
     dfmodel, modelmeta = at.inputmodel.scan_modeldata(modelfolder)
     assert modelmeta["formatversion"] == 1

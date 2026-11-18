@@ -380,19 +380,26 @@ def scan_modelfile_text(
 
         dfmodel = dfmodel.head(maxrowcount).with_columns(pl.exclude("inputcellid").cast(pl.Float32)).lazy()
 
+    if (
+        formatversion == 2
+        and not dfmodel.select((pl.col("inputcellid").diff().drop_nulls() > 0).all()).collect().item()
+    ):
+        # sn3d reads the cells in the sequence of the file and stops for an id that does not increase
+        msg = f"{filename}: the inputcellid values of format version 2 must increase from each cell line to the next"
+        raise ValueError(msg)
+
     # an old model.txt names the electron fraction cellYe, and Ye is the name everywhere after this point
     dfmodel = dfmodel.sort("inputcellid").rename({"velocity_outer": "vel_r_max_kmps", "cellYe": "Ye"}, strict=False)
 
     # In version 1, sn3d stops for a file with too few cells. It takes the id of the first cell (0 or 1) as the start
     # of the cell index, and each id after it must be one more than the id before it
-    cellcount, firstinputcellid, lastinputcellid, idsareconsecutive, idsaredifferent = (
+    cellcount, firstinputcellid, lastinputcellid, idsareconsecutive = (
         dfmodel
         .select(
             cellcount=pl.len(),
             firstinputcellid=pl.col("inputcellid").first(),
             lastinputcellid=pl.col("inputcellid").last(),
             idsareconsecutive=(pl.col("inputcellid") == pl.col("inputcellid").first() + pl.int_range(pl.len())).all(),
-            idsaredifferent=pl.col("inputcellid").is_unique().all(),
         )
         .collect()
         .row(0)
@@ -404,10 +411,10 @@ def scan_modelfile_text(
         raise ValueError(msg)
     if formatversion == 2:
         # the id of a cell is its index in the grid of the edges, from 0. A cell with no line is empty
-        if firstinputcellid < 0 or lastinputcellid >= npts_model or not idsaredifferent:
+        if firstinputcellid < 0 or lastinputcellid >= npts_model:
             msg = (
                 f"{filename}: the cell edges of the header give {npts_model} cells, thus each inputcellid must be"
-                f" from 0 to {npts_model - 1}, and each cell can have one line only"
+                f" from 0 to {npts_model - 1}"
             )
             raise ValueError(msg)
         if cellcount < npts_model:

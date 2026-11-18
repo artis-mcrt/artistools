@@ -120,7 +120,9 @@ def make_downscaled_3d_grid(
     # the cell order of an ARTIS 3D file varies x fastest, which is the Fortran order of the arrays above
     xmax = vmax * t_model_days * day_to_s
     axispos = -xmax + 2 * xmax * np.arange(smallgrid) / smallgrid
-    inputcellid = pl.Series("inputcellid", range(1, smallgrid**3 + 1), dtype=pl.Int32)
+    # the small model keeps the format version of the model, and the cell ids of format version 2 start at 0
+    firstinputcellid = 0 if modelmeta.get("formatversion") == 2 else 1
+    inputcellid = pl.Series("inputcellid", range(firstinputcellid, smallgrid**3 + firstinputcellid), dtype=pl.Int32)
 
     dfmodel_small = pl.DataFrame({
         "inputcellid": inputcellid,
