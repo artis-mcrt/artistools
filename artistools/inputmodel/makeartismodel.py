@@ -166,27 +166,29 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
     )
     dfelabundances = scan_initelemabundances(modelpath, printwarningsonly=True).collect() if haselements else None
 
+    dfgridcontributions = None
+    dfye = None
     if formatversion == 2 and dfmodel["inputcellid"].min() != 0:
         # each file of a model has the same cell ids, and version 2 has cell ids from 0
         print("  Version 2 has cell ids from 0, thus gridcontributions.txt and Ye.txt get the same ids.")
+        firstinputcellid = dfmodel["inputcellid"].min()
         dfmodel, dfelabundances, dfgridcontributions = with_cell_ids_from_zero(
             dfmodel, dfelabundances, get_gridparticlecontributions_or_none(modelpath)
         )
-        if dfgridcontributions is not None:
-            save_gridparticlecontributions(dfgridcontributions, outputfolder / "gridcontributions.txt")
         yefilepath = get_model_text_folder(modelpath) / "Ye.txt"
         if yefilepath.is_file():
             # sn3d reads the cell ids of Ye.txt as those of model.txt, thus an old id gives the value to the next cell
-            dfye = read_wsv(yefilepath, has_header=False, skip_rows=1, new_columns=["inputcellid", "Ye"])
-            firstinputcellid = lzmodel.select(pl.col("inputcellid").min()).collect().item()
-            write_ye_file(outputfolder, dfye.with_columns(pl.col("inputcellid").cast(pl.Int32) - firstinputcellid))
+            dfye = read_wsv(yefilepath, has_header=False, skip_rows=1, new_columns=["inputcellid", "Ye"]).with_columns(
+                pl.col("inputcellid").cast(pl.Int32) - firstinputcellid
+            )
 
     if formatversion == 2:
         print(
             "  Version 2 has no abundances.txt. The mass fraction of an element is the sum of its nuclide columns and"
             " of its column X_<element>_otherstable."
         )
-    # with dfelabundances, version 1 also gets abundances.txt, and version 2 gets the otherstable columns
+    # save_modeldata checks the cells and can stop, thus it comes before the other files get new cell ids. With
+    # dfelabundances, version 1 also gets abundances.txt, and version 2 gets the otherstable columns
     save_modeldata(
         dfmodel,
         outpath=outputfolder,
@@ -194,6 +196,10 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
         extracols=customcols,
         dfelabundances=dfelabundances,
     )
+    if dfgridcontributions is not None:
+        save_gridparticlecontributions(dfgridcontributions, outputfolder / "gridcontributions.txt")
+    if dfye is not None:
+        write_ye_file(outputfolder, dfye)
 
 
 def get_converted_file_names(modelpaths: Sequence[Path], formatversion: int | None) -> Sequence[str]:

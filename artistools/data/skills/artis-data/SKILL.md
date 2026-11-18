@@ -394,7 +394,7 @@ model, `t_model_init_days`. The columns are:
   - no position column (2D spherical and 3D spherical). The parameters hold the edges of the cells, see below;
 - `X_<nuclide>` (the mass fractions of the radioactive nuclides, e.g. `X_Ni56`) and `X_Fegroup`;
 - `X_<El>` (the mass fractions of the elements). Give `get_elemabundances=True` to read these columns. They come from
-  `abundances.txt`.
+  `abundances.txt`, or from the columns of a `model.txt` of format version 2 (see below).
 
 `at.add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta)` calculates more columns from these values. Examples are
 `rho` and `logrho` for each number of dimensions, `mass_g`, `volume`, and the velocities, e.g. `vel_r_mid` (cm/s) and

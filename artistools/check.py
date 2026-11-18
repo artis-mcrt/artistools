@@ -17,6 +17,7 @@ result. --exit-zero gives the status 0.
 """
 
 import argparse
+import contextlib
 import itertools
 import typing as t
 from collections.abc import Callable
@@ -48,6 +49,7 @@ from artistools.misc import firstexisting_or_none
 from artistools.misc import format_range_list
 from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_model_folder
+from artistools.misc import get_model_format_version
 from artistools.misc import get_run_subfolders
 from artistools.misc import get_runfolders
 from artistools.misc import get_timestep_times
@@ -59,6 +61,7 @@ from artistools.misc import print_or_write_table
 from artistools.misc import print_warning
 from artistools.misc import resolve_table_outputfile
 from artistools.misc import scan_deposition
+from artistools.misc import zopen
 
 STATUSES: t.Final = ("ok", "warning", "error", "not checked")
 
@@ -488,14 +491,32 @@ def check_packet_noise(modelpath: Path, frompackets: bool) -> tuple[str, str]:
 
 
 def check_input_files(modelpath: Path) -> tuple[str, str]:
-    """Find the input files that the readers of artistools need, and return the status and the detail."""
+    """Find the input files that the readers of artistools need, and return the status and the detail.
+
+    A model.txt of format version 2 gives the element mass fractions. Such a model has no abundances.txt, and sn3d
+    stops if that file is present.
+    """
+    inputfiles = dict(INPUTFILE_READERS)
+    modelfile = firstexisting_or_none("model.txt", folder=modelpath, search_subfolders=False)
+    if modelfile is not None:
+        hasversion2 = False
+        # a file that the readers cannot open gets its message from the check of the readers, not from this check
+        with contextlib.suppress(OSError, EOFError, ValueError), zopen(modelfile) as fmodel:
+            hasversion2 = get_model_format_version(fmodel.readline(), modelfile) == 2
+        if hasversion2:
+            del inputfiles["abundances.txt"]
+            if firstexisting_or_none("abundances.txt", folder=modelpath, search_subfolders=False) is not None:
+                return "warning", (
+                    "the model folder holds abundances.txt, but model.txt has format version 2, which gives the"
+                    " element mass fractions. sn3d stops for this file"
+                )
     missing = [
         f"{filename} ({readers})"
-        for filename, readers in INPUTFILE_READERS.items()
+        for filename, readers in inputfiles.items()
         if firstexisting_or_none(filename, folder=modelpath, search_subfolders=False) is None
     ]
     if not missing:
-        return "ok", f"the model folder holds {', '.join(INPUTFILE_READERS)}"
+        return "ok", f"the model folder holds {', '.join(inputfiles)}"
     return "warning", f"the model folder holds no {'; no '.join(missing)}"
 
 

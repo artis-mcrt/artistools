@@ -1419,6 +1419,13 @@ def with_otherstable_columns(dfmodel: pl.DataFrame, dfelabundances: pl.DataFrame
             )
             raise ValueError(msg)
     otherstablecols = [col for col, highestremainder in highest.items() if highestremainder > 0.0]
+    negativecount = dfremainders.select(pl.sum_horizontal(pl.all() < 0.0).sum()).item()
+    if negativecount > 0:
+        # sn3d gives the element the sum of its nuclide columns in this case
+        print_warning(
+            f"{negativecount} values of a cell and an element have nuclide columns that hold more than the element,"
+            f" by up to {-min(lowest.values()):.3g}. The element mass fraction becomes the sum of its nuclide columns"
+        )
     print(
         f"  {len(otherstablecols)} elements get an otherstable column, which is the element mass fraction minus the sum"
         f" of the nuclide columns. A remainder below {OTHERSTABLE_ROUNDING_RTOL:g} of the element is rounding."
