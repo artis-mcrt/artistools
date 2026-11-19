@@ -1094,16 +1094,16 @@ def get_spherical_cell_indices(
     """Return the radial, polar, and azimuthal index of each cell of a spherical2d or spherical3d model.
 
     The radial index changes fastest: the index of a cell is i_r + n_r * (i_theta + n_theta * i_phi). The cell
-    index is modelgridindex if colnames holds it. If not, it is inputcellid minus the id of the first cell of
-    the file. Thus the rows can be a selection of the cells in each order. The azimuthal index of a spherical2d
-    model is 0.
+    index is modelgridindex if colnames holds it. If not, it is inputcellid minus the key firstinputcellid of the
+    metadata, which is 0 without the key, because the cell ids of format version 2 start at 0. Thus the rows can be
+    a selection of the cells in each order. The azimuthal index of a spherical2d model is 0.
     """
     ncoordgridr = len(modelmeta["vel_r_edges_kmps"]) - 1
     ncoordgridtheta = len(modelmeta["theta_edges_radians"]) - 1
     cellindex = (
         pl.col("modelgridindex")
         if "modelgridindex" in colnames
-        else pl.col("inputcellid") - modelmeta.get("firstinputcellid", 1)
+        else pl.col("inputcellid") - modelmeta.get("firstinputcellid", 0)
     ).cast(pl.Int64)
     return (
         cellindex % ncoordgridr,

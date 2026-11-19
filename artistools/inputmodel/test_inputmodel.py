@@ -4181,6 +4181,12 @@ def test_spherical_model_reader_takes_cell_ids_from_zero(tmp_path: Path, capsys:
     # the radial index changes fastest, thus the cells 0 and 2 are in the inner shell
     assert dfderived["vel_r_max"].to_list() == pytest.approx([1e8, 3e8, 1e8, 3e8])
     assert dfderived["theta_min_radians"].to_list() == pytest.approx([0.0, 0.0, 1.5, 1.5])
+    # metadata with no key firstinputcellid gave the first cell the edges of the last cell. The cell ids of format
+    # version 2 start at 0
+    metawithoutkey = {key: value for key, value in modelmeta.items() if key != "firstinputcellid"}
+    pltest.assert_frame_equal(
+        at.inputmodel.add_derived_cols_to_modeldata(lzmodel.drop("modelgridindex"), metawithoutkey).collect(), dfderived
+    )
 
 
 def test_spherical_cell_search_of_an_image_agrees_with_the_cell_search_of_the_packets() -> None:
