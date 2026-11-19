@@ -4053,7 +4053,10 @@ def test_spherical_model_round_trip(tmp_path: Path, coordinates: str) -> None:
     edgekeys = [key for key in ("vel_r_edges_kmps", "theta_edges_radians", "phi_edges_radians") if key in modelmeta]
     edges_written = {key: list(modelmeta[key]) for key in edgekeys}
 
+    # a version 2 model has no opacity.txt, thus the file of an earlier model in the folder goes
+    (tmp_path / "opacity.txt").write_text("1\n1 0.5\n", encoding="utf-8")
     at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta=modelmeta)
+    assert not (tmp_path / "opacity.txt").exists()
     lzmodel_read, modelmeta_read = at.inputmodel.scan_modeldata(tmp_path)
 
     # the file has no composition column that holds zero in each cell, and the reader gives such a column again
@@ -4471,7 +4474,13 @@ def test_makeartismodel_converts_the_format_version_in_the_model_folder(tmp_path
     with pytest.raises(SystemExit):
         at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[sourcefolder], format_version=2, force=True)
     assert (sourcefolder / "opacity.txt").exists()
+    # the conversion also finds a compressed copy of the file
+    with (sourcefolder / "opacity.txt.zst").open("wb") as fopacity:
+        at.misc.write_zstd_lines(fopacity, (sourcefolder / "opacity.txt").read_text(encoding="utf-8").splitlines())
     (sourcefolder / "opacity.txt").unlink()
+    with pytest.raises(SystemExit):
+        at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[sourcefolder], format_version=2, force=True)
+    (sourcefolder / "opacity.txt.zst").unlink()
 
     # a conversion in the model folder deletes Ye.txt, because sn3d stops for a version 2 model with that file.
     # sn3d also reads a compressed Ye.txt, thus the conversion takes the values of such a file

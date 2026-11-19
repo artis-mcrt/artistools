@@ -21,6 +21,7 @@ from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g as msol
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
+from artistools.inputmodel.core import CELL_ID_FILE_NAMES
 from artistools.inputmodel.core import dimension_reduce_model
 from artistools.inputmodel.core import MODEL_FILE_NAMES
 from artistools.inputmodel.core import remap_gridcontributions
@@ -1503,10 +1504,11 @@ def get_output_file_names(args: argparse.Namespace) -> tuple[str, ...]:
     """Return the names of the files that the command writes to the -o folder.
 
     With --replacedyn and --interpolate, map_to_artis of a 3D model also writes the files of a consistency check.
-    A spherical model has format version 2, and save_modeldata deletes a Ye.txt beside such a model.
+    A spherical model has format version 2, and save_modeldata deletes a Ye.txt and an opacity.txt beside such a
+    model.
     """
     if args.coordinates == "spherical":
-        return (*MODEL_FILE_NAMES, "Ye.txt")
+        return (*MODEL_FILE_NAMES, *CELL_ID_FILE_NAMES)
     writesdynfiles = args.mapto3D and args.replacedyn and args.interpolate
     return (*MODEL_FILE_NAMES, *DYN_CHECK_FILE_NAMES) if writesdynfiles else MODEL_FILE_NAMES
 

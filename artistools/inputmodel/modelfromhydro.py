@@ -405,12 +405,14 @@ def add_mass_to_center(griddata: pl.DataFrame, modelmeta: dict[str, t.Any]) -> p
     return griddata.drop("inhole")
 
 
-def get_griddata_output_file_names(getcellopacityfromYe: bool) -> tuple[str, ...]:
-    """Return the names of the files that makemodelfromgriddata writes.
+def get_griddata_output_file_names(getcellopacityfromYe: bool, gridfolderpath: Path | str) -> tuple[str, ...]:
+    """Return the names of the files that makemodelfromgriddata writes or deletes.
 
-    A model of format version 2 has no abundances.txt and no Ye.txt, and the command deletes such a file.
+    A spherical map can give a model of format version 2, which has no abundances.txt, no Ye.txt, and no opacity.txt.
+    The command deletes such a file.
     """
-    return (*MODEL_FILE_NAMES, "Ye.txt", *(("opacity.txt",) if getcellopacityfromYe else ()))
+    writesopacityfile = getcellopacityfromYe or Path(gridfolderpath, SPHERICAL_GRID_FILE_NAME).is_file()
+    return (*MODEL_FILE_NAMES, "Ye.txt", *(("opacity.txt",) if writesopacityfile else ()))
 
 
 def makemodelfromgriddata(
@@ -611,7 +613,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         raise FileNotFoundError(msg)
 
     outputpath = Path(f"artismodel_{args.dimensions}d") if args.outputfile is None else Path(args.outputfile)
-    confirm_overwrite([outputpath], get_griddata_output_file_names(getcellopacityfromYe=False), force=args.force)
+    confirm_overwrite(
+        [outputpath],
+        get_griddata_output_file_names(getcellopacityfromYe=False, gridfolderpath=gridfolderpath),
+        force=args.force,
+    )
 
     outputpath.mkdir(parents=True, exist_ok=True)
 

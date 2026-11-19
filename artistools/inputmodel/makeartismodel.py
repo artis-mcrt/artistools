@@ -10,6 +10,7 @@ import polars as pl
 
 from artistools.constants import Msun_to_g
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
+from artistools.inputmodel.core import CELL_ID_FILE_NAMES
 from artistools.inputmodel.core import dimension_reduce_model
 from artistools.inputmodel.core import get_model_text_folder
 from artistools.inputmodel.core import get_modelmeta
@@ -139,11 +140,6 @@ def get_dimreduce_outputfolder(outputfile: Path | None, modelpath: Path, ndim_ou
     )
 
 
-# The files of a model folder of format version 1 that give a value for a cell id. A model of format version 2 has
-# none of them
-CELL_ID_FILE_NAMES = ("Ye.txt", "opacity.txt")
-
-
 def with_ye_of_yefile(dfmodel: pl.DataFrame, yefilepath: Path) -> pl.DataFrame:
     """Return the cells of a version 1 model with the electron fractions of its Ye.txt in the column Ye.
 
@@ -226,7 +222,8 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
             f"{sourcefolder} holds Ye.txt, but its model.txt has format version 2",
             "sn3d stops for such a model. The column Ye of model.txt gives the electron fraction. Delete Ye.txt",
         )
-    if formatversion == 2 and (sourcefolder / "opacity.txt").is_file():
+    opacityfilepath = firstexisting_or_none("opacity.txt", folder=sourcefolder, tryzipped=True, search_subfolders=False)
+    if formatversion == 2 and opacityfilepath is not None:
         # the values of opacity.txt have no column in model.txt, thus the command does not delete the file
         if outputfolder.resolve() == sourcefolder.resolve():
             exit_with_error(
@@ -387,7 +384,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     outputfolders = get_model_output_folders(args, modelpath_given)
     outputfilenames: dict[str, Sequence[str]] = {
-        "makemodelfromgriddata": get_griddata_output_file_names(args.getcellopacityfromYe),
+        "makemodelfromgriddata": get_griddata_output_file_names(args.getcellopacityfromYe, args.pathtogriddata),
         "makeenergyinputfiles": ENERGY_FILE_NAMES,
     }
     if "convertformat" in outputfolders:
@@ -397,8 +394,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     for action, folders in outputfolders.items():
         filenames = outputfilenames.get(action)
         if filenames is None:
-            # save_modeldata deletes a Ye.txt beside a model of format version 2
-            filenames = (*MODEL_FILE_NAMES, "Ye.txt") if writes_format_version_2(args) else MODEL_FILE_NAMES
+            # save_modeldata deletes a Ye.txt and an opacity.txt beside a model of format version 2
+            filenames = (*MODEL_FILE_NAMES, *CELL_ID_FILE_NAMES) if writes_format_version_2(args) else MODEL_FILE_NAMES
         confirm_overwrite(folders, filenames, force=args.force)
 
     if args.downscale3dgrid:

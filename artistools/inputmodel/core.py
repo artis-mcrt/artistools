@@ -1602,6 +1602,10 @@ def write_artis_csv(df: pl.DataFrame, fileobj: t.IO[bytes], significantfigures: 
 # the files of an ARTIS input model that a command writes. confirm_overwrite also finds the compressed copies
 MODEL_FILE_NAMES = ("model.txt", "abundances.txt", "gridcontributions.txt")
 
+# The files of a model folder of format version 1 that give a value for a cell id. A model of format version 2 has
+# none of them, and save_modeldata deletes them beside such a model
+CELL_ID_FILE_NAMES = ("Ye.txt", "opacity.txt")
+
 
 def prepare_zstd_output(filepath: Path) -> Path:
     """Return the path of the zstd file for filepath, e.g. model.txt.zst, and delete each old copy and the cache.
@@ -1881,6 +1885,8 @@ def save_modeldata(
 
     A version 2 model has no Ye.txt, because the column Ye of model.txt gives the electron fraction. The function
     deletes a Ye.txt of the output folder if dfmodel has the column Ye, and it stops if dfmodel has no such column.
+    A version 2 model also has no opacity.txt, which sn3d does not read. The function deletes an opacity.txt of the
+    output folder, because the cell ids of that file are those of an earlier model.
 
     A version 2 model has no abundances.txt. sn3d takes the mass fraction of an element as the sum of its nuclide
     columns and of its column X_<element>_otherstable, e.g. X_Ni56 + X_Ni58 + X_Ni_otherstable. Give dfelabundances
@@ -2130,6 +2136,10 @@ def save_modeldata(
         for oldyefile in oldyefiles:
             oldyefile.unlink()
             print(f"Deleted {oldyefile}, because the column Ye of a model.txt of format version 2 replaces Ye.txt")
+        for oldopacityfile in get_file_copies(outputfolder / "opacity.txt"):
+            if oldopacityfile.is_file():
+                oldopacityfile.unlink()
+                print(f"Deleted {oldopacityfile}, because a model of format version 2 has no opacity.txt")
     print_detail(f"Took {time.perf_counter() - timestart:.1f} seconds")
 
 
