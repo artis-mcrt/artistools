@@ -259,7 +259,7 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
         dfmodel, dfelabundances, dfgridcontributions = with_cell_ids_from_zero(
             dfmodel, dfelabundances, get_gridparticlecontributions_or_none(modelpath)
         )
-        # sn3d reads the cell ids of opacity.txt as those of model.txt, thus an old id gives the value to the next cell
+        # a file with an old id gives its value to the next cell, because the files of a model have the same ids
         for filename in cellidfilenames:
             cellidfilepath = sourcefolder / filename
             if cellidfilepath.is_file():
