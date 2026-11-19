@@ -74,7 +74,6 @@ from artistools.misc import on_model_host
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_codecomparison
 from artistools.misc import resolve_modelpath
-from artistools.misc import SPHERICAL_EDGE_COORDINATES
 from artistools.nltepops import has_nlte_populations
 from artistools.plottools import DARKMODE_COLOURS
 from artistools.plottools import get_legend_entries_in_draw_order
@@ -478,12 +477,12 @@ def reload_model_data(viewer: "EstimatorViewer", modeldata: ModelData) -> None:
 def get_geometry_choices(coordinates: str) -> list[str]:
     """Return the keys in GEOMETRY_MODES that a model with these coordinates, e.g. cartesian3d, can plot.
 
-    Only a 3D Cartesian model has axes, planes, lines, and projections. A 1D model and a 2D cylindrical model also
-    have the average around the z axis. plotestimators makes no image of a grid with spherical edges.
+    Only a 3D Cartesian model has axes, lines, and projections. A 3D spherical model has planes, and each model has
+    the average around the z axis.
     """
     if coordinates == "cartesian3d":
         return list(GEOMETRY_MODES)
-    modes = {"all", "cells"} if coordinates in SPHERICAL_EDGE_COORDINATES else {"all", "cells", "average"}
+    modes = {"all", "cells", "average", "plane"} if coordinates == "spherical3d" else {"all", "cells", "average"}
     return [mode for mode in GEOMETRY_MODES if mode in modes]
 
 

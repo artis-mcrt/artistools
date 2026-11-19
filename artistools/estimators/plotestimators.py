@@ -69,6 +69,7 @@ from artistools.estimators.plotitems import SERIESTYPES
 from artistools.estimators.plotitems import split_plotitem_styles
 from artistools.estimators.plotitems import VARIABLE_ALIASES
 from artistools.inputmodel import get_costheta_selection
+from artistools.inputmodel import get_spherical_image_cell_indices
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_costhetarange
 from artistools.misc import addarg_darkmode
@@ -2425,12 +2426,58 @@ def get_shell_values_on_rz_grid(
     ]
 
 
+def get_spherical_image_values(
+    estimators: pl.LazyFrame,
+    panels: Sequence[ImagePanel],
+    modelmeta: dict[str, t.Any],
+    sliceaxis: str | None,
+    slicevelocity_cmps: float,
+    timesteps: Collection[int],
+) -> "tuple[list[npt.NDArray[np.float64]], tuple[str, str]]":
+    """Return the grid of values of each panel for a model with spherical edges, and the two plot axes.
+
+    The image is a grid of points with equal steps, and each point takes the value of the cell that holds it (see
+    get_spherical_image_cell_indices). With a sliceaxis, the points are in the plane normal to that axis at
+    slicevelocity_cmps. With no sliceaxis, the image has the cylindrical radius and z as its axes. A spherical2d cell
+    is a ring around the z axis. For a spherical3d model, the value of a ring of r and theta is then the mean over
+    its cells in phi, and get_panel_means gives the weight.
+    """
+    cellindices = get_spherical_image_cell_indices(modelmeta, sliceaxis, slicevelocity_cmps)
+    ringcount = (len(modelmeta["vel_r_edges_kmps"]) - 1) * (len(modelmeta["theta_edges_radians"]) - 1)
+    # the points of an image with no sliceaxis are in the first cell of phi, thus their cell index is a ring index
+    imagecell = pl.col("modelgridindex") % ringcount if sliceaxis is None else pl.col("modelgridindex")
+    dfcells = (
+        estimators
+        .filter(pl.col("timestep").is_in(list(timesteps)))
+        .group_by(imagecell.alias("imagecell"))
+        .agg(get_panel_means(panels))
+        .collect()
+    )
+    print(
+        f"  The image has {cellindices.shape[1]} x {cellindices.shape[0]} points with equal steps. Each point takes"
+        f" the value of the cell that holds it, from {dfcells.height} cells or rings of cells with estimators"
+    )
+    isingrid = cellindices >= 0
+    grids = []
+    for panelindex in range(len(panels)):
+        # a cell with no estimators, and a point outside the grid, give NaN
+        cellvalues = np.full(int(modelmeta["npts_model"]), np.nan)
+        cellvalues[dfcells["imagecell"].to_numpy()] = (
+            dfcells[f"panel{panelindex}"].cast(pl.Float64).fill_null(float("nan")).to_numpy()
+        )
+        grids.append(np.where(isingrid, cellvalues[np.where(isingrid, cellindices, 0)], np.nan))
+
+    plotaxes = ("rcyl", "z") if sliceaxis is None else tuple(axisname for axisname in "xyz" if axisname != sliceaxis)
+    return grids, (plotaxes[0], plotaxes[1])
+
+
 def get_image_values(
     estimators: pl.LazyFrame,
     panels: Sequence[ImagePanel],
     modelmeta: dict[str, t.Any],
     sliceaxis: str | None,
     timesteps: Collection[int],
+    slicevelocity_cmps: float = 0.0,
 ) -> "tuple[list[npt.NDArray[np.float64]], tuple[str, str]]":
     """Return the grid of values of each panel, and the two plot axes.
 
@@ -2444,8 +2491,14 @@ def get_image_values(
 
     An empty cell has no estimators and gives NaN. Each value is the mean over the cells and the timesteps, and
     get_panel_means gives the weight.
+
+    A model with spherical edges has no cell with straight edges on the axes of an image, and
+    get_spherical_image_values gives its grid. slicevelocity_cmps is the position of the plane of such a model on
+    the sliceaxis.
     """
     vmax_cmps = float(modelmeta["vmax_cmps"])
+    if get_model_coordinates(modelmeta) in SPHERICAL_EDGE_COORDINATES:
+        return get_spherical_image_values(estimators, panels, modelmeta, sliceaxis, slicevelocity_cmps, timesteps)
     if modelmeta["dimensions"] == 1:
         return get_shell_values_on_rz_grid(estimators, panels, vmax_cmps, timesteps), ("rcyl", "z")
 
@@ -2533,7 +2586,9 @@ def get_image_figure_data(
 
     The image shows a plane of a 3D model for --slice, and the model at each cylindrical radius and each z without it.
     """
-    grids, (plotaxis1, plotaxis2) = get_image_values(estimators, panels, modelmeta, args.sliceaxis, timestepslist)
+    grids, (plotaxis1, plotaxis2) = get_image_values(
+        estimators, panels, modelmeta, args.sliceaxis, timestepslist, args.slicevelocity_cmps
+    )
     isplane = plotaxis1 != "rcyl"
 
     strtimestep, strtimedays = get_snapshot_timestrings(modelpath, timestepslist, multiplot=args.multiplot)
@@ -3173,6 +3228,8 @@ def resolve_snapshot_arguments(args: argparse.Namespace) -> None:
     isimage = args.dimensionreduce == 2
     # a projection groups the cells as a plane normal to its axis does, and it reads every cell of each line
     args.sliceaxis = projection or (conditions[0][0] if isimage and conditions else None)
+    # an image of a model with spherical edges has its points in the plane at this velocity on the sliceaxis
+    args.slicevelocity_cmps = conditions[0][1] if isimage and conditions else 0.0
     args.slicelabel = ", ".join(label for _, _, label in conditions)
     if not isimage and not conditions:
         return
@@ -3340,12 +3397,6 @@ def prepare_snapshot(
         estimators = estimators.filter(pl.col("modelgridindex").is_in(args.modelgridindex or []))
 
     panels: list[ImagePanel] = []
-    coordinates = get_model_coordinates(modelmeta)
-    if args.dimensionreduce == 2 and coordinates in SPHERICAL_EDGE_COORDINATES:
-        exit_with_error(
-            f"An image needs a Cartesian grid or a cylindrical grid, and this model has {coordinates} coordinates",
-            "Remove --dimensionreduce 2, --slice, and --projection to plot the variables against the radial velocity",
-        )
     if args.projection is not None:
         require_cartesian3d_model(
             modelmeta, "--projection needs", "Give --dimensionreduce 2 for the average around the z axis"

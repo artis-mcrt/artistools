@@ -4740,6 +4740,79 @@ def test_projection_is_the_mean_of_each_line_of_cells() -> None:
     assert np.isnan(grid[0, 0])
 
 
+def test_image_of_a_spherical_model_gives_each_point_the_value_of_its_cell(tmp_path: Path) -> None:
+    """An image of a spherical3d model is a grid of points, and each point takes the value of the cell that holds it.
+
+    A model with spherical edges has no cell with straight edges on the axes of an image. The cells at +x, -y, and +z
+    give the orientation of each image. The image with no slice is the mean over phi of each ring of r and theta.
+    """
+    vmax_cmps = 2.0e9
+    modelmeta: dict[str, t.Any] = {
+        "coordinates": "spherical3d",
+        "dimensions": 3,
+        "t_model_init_days": 1.0,
+        "vel_r_edges_kmps": [0.0, 1.0e4, 2.0e4],
+        "theta_edges_radians": [0.0, 1.0, 2.0, math.pi],
+        "phi_edges_radians": [0.0, 1.5, 3.0, 4.5, 2.0 * math.pi],
+        "vmax_cmps": vmax_cmps,
+        "npts_model": 24,
+    }
+    panels = [plotestimators.ImagePanel(pl.col("Te"), plotestimators.PanelStyle("Te", None, None, None))]
+    cellweights = [1.0 + cellindex % 5 for cellindex in range(24)]
+    estimators = pl.LazyFrame({
+        "timestep": [5] * 24,
+        "modelgridindex": list(range(24)),
+        "deltavol_deltat": cellweights,
+        "Te": [1000.0 + cellindex for cellindex in range(24)],
+    })
+
+    def get_point_index(velocity_cmps: float, pointcount: int, lowest_cmps: float = -vmax_cmps) -> int:
+        return int((velocity_cmps - lowest_cmps) / ((vmax_cmps - lowest_cmps) / pointcount))
+
+    # the index of a cell is i_r + 2 * (i_theta + 3 * i_phi), and each of these points is in the outer shell (i_r = 1)
+    (gridxy,), plotaxes = plotestimators.get_image_values(estimators, panels, modelmeta, "z", [5], 0.0)
+    assert plotaxes == ("x", "y")
+    assert gridxy.shape == (400, 400)
+    # the grid holds [second axis][first axis]. The plane z = 0 is in the polar cell 1
+    # +x with a small positive y: phi is above 0, thus the azimuthal cell is 0
+    assert np.isclose(
+        gridxy[get_point_index(1.0e7, 400), get_point_index(1.5e9, 400)], 1000.0 + 1 + 2 * (1 + 3 * 0), rtol=1e-12
+    )
+    # -y with a small positive x: phi is above 3 pi / 2, thus the azimuthal cell is 3
+    assert np.isclose(
+        gridxy[get_point_index(-1.5e9, 400), get_point_index(1.0e7, 400)], 1000.0 + 1 + 2 * (1 + 3 * 3), rtol=1e-12
+    )
+    # a corner of the image is outside the sphere
+    assert np.isnan(gridxy[0, 0])
+
+    (gridyz,), plotaxes = plotestimators.get_image_values(estimators, panels, modelmeta, "x", [5], 0.0)
+    assert plotaxes == ("y", "z")
+    # +z with a small positive y: the polar cell is 0, and phi = pi / 2 is in the azimuthal cell 1
+    assert np.isclose(
+        gridyz[get_point_index(1.5e9, 400), get_point_index(1.0e7, 400)], 1000.0 + 1 + 2 * (0 + 3 * 1), rtol=1e-12
+    )
+    # -y with a small positive z: the polar cell is 1, and phi = 3 pi / 2 is in the azimuthal cell 3
+    assert np.isclose(
+        gridyz[get_point_index(1.0e7, 400), get_point_index(-1.5e9, 400)], 1000.0 + 1 + 2 * (1 + 3 * 3), rtol=1e-12
+    )
+
+    (gridrz,), plotaxes = plotestimators.get_image_values(estimators, panels, modelmeta, None, [5])
+    assert plotaxes == ("rcyl", "z")
+    assert gridrz.shape == (400, 200)
+    # the ring of the outer shell at the lowest polar angles (-z is the polar cell 2) holds four cells in phi
+    ringcells = [1 + 2 * (2 + 3 * index_phi) for index_phi in range(4)]
+    ringmean = sum((1000.0 + cellindex) * cellweights[cellindex] for cellindex in ringcells) / sum(
+        cellweights[cellindex] for cellindex in ringcells
+    )
+    assert np.isclose(gridrz[get_point_index(-1.5e9, 400), get_point_index(1.0e7, 200, 0.0)], ringmean, rtol=1e-12)
+
+    # --slice selects the cells of the same points, thus each point of the image finds the estimators of its cell
+    dfmodel = pl.DataFrame({"inputcellid": pl.int_range(24, eager=True, dtype=pl.Int32), "rho": 1.0e-12})
+    at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta=dict(modelmeta))
+    planecells = at.estimators.get_cells_of_slice(tmp_path, [("z", 0.0, "z = 0")])
+    assert planecells == sorted(index_r + 2 * (1 + 3 * index_phi) for index_r in range(2) for index_phi in range(4))
+
+
 def test_image_of_a_mass_fraction_takes_the_mass_weight_of_the_line_plot() -> None:
     """A pixel of a mass fraction or Ye is a mean with the cell masses as weights, as the line plot gives.
 

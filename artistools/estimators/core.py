@@ -40,6 +40,7 @@ from artistools.codecomparison import read_reference_estimators
 from artistools.constants import C_cm_per_s
 from artistools.constants import km_to_cm
 from artistools.inputmodel import add_derived_cols_to_modeldata
+from artistools.inputmodel import get_spherical_image_cell_indices
 from artistools.inputmodel import scan_modeldata
 from artistools.inputmodel.slice1dfromconein3dmodel import get_profile_along_axis
 from artistools.inputmodel.slice1dfromconein3dmodel import make_cone
@@ -1970,11 +1971,32 @@ def get_layer_index(velocity_cmps: float, vmax_cmps: float, ncells: int) -> int:
 def get_cells_of_slice(modelpath: Path, conditions: Sequence[tuple[str, float, str]]) -> list[int]:
     """Return the cells of a 3D model that hold the plane or the line of --slice.
 
-    The host of a remote model reads it.
+    The cells of a 3D spherical model for a plane are the cells that hold the points of the image, which
+    get_spherical_image_cell_indices gives. The host of a remote model reads the model.
     """
     lzmodel, modelmeta = scan_modeldata(modelpath)
-    require_cartesian3d_model(modelmeta, "--slice needs", "Remove --slice to plot the variables against the velocity")
     vmax_cmps = float(modelmeta["vmax_cmps"])
+    if get_model_coordinates(modelmeta) == "spherical3d":
+        if len(conditions) != 1:
+            exit_with_error(
+                "A line of --slice needs a model with 3D Cartesian coordinates, and this model has spherical3d"
+                " coordinates",
+                "Give one axis for a plane, e.g. --slice z=0",
+            )
+        axisname, velocity_cmps, label = conditions[0]
+        if abs(velocity_cmps) >= vmax_cmps:
+            exit_with_error(
+                f"{label} lies outside the model, which ends at {vmax_cmps / C_cm_per_s:.3g}c",
+                "Give a velocity inside the model",
+            )
+        cellindices = np.unique(get_spherical_image_cell_indices(modelmeta, axisname, velocity_cmps))
+        return [int(cellindex) for cellindex in cellindices if cellindex >= 0]
+
+    require_cartesian3d_model(
+        modelmeta,
+        "--slice needs a model with 3D spherical coordinates or",
+        "Remove --slice to plot the variables against the velocity",
+    )
     for axisname, velocity_cmps, label in conditions:
         if abs(velocity_cmps) >= vmax_cmps:
             exit_with_error(
@@ -2061,10 +2083,27 @@ def get_cell_selection_description(args: argparse.Namespace, modelmeta: Mapping[
     grid. Thus the text gives the range of each coordinate of the selected cells. plotestimators logs this text, and
     its window shows it.
     """
-    # a grid with spherical edges has no corners, and the commands stop for a slice or an image of such a grid
-    if get_model_coordinates(modelmeta) in SPHERICAL_EDGE_COORDINATES:
-        return ""
     conditions = parse_slice_argument(args.slice) if args.slice is not None else []
+    coordinates = get_model_coordinates(modelmeta)
+    if coordinates in SPHERICAL_EDGE_COORDINATES:
+        # a grid with spherical edges has no corners, and plotestimators stops for a line or a projection of it
+        pointtext = "Each point of the image takes the value of the cell of r, θ, and φ that holds it."
+        if len(conditions) == 1:
+            normal = conditions[0][0]
+            first, second = (axisname for axisname in "xyz" if axisname != normal)
+            return f"The cells that hold the plane {conditions[0][2]}, as an image in {first} and {second}. {pointtext}"
+        if args.dimensionreduce == 2 and not conditions and not args.projection:
+            if coordinates == "spherical2d":
+                return (
+                    "The cells of the model grid, as an image in the cylindrical radius and z. Each point of the image"
+                    " takes the value of the cell of r and θ that holds it."
+                )
+            return (
+                "The mean over φ of the cells in each ring of r and θ around the z axis, as an image in the"
+                f" cylindrical radius and z. Each point of the image takes the value of the ring that holds it."
+                f" {MEAN_WEIGHT_TEXT}"
+            )
+        return ""
     dimensions = int(modelmeta["dimensions"])
     vmaxtext = format_cell_edge(float(modelmeta["vmax_cmps"]), "c")
     if len(conditions) == 1:

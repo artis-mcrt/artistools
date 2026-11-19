@@ -65,6 +65,9 @@ from artistools.paths import get_path
 
 if t.TYPE_CHECKING:
     from collections.abc import Iterator
+    from collections.abc import Mapping
+
+    import numpy.typing as npt
 
 CREATED_COMMENT_PREFIX = "created:"
 CREATED_TIME_FORMAT = "%Y-%m-%d %H:%M:%S UTC"
@@ -1160,6 +1163,74 @@ def add_spherical_derived_cols(dfmodel: pl.LazyFrame, modelmeta: dict[str, t.Any
             * solid_angle
         ),
     )
+
+
+def get_spherical_cell_index_of_velocities(
+    vel_x: "npt.NDArray[np.float64]",
+    vel_y: "npt.NDArray[np.float64]",
+    vel_z: "npt.NDArray[np.float64]",
+    modelmeta: "Mapping[str, t.Any]",
+) -> "npt.NDArray[np.int64]":
+    """Return the index of the cell of a spherical2d or spherical3d model that holds each velocity vector [cm/s].
+
+    A velocity at or above the outer edge of the grid gives -1. The rules are those of sn3d and of
+    get_spherical_modelgridindex_expr of the packets. A cell holds its lower edge on each axis. The last polar
+    cell also holds the angle pi. An azimuthal angle that rounds to 2 pi is the angle 0. A velocity of zero has no
+    direction, and it gets the first polar cell and the first azimuthal cell. The index of a cell is
+    i_r + n_r * (i_theta + n_theta * i_phi), and a spherical2d model has one azimuthal cell.
+    """
+    vel_r_edges = np.array([edge * km_to_cm for edge in modelmeta["vel_r_edges_kmps"]], dtype=np.float64)
+    theta_edges = np.asarray(modelmeta["theta_edges_radians"], dtype=np.float64)
+    ncoordgridr = len(vel_r_edges) - 1
+    ncoordgridtheta = len(theta_edges) - 1
+
+    vel_r = np.sqrt(vel_x**2 + vel_y**2 + vel_z**2)
+    index_r = np.searchsorted(vel_r_edges, vel_r, side="right") - 1
+    ismoving = vel_r > 0.0
+    theta = np.where(ismoving, np.arccos(np.clip(vel_z / np.where(ismoving, vel_r, 1.0), -1.0, 1.0)), 0.0)
+    index_theta = np.minimum(np.searchsorted(theta_edges, theta, side="right") - 1, ncoordgridtheta - 1)
+
+    cellindex = index_theta * ncoordgridr + index_r
+    if "phi_edges_radians" in modelmeta:
+        phi = np.arctan2(vel_y, vel_x)
+        phi = np.where(phi < 0.0, phi + 2.0 * math.pi, phi)
+        phi = np.where(phi >= 2.0 * math.pi, 0.0, phi)
+        index_phi = np.searchsorted(np.asarray(modelmeta["phi_edges_radians"], dtype=np.float64), phi, side="right") - 1
+        cellindex += index_phi * (ncoordgridr * ncoordgridtheta)
+    return np.where(index_r < ncoordgridr, cellindex, -1).astype(np.int64)
+
+
+def get_spherical_image_cell_indices(
+    modelmeta: "Mapping[str, t.Any]", sliceaxis: str | None, slicevelocity_cmps: float = 0.0
+) -> "npt.NDArray[np.int64]":
+    """Return the cell index of each point of an image of a spherical2d or spherical3d model, or -1 outside the grid.
+
+    A plot of such a model has no cell with straight edges on the axes of an image. Thus the image is a grid of
+    points with equal steps, and each point takes the value of the cell that holds it, as the image of a 1D model
+    does. The count of the points from 0 to vmax is 200, or 2 n_r for a model with more than 100 radial shells.
+
+    Without a sliceaxis, the image has the cylindrical radius from 0 to vmax and z from -vmax to vmax as its axes,
+    and the points are in the half-plane y = 0 with x > 0. With a sliceaxis, the points are in the plane normal to
+    that axis at slicevelocity_cmps, and the image has the two other axes from -vmax to vmax, e.g. x and y for the
+    sliceaxis z. The array has one row for each point of the second axis.
+    """
+    vmax_cmps = float(modelmeta["vmax_cmps"])
+    pointcount = max(200, 2 * (len(modelmeta["vel_r_edges_kmps"]) - 1))
+    pointwidth = vmax_cmps / pointcount
+    positive_points = np.asarray((np.arange(pointcount) + 0.5) * pointwidth, dtype=np.float64)
+    all_points = np.asarray((np.arange(2 * pointcount) + 0.5) * pointwidth - vmax_cmps, dtype=np.float64)
+    velocities: dict[str, npt.NDArray[np.float64]]
+    if sliceaxis is None:
+        velocities = {"x": positive_points[np.newaxis, :], "y": np.zeros((1, 1)), "z": all_points[:, np.newaxis]}
+    else:
+        plotaxis1, plotaxis2 = (axisname for axisname in "xyz" if axisname != sliceaxis)
+        velocities = {
+            plotaxis1: all_points[np.newaxis, :],
+            plotaxis2: all_points[:, np.newaxis],
+            sliceaxis: np.full((1, 1), slicevelocity_cmps),
+        }
+    vel_x, vel_y, vel_z = np.broadcast_arrays(velocities["x"], velocities["y"], velocities["z"])
+    return get_spherical_cell_index_of_velocities(vel_x, vel_y, vel_z, modelmeta)
 
 
 def add_derived_cols_to_modeldata(dfmodel: pl.DataFrame | pl.LazyFrame, modelmeta: dict[str, t.Any]) -> pl.LazyFrame:

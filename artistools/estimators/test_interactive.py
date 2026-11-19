@@ -1158,6 +1158,8 @@ def test_interactive_geometry_modes_draw(make_viewer: Callable[[str, list[str]],
 
     # a 1D model has the average around the z axis, and the selector of the window did not offer it
     assert interactive.get_geometry_choices("spherical1d") == ["all", "cells", "average"]
+    # a 3D spherical model has planes, and no lines along an axis or projections
+    assert interactive.get_geometry_choices("spherical3d") == ["all", "cells", "plane", "average"]
     viewer1d = make_viewer("estimators", ["Te", str(modelpath), "--timestep", "50", "--interactive"])
     assert apply_values(viewer1d, interactive.set_geometry_mode(viewer1d, viewer1d.values, "average")) is None
 

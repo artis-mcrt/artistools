@@ -4177,6 +4177,66 @@ def test_spherical_model_reader_takes_cell_ids_from_zero(tmp_path: Path, capsys:
     assert dfderived["theta_min_radians"].to_list() == pytest.approx([0.0, 0.0, 1.5, 1.5])
 
 
+def test_spherical_cell_search_of_an_image_agrees_with_the_cell_search_of_the_packets() -> None:
+    """The cell of a velocity vector is the same for the points of an image and for the packets.
+
+    The packets take the rules of sn3d. The points are random, and some are at the centre, on the z axis, in the
+    plane z = 0, in the half-plane of phi = 0, and outside the grid.
+    """
+    _, modelmeta = get_random_spherical_model("spherical3d")
+    rng = np.random.default_rng(seed=2)
+    velocities = rng.uniform(-3.2e9, 3.2e9, size=(4000, 3))
+    # the two inner shells are small, thus a part of the points is near the centre
+    velocities[2000:] *= rng.uniform(0.0, 0.3, size=(2000, 1))
+    velocities[:50, 2] = 0.0
+    velocities[50:100, :2] = 0.0
+    velocities[100:150, 1] = 0.0
+    velocities[150] = 0.0
+    cellindices = at.inputmodel.get_spherical_cell_index_of_velocities(
+        velocities[:, 0], velocities[:, 1], velocities[:, 2], modelmeta
+    )
+    dfpackets = pl.DataFrame({"vel_x": velocities[:, 0], "vel_y": velocities[:, 1], "vel_z": velocities[:, 2]})
+    vel_r = (pl.col("vel_x") ** 2 + pl.col("vel_y") ** 2 + pl.col("vel_z") ** 2).sqrt()
+    packetcells = dfpackets.select(
+        at.packets
+        .get_spherical_modelgridindex_expr(vel_r, pl.col("vel_x"), pl.col("vel_y"), pl.col("vel_z"), modelmeta)
+        .fill_null(-1)
+        .alias("cellindex")
+    )["cellindex"].to_numpy()
+    assert np.array_equal(cellindices, packetcells)
+    # a part of the points is outside the grid, and the points inside it find each cell
+    assert (cellindices == -1).sum() > 100
+    assert set(cellindices.tolist()) == {-1, *range(4 * 3 * 5)}
+
+
+def test_plotinitialcomposition_of_a_spherical_model_gives_each_point_the_value_of_its_cell(tmp_path: Path) -> None:
+    """The image of a spherical2d model is a grid of points, and each point has the density of the cell that holds it.
+
+    The model has two shells with the outer velocities 1000 and 3000 km/s and two polar cells with the edge at 1.5
+    rad. The index of a cell is i_r + 2 * i_theta, and its density is (index + 1) * 1e-12 g/cm3.
+    """
+    (tmp_path / "model.txt").write_text("\n".join(SPHERICAL2D_MODEL_LINES) + "\n", encoding="utf-8")
+    with mock.patch.object(mplax.Axes, "imshow", side_effect=mplax.Axes.imshow, autospec=True) as mockimshow:
+        at.inputmodel.plotinitialcomposition.main(argsraw=["rho", str(tmp_path), "-o", str(tmp_path / "plot.pdf")])
+
+    valuegrid = mockimshow.call_args.args[1]
+    assert valuegrid.shape == (400, 200)
+    xmin, xmax, ymin, ymax = mockimshow.call_args.kwargs["extent"]
+    vmax_on_c = 3000.0 * at.constants.km_to_cm / at.constants.C_cm_per_s
+    assert (xmin, xmax, ymin, ymax) == pytest.approx((0.0, vmax_on_c, -vmax_on_c, vmax_on_c), rel=1e-6)
+
+    def get_density(vel_rcyl_kmps: float, vel_z_kmps: float) -> float:
+        return float(valuegrid[int((vel_z_kmps + 3000.0) / (6000.0 / 400)), int(vel_rcyl_kmps / (3000.0 / 200))])
+
+    # +z is the first polar cell, and -z is the second one
+    assert get_density(100.0, 500.0) == pytest.approx(1e-12, rel=1e-6)
+    assert get_density(100.0, 2000.0) == pytest.approx(2e-12, rel=1e-6)
+    assert get_density(100.0, -500.0) == pytest.approx(3e-12, rel=1e-6)
+    assert get_density(2000.0, -500.0) == pytest.approx(4e-12, rel=1e-6)
+    # a point outside the sphere has no cell
+    assert np.ma.is_masked(valuegrid[399, 199])
+
+
 @pytest.mark.parametrize(
     ("oldline", "newlines", "errortext"),
     [
