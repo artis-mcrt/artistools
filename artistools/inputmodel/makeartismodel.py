@@ -259,16 +259,14 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
             " of its column X_<element>_otherstable."
         )
     hasotherfolder = outputfolder.resolve() != sourcefolder.resolve()
-    if hasotherfolder:
-        # A different output folder holds only the files of the output model. A file of an earlier model in that
-        # folder gives its values to the wrong cells, and save_modeldata stops for some of them. The (y/n) prompt of
-        # the command named each of these files
-        for filename in (*CELL_ID_FILE_NAMES, "abundances.txt"):
-            for oldfile in get_file_copies(outputfolder / filename):
-                if oldfile.is_file():
-                    oldfile.unlink()
-                    remove_parquet_cache(oldfile)
-                    print(f"Deleted {oldfile}, which is a file of an earlier model in the output folder")
+    if hasotherfolder and formatversion == 2:
+        # save_modeldata stops for an abundances.txt beside a version 2 model that gets no element mass fractions.
+        # In a different output folder, that file is of an earlier model, and the (y/n) prompt named it
+        for oldfile in get_file_copies(outputfolder / "abundances.txt"):
+            if oldfile.is_file():
+                oldfile.unlink()
+                remove_parquet_cache(oldfile)
+                print(f"Deleted {oldfile}, which is a file of an earlier model in the output folder")
 
     # save_modeldata checks the cells and can stop, thus it comes before gridcontributions.txt gets new cell ids. With
     # dfelabundances, version 1 also gets abundances.txt, and version 2 gets the otherstable columns
@@ -295,6 +293,10 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
         for sourcefile in unchangedfiles:
             if sourcefile is None:
                 continue
+            # the copy replaces each copy of the file in the output folder, e.g. a plain Ye.txt beside Ye.txt.zst
+            for oldfile in get_file_copies(outputfolder / sourcefile.name):
+                if oldfile.is_file():
+                    oldfile.unlink()
             shutil.copy2(sourcefile, outputfolder / sourcefile.name)
             print(f"Copied {sourcefile.name} to {outputfolder}, because its cell ids need no change")
 
@@ -306,8 +308,8 @@ def get_converted_file_names(
 
     A conversion to version 1 also writes abundances.txt. A conversion to version 2 deletes abundances.txt and
     Ye.txt. If the cell ids of a model do not start at 0, it also writes gridcontributions.txt. A conversion into a
-    different folder (hasoutputfolder) always copies or writes the files that the output model has, and it deletes
-    a Ye.txt and an opacity.txt of an earlier model in that folder.
+    different folder (hasoutputfolder) always copies or writes the files that the output model has. For version 2,
+    it also deletes a Ye.txt and an opacity.txt of an earlier model in that folder.
     """
     if formatversion != 2:
         return (*MODEL_FILE_NAMES, *CELL_ID_FILE_NAMES) if hasoutputfolder else ("model.txt", "abundances.txt")

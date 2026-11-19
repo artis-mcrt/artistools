@@ -1883,10 +1883,9 @@ def save_modeldata(
     X_Cr48, X_Ni57, and X_Co57 have a fixed place in version 1. In version 2, such a column that is absent holds zero
     in each cell. Thus the function writes one of these columns only if it is not zero in a cell with density.
 
-    A version 2 model has no Ye.txt, because the column Ye of model.txt gives the electron fraction. The function
-    deletes a Ye.txt of the output folder if dfmodel has the column Ye, and it stops if dfmodel has no such column.
-    A version 2 model also has no opacity.txt, which sn3d does not read. The function deletes an opacity.txt of the
-    output folder, because the cell ids of that file are those of an earlier model.
+    A version 2 model has no Ye.txt, because the column Ye of model.txt gives the electron fraction. It also has no
+    opacity.txt, which sn3d does not read. The function deletes a Ye.txt and an opacity.txt of the output folder
+    when it writes a version 2 file. It does not change these two files when it writes a version 1 file.
 
     A version 2 model has no abundances.txt. sn3d takes the mass fraction of an element as the sum of its nuclide
     columns and of its column X_<element>_otherstable, e.g. X_Ni56 + X_Ni58 + X_Ni_otherstable. Give dfelabundances
@@ -1946,13 +1945,6 @@ def save_modeldata(
 
     outputfolder = resolve_outputfile(outpath, "model.txt").parent
     oldabundancefiles = [path for path in get_file_copies(outputfolder / "abundances.txt") if path.is_file()]
-    oldyefiles = [path for path in get_file_copies(outputfolder / "Ye.txt") if path.is_file()]
-    if formatversion == 2 and oldyefiles and "Ye" not in colnames:
-        msg = (
-            f"{outputfolder} holds Ye.txt, and a model of format version 2 has no such file. Give the electron"
-            " fraction in the column Ye of dfmodel, or delete the file"
-        )
-        raise ValueError(msg)
     if formatversion == 2:
         if dfelabundances is not None:
             dfmodel = with_otherstable_columns(dfmodel.lazy().collect(), dfelabundances.lazy().collect())
@@ -2133,13 +2125,11 @@ def save_modeldata(
             remove_parquet_cache(oldabundancefile)
             print(f"Deleted {oldabundancefile}, because the model.txt of format version 2 gives the element masses")
     if formatversion == 2:
-        for oldyefile in oldyefiles:
-            oldyefile.unlink()
-            print(f"Deleted {oldyefile}, because the column Ye of a model.txt of format version 2 replaces Ye.txt")
-        for oldopacityfile in get_file_copies(outputfolder / "opacity.txt"):
-            if oldopacityfile.is_file():
-                oldopacityfile.unlink()
-                print(f"Deleted {oldopacityfile}, because a model of format version 2 has no opacity.txt")
+        for filename in CELL_ID_FILE_NAMES:
+            for oldcellfile in get_file_copies(outputfolder / filename):
+                if oldcellfile.is_file():
+                    oldcellfile.unlink()
+                    print(f"Deleted {oldcellfile}, because a model of format version 2 has no {filename}")
     print_detail(f"Took {time.perf_counter() - timestart:.1f} seconds")
 
 

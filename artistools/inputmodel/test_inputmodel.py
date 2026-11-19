@@ -4148,11 +4148,14 @@ def test_spherical_model_reader_takes_cell_ids_from_zero(tmp_path: Path, capsys:
     # a model with no density keeps one cell line, because a file with no cell line is not valid
     emptyfolder = tmp_path / "empty"
     emptyfolder.mkdir()
+    # a version 2 model has no Ye.txt, thus the file of an earlier model goes, also for a model with no column Ye
+    (emptyfolder / "Ye.txt").write_text("1\n1 0.3\n", encoding="utf-8")
     at.inputmodel.save_modeldata(
         lzmodel.with_columns(rho=pl.lit(0.0, dtype=pl.Float32)).collect(),
         outpath=emptyfolder,
         modelmeta=dict(modelmeta),
     )
+    assert not (emptyfolder / "Ye.txt").exists()
     # the count of the cell lines is 1, and the file has no composition column that is zero in each cell with density
     with at.zopen(emptyfolder / "model.txt.zst") as fmodel:
         assert fmodel.read().splitlines()[-3:-1] == ["cell_line_count 1", "columns inputcellid rho"]
