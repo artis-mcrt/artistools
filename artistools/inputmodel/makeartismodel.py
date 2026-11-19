@@ -154,11 +154,55 @@ def get_lines_with_lower_cell_ids(filepath: Path, firstinputcellid: int) -> list
     return newlines
 
 
+def with_ye_of_yefile(dfmodel: pl.DataFrame, yefilepath: Path) -> pl.DataFrame:
+    """Return the cells of a version 1 model with the electron fractions of its Ye.txt in the column Ye.
+
+    sn3d reads Ye.txt after model.txt, thus a value of Ye.txt replaces the value of the column Ye. Ye.txt can hold
+    only some of the cells, and each other cell keeps the value of the column. A cell with no value from the two
+    sources gets 0. sn3d with TANAKA2020_ELECTRONFRAC stops for such a cell, as it does in format version 1.
+    """
+    yelines = [line.split() for line in yefilepath.read_text(encoding="utf-8").splitlines()[1:] if line.strip()]
+    if any(len(tokens) != 2 for tokens in yelines):
+        msg = f"{yefilepath}: each line after the first line must hold a cell id and an electron fraction"
+        raise ValueError(msg)
+    dfye = pl.DataFrame(
+        {"inputcellid": [int(cellid) for cellid, _ in yelines], "Ye_file": [float(ye) for _, ye in yelines]},
+        schema={"inputcellid": pl.Int32, "Ye_file": pl.Float32},
+    ).unique(subset="inputcellid", keep="last")
+    unknownids = dfye.join(dfmodel.select("inputcellid"), on="inputcellid", how="anti")
+    if not unknownids.is_empty():
+        msg = (
+            f"{yefilepath}: {unknownids.height} cell ids are not in model.txt, e.g. {unknownids['inputcellid'].min()}."
+            " The cell ids of Ye.txt must be the ids of model.txt"
+        )
+        raise ValueError(msg)
+
+    columnvalue = pl.col("Ye") if "Ye" in dfmodel.columns else pl.lit(None, dtype=pl.Float32)
+    dfmodel = (
+        dfmodel
+        .join(dfye, on="inputcellid", how="left", maintain_order="left")
+        .with_columns(Ye=pl.coalesce(pl.col("Ye_file"), columnvalue))
+        .drop("Ye_file")
+    )
+    print(
+        f"  Version 2 has no Ye.txt. The column Ye of model.txt gets the {dfye.height} electron fractions of Ye.txt,"
+        " and each other cell keeps the value of that column."
+    )
+    novaluecount = dfmodel.filter(pl.col("Ye").is_null() & (pl.col("rho") > 0)).height
+    if novaluecount > 0:
+        print_warning(
+            f"{novaluecount} cells with density have no electron fraction in Ye.txt or in model.txt. The column Ye"
+            " gets 0 for these cells, and sn3d with TANAKA2020_ELECTRONFRAC stops for an electron fraction of 0"
+        )
+    return dfmodel.with_columns(pl.col("Ye").fill_null(0.0))
+
+
 def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int) -> None:
     """Convert the model.txt of a model to the format version formatversion, and write it into outputfolder.
 
     The cells keep their sequence and their values to the Float32 precision that artistools reads. Version 1 gives
-    the position of each cell in columns, and version 2 gives the cell edges in the header.
+    the position of each cell in columns, and version 2 gives the cell edges in the header. A version 2 model has no
+    abundances.txt and no Ye.txt, because its model.txt holds their values.
     """
     lzmodel, modelmeta = scan_modeldata(modelpath)
     coordinates = get_model_coordinates(modelmeta)
@@ -179,6 +223,17 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
 
     # save_modeldata can write the file that the query scans, thus the read is complete before the write
     dfmodel = lzmodel.collect()
+    sourcefolder = get_model_text_folder(modelpath)
+    yefilepath = sourcefolder / "Ye.txt"
+    if yefilepath.is_file() and modelmeta["formatversion"] == 2:
+        exit_with_error(
+            f"{sourcefolder} holds Ye.txt, but its model.txt has format version 2",
+            "sn3d stops for such a model. The column Ye of model.txt gives the electron fraction. Delete Ye.txt",
+        )
+    # the cell ids of a file with one value for each cell that the output model also has
+    cellidfilenames = [name for name in CELL_ID_FILE_NAMES if formatversion == 1 or name != "Ye.txt"]
+    if yefilepath.is_file() and formatversion == 2:
+        dfmodel = with_ye_of_yefile(dfmodel, yefilepath)
     gridcolumns = {"inputcellid", "modelgridindex", "rho", "logrho"}
     customcols = [col for col in dfmodel.columns if col not in gridcolumns and not col.startswith(("pos_", "vel_"))]
     outputfolder.mkdir(exist_ok=True, parents=True)
@@ -194,15 +249,15 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
     cellidfilelines: dict[str, list[str]] = {}
     if formatversion == 2 and dfmodel["inputcellid"].min() != 0:
         # each file of a model has the same cell ids, and version 2 has cell ids from 0
-        print("  Version 2 has cell ids from 0, thus gridcontributions.txt, Ye.txt, and opacity.txt get the same ids.")
+        print("  Version 2 has cell ids from 0, thus gridcontributions.txt and opacity.txt get the same ids.")
         firstinputcellid = dfmodel["inputcellid"].min()
         assert isinstance(firstinputcellid, int)
         dfmodel, dfelabundances, dfgridcontributions = with_cell_ids_from_zero(
             dfmodel, dfelabundances, get_gridparticlecontributions_or_none(modelpath)
         )
-        # sn3d reads the cell ids of Ye.txt as those of model.txt, thus an old id gives the value to the next cell
-        for filename in CELL_ID_FILE_NAMES:
-            cellidfilepath = get_model_text_folder(modelpath) / filename
+        # sn3d reads the cell ids of opacity.txt as those of model.txt, thus an old id gives the value to the next cell
+        for filename in cellidfilenames:
+            cellidfilepath = sourcefolder / filename
             if cellidfilepath.is_file():
                 cellidfilelines[filename] = get_lines_with_lower_cell_ids(cellidfilepath, firstinputcellid)
 
@@ -226,12 +281,11 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
         (outputfolder / filename).write_text("\n".join(lines) + "\n", encoding="utf-8")
         print_saved(outputfolder / filename)
 
-    sourcefolder = get_model_text_folder(modelpath)
     if outputfolder.resolve() != sourcefolder.resolve():
         # a different output folder also gets each file with cell ids that needs no change, thus the model is complete
         unchangedfiles = [
             sourcefolder / filename
-            for filename in CELL_ID_FILE_NAMES
+            for filename in cellidfilenames
             if filename not in cellidfilelines and (sourcefolder / filename).is_file()
         ]
         contributionsfile = firstexisting_or_none("gridcontributions.txt", folder=sourcefolder, tryzipped=True)
@@ -247,9 +301,10 @@ def get_converted_file_names(
 ) -> Sequence[str]:
     """Return the names of the files that convert_model_format writes for these models.
 
-    A conversion to version 1 also writes abundances.txt. A conversion to version 2 deletes abundances.txt, and it
-    also writes gridcontributions.txt, Ye.txt, and opacity.txt if the cell ids of a model do not start at 0. A
-    conversion into a different folder (hasoutputfolder) always copies or writes these three files.
+    A conversion to version 1 also writes abundances.txt. A conversion to version 2 deletes abundances.txt and
+    Ye.txt. If the cell ids of a model do not start at 0, it also writes gridcontributions.txt and opacity.txt. A
+    conversion into a different folder (hasoutputfolder) always copies or writes the files that the output model
+    has.
     """
     if formatversion != 2:
         return (*MODEL_FILE_NAMES, *CELL_ID_FILE_NAMES) if hasoutputfolder else ("model.txt", "abundances.txt")
@@ -258,7 +313,7 @@ def get_converted_file_names(
         for modelpath in modelpaths
     ]
     if all(firstcellid == 0 for firstcellid in firstcellids) and not hasoutputfolder:
-        return ("model.txt", "abundances.txt")
+        return ("model.txt", "abundances.txt", "Ye.txt")
     return (*MODEL_FILE_NAMES, *CELL_ID_FILE_NAMES)
 
 

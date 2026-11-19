@@ -562,13 +562,16 @@ def get_cell_counts_of_edges(coordinates: str, edges: "Mapping[str, Sequence[flo
 
 def read_keyword_model_header(
     modelfile: t.IO[str], modelfilepath: Path | str
-) -> tuple[dict[str, t.Any], list[str], int]:
-    """Return the metadata, the column names, and the count of the lines read, for the header of a version 2 model.
+) -> tuple[dict[str, t.Any], list[str], int, int | None]:
+    """Return the metadata, the column names, and two counts for the header of a version 2 model.
 
     modelfile is at the line after the line "format_version 2". Each header line is a key and its values, and the
     keys can come in any sequence. The key columns gives the column names and ends the header. The function gives a
     warning for a key that it does not know, and it ignores that key. Thus a later version of ARTIS can add a
     key to format version 2. The key headercommentlines of the metadata holds each comment line of the header.
+
+    The first count is the count of the lines read. The second count is the value of the optional key
+    cell_line_count, which gives the count of the cell lines. It is None for a header with no such key.
     """
     commentlines: list[str] = []
     keyvalues: dict[str, list[str]] = {}
@@ -596,7 +599,7 @@ def read_keyword_model_header(
             msg = f"{modelfilepath}: each value of the key {key} must be a number, not {keyvalues[key]!r}"
             raise ValueError(msg) from None
 
-    knownkeys = ("coordinates", "t_model_init_days", *ALL_MODEL_EDGE_KEYS, "columns")
+    knownkeys = ("coordinates", "t_model_init_days", *ALL_MODEL_EDGE_KEYS, "cell_line_count", "columns")
     for key in keyvalues:
         if key not in knownkeys:
             print_warning(
@@ -639,6 +642,19 @@ def read_keyword_model_header(
         raise ValueError(msg)
 
     cellcounts = [len(edges[key]) - 1 for key in MODEL_EDGE_KEYS[coordinates]]
+    npts_model = math.prod(cellcounts)
+    celllinecount = None
+    if "cell_line_count" in keyvalues:
+        # a file that lost lines at its end has fewer cell lines than this count, and a cell with no line is empty
+        counttokens = keyvalues["cell_line_count"]
+        if len(counttokens) != 1 or not counttokens[0].isdecimal() or not 1 <= int(counttokens[0]) <= npts_model:
+            msg = (
+                f"{modelfilepath}: the key cell_line_count must have one integer from 1 to {npts_model}, which is the"
+                f" count of the cells that the cell edges give, not {' '.join(counttokens)!r}"
+            )
+            raise ValueError(msg)
+        celllinecount = int(counttokens[0])
+
     modelmeta: dict[str, t.Any] = {
         "headercommentlines": commentlines,
         "formatversion": 2,
@@ -648,9 +664,9 @@ def read_keyword_model_header(
         **edges,
         **get_cell_counts_of_edges(coordinates, edges),
         "vmax_cmps": edges[MODEL_EDGE_KEYS[coordinates][0]][-1] * km_to_cm,
-        "npts_model": math.prod(cellcounts),
+        "npts_model": npts_model,
     }
-    return modelmeta, columns, linecount
+    return modelmeta, columns, linecount, celllinecount
 
 
 @modelpath_cache(maxsize=8)

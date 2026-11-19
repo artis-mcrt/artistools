@@ -18,6 +18,7 @@ from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g as MSUN
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import dimension_reduce_model
+from artistools.inputmodel.core import get_written_format_version
 from artistools.inputmodel.core import MODEL_FILE_NAMES
 from artistools.inputmodel.core import save_empty_abundance_file
 from artistools.inputmodel.core import save_initelemabundances
@@ -394,7 +395,10 @@ def add_mass_to_center(griddata: pl.DataFrame, modelmeta: dict[str, t.Any]) -> p
 
 
 def get_griddata_output_file_names(getcellopacityfromYe: bool) -> tuple[str, ...]:
-    """Return the names of the files that makemodelfromgriddata writes."""
+    """Return the names of the files that makemodelfromgriddata writes.
+
+    A model of format version 2 has no abundances.txt and no Ye.txt, and the command deletes such a file.
+    """
     return (*MODEL_FILE_NAMES, "Ye.txt", *(("opacity.txt",) if getcellopacityfromYe else ()))
 
 
@@ -489,7 +493,8 @@ def makemodelfromgriddata(
         # the reduction changes the cells, thus opacity.txt must name the cells of the output model
         opacity_by_ye(outputpath, dfmodel)
 
-    if "Ye" in dfmodel:
+    # a version 2 model has no Ye.txt, because the column Ye of its model.txt gives the electron fraction
+    if "Ye" in dfmodel and get_written_format_version(get_model_coordinates(modelmeta), modelmeta) == 1:
         write_ye_file(outputpath, dfmodel)
 
     if dfgridcontributions is not None:

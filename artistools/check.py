@@ -493,8 +493,8 @@ def check_packet_noise(modelpath: Path, frompackets: bool) -> tuple[str, str]:
 def check_input_files(modelpath: Path) -> tuple[str, str]:
     """Find the input files that the readers of artistools need, and return the status and the detail.
 
-    A model.txt of format version 2 gives the element mass fractions. Such a model has no abundances.txt, and sn3d
-    stops if that file is present.
+    A model.txt of format version 2 gives the element mass fractions and the electron fractions. Such a model has
+    no abundances.txt and no Ye.txt, and sn3d stops if one of these files is present.
     """
     inputfiles = dict(INPUTFILE_READERS)
     modelfile = firstexisting_or_none("model.txt", folder=modelpath, search_subfolders=False)
@@ -505,11 +505,12 @@ def check_input_files(modelpath: Path) -> tuple[str, str]:
             hasversion2 = get_model_format_version(fmodel.readline(), modelfile) == 2
         if hasversion2:
             del inputfiles["abundances.txt"]
-            if firstexisting_or_none("abundances.txt", folder=modelpath, search_subfolders=False) is not None:
-                return "warning", (
-                    "the model folder holds abundances.txt, but model.txt has format version 2, which gives the"
-                    " element mass fractions. sn3d stops for this file"
-                )
+            for filename, quantity in (("abundances.txt", "element mass"), ("Ye.txt", "electron")):
+                if firstexisting_or_none(filename, folder=modelpath, search_subfolders=False) is not None:
+                    return "warning", (
+                        f"the model folder holds {filename}, but model.txt has format version 2, which gives the"
+                        f" {quantity} fractions. sn3d stops for this file"
+                    )
     missing = [
         f"{filename} ({readers})"
         for filename, readers in inputfiles.items()

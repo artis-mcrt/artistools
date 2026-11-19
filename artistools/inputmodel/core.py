@@ -196,9 +196,10 @@ def scan_modelfile_text(
         ncoordgridz: int = 0
 
         columns: list[str] | None = None
+        celllinecount: int | None = None
         if formatversion == 2:
             fmodel.readline()
-            modelmeta, columns, linecount = read_keyword_model_header(fmodel, filename)
+            modelmeta, columns, linecount, celllinecount = read_keyword_model_header(fmodel, filename)
             numheaderrows = 1 + linecount
             # save_modeldata writes these lines again, thus a kept copy gives each line two times
             modelmeta["headercommentlines"] = [
@@ -455,6 +456,26 @@ def scan_modelfile_text(
                 f" from 0 to {npts_model - 1}"
             )
             raise ValueError(msg)
+        if celllinecount is not None and cellcount != celllinecount:
+            # a cell with no line is empty, thus only this count finds a file that lost lines at its end
+            msg = (
+                f"{filename}: the key cell_line_count gives {celllinecount} cell lines, but the file has {cellcount}."
+                " The file is possibly not complete"
+            )
+            raise ValueError(msg)
+        filecolumns = dfmodel.collect_schema().names()
+        absentcolumns = [col for col in STANDARD_COMPOSITION_COLUMNS if col not in filecolumns]
+        if absentcolumns:
+            # the code after the reader takes the columns of version 1, and sn3d uses zero for an absent column
+            if not printwarningsonly:
+                print(f"  The file has no column {', '.join(absentcolumns)}. An absent column holds 0 in each cell")
+            dfmodel = dfmodel.with_columns(pl.lit(0.0, dtype=pl.Float32).alias(col) for col in absentcolumns)
+        dfmodel = dfmodel.select(
+            "inputcellid",
+            "rho",
+            *STANDARD_COMPOSITION_COLUMNS,
+            *[col for col in filecolumns if col not in {"inputcellid", "rho", *STANDARD_COMPOSITION_COLUMNS}],
+        )
         if cellcount < npts_model:
             if not printwarningsonly:
                 print(f"  {npts_model - cellcount} cells have no line, and they are empty (rho = 0)")
@@ -1317,13 +1338,19 @@ def add_derived_cols_to_modeldata(dfmodel: pl.DataFrame | pl.LazyFrame, modelmet
     )
 
 
+# Each version 1 file holds these columns after its position columns and its density. They are optional in a version
+# 2 file, where an absent column holds zero in each cell
+STANDARD_COMPOSITION_COLUMNS = ("X_Fegroup", "X_Ni56", "X_Co56", "X_Fe52", "X_Cr48")
+
+
 def get_standard_columns(
     coordinates: str, includenico57: bool = False, pos_unknown: bool = False, formatversion: int = 1
 ) -> list[str]:
-    """Return the standard columns of model.txt for the coordinates of a model, e.g. cartesian3d.
+    """Return the columns that each model.txt holds for the coordinates of a model, e.g. cartesian3d.
 
-    A version 2 file has no position column, because the header gives the edges of the cells. A model with
-    spherical2d or spherical3d coordinates has version 2 only.
+    A version 2 file needs only inputcellid and rho. It has no position column, because the header gives the edges
+    of the cells, and each composition column is optional. A model with spherical2d or spherical3d coordinates has
+    version 2 only.
     """
     cols: list[str] = []
     if coordinates not in MODEL_EDGE_KEYS:
@@ -1343,7 +1370,10 @@ def get_standard_columns(
         case _:
             cols = ["inputcellid", "rho"]
 
-    cols += ["X_Fegroup", "X_Ni56", "X_Co56", "X_Fe52", "X_Cr48"]
+    if formatversion == 2:
+        return cols
+
+    cols += STANDARD_COMPOSITION_COLUMNS
 
     if includenico57:
         cols += ["X_Ni57", "X_Co57"]
@@ -1609,7 +1639,7 @@ def get_version2_headerlines(inputcellids: pl.Series, modelmeta: dict[str, t.Any
             f"The cell edges give {gridshape} = {npts_model} cells, but the model has {inputcellids.len()} cells with"
             f" the first cell id {inputcellids.item(0) if inputcellids.len() else None}. In format version 2, the cell"
             f" ids are 0 to {npts_model - 1}, and the index of {firstaxis} changes fastest. Give the same cell ids to"
-            " gridcontributions.txt and Ye.txt, e.g. call with_cell_ids_from_zero"
+            " gridcontributions.txt and opacity.txt, e.g. call with_cell_ids_from_zero"
         )
         raise ValueError(msg)
 
@@ -1726,7 +1756,7 @@ def save_modeldata(
 
     2D spherical and 3D spherical
     -------
-    dfmodel must contain columns inputcellid, rho, X_Fegroup, X_Ni56, X_Co56, X_Fe52, X_Cr48
+    dfmodel must contain columns inputcellid and rho
     modelmeta must define: coordinates (spherical2d or spherical3d), vel_r_edges_kmps, theta_edges_radians, and for
     spherical3d also phi_edges_radians
 
@@ -1744,6 +1774,7 @@ def save_modeldata(
     - t_model_init_days;
     - the cell edges of each axis: vel_r_edges_kmps (and theta_edges_radians, phi_edges_radians), or
       vel_rcyl_edges_kmps and vel_z_edges_kmps, or vel_x_edges_kmps, vel_y_edges_kmps, and vel_z_edges_kmps;
+    - cell_line_count: the count of the cell lines, thus a reader finds a file that lost lines at its end;
     - columns: inputcellid, rho, and the other column names.
 
     Each list of edges has one value more than the count of the cells on that axis, and it increases. A list of r,
@@ -1755,9 +1786,16 @@ def save_modeldata(
     The cells of a version 2 file have no position column. The cell id is the index of the cell in the grid of the
     edges, from 0. The index of the first axis changes fastest, e.g. i_r + n_r * (i_theta + n_theta * i_phi). Thus
     dfmodel must have the cell ids 0 to N - 1 for version 2, where N is the count of the cells. gridcontributions.txt
-    and Ye.txt of the model must hold the same ids (see with_cell_ids_from_zero). A cell with no line is empty, thus
-    the function writes no line for an empty cell (rho = 0). A file needs one cell line, thus a model with no density
-    keeps the line of its first cell. Each version 2 file holds rho, and no version 2 file holds logrho.
+    and opacity.txt of the model must hold the same ids (see with_cell_ids_from_zero). A cell with no line is empty,
+    thus the function writes no line for an empty cell (rho = 0). A file needs one cell line, thus a model with no
+    density keeps the line of its first cell. Each version 2 file holds rho, and no version 2 file holds logrho.
+
+    A version 2 file needs only the columns inputcellid and rho. The columns X_Fegroup, X_Ni56, X_Co56, X_Fe52,
+    X_Cr48, X_Ni57, and X_Co57 have a fixed place in version 1. In version 2, such a column that is absent holds zero
+    in each cell. Thus the function writes one of these columns only if it is not zero in a cell with density.
+
+    A version 2 model has no Ye.txt, because the column Ye of model.txt gives the electron fraction. The function
+    deletes a Ye.txt of the output folder if dfmodel has the column Ye, and it stops if dfmodel has no such column.
 
     A version 2 model has no abundances.txt. sn3d takes the mass fraction of an element as the sum of its nuclide
     columns and of its column X_<element>_otherstable, e.g. X_Ni56 + X_Ni58 + X_Ni_otherstable. Give dfelabundances
@@ -1817,6 +1855,13 @@ def save_modeldata(
 
     outputfolder = resolve_outputfile(outpath, "model.txt").parent
     oldabundancefiles = [path for path in get_file_copies(outputfolder / "abundances.txt") if path.is_file()]
+    oldyefiles = [path for path in get_file_copies(outputfolder / "Ye.txt") if path.is_file()]
+    if formatversion == 2 and oldyefiles and "Ye" not in colnames:
+        msg = (
+            f"{outputfolder} holds Ye.txt, and a model of format version 2 has no such file. Give the electron"
+            " fraction in the column Ye of dfmodel, or delete the file"
+        )
+        raise ValueError(msg)
     if formatversion == 2:
         if dfelabundances is not None:
             dfmodel = with_otherstable_columns(dfmodel.lazy().collect(), dfelabundances.lazy().collect())
@@ -1853,12 +1898,21 @@ def save_modeldata(
         .with_columns(pl.col("inputcellid").cast(pl.Int32))
         .collect()
     )
+    version2keylines: list[str] = []
+    hasdensity = pl.col("rho") > 0
     if formatversion == 2:
         dfmodel = dfmodel.sort("inputcellid")
         if coordinates not in SPHERICAL_EDGE_COORDINATES:
             modelmeta |= get_edges_of_position_columns(dfmodel, modelmeta)
         if coordinates == "spherical1d":
             dfmodel = with_rho_of_1d_model(dfmodel)
+        # an absent composition column holds zero in version 2. The writer gives a null and a NaN as zero
+        compositioncols = [col for col in inputcols if col.startswith("X_")]
+        isnonzero = dfmodel.select(
+            ((pl.col(col).fill_nan(0.0).fill_null(0.0) != 0.0) & hasdensity).any() for col in compositioncols
+        ).row(0, named=True)
+        standardcols = [*standardcols, *[col for col in compositioncols if isnonzero[col]]]
+        version2keylines = get_version2_headerlines(dfmodel["inputcellid"], modelmeta)
 
     dfmodel_npts_model = dfmodel.height
     if "npts_model" in modelmeta:
@@ -1903,6 +1957,12 @@ def save_modeldata(
         case _:
             strunits = "rho [g/cm^3] at t_model_init_days"
 
+    if formatversion == 2:
+        # a cell with no line is empty in version 2, thus the file needs no line for a cell with no density.
+        # sn3d and scan_modeldata need one cell line, thus a model with no density keeps its first cell
+        dfmodel = dfmodel.filter(hasdensity | (~hasdensity.any() & (pl.int_range(pl.len()) == 0)))
+        version2keylines.append(f"cell_line_count {dfmodel.height}")
+
     modelfilepath = prepare_zstd_output(resolve_outputfile(outpath, "model.txt"))
 
     with modelfilepath.open("wb") as fmodel:
@@ -1916,7 +1976,7 @@ def save_modeldata(
             get_created_comment(),
             f"# {UNITS_COMMENT_PREFIX} {strunits}. {UNITS_COMMENT_END}",
             *[f"{strvalue:<24} # {comment}" for strvalue, comment in headerlines],
-            *(get_version2_headerlines(dfmodel["inputcellid"], modelmeta) if formatversion == 2 else []),
+            *version2keylines,
             # the key columns ends a version 2 header. A version 1 file gives the names in a comment line
             f"{'columns ' if formatversion == 2 else '#'}{' '.join([*standardcols, *customcols])}",
         ]
@@ -1962,11 +2022,6 @@ def save_modeldata(
             # startcols are the standard ones, but excluding any abundances
             startcols = [col for col in standardcols if not col.startswith("X_")]
             dfmodel = dfmodel.select([*startcols, *abundandcustomcols])
-            if formatversion == 2:
-                # a cell with no line is empty in version 2, thus the file needs no line for a cell with no density.
-                # sn3d and scan_modeldata need one cell line, thus a model with no density keeps its first cell
-                hasdensity = pl.col("rho") > 0
-                dfmodel = dfmodel.filter(hasdensity | (~hasdensity.any() & (pl.int_range(pl.len()) == 0)))
             # fast polars writer
             # set abundances to null for cells with zero density (so that shorter form "0.0" can be written)
             dfmodel = dfmodel.with_columns(
@@ -1986,6 +2041,10 @@ def save_modeldata(
             oldabundancefile.unlink()
             remove_parquet_cache(oldabundancefile)
             print(f"Deleted {oldabundancefile}, because the model.txt of format version 2 gives the element masses")
+    if formatversion == 2:
+        for oldyefile in oldyefiles:
+            oldyefile.unlink()
+            print(f"Deleted {oldyefile}, because the column Ye of a model.txt of format version 2 replaces Ye.txt")
     print_detail(f"Took {time.perf_counter() - timestart:.1f} seconds")
 
 

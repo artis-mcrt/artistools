@@ -4051,6 +4051,14 @@ def test_spherical_model_round_trip(tmp_path: Path, coordinates: str) -> None:
     at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta=modelmeta)
     lzmodel_read, modelmeta_read = at.inputmodel.scan_modeldata(tmp_path)
 
+    # the file has no composition column that holds zero in each cell, and the reader gives such a column again
+    with at.zopen(tmp_path / "model.txt.zst") as fmodel:
+        headerlines = fmodel.read().splitlines()[: -dfmodel.height]
+    assert headerlines[-2:] == [
+        f"cell_line_count {dfmodel.height}",
+        "columns inputcellid rho X_Fegroup X_Ni56 Ye tracercount",
+    ]
+
     # the writer gives 17 significant digits, thus each edge comes back with no change
     assert {key: modelmeta_read[key] for key in edgekeys} == edges_written
     assert modelmeta_read["coordinates"] == coordinates
@@ -4094,13 +4102,14 @@ SPHERICAL2D_MODEL_LINES = (
     "coordinates spherical2d",
     "# a comment between two keys",
     "t_model_init_days 1.0  # an inline comment",
+    "cell_line_count 4",
     "vel_r_edges_kmps 0 1000 3000",
     f"theta_edges_radians 0 1.5 {math.pi!r}",
-    "columns inputcellid rho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48",
-    "0 1e-12 1 0 0 0 0",
-    "1 2e-12 1 0 0 0 0",
-    "2 3e-12 1 0 0 0 0",
-    "3 4e-12 1 0 0 0 0",
+    "columns inputcellid rho X_Fegroup",
+    "0 1e-12 1",
+    "1 2e-12 1",
+    "2 3e-12 1",
+    "3 4e-12 1",
 )
 
 
@@ -4116,11 +4125,11 @@ def test_spherical_model_reader_takes_cell_ids_from_zero(tmp_path: Path, capsys:
     assert modelmeta["headercommentlines"] == ["a comment before the keys", "a comment between two keys"]
 
     # the keys can come in any sequence before the key columns, and a key that artistools does not know gets a warning
-    lines = [SPHERICAL2D_MODEL_LINES[0], "key_of_a_later_version 1", *reversed(SPHERICAL2D_MODEL_LINES[1:6])]
+    lines = [SPHERICAL2D_MODEL_LINES[0], "key_of_a_later_version 1", *reversed(SPHERICAL2D_MODEL_LINES[1:8])]
     # a comment line or an empty line can come before each cell line
-    celllines = ["# a comment before the first cell", "", *SPHERICAL2D_MODEL_LINES[6:8], "# a comment", ""]
+    celllines = [SPHERICAL2D_MODEL_LINES[8], "# a comment before the first cell", "", SPHERICAL2D_MODEL_LINES[9]]
     (tmp_path / "model.txt").write_text(
-        "\n".join([*lines, *celllines, *SPHERICAL2D_MODEL_LINES[8:]]) + "\n", encoding="utf-8"
+        "\n".join([*lines, *celllines, "# a comment", "", *SPHERICAL2D_MODEL_LINES[10:]]) + "\n", encoding="utf-8"
     )
     dfreordered, metareordered = at.inputmodel.scan_modeldata(tmp_path)
     pltest.assert_frame_equal(dfreordered.collect(), lzmodel.collect())
@@ -4136,17 +4145,27 @@ def test_spherical_model_reader_takes_cell_ids_from_zero(tmp_path: Path, capsys:
         outpath=emptyfolder,
         modelmeta=dict(modelmeta),
     )
+    # the count of the cell lines is 1, and the file has no composition column that is zero in each cell with density
+    with at.zopen(emptyfolder / "model.txt.zst") as fmodel:
+        assert fmodel.read().splitlines()[-3:-1] == ["cell_line_count 1", "columns inputcellid rho"]
     dfempty = at.inputmodel.scan_modeldata(emptyfolder)[0].collect()
     assert dfempty["inputcellid"].to_list() == [0, 1, 2, 3]
     assert dfempty["rho"].to_list() == [0.0, 0.0, 0.0, 0.0]
 
-    # a cell with no line is empty in format version 2
-    lines = [line for line in SPHERICAL2D_MODEL_LINES if line != "2 3e-12 1 0 0 0 0"]
+    # a cell with no line is empty in format version 2, and the count of the cell lines agrees with the file
+    lines = [
+        line.replace("cell_line_count 4", "cell_line_count 3")
+        for line in SPHERICAL2D_MODEL_LINES
+        if line != "2 3e-12 1"
+    ]
     (tmp_path / "model.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
     dfwithabsentcell = at.inputmodel.scan_modeldata(tmp_path)[0].collect()
     assert dfwithabsentcell["inputcellid"].to_list() == [0, 1, 2, 3]
     assert dfwithabsentcell["rho"].to_list() == pytest.approx([1e-12, 2e-12, 0.0, 4e-12])
     assert dfwithabsentcell["X_Fegroup"].to_list() == [1.0, 1.0, 0.0, 1.0]
+    # a composition column that the file does not have holds zero, at its place in a version 1 file
+    assert dfwithabsentcell.columns[:7] == ["inputcellid", "rho", "X_Fegroup", "X_Ni56", "X_Co56", "X_Fe52", "X_Cr48"]
+    assert dfwithabsentcell["X_Ni56"].to_list() == [0.0, 0.0, 0.0, 0.0]
     dfderived = at.inputmodel.add_derived_cols_to_modeldata(lzmodel.drop("modelgridindex"), modelmeta).collect()
     # the radial index changes fastest, thus the cells 0 and 2 are in the inner shell
     assert dfderived["vel_r_max"].to_list() == pytest.approx([1e8, 3e8, 1e8, 3e8])
@@ -4156,17 +4175,20 @@ def test_spherical_model_reader_takes_cell_ids_from_zero(tmp_path: Path, capsys:
 @pytest.mark.parametrize(
     ("oldline", "newlines", "errortext"),
     [
-        ("3 4e-12 1 0 0 0 0", ("3 4e-12 1 0 0 0 0", "4 5e-12 1 0 0 0 0"), "more than 4 cells"),
-        ("3 4e-12 1 0 0 0 0", ("2 4e-12 1 0 0 0 0",), "must increase from each cell line to the next"),
-        ("3 4e-12 1 0 0 0 0", ("4 4e-12 1 0 0 0 0",), "each inputcellid must be from 0 to 3"),
-        ("3 4e-12 1 0 0 0 0", ("3 4e-12 1 0 0 0 0 0.5",), "a cell line has more values than the key columns"),
-        ("3 4e-12 1 0 0 0 0", ("3 4e-12 1 0 0 0",), "a cell line has fewer values than the key columns"),
+        ("3 4e-12 1", ("3 4e-12 1", "4 5e-12 1"), "more than 4 cells"),
+        ("3 4e-12 1", ("2 4e-12 1",), "must increase from each cell line to the next"),
+        ("3 4e-12 1", ("4 4e-12 1",), "each inputcellid must be from 0 to 3"),
+        ("3 4e-12 1", ("3 4e-12 1 0.5",), "a cell line has more values than the key columns"),
+        ("3 4e-12 1", ("3 4e-12",), "a cell line has fewer values than the key columns"),
+        # a cell with no line is empty, thus only the count finds a file that lost its last line
+        ("3 4e-12 1", (), "the key cell_line_count gives 4 cell lines, but the file has 3"),
+        ("cell_line_count 4", ("cell_line_count 5",), "cell_line_count must have one integer from 1 to 4"),
         (
-            "columns inputcellid rho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48",
-            ("phi_edges_radians 0 6.283185307179586", "columns inputcellid rho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48"),
+            "columns inputcellid rho X_Fegroup",
+            ("phi_edges_radians 0 6.283185307179586", "columns inputcellid rho X_Fegroup"),
             "takes no phi_edges_radians",
         ),
-        ("columns inputcellid rho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48", (), "must end with the key columns"),
+        ("columns inputcellid rho X_Fegroup", (), "must end with the key columns"),
         ("t_model_init_days 1.0  # an inline comment", (), "the header has no key t_model_init_days"),
         ("vel_r_edges_kmps 0 1000 3000", ("vel_r_edges_kmps 0 3000 1000",), "must increase"),
         (
@@ -4198,7 +4220,7 @@ def test_spherical_model_reader_takes_cell_ids_from_zero(tmp_path: Path, capsys:
 def test_spherical_model_reader_stops_for_a_wrong_file(
     tmp_path: Path, oldline: str, newlines: tuple[str, ...], errortext: str
 ) -> None:
-    """A spherical model.txt gives no cell count, thus the reader checks the rows against the edges of the header."""
+    """The reader checks the cell lines against the cell edges and against the key cell_line_count of the header."""
     lines = [newline for line in SPHERICAL2D_MODEL_LINES for newline in (newlines if line == oldline else (line,))]
     (tmp_path / "model.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
@@ -4324,8 +4346,12 @@ def test_makeartismodel_converts_the_format_version_in_the_model_folder(tmp_path
     """
     sourcefolder = tmp_path / "source"
     shutil.copytree(at.get_path("testdata") / "test-classicmode_3d", sourcefolder)
-    # the cell ids of this model start at 1, and sn3d reads the ids of Ye.txt as those of model.txt
-    (sourcefolder / "Ye.txt").write_text("2\n1\t0.25\n1000\t0.45\n", encoding="utf-8")
+    dfsource = at.inputmodel.scan_modeldata(sourcefolder, get_elemabundances=True)[0]
+    # the cell ids of this model start at 1, and sn3d reads the ids of Ye.txt as those of model.txt. The model.txt
+    # has no column Ye, and Ye.txt holds two of the cells with density
+    idswithdensity = dfsource.filter(pl.col("rho") > 0).select("inputcellid").collect().to_series()
+    firstid, lastid = idswithdensity.item(0), idswithdensity.item(-1)
+    (sourcefolder / "Ye.txt").write_text(f"2\n{firstid}\t0.25\n{lastid}\t0.45\n", encoding="utf-8")
     (sourcefolder / "opacity.txt").write_text("2\n1 0.1\n1000 3.3\n", encoding="utf-8")
     modelfolder = tmp_path / "model"
     at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[sourcefolder], format_version=2, outputfile=modelfolder)
@@ -4334,11 +4360,15 @@ def test_makeartismodel_converts_the_format_version_in_the_model_folder(tmp_path
     assert dfversion2.select(firstid=pl.col("inputcellid").min(), lastid=pl.col("inputcellid").max()).collect().row(
         0
     ) == (0, 999)
-    assert (modelfolder / "Ye.txt").read_text(encoding="utf-8").split()[1::2] == ["0", "999"]
+    # a version 2 model has no Ye.txt. The column Ye holds its values at the new cell ids, and 0 for each other cell
+    assert not (modelfolder / "Ye.txt").exists()
+    assert dfversion2.filter(pl.col("Ye") > 0).select("inputcellid", "Ye").collect().rows() == [
+        (firstid - 1, pytest.approx(0.25)),
+        (lastid - 1, pytest.approx(0.45)),
+    ]
     assert (modelfolder / "opacity.txt").read_text(encoding="utf-8") == "2\n0 0.1\n999 3.3\n"
     # a version 2 model has no abundances.txt, and the columns of model.txt give the same element mass fractions
     assert not list(modelfolder.glob("abundances.txt*"))
-    dfsource = at.inputmodel.scan_modeldata(sourcefolder, get_elemabundances=True)[0]
     pltest.assert_series_equal(
         dfversion2.select("X_Fe").collect().to_series(), dfsource.select("X_Fe").collect().to_series()
     )
@@ -4356,10 +4386,14 @@ def test_makeartismodel_converts_the_format_version_in_the_model_folder(tmp_path
     # a conversion into a different folder also copies the files whose cell ids need no change
     version1folder = tmp_path / "version1"
     at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[modelfolder], format_version=1, outputfile=version1folder)
-    for filename in ("Ye.txt", "opacity.txt"):
-        assert (version1folder / filename).read_text(encoding="utf-8") == (modelfolder / filename).read_text(
-            encoding="utf-8"
-        )
+    assert (version1folder / "opacity.txt").read_text(encoding="utf-8") == "2\n0 0.1\n999 3.3\n"
+
+    # a conversion in the model folder deletes Ye.txt, because sn3d stops for a version 2 model with that file
+    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[sourcefolder], format_version=2, force=True)
+    assert not (sourcefolder / "Ye.txt").exists()
+    (sourcefolder / "Ye.txt").write_text("0\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[sourcefolder], format_version=1, force=True)
 
     at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[modelfolder], format_version=1, force=True)
     dfmodel, modelmeta = at.inputmodel.scan_modeldata(modelfolder)

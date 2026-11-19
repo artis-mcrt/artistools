@@ -158,12 +158,19 @@ def plot_slice_modelcolumn(
     return im
 
 
-def add_ye_from_yefile(lzdfmodel: pl.LazyFrame, modelpath: Path | str) -> pl.LazyFrame:
+def add_ye_from_yefile(lzdfmodel: pl.LazyFrame, modelpath: Path | str, modelmeta: dict[str, t.Any]) -> pl.LazyFrame:
     """Add the Ye column of Ye.txt to a model whose model.txt holds no Ye column.
 
     Ye.txt gives the number of lines first, and then the cell id and Ye of each cell. The ids are the ids of
-    model.txt, thus a join on the id is correct also for a file that holds only some of the cells.
+    model.txt, thus a join on the id is correct also for a file that holds only some of the cells. A model of
+    format version 2 has no Ye.txt, thus the function stops for such a model.
     """
+    if modelmeta.get("formatversion", 1) == 2:
+        msg = (
+            f"The model.txt of {modelpath} has format version 2 and no column Ye. sn3d reads no Ye.txt for format"
+            " version 2"
+        )
+        raise ValueError(msg)
     dfye = read_wsv(Path(modelpath) / "Ye.txt", has_header=False, skip_rows=1, new_columns=["inputcellid", "Ye"])
     return lzdfmodel.join(
         dfye.lazy().select(pl.col("inputcellid").cast(pl.Int32), pl.col("Ye").cast(pl.Float32)),
@@ -241,7 +248,7 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
 
     if "Ye" in args.plotvars and "Ye" not in lzdfmodel.collect_schema().names():
         # the model file can hold no Ye column, and then Ye.txt gives it, as for the 3D plot
-        lzdfmodel = add_ye_from_yefile(lzdfmodel, modelpath)
+        lzdfmodel = add_ye_from_yefile(lzdfmodel, modelpath, modelmeta)
 
     modelcolumns = lzdfmodel.collect_schema().names()
     colnames = [plotvar if plotvar in modelcolumns else f"X_{plotvar.title()}" for plotvar in args.plotvars]
@@ -369,7 +376,7 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     vmax = modelmeta["vmax_cmps"]
     if "Ye" in args.plotvars and "Ye" not in plmodel.collect_schema().names():
         # the model file can hold no Ye column, and then Ye.txt gives it
-        plmodel = add_ye_from_yefile(plmodel, modelpath)
+        plmodel = add_ye_from_yefile(plmodel, modelpath, modelmeta)
     model = plmodel.select(cs.by_name({"rho", coloursurfaceby}, require_all=False)).collect()
 
     # generate grid from data

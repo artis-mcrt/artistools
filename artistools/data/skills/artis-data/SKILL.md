@@ -412,6 +412,10 @@ model has no `abundances.txt`: the mass fraction of an element is the sum of its
 also hold the lists of the edges, e.g. `vel_r_edges_kmps` or `vel_x_edges_kmps`. The columns of a 1D, a 2D
 cylindrical, or a 3D Cartesian model are the same for the two versions.
 
+A version 2 model also has no `Ye.txt`, because the column `Ye` of `model.txt` gives the electron fraction. The
+columns `X_Fegroup`, `X_Ni56`, `X_Co56`, `X_Fe52`, and `X_Cr48` are optional in a version 2 file. `scan_modeldata`
+gives such a column with the value 0 if the file does not have it, because `sn3d` uses 0 for an absent column.
+
 A model with the coordinates `spherical2d` or `spherical3d` has version 2 only. Its parameters are
 `vel_r_edges_kmps`, `theta_edges_radians`, and, for `spherical3d`, `phi_edges_radians`. Each list holds the edges of
 the cells on one axis. The polar angle theta is from the +z axis, and the azimuthal angle is phi = atan2(y, x). The index of a cell is
