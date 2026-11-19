@@ -24,6 +24,7 @@ from artistools.misc import addarg_force
 from artistools.misc import addarg_output
 from artistools.misc import confirm_overwrite
 from artistools.misc import exit_with_error
+from artistools.misc import get_file_copies
 from artistools.misc import parse_cli_args
 
 itable = 40000  # wie fein Kernelfkt interpoliert wird
@@ -244,11 +245,16 @@ def delete_grid_file_of_other_map(outputfolderpath: Path, writtenfilename: str, 
     Both maps write gridcontributions.txt, which now holds the cells of the new map. Thus the other grid file has
     no particle contributions, and makeartismodelfromparticlegridmap stops for a folder with both grid files.
     """
-    for filename in GRID_FILE_NAMES:
-        otherfile = outputfolderpath / filename
-        if filename != writtenfilename and otherfile.is_file():
-            otherfile.unlink()
-            logprint(f"Deleted {otherfile}, because gridcontributions.txt now holds the cells of {writtenfilename}")
+    otherfiles = [
+        path
+        for filename in GRID_FILE_NAMES
+        if filename != writtenfilename
+        for path in get_file_copies(outputfolderpath / filename)
+        if path.is_file()
+    ]
+    for otherfile in otherfiles:
+        otherfile.unlink()
+        logprint(f"Deleted {otherfile}, because gridcontributions.txt now holds the cells of {writtenfilename}")
 
 
 def map_particles_to_spherical_grid(

@@ -150,6 +150,12 @@ def get_snapshot_time_geomunits(pathtogriddata: Path | str) -> tuple[float, floa
 SPHERICAL_GRID_FILE_NAME = "grid_spherical.dat"
 GRID_FILE_NAMES = ("grid.dat", SPHERICAL_GRID_FILE_NAME)
 
+
+def has_grid_file(gridfolderpath: Path | str, filename: str) -> bool:
+    """Return True if the folder holds the grid file of a map, or a compressed copy of it."""
+    return any(path.is_file() for path in get_file_copies(Path(gridfolderpath, filename)))
+
+
 # the keys of the edge lists in the grid_spherical.dat of a spherical map. The radial edges are in geometric units
 SPHERICAL_GRIDDAT_EDGE_KEYS = ("r_edges_geomunits", "theta_edges_radians", "phi_edges_radians")
 
@@ -256,8 +262,8 @@ def read_griddat_file(
     grid.dat. A spherical map has the file grid_spherical.dat, and read_spherical_griddat_file reads it.
     """
     griddatfilepath = Path(pathtogriddata) / "grid.dat"
-    hassphericalmap = Path(pathtogriddata, SPHERICAL_GRID_FILE_NAME).is_file()
-    if hassphericalmap and griddatfilepath.is_file():
+    hassphericalmap = has_grid_file(pathtogriddata, SPHERICAL_GRID_FILE_NAME)
+    if hassphericalmap and has_grid_file(pathtogriddata, "grid.dat"):
         exit_with_error(
             f"{pathtogriddata} holds grid.dat and {SPHERICAL_GRID_FILE_NAME}",
             "gridcontributions.txt holds the cells of one map. Delete the grid file of the other map",
@@ -405,14 +411,17 @@ def add_mass_to_center(griddata: pl.DataFrame, modelmeta: dict[str, t.Any]) -> p
     return griddata.drop("inhole")
 
 
-def get_griddata_output_file_names(getcellopacityfromYe: bool, gridfolderpath: Path | str) -> tuple[str, ...]:
+def get_griddata_output_file_names(
+    getcellopacityfromYe: bool, gridfolderpath: Path | str, dimensions: int = 3
+) -> tuple[str, ...]:
     """Return the names of the files that makemodelfromgriddata writes or deletes.
 
-    A spherical map can give a model of format version 2, which has no abundances.txt, no Ye.txt, and no opacity.txt.
-    The command deletes such a file.
+    A spherical map with 2 or 3 dimensions gives a model of format version 2, which has no abundances.txt, no Ye.txt,
+    and no opacity.txt. The command deletes such a file. A model of format version 1 gets Ye.txt, and the command
+    does not change its opacity.txt without --getcellopacityfromYe.
     """
-    writesopacityfile = getcellopacityfromYe or Path(gridfolderpath, SPHERICAL_GRID_FILE_NAME).is_file()
-    return (*MODEL_FILE_NAMES, "Ye.txt", *(("opacity.txt",) if writesopacityfile else ()))
+    writesversion2 = dimensions >= 2 and has_grid_file(gridfolderpath, SPHERICAL_GRID_FILE_NAME)
+    return (*MODEL_FILE_NAMES, "Ye.txt", *(("opacity.txt",) if getcellopacityfromYe or writesversion2 else ()))
 
 
 def makemodelfromgriddata(
@@ -608,14 +617,16 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     gridfolderpath = args.gridfolderpath
-    if not any(Path(gridfolderpath, filename).is_file() for filename in GRID_FILE_NAMES):
+    if not any(has_grid_file(gridfolderpath, filename) for filename in GRID_FILE_NAMES):
         msg = f"The folder needs grid.dat or {SPHERICAL_GRID_FILE_NAME}. Run `artistools inputmodel maptogrid`"
         raise FileNotFoundError(msg)
 
     outputpath = Path(f"artismodel_{args.dimensions}d") if args.outputfile is None else Path(args.outputfile)
     confirm_overwrite(
         [outputpath],
-        get_griddata_output_file_names(getcellopacityfromYe=False, gridfolderpath=gridfolderpath),
+        get_griddata_output_file_names(
+            getcellopacityfromYe=False, gridfolderpath=gridfolderpath, dimensions=args.dimensions
+        ),
         force=args.force,
     )
 

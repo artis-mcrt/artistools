@@ -1504,11 +1504,13 @@ def get_output_file_names(args: argparse.Namespace) -> tuple[str, ...]:
     """Return the names of the files that the command writes to the -o folder.
 
     With --replacedyn and --interpolate, map_to_artis of a 3D model also writes the files of a consistency check.
-    A spherical model has format version 2, and save_modeldata deletes a Ye.txt and an opacity.txt beside such a
-    model.
+    A spherical model with 2 or 3 dimensions has format version 2, and save_modeldata deletes a Ye.txt and an
+    opacity.txt beside such a model. -dimensions 0 or 1 gives a model of format version 1, and the command does not
+    change these two files beside such a model.
     """
     if args.coordinates == "spherical":
-        return (*MODEL_FILE_NAMES, *CELL_ID_FILE_NAMES)
+        writesversion2 = args.dimensions is None or args.dimensions >= 2
+        return (*MODEL_FILE_NAMES, *CELL_ID_FILE_NAMES) if writesversion2 else MODEL_FILE_NAMES
     writesdynfiles = args.mapto3D and args.replacedyn and args.interpolate
     return (*MODEL_FILE_NAMES, *DYN_CHECK_FILE_NAMES) if writesdynfiles else MODEL_FILE_NAMES
 
