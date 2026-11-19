@@ -241,22 +241,26 @@ def get_spherical_deposit(
     return np.concatenate(pairparticles), np.concatenate(paircells), np.concatenate(pairmasses), weightsums
 
 
-def delete_grid_file_of_other_map(outputfolderpath: Path, writtenfilename: str, logprint: Callable[..., None]) -> None:
-    """Delete the grid file of the map with the other coordinates from the folder of a new map.
+def delete_grid_files_of_earlier_maps(
+    outputfolderpath: Path, writtenfilename: str, logprint: Callable[..., None]
+) -> None:
+    """Delete each grid file of an earlier map from the folder of a new map, and keep the file writtenfilename.
 
-    Both maps write gridcontributions.txt, which now holds the cells of the new map. Thus the other grid file has
-    no particle contributions, and makeartismodelfromparticlegridmap stops for a folder with both grid files.
+    Both maps write gridcontributions.txt, which now holds the cells of the new map. Thus the grid file of the other
+    coordinates has no particle contributions, and makeartismodelfromparticlegridmap stops for a folder with both
+    grid files. A compressed copy of the new grid file is also the file of an earlier map. A reader finds it if the
+    new file goes.
     """
-    otherfiles = [
+    writtenfile = outputfolderpath / writtenfilename
+    earlierfiles = [
         path
         for filename in GRID_FILE_NAMES
-        if filename != writtenfilename
         for path in get_file_copies(outputfolderpath / filename)
-        if path.is_file()
+        if path != writtenfile and path.is_file()
     ]
-    for otherfile in otherfiles:
-        otherfile.unlink()
-        logprint(f"Deleted {otherfile}, because gridcontributions.txt now holds the cells of {writtenfilename}")
+    for earlierfile in earlierfiles:
+        earlierfile.unlink()
+        logprint(f"Deleted {earlierfile}, because gridcontributions.txt now holds the cells of {writtenfilename}")
 
 
 def map_particles_to_spherical_grid(
@@ -386,7 +390,7 @@ def map_particles_to_spherical_grid(
         )
 
     logprint(f"Saved {outputfolderpath / SPHERICAL_GRID_FILE_NAME}")
-    delete_grid_file_of_other_map(Path(outputfolderpath), SPHERICAL_GRID_FILE_NAME, logprint)
+    delete_grid_files_of_earlier_maps(Path(outputfolderpath), SPHERICAL_GRID_FILE_NAME, logprint)
 
 
 def maptogrid(
@@ -756,7 +760,7 @@ def maptogrid(
         )
 
     logprint(f"Saved {outputfolderpath / 'grid.dat'}")
-    delete_grid_file_of_other_map(Path(outputfolderpath), "grid.dat", logprint)
+    delete_grid_files_of_earlier_maps(Path(outputfolderpath), "grid.dat", logprint)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:

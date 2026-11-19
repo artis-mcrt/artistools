@@ -286,19 +286,22 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
         unchangedfilenames = [*(CELL_ID_FILE_NAMES if formatversion == 1 else ())]
         if dfgridcontributions is None:
             unchangedfilenames.append("gridcontributions.txt")
-        unchangedfiles = [
-            firstexisting_or_none(filename, folder=sourcefolder, tryzipped=True, search_subfolders=False)
-            for filename in unchangedfilenames
-        ]
-        for sourcefile in unchangedfiles:
-            if sourcefile is None:
+        for filename in unchangedfilenames:
+            sourcefile = firstexisting_or_none(filename, folder=sourcefolder, tryzipped=True, search_subfolders=False)
+            # A version 1 model can have its own Ye.txt and opacity.txt, thus the command leaves these two files in
+            # the output folder if the source model has none. The particle contributions of an earlier model do not
+            # go with the cells of the new model.txt
+            if sourcefile is None and filename != "gridcontributions.txt":
                 continue
             # the copy replaces each copy of the file in the output folder, e.g. a plain Ye.txt beside Ye.txt.zst
-            for oldfile in get_file_copies(outputfolder / sourcefile.name):
+            for oldfile in get_file_copies(outputfolder / filename):
                 if oldfile.is_file():
                     oldfile.unlink()
-            shutil.copy2(sourcefile, outputfolder / sourcefile.name)
-            print(f"Copied {sourcefile.name} to {outputfolder}, because its cell ids need no change")
+                    if sourcefile is None:
+                        print(f"Deleted {oldfile}, which is a file of an earlier model in the output folder")
+            if sourcefile is not None:
+                shutil.copy2(sourcefile, outputfolder / sourcefile.name)
+                print(f"Copied {sourcefile.name} to {outputfolder}, because its cell ids need no change")
 
 
 def get_converted_file_names(

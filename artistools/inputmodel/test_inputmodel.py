@@ -4445,9 +4445,11 @@ def test_makeartismodel_converts_the_format_version_in_the_model_folder(tmp_path
     (sourcefolder / "Ye.txt").write_text(f"2\n{firstid}\t0.25\n{lastid}\t0.45\n", encoding="utf-8")
     (sourcefolder / "opacity.txt").write_text("2\n1 0.1\n1000 3.3\n", encoding="utf-8")
     modelfolder = tmp_path / "model"
-    # the output folder holds a file of an earlier model, which the conversion deletes
+    # the output folder holds files of an earlier model, which the conversion deletes. The source model has no
+    # particle contributions
     modelfolder.mkdir()
     (modelfolder / "opacity.txt").write_text("1\n1 0.5\n", encoding="utf-8")
+    (modelfolder / "gridcontributions.txt").write_text("particleid cellindex frac_of_cellmass\n1 1 1.0\n")
     at.inputmodel.makeartismodel.main(
         argsraw=[], modelpath=[sourcefolder], format_version=2, outputfile=modelfolder, force=True
     )
@@ -4464,6 +4466,7 @@ def test_makeartismodel_converts_the_format_version_in_the_model_folder(tmp_path
     ]
     # a version 2 model has no opacity.txt, which sn3d does not read
     assert not (modelfolder / "opacity.txt").exists()
+    assert not (modelfolder / "gridcontributions.txt").exists()
     # a version 2 model has no abundances.txt, and the columns of model.txt give the same element mass fractions
     assert not list(modelfolder.glob("abundances.txt*"))
     pltest.assert_series_equal(
