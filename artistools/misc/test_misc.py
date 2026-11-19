@@ -2235,12 +2235,48 @@ def test_escaped_arrivalrange_takes_all_timesteps_for_a_deposition_file_of_a_dif
     )
 
 
-def test_valid_range_of_a_spherical_model_ends_at_the_escape_surface_of_its_grid(tmp_path: Path) -> None:
-    """The valid range of a spherical model on a grid of its own cells takes vmax as the largest escape velocity.
+ESCAPE_SURFACE_MODELS: t.Final = {
+    "spherical1d": ("vel_r_edges_kmps 0 1000 3000",),
+    "cylindrical2d": ("vel_rcyl_edges_kmps 0 1500 3000", "vel_z_edges_kmps -3000 0 3000"),
+    "spherical2d": ("vel_r_edges_kmps 0 1000 3000", f"theta_edges_radians 0 1.5 {math.pi!r}"),
+}
+DIRECT_GRID_OUT: t.Final = "0 0\n1 1\n"
+# a model cell with two propagation cells shows a Cartesian grid
+CARTESIAN_GRID_OUT: t.Final = "0 0\n1 0\n2 1\n"
+FORCE_SPHERICAL_OPTIONS: t.Final = (
+    "constexpr bool FORCE_SPHERICAL_ESCAPE_SURFACE = true;\n"
+    "constexpr int CUBOID_NCOORDGRID_X = 50;\nconstexpr int CUBOID_NCOORDGRID_Y = 50;\n"
+    "constexpr int CUBOID_NCOORDGRID_Z = 50;\n"
+)
 
-    The packets escape at the outer edge of the propagation grid. A spherical grid ends at vmax, and the corners of a
-    Cartesian grid are at sqrt(3) vmax. grid.out shows the grid of a run with its map of the model cells. The range
-    took the Cartesian corner for each run, thus it ended too early for a run on a spherical grid.
+
+@pytest.mark.parametrize(
+    ("coordinates", "gridout", "options", "escapefactor"),
+    [
+        # without grid.out, the grid of the run is not known, and the Cartesian corner is the safe value
+        ("spherical1d", None, None, math.sqrt(3.0)),
+        ("spherical1d", DIRECT_GRID_OUT, None, 1.0),
+        ("spherical1d", CARTESIAN_GRID_OUT, None, math.sqrt(3.0)),
+        ("cylindrical2d", DIRECT_GRID_OUT, None, math.sqrt(2.0)),
+        ("cylindrical2d", CARTESIAN_GRID_OUT, None, math.sqrt(3.0)),
+        ("spherical2d", None, None, math.sqrt(3.0)),
+        ("spherical2d", DIRECT_GRID_OUT, None, 1.0),
+        ("spherical2d", CARTESIAN_GRID_OUT, None, math.sqrt(3.0)),
+        # a packet escapes at vmax plus one cell diagonal or less: the cell width is 2 vmax / 50 on each axis
+        ("spherical1d", CARTESIAN_GRID_OUT, FORCE_SPHERICAL_OPTIONS, 1.0 + math.sqrt(3.0) * 2.0 / 50.0),
+        # the option does not apply to a spherical grid
+        ("spherical1d", DIRECT_GRID_OUT, FORCE_SPHERICAL_OPTIONS, 1.0),
+    ],
+)
+def test_valid_range_ends_at_the_escape_surface_of_the_grid_of_the_run(
+    tmp_path: Path, coordinates: str, gridout: str | None, options: str | None, escapefactor: float
+) -> None:
+    """The valid range of the arrival times ends at t_end (1 - v / c), with v at the surface where packets escape.
+
+    The packets escape at the outer edge of the propagation grid, which has the cells of the model or is a Cartesian
+    grid. grid.out shows the grid of a run with its map of the model cells. A spherical grid ends at vmax, a corner
+    of a cylindrical grid is at sqrt(2) vmax, and a corner of a Cartesian grid is at sqrt(3) vmax. The range took
+    the Cartesian corner for each run, thus it ended too early for a run on a different grid.
     """
     from artistools.misc import get_escaped_arrivalrange
 
@@ -2249,39 +2285,28 @@ def test_valid_range_of_a_spherical_model_ends_at_the_escape_surface_of_its_grid
     for sourcefile in (at.get_path("testdata") / "testmodel").iterdir():
         if not sourcefile.name.startswith(("model.txt", "abundances.txt", "grid.out")):
             (modelfolder / sourcefile.name).symlink_to(sourcefile)
-    vmax_kmps = 3000.0
-    (modelfolder / "model.txt").write_text(
-        "\n".join([
-            "format_version 2",
-            "coordinates spherical2d",
-            "t_model_init_days 1.0",
-            f"vel_r_edges_kmps 0 1000 {vmax_kmps}",
-            f"theta_edges_radians 0 1.5 {math.pi!r}",
-            "columns inputcellid rho",
-            *(f"{cellid} 1e-12" for cellid in range(4)),
-        ])
-        + "\n",
-        encoding="utf-8",
-    )
+    edgelines = ESCAPE_SURFACE_MODELS[coordinates]
+    modellines = [
+        "format_version 2",
+        f"coordinates {coordinates}",
+        "t_model_init_days 1.0",
+        *edgelines,
+        "columns inputcellid rho",
+        "0 1e-12",
+        "1 1e-12",
+    ]
+    (modelfolder / "model.txt").write_text("\n".join(modellines) + "\n", encoding="utf-8")
+    if gridout is not None:
+        (modelfolder / "grid.out").write_text(gridout, encoding="utf-8")
+    if options is not None:
+        (modelfolder / "artisoptions.h").write_text(options, encoding="utf-8")
+
     lastend_days = at.get_timestep_times(modelfolder, loc="end")[-1]
-    vmax_on_c = vmax_kmps * at.constants.km_to_cm / at.constants.C_cm_per_s
-
-    def get_valid_range_end() -> float:
-        get_escaped_arrivalrange.cache_clear()
-        validrange_end_days = get_escaped_arrivalrange(modelfolder)[2]
-        assert validrange_end_days is not None
-        return float(validrange_end_days)
-
-    # without grid.out, the grid of the run is not known, and the Cartesian corner is the safe value
-    assert math.isclose(get_valid_range_end(), lastend_days * (1.0 - math.sqrt(3.0) * vmax_on_c), rel_tol=1e-12)
-
-    # each model cell is one propagation cell with the same index, thus the grid has the cells of the model
-    (modelfolder / "grid.out").write_text("0 0\n1 1\n2 2\n3 3\n", encoding="utf-8")
-    assert math.isclose(get_valid_range_end(), lastend_days * (1.0 - vmax_on_c), rel_tol=1e-12)
-
-    # a model cell with two propagation cells shows a Cartesian grid
-    (modelfolder / "grid.out").write_text("0 0\n1 0\n2 1\n3 2\n4 3\n", encoding="utf-8")
-    assert math.isclose(get_valid_range_end(), lastend_days * (1.0 - math.sqrt(3.0) * vmax_on_c), rel_tol=1e-12)
+    vmax_on_c = 3000.0 * at.constants.km_to_cm / at.constants.C_cm_per_s
+    get_escaped_arrivalrange.cache_clear()
+    validrange_end_days = get_escaped_arrivalrange(modelfolder)[2]
+    assert validrange_end_days is not None
+    assert math.isclose(validrange_end_days, lastend_days * (1.0 - escapefactor * vmax_on_c), rel_tol=1e-12)
 
 
 def test_average_direction_bins_unequal_bincounts(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -90,12 +90,14 @@ def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[
     return read_grid_mapping(resolve_modelpath(modelpath))
 
 
-@on_model_host
-def read_grid_mapping(modelpath: Path) -> tuple[dict[int, list[int]], dict[int, int], bool]:
-    """Return the result of get_grid_mapping for a model path. The read runs on the host of a remote model."""
+def read_grid_out(modelpath: Path) -> pl.DataFrame:
+    """Return the propagation cells of grid.out in a local model folder, each with the index of its model cell.
+
+    sn3d writes only the propagation cells that have a model cell with matter.
+    """
     filename = firstexisting("grid.out", tryzipped=True, folder=modelpath)
     with polars_source_open(filename) as source:
-        dfgrid = pl.read_csv(
+        return pl.read_csv(
             source,
             separator=" ",
             has_header=False,
@@ -103,6 +105,12 @@ def read_grid_mapping(modelpath: Path) -> tuple[dict[int, list[int]], dict[int, 
             schema={"cellindex": pl.Int32, "modelgridindex": pl.Int32},
             glob=False,
         )
+
+
+@on_model_host
+def read_grid_mapping(modelpath: Path) -> tuple[dict[int, list[int]], dict[int, int], bool]:
+    """Return the result of get_grid_mapping for a model path. The read runs on the host of a remote model."""
+    dfgrid = read_grid_out(modelpath)
     assoc_cells: dict[int, list[int]] = dict(
         dfgrid
         .group_by("modelgridindex")
@@ -443,23 +451,48 @@ def get_grid_max_radial_velocity_cmps(modelmeta: "Mapping[str, t.Any]") -> float
 
 
 def get_escape_surface_max_radial_velocity_cmps(modelpath: Path, modelmeta: "Mapping[str, t.Any]") -> float:
-    """Return the largest radial velocity of the surface where the packets escape [cm/s].
+    """Return the largest radial velocity of the surface where the packets of a run escape [cm/s].
 
-    The packets escape at the outer edge of the propagation grid. sn3d runs a spherical2d or a spherical3d model on
-    a grid of the same cells, which ends at vmax, or on a Cartesian grid (GRID_TYPE_OVERRIDE), whose corners are at
-    sqrt(3) vmax. grid.out gives the map of the model cells to the propagation cells, and a direct map shows a grid of
-    the same cells.
+    modelpath is a local model folder. The packets escape at the outer edge of the propagation grid, which sn3d makes
+    from the cells of the model or as a Cartesian grid (GRID_TYPE_OVERRIDE). grid.out shows which: each propagation
+    cell of a grid of the model cells has the index of its model cell. A cartesian3d model has always its own grid.
+    Without grid.out, the function takes a Cartesian grid, which gives the largest velocity and is thus the safe
+    value.
 
-    Without grid.out, and for each other model, the function gives the corner of a Cartesian grid. This is the safe
-    value, because a 1D grid or a 2D grid gives a shorter travel time.
+    A spherical grid ends at vmax. A corner of a cylindrical grid is at sqrt(2) vmax, and a corner of a Cartesian
+    grid is at sqrt(3) vmax. With FORCE_SPHERICAL_ESCAPE_SURFACE in the artisoptions.h of the model folder, a packet
+    on one of these two grids escapes when it enters a cell whose nearest point to the centre is outside the sphere
+    of vmax. The cell that it leaves has its nearest point inside that sphere. Thus the packet is then at vmax plus
+    one cell diagonal or less.
     """
     vmax_cmps = float(modelmeta["vmax_cmps"])
-    if get_model_coordinates(modelmeta) in SPHERICAL_EDGE_COORDINATES:
+    coordinates = get_model_coordinates(modelmeta)
+    hasmodelgrid = coordinates == "cartesian3d"
+    if not hasmodelgrid:
         with contextlib.suppress(FileNotFoundError):
-            _, _, direct_model_propgrid_map = get_grid_mapping(modelpath)
-            if direct_model_propgrid_map:
-                return vmax_cmps
-    return vmax_cmps * math.sqrt(3.0)
+            hasmodelgrid = bool(
+                read_grid_out(modelpath).select((pl.col("cellindex") == pl.col("modelgridindex")).all()).item()
+            )
+    gridmeta = modelmeta if hasmodelgrid else {"coordinates": "cartesian3d", "vmax_cmps": vmax_cmps}
+    cornervmax_cmps = get_grid_max_radial_velocity_cmps(gridmeta)
+    gridcoordinates = get_model_coordinates(gridmeta)
+    if gridcoordinates not in {"cylindrical2d", "cartesian3d"}:
+        return cornervmax_cmps
+    if get_artis_option(modelpath, "FORCE_SPHERICAL_ESCAPE_SURFACE") != "true":
+        return cornervmax_cmps
+
+    # the width of the propagation grid on each axis in units of vmax, and the count of its cells on that axis
+    cellcounts: list[tuple[float, t.Any]]
+    if gridcoordinates == "cylindrical2d":
+        cellcounts = [(1.0, modelmeta["ncoordgridrcyl"]), (2.0, modelmeta["ncoordgridz"])]
+    elif hasmodelgrid:
+        cellcounts = [(2.0, modelmeta[f"ncoordgrid{axisname}"]) for axisname in "xyz"]
+    else:
+        cellcounts = [(2.0, get_artis_option(modelpath, f"CUBOID_NCOORDGRID_{axisname}")) for axisname in "XYZ"]
+    if any(count is None for _, count in cellcounts):
+        return cornervmax_cmps
+    celldiagonal_cmps = vmax_cmps * math.sqrt(sum((gridwidth / int(count)) ** 2 for gridwidth, count in cellcounts))
+    return min(cornervmax_cmps, vmax_cmps + celldiagonal_cmps)
 
 
 def require_cartesian3d_model(modelmeta: "Mapping[str, t.Any]", requirement: str, helptext: str) -> None:
