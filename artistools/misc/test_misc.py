@@ -2235,6 +2235,55 @@ def test_escaped_arrivalrange_takes_all_timesteps_for_a_deposition_file_of_a_dif
     )
 
 
+def test_valid_range_of_a_spherical_model_ends_at_the_escape_surface_of_its_grid(tmp_path: Path) -> None:
+    """The valid range of a spherical model on a grid of its own cells takes vmax as the largest escape velocity.
+
+    The packets escape at the outer edge of the propagation grid. A spherical grid ends at vmax, and the corners of a
+    Cartesian grid are at sqrt(3) vmax. grid.out shows the grid of a run with its map of the model cells. The range
+    took the Cartesian corner for each run, thus it ended too early for a run on a spherical grid.
+    """
+    from artistools.misc import get_escaped_arrivalrange
+
+    modelfolder = tmp_path / "model"
+    modelfolder.mkdir()
+    for sourcefile in (at.get_path("testdata") / "testmodel").iterdir():
+        if not sourcefile.name.startswith(("model.txt", "abundances.txt", "grid.out")):
+            (modelfolder / sourcefile.name).symlink_to(sourcefile)
+    vmax_kmps = 3000.0
+    (modelfolder / "model.txt").write_text(
+        "\n".join([
+            "format_version 2",
+            "coordinates spherical2d",
+            "t_model_init_days 1.0",
+            f"vel_r_edges_kmps 0 1000 {vmax_kmps}",
+            f"theta_edges_radians 0 1.5 {math.pi!r}",
+            "columns inputcellid rho",
+            *(f"{cellid} 1e-12" for cellid in range(4)),
+        ])
+        + "\n",
+        encoding="utf-8",
+    )
+    lastend_days = at.get_timestep_times(modelfolder, loc="end")[-1]
+    vmax_on_c = vmax_kmps * at.constants.km_to_cm / at.constants.C_cm_per_s
+
+    def get_valid_range_end() -> float:
+        get_escaped_arrivalrange.cache_clear()
+        validrange_end_days = get_escaped_arrivalrange(modelfolder)[2]
+        assert validrange_end_days is not None
+        return float(validrange_end_days)
+
+    # without grid.out, the grid of the run is not known, and the Cartesian corner is the safe value
+    assert math.isclose(get_valid_range_end(), lastend_days * (1.0 - math.sqrt(3.0) * vmax_on_c), rel_tol=1e-12)
+
+    # each model cell is one propagation cell with the same index, thus the grid has the cells of the model
+    (modelfolder / "grid.out").write_text("0 0\n1 1\n2 2\n3 3\n", encoding="utf-8")
+    assert math.isclose(get_valid_range_end(), lastend_days * (1.0 - vmax_on_c), rel_tol=1e-12)
+
+    # a model cell with two propagation cells shows a Cartesian grid
+    (modelfolder / "grid.out").write_text("0 0\n1 0\n2 1\n3 2\n4 3\n", encoding="utf-8")
+    assert math.isclose(get_valid_range_end(), lastend_days * (1.0 - math.sqrt(3.0) * vmax_on_c), rel_tol=1e-12)
+
+
 def test_average_direction_bins_unequal_bincounts(monkeypatch: pytest.MonkeyPatch) -> None:
     """Averaging must group bins by the phi bin count, which is only distinguishable when the two counts differ."""
     nphibins = 4

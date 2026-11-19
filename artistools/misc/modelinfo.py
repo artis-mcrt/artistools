@@ -442,6 +442,26 @@ def get_grid_max_radial_velocity_cmps(modelmeta: "Mapping[str, t.Any]") -> float
     return float(modelmeta["vmax_cmps"]) * cornerfactor.get(get_model_coordinates(modelmeta), 1.0)
 
 
+def get_escape_surface_max_radial_velocity_cmps(modelpath: Path, modelmeta: "Mapping[str, t.Any]") -> float:
+    """Return the largest radial velocity of the surface where the packets escape [cm/s].
+
+    The packets escape at the outer edge of the propagation grid. sn3d runs a spherical2d or a spherical3d model on
+    a grid of the same cells, which ends at vmax, or on a Cartesian grid (GRID_TYPE_OVERRIDE), whose corners are at
+    sqrt(3) vmax. grid.out gives the map of the model cells to the propagation cells, and a direct map shows a grid of
+    the same cells.
+
+    Without grid.out, and for each other model, the function gives the corner of a Cartesian grid. This is the safe
+    value, because a 1D grid or a 2D grid gives a shorter travel time.
+    """
+    vmax_cmps = float(modelmeta["vmax_cmps"])
+    if get_model_coordinates(modelmeta) in SPHERICAL_EDGE_COORDINATES:
+        with contextlib.suppress(FileNotFoundError):
+            _, _, direct_model_propgrid_map = get_grid_mapping(modelpath)
+            if direct_model_propgrid_map:
+                return vmax_cmps
+    return vmax_cmps * math.sqrt(3.0)
+
+
 def require_cartesian3d_model(modelmeta: "Mapping[str, t.Any]", requirement: str, helptext: str) -> None:
     """Stop with an error if the model grid is not 3D Cartesian.
 

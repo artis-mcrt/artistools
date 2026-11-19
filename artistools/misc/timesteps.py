@@ -21,6 +21,7 @@ from artistools.misc.fileio import polars_source_open
 from artistools.misc.fileio import read_wsv
 from artistools.misc.general import parse_float_range
 from artistools.misc.general import parse_range_list
+from artistools.misc.modelinfo import get_escape_surface_max_radial_velocity_cmps
 from artistools.misc.modelinfo import get_grid_max_radial_velocity_cmps
 from artistools.misc.modelinfo import get_inputparams
 from artistools.misc.modelinfo import get_model_logname
@@ -542,7 +543,6 @@ def get_escaped_arrivalrange(modelpath: Path) -> tuple[int, float | int | None, 
     from artistools.inputmodel import scan_modeldata
 
     _, modelmeta = scan_modeldata(modelpath, printwarningsonly=True)
-    vmax = modelmeta["vmax_cmps"]  # max velocity component for a single axis [cm/s]
 
     # find the earliest possible escape time and add the largest possible travel time
 
@@ -572,9 +572,9 @@ def get_escaped_arrivalrange(modelpath: Path) -> tuple[int, float | int | None, 
     nts_last_tend = t_end[nts_last]
 
     # the last observer time is the escape at the end of the last computed timestep, minus the
-    # longest travel time from the origin. The code assumes a 3D propagation grid, which is the safe
-    # assumption. A 1D grid or a 2D grid can give a shorter travel time
-    validrange_end_days: float | int = nts_last_tend * (1 - vmax * math.sqrt(3) / C_cm_per_s)
+    # longest travel time from the origin to the surface where the packets escape
+    escapevmax = get_escape_surface_max_radial_velocity_cmps(modelpath, modelmeta)
+    validrange_end_days: float | int = nts_last_tend * (1 - escapevmax / C_cm_per_s)
 
     if validrange_start_days > validrange_end_days:
         return nts_last, None, None
