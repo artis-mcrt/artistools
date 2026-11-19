@@ -4432,7 +4432,12 @@ def test_makeartismodel_converts_the_format_version_in_the_model_folder(tmp_path
     (sourcefolder / "Ye.txt").write_text(f"2\n{firstid}\t0.25\n{lastid}\t0.45\n", encoding="utf-8")
     (sourcefolder / "opacity.txt").write_text("2\n1 0.1\n1000 3.3\n", encoding="utf-8")
     modelfolder = tmp_path / "model"
-    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[sourcefolder], format_version=2, outputfile=modelfolder)
+    # the output folder holds a file of an earlier model, which the conversion deletes
+    modelfolder.mkdir()
+    (modelfolder / "opacity.txt").write_text("1\n1 0.5\n", encoding="utf-8")
+    at.inputmodel.makeartismodel.main(
+        argsraw=[], modelpath=[sourcefolder], format_version=2, outputfile=modelfolder, force=True
+    )
     dfversion2, metaversion2 = at.inputmodel.scan_modeldata(modelfolder, get_elemabundances=True)
     assert metaversion2["formatversion"] == 2
     assert dfversion2.select(firstid=pl.col("inputcellid").min(), lastid=pl.col("inputcellid").max()).collect().row(
@@ -4473,6 +4478,10 @@ def test_makeartismodel_converts_the_format_version_in_the_model_folder(tmp_path
     with (sourcefolder / "Ye.txt.zst").open("wb") as fye:
         at.misc.write_zstd_lines(fye, (sourcefolder / "Ye.txt").read_text(encoding="utf-8").splitlines())
     (sourcefolder / "Ye.txt").unlink()
+    # a conversion of a version 1 model into a different folder copies the compressed Ye.txt
+    version1folder = tmp_path / "version1"
+    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[sourcefolder], format_version=1, outputfile=version1folder)
+    assert (version1folder / "Ye.txt.zst").read_bytes() == (sourcefolder / "Ye.txt.zst").read_bytes()
     at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[sourcefolder], format_version=2, force=True)
     assert not list(sourcefolder.glob("Ye.txt*"))
     assert at.inputmodel.scan_modeldata(sourcefolder)[0].filter(pl.col("Ye") > 0).select(

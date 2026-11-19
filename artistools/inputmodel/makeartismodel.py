@@ -14,6 +14,7 @@ from artistools.inputmodel.core import dimension_reduce_model
 from artistools.inputmodel.core import get_model_text_folder
 from artistools.inputmodel.core import get_modelmeta
 from artistools.inputmodel.core import MODEL_FILE_NAMES
+from artistools.inputmodel.core import remove_parquet_cache
 from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.core import scan_initelemabundances
 from artistools.inputmodel.core import scan_modeldata
@@ -34,6 +35,7 @@ from artistools.misc import addarg_show
 from artistools.misc import confirm_overwrite
 from artistools.misc import exit_with_error
 from artistools.misc import firstexisting_or_none
+from artistools.misc import get_file_copies
 from artistools.misc import get_model_coordinates
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
@@ -259,6 +261,18 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
             "  Version 2 has no abundances.txt. The mass fraction of an element is the sum of its nuclide columns and"
             " of its column X_<element>_otherstable."
         )
+    hasotherfolder = outputfolder.resolve() != sourcefolder.resolve()
+    if hasotherfolder:
+        # A different output folder holds only the files of the output model. A file of an earlier model in that
+        # folder gives its values to the wrong cells, and save_modeldata stops for some of them. The (y/n) prompt of
+        # the command named each of these files
+        for filename in (*CELL_ID_FILE_NAMES, "abundances.txt"):
+            for oldfile in get_file_copies(outputfolder / filename):
+                if oldfile.is_file():
+                    oldfile.unlink()
+                    remove_parquet_cache(oldfile)
+                    print(f"Deleted {oldfile}, which is a file of an earlier model in the output folder")
+
     # save_modeldata checks the cells and can stop, thus it comes before gridcontributions.txt gets new cell ids. With
     # dfelabundances, version 1 also gets abundances.txt, and version 2 gets the otherstable columns
     save_modeldata(
@@ -271,17 +285,19 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
     if dfgridcontributions is not None:
         save_gridparticlecontributions(dfgridcontributions, outputfolder / "gridcontributions.txt")
 
-    if outputfolder.resolve() != sourcefolder.resolve():
-        # a different output folder also gets each file with cell ids that needs no change, thus the model is complete
+    if hasotherfolder:
+        # A different output folder also gets each file with cell ids that needs no change, thus the model is
+        # complete. sn3d also reads a compressed copy of such a file
+        unchangedfilenames = [*(CELL_ID_FILE_NAMES if formatversion == 1 else ())]
+        if dfgridcontributions is None:
+            unchangedfilenames.append("gridcontributions.txt")
         unchangedfiles = [
-            sourcefolder / filename
-            for filename in CELL_ID_FILE_NAMES
-            if formatversion == 1 and (sourcefolder / filename).is_file()
+            firstexisting_or_none(filename, folder=sourcefolder, tryzipped=True, search_subfolders=False)
+            for filename in unchangedfilenames
         ]
-        contributionsfile = firstexisting_or_none("gridcontributions.txt", folder=sourcefolder, tryzipped=True)
-        if dfgridcontributions is None and contributionsfile is not None:
-            unchangedfiles.append(contributionsfile)
         for sourcefile in unchangedfiles:
+            if sourcefile is None:
+                continue
             shutil.copy2(sourcefile, outputfolder / sourcefile.name)
             print(f"Copied {sourcefile.name} to {outputfolder}, because its cell ids need no change")
 
@@ -293,7 +309,8 @@ def get_converted_file_names(
 
     A conversion to version 1 also writes abundances.txt. A conversion to version 2 deletes abundances.txt and
     Ye.txt. If the cell ids of a model do not start at 0, it also writes gridcontributions.txt. A conversion into a
-    different folder (hasoutputfolder) always copies or writes the files that the output model has.
+    different folder (hasoutputfolder) always copies or writes the files that the output model has, and it deletes
+    a Ye.txt and an opacity.txt of an earlier model in that folder.
     """
     if formatversion != 2:
         return (*MODEL_FILE_NAMES, *CELL_ID_FILE_NAMES) if hasoutputfolder else ("model.txt", "abundances.txt")
@@ -303,7 +320,7 @@ def get_converted_file_names(
     ]
     if all(firstcellid == 0 for firstcellid in firstcellids) and not hasoutputfolder:
         return ("model.txt", "abundances.txt", "Ye.txt")
-    return (*MODEL_FILE_NAMES, "Ye.txt")
+    return (*MODEL_FILE_NAMES, *CELL_ID_FILE_NAMES) if hasoutputfolder else (*MODEL_FILE_NAMES, "Ye.txt")
 
 
 def get_model_output_folders(args: argparse.Namespace, modelpath_given: bool) -> dict[str, list[Path]]:
