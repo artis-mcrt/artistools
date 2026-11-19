@@ -17,6 +17,7 @@ from artistools.misc import addarg_force
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import confirm_overwrite
+from artistools.misc import exit_with_error
 from artistools.misc import parse_cli_args
 from artistools.misc import print_saved
 from artistools.misc import require_action
@@ -113,6 +114,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if args.action == "uniform":
         confirm_overwrite([args.outputfile], ("opacity.txt",), force=args.force)
         _, modelmeta = scan_modeldata(modelpath)
+        if modelmeta["formatversion"] == 2:
+            exit_with_error(
+                f"The model.txt of {modelpath} has format version 2, and such a model has no opacity.txt",
+                "sn3d does not read opacity.txt",
+            )
         all_cells_same_opacity(Path(args.outputfile), modelmeta["npts_model"], kappa=args.kappa)
     else:
         opacities = get_opacity_from_file(modelpath)

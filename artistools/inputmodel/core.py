@@ -1174,7 +1174,7 @@ def get_spherical_cell_index_of_velocities(
     """Return the index of the cell of a spherical2d or spherical3d model that holds each velocity vector [cm/s].
 
     A velocity at or above the outer edge of the grid gives -1. The rules are those of sn3d and of
-    get_spherical_modelgridindex_expr of the packets. A cell holds its lower edge on each axis. The last polar
+    get_spherical_modelgridindex_expr of the packets. A cell holds its lower edge on each axis, and the last polar
     cell also holds the angle pi. An azimuthal angle that rounds to 2 pi is the angle 0. A velocity of zero has no
     direction, and it gets the first polar cell and the first azimuthal cell. The index of a cell is
     i_r + n_r * (i_theta + n_theta * i_phi), and a spherical2d model has one azimuthal cell.
@@ -1206,13 +1206,13 @@ def get_spherical_image_cell_indices(
     """Return the cell index of each point of an image of a spherical2d or spherical3d model, or -1 outside the grid.
 
     A plot of such a model has no cell with straight edges on the axes of an image. Thus the image is a grid of
-    points with equal steps, and each point takes the value of the cell that holds it, as the image of a 1D model
-    does. The count of the points from 0 to vmax is 200, or 2 n_r for a model with more than 100 radial shells.
+    points with equal steps, as the image of a 1D model is. Each point takes the value of the cell that holds it.
+    The count of the points from 0 to vmax is 200, or 2 n_r for a model with more than 100 radial shells.
 
-    Without a sliceaxis, the image has the cylindrical radius from 0 to vmax and z from -vmax to vmax as its axes,
-    and the points are in the half-plane y = 0 with x > 0. With a sliceaxis, the points are in the plane normal to
-    that axis at slicevelocity_cmps, and the image has the two other axes from -vmax to vmax, e.g. x and y for the
-    sliceaxis z. The array has one row for each point of the second axis.
+    Without a sliceaxis, the image has the cylindrical radius from 0 to vmax and z from -vmax to vmax as its axes.
+    The points are in the half-plane y = 0 with x > 0. With a sliceaxis, the points are in the plane normal to that
+    axis at slicevelocity_cmps. The two other axes then go from -vmax to vmax, e.g. x and y for the sliceaxis z. The
+    array has one row for each point of the second axis.
     """
     vmax_cmps = float(modelmeta["vmax_cmps"])
     pointcount = max(200, 2 * (len(modelmeta["vel_r_edges_kmps"]) - 1))

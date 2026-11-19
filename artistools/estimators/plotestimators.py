@@ -2440,7 +2440,7 @@ def get_spherical_image_values(
     get_spherical_image_cell_indices). With a sliceaxis, the points are in the plane normal to that axis at
     slicevelocity_cmps. With no sliceaxis, the image has the cylindrical radius and z as its axes. A spherical2d cell
     is a ring around the z axis. For a spherical3d model, the value of a ring of r and theta is then the mean over
-    its cells in phi, and get_panel_means gives the weight.
+    its cells in phi. get_panel_means gives the weight.
     """
     cellindices = get_spherical_image_cell_indices(modelmeta, sliceaxis, slicevelocity_cmps)
     ringcount = (len(modelmeta["vel_r_edges_kmps"]) - 1) * (len(modelmeta["theta_edges_radians"]) - 1)

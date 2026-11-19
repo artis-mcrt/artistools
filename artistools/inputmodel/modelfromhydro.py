@@ -545,7 +545,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-gridfolderpath",
         "-i",
         default=".",
-        help="The path to the folder containing grid.dat or grid_spherical.dat, and gridcontributions.txt",
+        help="The folder that holds grid.dat or grid_spherical.dat, and gridcontributions.txt",
     )
     parser.add_argument(
         "-trajectoryroot",
@@ -560,8 +560,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         type=int,
         help=(
             "The number of dimensions: 0 for one-zone spherical, 1 for spherically symmetric 1D, 2 for 2D, and 3 for"
-            " 3D. A Cartesian grid.dat gives a 2D cylindrical model or a 3D Cartesian model. A spherical grid.dat"
-            " (maptogrid --coordinates spherical) gives a 2D spherical model or a 3D spherical model"
+            " 3D. The grid.dat of a Cartesian map gives a 2D cylindrical model or a 3D Cartesian model. The"
+            " grid_spherical.dat of maptogrid --coordinates spherical gives a 2D spherical model or a 3D spherical"
+            " model"
         ),
     )
     # -t means -timedays on every command, thus the time of the snapshot takes that name
@@ -595,7 +596,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     gridfolderpath = args.gridfolderpath
     if not any(Path(gridfolderpath, filename).is_file() for filename in GRID_FILE_NAMES):
-        msg = f"grid.dat or {SPHERICAL_GRID_FILE_NAME} is required. Run `artistools inputmodel maptogrid`"
+        msg = f"The folder needs grid.dat or {SPHERICAL_GRID_FILE_NAME}. Run `artistools inputmodel maptogrid`"
         raise FileNotFoundError(msg)
 
     outputpath = Path(f"artismodel_{args.dimensions}d") if args.outputfile is None else Path(args.outputfile)

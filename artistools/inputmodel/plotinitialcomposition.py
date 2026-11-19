@@ -75,11 +75,11 @@ def get_point_slice_through_spherical_model(
     Such a model has no cell with straight edges on the axes of an image. Thus the image is a grid of points with
     equal steps (see get_spherical_image_cell_indices), and each point has the values of the cell that holds it. A
     point outside the grid has null values. The metadata gives the counts of the points as the ncoordgrid values of
-    the two plot axes, and the pos_ columns give the edges of the points, as for the cells of a slice.
+    the two plot axes. The pos_ columns give the edges of the points, as for the cells of a slice.
 
     A spherical2d model gives the plane of the cylindrical radius and z, and sliceaxis is then None. A spherical3d
     model gives the plane normal to sliceaxis through the centre. The plane lies at 1e-6 vmax on the positive side or
-    on the negative side of that axis. Thus a cell boundary in the plane gives the cells of that side.
+    on the negative side of that axis. Thus a cell edge in the plane gives the cells of that side.
     """
     vmax_cmps = float(modelmeta["vmax_cmps"])
     slicevelocity_cmps = (1.0 if positive_axis else -1.0) * 1.0e-6 * vmax_cmps
@@ -317,7 +317,7 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
     coordinates = get_model_coordinates(modelmeta)
     if coordinates in SPHERICAL_EDGE_COORDINATES:
         if coordinates == "spherical3d":
-            print(f"Plotting slice through {args.sliceaxis}=0")
+            print(f"The image shows the plane {args.sliceaxis} = 0")
         df2dslice, modelmeta, (plotaxis1, plotaxis2) = get_point_slice_through_spherical_model(
             dfmodel, modelmeta, args.sliceaxis if coordinates == "spherical3d" else None, args.positive_axis
         )

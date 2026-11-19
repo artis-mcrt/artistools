@@ -2099,9 +2099,9 @@ def get_cell_selection_description(args: argparse.Namespace, modelmeta: Mapping[
                     " takes the value of the cell of r and θ that holds it."
                 )
             return (
-                "The mean over φ of the cells in each ring of r and θ around the z axis, as an image in the"
-                f" cylindrical radius and z. Each point of the image takes the value of the ring that holds it."
-                f" {MEAN_WEIGHT_TEXT}"
+                "The mean over φ of the cells in each ring of r and θ around the z axis. The image has the"
+                " cylindrical radius and z as its axes. Each point of the image takes the value of the ring that"
+                f" holds it. {MEAN_WEIGHT_TEXT}"
             )
         return ""
     dimensions = int(modelmeta["dimensions"])

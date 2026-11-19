@@ -760,7 +760,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         choices=["cartesian", "spherical"],
         help="The coordinates of the grid. spherical gives cells in the radius r, the polar angle theta from the +z"
         " axis, and the azimuthal angle phi. The cells are uniform in r, in cos(theta), and in phi. Both coordinates"
-        " use one deposit method: the density of a cell is the kernel sum at its mid-point. (default: cartesian)",
+        " use one deposit method: the density of a cell is the kernel sum at its mid-point. cartesian writes grid.dat,"
+        " and spherical writes grid_spherical.dat. (default: cartesian)",
     )
     parser.add_argument(
         "--normalise-kernel-weights",
