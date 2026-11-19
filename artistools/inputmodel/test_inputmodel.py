@@ -4388,9 +4388,16 @@ def test_makeartismodel_converts_the_format_version_in_the_model_folder(tmp_path
     at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[modelfolder], format_version=1, outputfile=version1folder)
     assert (version1folder / "opacity.txt").read_text(encoding="utf-8") == "2\n0 0.1\n999 3.3\n"
 
-    # a conversion in the model folder deletes Ye.txt, because sn3d stops for a version 2 model with that file
+    # a conversion in the model folder deletes Ye.txt, because sn3d stops for a version 2 model with that file.
+    # sn3d also reads a compressed Ye.txt, thus the conversion takes the values of such a file
+    with (sourcefolder / "Ye.txt.zst").open("wb") as fye:
+        at.misc.write_zstd_lines(fye, (sourcefolder / "Ye.txt").read_text(encoding="utf-8").splitlines())
+    (sourcefolder / "Ye.txt").unlink()
     at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[sourcefolder], format_version=2, force=True)
-    assert not (sourcefolder / "Ye.txt").exists()
+    assert not list(sourcefolder.glob("Ye.txt*"))
+    assert at.inputmodel.scan_modeldata(sourcefolder)[0].filter(pl.col("Ye") > 0).select(
+        "inputcellid"
+    ).collect().to_series().to_list() == [firstid - 1, lastid - 1]
     (sourcefolder / "Ye.txt").write_text("0\n", encoding="utf-8")
     with pytest.raises(SystemExit):
         at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[sourcefolder], format_version=1, force=True)

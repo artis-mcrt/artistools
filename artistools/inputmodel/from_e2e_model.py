@@ -1503,7 +1503,10 @@ def get_output_file_names(args: argparse.Namespace) -> tuple[str, ...]:
     """Return the names of the files that the command writes to the -o folder.
 
     With --replacedyn and --interpolate, map_to_artis of a 3D model also writes the files of a consistency check.
+    A spherical model has format version 2, and save_modeldata deletes a Ye.txt beside such a model.
     """
+    if args.coordinates == "spherical":
+        return (*MODEL_FILE_NAMES, "Ye.txt")
     writesdynfiles = args.mapto3D and args.replacedyn and args.interpolate
     return (*MODEL_FILE_NAMES, *DYN_CHECK_FILE_NAMES) if writesdynfiles else MODEL_FILE_NAMES
 

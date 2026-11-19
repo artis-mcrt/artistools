@@ -13,6 +13,7 @@ from artistools.constants import Msun_to_g
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import dimension_reduce_model
 from artistools.inputmodel.core import get_model_text_folder
+from artistools.inputmodel.core import get_modelmeta
 from artistools.inputmodel.core import MODEL_FILE_NAMES
 from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.core import scan_initelemabundances
@@ -41,6 +42,7 @@ from artistools.misc import print_saved
 from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
 from artistools.misc import SPHERICAL_EDGE_COORDINATES
+from artistools.misc import zopen
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -161,7 +163,8 @@ def with_ye_of_yefile(dfmodel: pl.DataFrame, yefilepath: Path) -> pl.DataFrame:
     only some of the cells, and each other cell keeps the value of the column. A cell with no value from the two
     sources gets 0. sn3d with TANAKA2020_ELECTRONFRAC stops for such a cell, as it does in format version 1.
     """
-    yelines = [line.split() for line in yefilepath.read_text(encoding="utf-8").splitlines()[1:] if line.strip()]
+    with zopen(yefilepath) as yefile:
+        yelines = [line.split() for line in yefile.read().splitlines()[1:] if line.strip()]
     if any(len(tokens) != 2 for tokens in yelines):
         msg = f"{yefilepath}: each line after the first line must hold a cell id and an electron fraction"
         raise ValueError(msg)
@@ -224,15 +227,16 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
     # save_modeldata can write the file that the query scans, thus the read is complete before the write
     dfmodel = lzmodel.collect()
     sourcefolder = get_model_text_folder(modelpath)
-    yefilepath = sourcefolder / "Ye.txt"
-    if yefilepath.is_file() and modelmeta["formatversion"] == 2:
+    # sn3d also reads a compressed copy of Ye.txt
+    yefilepath = firstexisting_or_none("Ye.txt", folder=sourcefolder, tryzipped=True, search_subfolders=False)
+    if yefilepath is not None and modelmeta["formatversion"] == 2:
         exit_with_error(
             f"{sourcefolder} holds Ye.txt, but its model.txt has format version 2",
             "sn3d stops for such a model. The column Ye of model.txt gives the electron fraction. Delete Ye.txt",
         )
     # the cell ids of a file with one value for each cell that the output model also has
     cellidfilenames = [name for name in CELL_ID_FILE_NAMES if formatversion == 1 or name != "Ye.txt"]
-    if yefilepath.is_file() and formatversion == 2:
+    if yefilepath is not None and formatversion == 2:
         dfmodel = with_ye_of_yefile(dfmodel, yefilepath)
     gridcolumns = {"inputcellid", "modelgridindex", "rho", "logrho"}
     customcols = [col for col in dfmodel.columns if col not in gridcolumns and not col.startswith(("pos_", "vel_"))]
@@ -348,6 +352,16 @@ def get_model_output_folders(args: argparse.Namespace, modelpath_given: bool) ->
     return outputfolders
 
 
+def writes_format_version_2(args: argparse.Namespace) -> bool:
+    """Return True if a reduction or a downscale of the models of args writes a model.txt of format version 2.
+
+    A model keeps its format version if the user gives no --format-version.
+    """
+    if args.format_version is not None:
+        return bool(args.format_version == 2)
+    return any(get_modelmeta(modelpath)["formatversion"] == 2 for modelpath in args.modelpath)
+
+
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Tools to create an ARTIS input model."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
@@ -379,7 +393,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             args.modelpath, args.format_version, hasoutputfolder=args.outputfile is not None
         )
     for action, folders in outputfolders.items():
-        confirm_overwrite(folders, outputfilenames.get(action, MODEL_FILE_NAMES), force=args.force)
+        filenames = outputfilenames.get(action)
+        if filenames is None:
+            # save_modeldata deletes a Ye.txt beside a model of format version 2
+            filenames = (*MODEL_FILE_NAMES, "Ye.txt") if writes_format_version_2(args) else MODEL_FILE_NAMES
+        confirm_overwrite(folders, filenames, force=args.force)
 
     if args.downscale3dgrid:
         make_downscaled_3d_grid(
