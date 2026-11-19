@@ -4389,6 +4389,19 @@ def test_otherstable_columns_give_the_element_mass_fractions() -> None:
     with pytest.raises(ValueError, match=r"The nuclide columns of Ni hold up to 0\.125 more"):
         at.inputmodel.core.with_otherstable_columns(dfmodel, dfelabundances.with_columns(X_Ni=pl.lit(0.375)))
 
+    # A cell with density and no row of element mass fractions got no otherstable value, thus it lost the elements
+    # that its nuclide columns do not hold. An empty cell needs no row
+    firstcellid = dfmodel["inputcellid"][0]
+    with pytest.raises(ValueError, match="no row for 1 cells with density"):
+        at.inputmodel.core.with_otherstable_columns(
+            dfmodel, dfelabundances.filter(pl.col("inputcellid") != firstcellid)
+        )
+    isfirstcell = pl.col("inputcellid") == firstcellid
+    at.inputmodel.core.with_otherstable_columns(
+        dfmodel.with_columns(rho=pl.when(isfirstcell).then(0.0).otherwise(pl.col("rho"))),
+        dfelabundances.filter(~isfirstcell),
+    )
+
 
 def test_version_2_edges_of_a_cartesian_grid_must_have_equal_steps() -> None:
     """A Cartesian grid has equal cells to one vmax in sn3d and in artistools, thus other edges are an error."""

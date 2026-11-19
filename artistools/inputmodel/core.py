@@ -1516,10 +1516,23 @@ def with_otherstable_columns(dfmodel: pl.DataFrame, dfelabundances: pl.DataFrame
     dfelabundances minus the sum of its nuclide columns in dfmodel. The function stops if the nuclide columns hold
     more than the element by OTHERSTABLE_NEGATIVE_LIMIT. A remainder below OTHERSTABLE_ROUNDING_RTOL of the element
     is rounding and becomes 0, and an element with no remainder in any cell gets no column.
+
+    The function stops if a cell with density has no row in dfelabundances. Such a cell got no otherstable value,
+    thus it lost the elements that its nuclide columns do not hold.
     """
     dfmodel = dfmodel.drop(cs.ends_with(OTHERSTABLE_SUFFIX))
     elementcols = get_element_columns_of_model(dfmodel.columns)
     hasdensity = pl.col("rho") > 0 if "rho" in dfmodel.columns else pl.lit(value=True)
+    cellswithnoelements = dfmodel.filter(hasdensity).join(
+        dfelabundances.select("inputcellid"), on="inputcellid", how="anti"
+    )
+    if not cellswithnoelements.is_empty():
+        msg = (
+            f"The element abundances have no row for {cellswithnoelements.height} cells with density, e.g. the cell"
+            f" with inputcellid {cellswithnoelements['inputcellid'].min()}. A model.txt of format version 2 gets its"
+            " element mass fractions from these rows, thus each cell with density needs one"
+        )
+        raise ValueError(msg)
     remainders = {}
     for elcol in dfelabundances.columns:
         if elcol == "inputcellid":
