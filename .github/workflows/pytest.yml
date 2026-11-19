@@ -102,7 +102,7 @@ jobs:
             # only the files that they change. The ty hook runs the version of its `rev`, which can differ from uv.lock
             - name: Run prek pre-commit checks
               if: always()
-              uses: j178/prek-action@v3.1.0
+              uses: j178/prek-action@v3.1.1
               env:
                   SKIP: ruff-check,ruff-format,ty
 
