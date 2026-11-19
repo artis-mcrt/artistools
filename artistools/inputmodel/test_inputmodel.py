@@ -4045,6 +4045,11 @@ def test_spherical_model_round_trip(tmp_path: Path, coordinates: str) -> None:
     each position. An error in the cell order or in an edge shows in the volume and in the mid-points.
     """
     dfmodel, modelmeta = get_random_spherical_model(coordinates)
+    # The reader gives Float32 values, and the nine significant figures of version 2 give each of them again. Eight
+    # figures give a different Float32 for the density of the first cell
+    dfmodel = dfmodel.with_columns(
+        rho=pl.when(pl.col("inputcellid") == 0).then(1.04083036e-13).otherwise(pl.col("rho"))
+    ).with_columns(cs.float().cast(pl.Float32))
     edgekeys = [key for key in ("vel_r_edges_kmps", "theta_edges_radians", "phi_edges_radians") if key in modelmeta]
     edges_written = {key: list(modelmeta[key]) for key in edgekeys}
 
@@ -4065,7 +4070,7 @@ def test_spherical_model_round_trip(tmp_path: Path, coordinates: str) -> None:
     assert modelmeta_read["headercommentlines"] == ["a comment of the user"]
     assert modelmeta_read["npts_model"] == dfmodel.height == at.misc.get_npts_model(tmp_path)
     pltest.assert_frame_equal(
-        lzmodel_read.drop("modelgridindex").collect(), dfmodel, check_dtypes=False, rel_tol=1e-6, abs_tol=0.0
+        lzmodel_read.drop("modelgridindex").collect(), dfmodel, check_dtypes=False, check_exact=True
     )
 
     dfderived = at.inputmodel.add_derived_cols_to_modeldata(lzmodel_read, modelmeta_read).collect()
@@ -4366,7 +4371,8 @@ def test_makeartismodel_converts_the_format_version_in_the_model_folder(tmp_path
         (firstid - 1, pytest.approx(0.25)),
         (lastid - 1, pytest.approx(0.45)),
     ]
-    assert (modelfolder / "opacity.txt").read_text(encoding="utf-8") == "2\n0 0.1\n999 3.3\n"
+    # a version 2 model has no opacity.txt, which sn3d does not read
+    assert not (modelfolder / "opacity.txt").exists()
     # a version 2 model has no abundances.txt, and the columns of model.txt give the same element mass fractions
     assert not list(modelfolder.glob("abundances.txt*"))
     pltest.assert_series_equal(
@@ -4383,10 +4389,11 @@ def test_makeartismodel_converts_the_format_version_in_the_model_folder(tmp_path
         firstid=pl.col("inputcellid").min(), hasnoabundance=pl.col("X_Fe").is_null().any()
     ).collect().row(0) == (0, False)
 
-    # a conversion into a different folder also copies the files whose cell ids need no change
-    version1folder = tmp_path / "version1"
-    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[modelfolder], format_version=1, outputfile=version1folder)
-    assert (version1folder / "opacity.txt").read_text(encoding="utf-8") == "2\n0 0.1\n999 3.3\n"
+    # the values of opacity.txt have no column in model.txt, thus a conversion in the model folder stops for the file
+    with pytest.raises(SystemExit):
+        at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[sourcefolder], format_version=2, force=True)
+    assert (sourcefolder / "opacity.txt").exists()
+    (sourcefolder / "opacity.txt").unlink()
 
     # a conversion in the model folder deletes Ye.txt, because sn3d stops for a version 2 model with that file.
     # sn3d also reads a compressed Ye.txt, thus the conversion takes the values of such a file
@@ -4705,7 +4712,7 @@ def test_spherical_map_and_cartesian_map_give_the_same_shell_masses(tmp_path: Pa
     )
     cellmass_cartesian = dfcartesian["rho"].to_numpy() * cellwidth**3
 
-    headerlines = (tmp_path / "spherical" / "grid.dat").read_text(encoding="utf-8").splitlines()[2:5]
+    headerlines = (tmp_path / "spherical" / "grid_spherical.dat").read_text(encoding="utf-8").splitlines()[2:5]
     r_edges, theta_edges, phi_edges = (np.array(line.split()[1:], dtype=np.float64) for line in headerlines)
     cellvolumes = get_spherical_cell_volumes(r_edges, theta_edges, phi_edges).ravel(order="F")
     shellmass_cartesian, _ = np.histogram(cellradius, bins=r_edges, weights=cellmass_cartesian)
@@ -4713,7 +4720,7 @@ def test_spherical_map_and_cartesian_map_give_the_same_shell_masses(tmp_path: Pa
     particlemass = float(np.sum(pmass * rho_on_rho_rst))
     assert math.isclose(cellmass_cartesian.sum(), particlemass, rel_tol=1e-3)
     for foldername, mass_rtol in (("spherical", 0.03), ("spherical_normalised", 1e-12)):
-        dfspherical = at.misc.read_wsv(tmp_path / foldername / "grid.dat", skip_rows=5)
+        dfspherical = at.misc.read_wsv(tmp_path / foldername / "grid_spherical.dat", skip_rows=5)
         shellmass_spherical = (
             (dfspherical["rho"].to_numpy() * cellvolumes).reshape((len(r_edges) - 1, -1), order="F").sum(axis=1)
         )

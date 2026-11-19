@@ -143,20 +143,25 @@ def get_snapshot_time_geomunits(pathtogriddata: Path | str) -> tuple[float, floa
     return simulation_end_time_geomunits, mergertime_geomunits
 
 
-# the keys of the edge lists in the grid.dat of a spherical map. The radial edges are in geometric units
+# The file of a spherical map. Its format is different from the grid.dat of a Cartesian map, thus it has a different
+# name. Both maps write gridcontributions.txt, thus one folder holds the files of one map
+SPHERICAL_GRID_FILE_NAME = "grid_spherical.dat"
+GRID_FILE_NAMES = ("grid.dat", SPHERICAL_GRID_FILE_NAME)
+
+# the keys of the edge lists in the grid_spherical.dat of a spherical map. The radial edges are in geometric units
 SPHERICAL_GRIDDAT_EDGE_KEYS = ("r_edges_geomunits", "theta_edges_radians", "phi_edges_radians")
 
 
 def read_spherical_griddat_file(
     pathtogriddata: str | Path, targetmodeltime_days: float | None = None
 ) -> tuple[pl.DataFrame, float, float, float, dict[str, t.Any]]:
-    """Read the grid.dat of a spherical map, and return the same values as read_griddat_file.
+    """Read the grid_spherical.dat of a spherical map, and return the same values as read_griddat_file.
 
     The header gives the key coordinates, the extra time, and the cell edges in r, theta, and phi. The cells have no
     position column, and gridindex starts at 0, as the cell ids of format version 2 of model.txt do. A radial edge is
     a velocity in the model, thus a different model time changes only the density.
     """
-    griddatfilepath = Path(pathtogriddata) / "grid.dat"
+    griddatfilepath = Path(pathtogriddata) / SPHERICAL_GRID_FILE_NAME
     simulation_end_time_geomunits, mergertime_geomunits = get_snapshot_time_geomunits(pathtogriddata)
 
     headerkeys = ("coordinates", "dtextra_geomunits", *SPHERICAL_GRIDDAT_EDGE_KEYS)
@@ -168,13 +173,13 @@ def read_spherical_griddat_file(
             if tokens[:1] != [key]:
                 exit_with_error(
                     f"{griddatfilepath}: expected the key {key}, not the line {line!r}",
-                    f"The header of a spherical grid.dat gives the keys {', '.join(headerkeys)}, in this order",
+                    f"The header of {SPHERICAL_GRID_FILE_NAME} gives the keys {', '.join(headerkeys)}, in this order",
                 )
             headervalues[key] = tokens[1:]
     if headervalues["coordinates"] != ["spherical3d"]:
         exit_with_error(
             f"{griddatfilepath}: the coordinates {' '.join(headervalues['coordinates'])!r} are not known",
-            "A grid.dat with the key coordinates has the value spherical3d",
+            f"The key coordinates of {SPHERICAL_GRID_FILE_NAME} has the value spherical3d",
         )
 
     t_model_sec = (
@@ -204,7 +209,7 @@ def read_spherical_griddat_file(
     gridshape = (len(vel_r_edges_kmps) - 1, len(theta_edges_radians) - 1, len(phi_edges_radians) - 1)
     if math.prod(gridshape) != griddata.height:
         exit_with_error(
-            f"grid.dat holds {griddata.height} cells, but its cell edges give"
+            f"{SPHERICAL_GRID_FILE_NAME} holds {griddata.height} cells, but its cell edges give"
             f" {' x '.join(str(count) for count in gridshape)} = {math.prod(gridshape)} cells"
         )
 
@@ -243,16 +248,20 @@ def read_spherical_griddat_file(
 def read_griddat_file(
     pathtogriddata: str | Path, targetmodeltime_days: float | None = None
 ) -> tuple[pl.DataFrame, float, float, float, dict[str, t.Any]]:
-    """Read grid.dat and return the cell data, the model and merger times, vmax, and the model metadata.
+    """Read the grid file of a map, and return the cell data, the model and merger times, vmax, and the metadata.
 
-    When targetmodeltime_days is given, the grid is expanded homologously to that time. The grid.dat of a spherical
-    map starts with the key coordinates, and read_spherical_griddat_file reads it.
+    When targetmodeltime_days is given, the grid is expanded homologously to that time. A Cartesian map has the file
+    grid.dat. A spherical map has the file grid_spherical.dat, and read_spherical_griddat_file reads it.
     """
     griddatfilepath = Path(pathtogriddata) / "grid.dat"
-
-    with zopen(griddatfilepath) as gridfile:
-        if gridfile.readline().split()[:1] == ["coordinates"]:
-            return read_spherical_griddat_file(pathtogriddata, targetmodeltime_days)
+    hassphericalmap = Path(pathtogriddata, SPHERICAL_GRID_FILE_NAME).is_file()
+    if hassphericalmap and griddatfilepath.is_file():
+        exit_with_error(
+            f"{pathtogriddata} holds grid.dat and {SPHERICAL_GRID_FILE_NAME}",
+            "gridcontributions.txt holds the cells of one map. Delete the grid file of the other map",
+        )
+    if hassphericalmap:
+        return read_spherical_griddat_file(pathtogriddata, targetmodeltime_days)
 
     # Get simulation time for ejecta snapshot
     simulation_end_time_geomunits, mergertime_geomunits = get_snapshot_time_geomunits(pathtogriddata)
@@ -413,10 +422,19 @@ def makemodelfromgriddata(
     fillcentralhole: bool = False,
     getcellopacityfromYe: bool = False,
 ) -> None:
-    """Write an ARTIS model from grid.dat, taking abundances from the trajectories under traj_root if given."""
+    """Write an ARTIS model from the grid file of a map, with abundances from the trajectories under traj_root.
+
+    The grid file is grid.dat (Cartesian) or grid_spherical.dat. Without traj_root, the model has no abundances.
+    """
     dfmodel, t_model_days, t_mergertime_s, _vmax, modelmeta = read_griddat_file(
         pathtogriddata=gridfolderpath, targetmodeltime_days=targetmodeltime_days
     )
+
+    if getcellopacityfromYe and dimensions >= 2 and get_model_coordinates(modelmeta) in SPHERICAL_EDGE_COORDINATES:
+        exit_with_error(
+            "--getcellopacityfromYe writes opacity.txt, and a model of format version 2 has no such file",
+            "Remove --getcellopacityfromYe. sn3d does not read opacity.txt",
+        )
 
     if fillcentralhole:
         dfmodel = add_mass_to_center(dfmodel, modelmeta)
@@ -527,7 +545,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-gridfolderpath",
         "-i",
         default=".",
-        help="The path to the folder containing grid.dat and gridcontributions.txt",
+        help="The path to the folder containing grid.dat or grid_spherical.dat, and gridcontributions.txt",
     )
     parser.add_argument(
         "-trajectoryroot",
@@ -576,8 +594,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     gridfolderpath = args.gridfolderpath
-    if not Path(gridfolderpath, "grid.dat").is_file():
-        msg = "grid.dat is required. Run `artistools inputmodel maptogrid`"
+    if not any(Path(gridfolderpath, filename).is_file() for filename in GRID_FILE_NAMES):
+        msg = f"grid.dat or {SPHERICAL_GRID_FILE_NAME} is required. Run `artistools inputmodel maptogrid`"
         raise FileNotFoundError(msg)
 
     outputpath = Path(f"artismodel_{args.dimensions}d") if args.outputfile is None else Path(args.outputfile)

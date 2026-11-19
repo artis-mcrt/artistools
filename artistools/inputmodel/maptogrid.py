@@ -15,7 +15,9 @@ import polars as pl
 
 from artistools.constants import geometric_time_to_s
 from artistools.inputmodel.core import savetologfile
+from artistools.inputmodel.modelfromhydro import GRID_FILE_NAMES
 from artistools.inputmodel.modelfromhydro import read_ejectasnapshot
+from artistools.inputmodel.modelfromhydro import SPHERICAL_GRID_FILE_NAME
 from artistools.inputmodel.modelfromhydro import SPHERICAL_GRIDDAT_EDGE_KEYS
 from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
 from artistools.misc import addarg_force
@@ -236,6 +238,19 @@ def get_spherical_deposit(
     return np.concatenate(pairparticles), np.concatenate(paircells), np.concatenate(pairmasses), weightsums
 
 
+def delete_grid_file_of_other_map(outputfolderpath: Path, writtenfilename: str, logprint: Callable[..., None]) -> None:
+    """Delete the grid file of the map with the other coordinates from the folder of a new map.
+
+    Both maps write gridcontributions.txt, which now holds the cells of the new map. Thus the other grid file has
+    no particle contributions, and makeartismodelfromparticlegridmap stops for a folder with both grid files.
+    """
+    for filename in GRID_FILE_NAMES:
+        otherfile = outputfolderpath / filename
+        if filename != writtenfilename and otherfile.is_file():
+            otherfile.unlink()
+            logprint(f"Deleted {otherfile}, because gridcontributions.txt now holds the cells of {writtenfilename}")
+
+
 def map_particles_to_spherical_grid(
     outputfolderpath: Path,
     dfparticles: pl.DataFrame,
@@ -245,7 +260,7 @@ def map_particles_to_spherical_grid(
     logprint: Callable[..., None],
     normalisekernelweights: bool = False,
 ) -> None:
-    """Map SPH particles to a spherical grid of r, theta, and phi, and write grid.dat and gridcontributions.txt.zst.
+    """Map SPH particles to a grid of r, theta, and phi, and write grid_spherical.dat and gridcontributions.txt.zst.
 
     dfparticles holds the columns id, x, y, z, h, pmass, mass, and ye of the particles, with the smoothing length
     after the option of --modifysmoothinglength. mass is pmass * rho / rho_rst, which is the mass that the particle
@@ -347,7 +362,7 @@ def map_particles_to_spherical_grid(
     nempty = int(np.count_nonzero(cellmass == 0.0))
     logprint(f"Number of cells with rho=0 {nempty}, total num of cells {ncells}, fraction {nempty / ncells}")
 
-    with Path(outputfolderpath, "grid.dat").open("w", encoding="utf-8") as fgrid:
+    with Path(outputfolderpath, SPHERICAL_GRID_FILE_NAME).open("w", encoding="utf-8") as fgrid:
         fgrid.write("coordinates spherical3d\n")
         fgrid.write(f"dtextra_geomunits {dtextra} # extra time after explosion simulation ended (in geom units)\n")
         fgrid.writelines(
@@ -362,7 +377,8 @@ def map_particles_to_spherical_grid(
             )
         )
 
-    logprint(f"Saved {outputfolderpath / 'grid.dat'}")
+    logprint(f"Saved {outputfolderpath / SPHERICAL_GRID_FILE_NAME}")
+    delete_grid_file_of_other_map(Path(outputfolderpath), SPHERICAL_GRID_FILE_NAME, logprint)
 
 
 def maptogrid(
@@ -378,7 +394,9 @@ def maptogrid(
     sphericalgridshape: tuple[int, int, int] = SPHERICAL_GRID_SHAPE_DEFAULT,
     normalisekernelweights: bool = False,
 ) -> None:
-    """Map an SPH ejecta snapshot to a grid and write grid.dat and gridcontributions.txt.zst.
+    """Map an SPH ejecta snapshot to a grid, and write the grid file and gridcontributions.txt.zst.
+
+    The grid file is grid.dat for a Cartesian grid and grid_spherical.dat for a spherical grid.
 
     The coordinates cartesian give an ncoordgrid^3 Cartesian grid. The coordinates spherical give a grid of r,
     theta, and phi with the cell counts of sphericalgridshape, and map_particles_to_spherical_grid makes it. Both
@@ -730,6 +748,7 @@ def maptogrid(
         )
 
     logprint(f"Saved {outputfolderpath / 'grid.dat'}")
+    delete_grid_file_of_other_map(Path(outputfolderpath), "grid.dat", logprint)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -858,7 +877,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     sphericalgridshape = get_spherical_grid_shape(args)
 
     ejectasnapshotpath = Path(args.inputpath, "ejectasnapshot.dat")
-    confirm_overwrite([args.outputfile], ("grid.dat", "gridcontributions.txt"), force=args.force)
+    # a new map also deletes the grid file of the other coordinates, because gridcontributions.txt gets new cells
+    confirm_overwrite([args.outputfile], (*GRID_FILE_NAMES, "gridcontributions.txt"), force=args.force)
 
     maptogrid(
         ejectasnapshotpath=ejectasnapshotpath,

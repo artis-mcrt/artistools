@@ -1495,12 +1495,13 @@ def with_otherstable_columns(dfmodel: pl.DataFrame, dfelabundances: pl.DataFrame
     return dfmodel.with_columns(dfremainders.select(pl.col(otherstablecols).clip(lower_bound=0.0).cast(pl.Float32)))
 
 
-def write_artis_csv(df: pl.DataFrame, fileobj: t.IO[bytes]) -> None:
+def write_artis_csv(df: pl.DataFrame, fileobj: t.IO[bytes], significantfigures: int = 8) -> None:
     """Append the dataframe as one zstd frame in the ARTIS text file format: space separated and no header.
 
-    Eight significant figures round-trip the Float32 that the reader produces, whose relative spacing
-    is 6e-8. Five figures lost more precision than the reader does, which showed up as a mass that
-    changed by 2e-5 when a model was written and read again.
+    The relative spacing of the Float32 values that the reader gives is 6e-8. Eight significant figures give a value
+    to 5e-8, and a file of format version 1 has them. Nine figures give each Float32 value again with no change, and
+    a model.txt of format version 2 has them. Five figures lost more precision than the reader does, which showed up
+    as a mass that changed by 2e-5 when a model was written and read again.
     """
     df.write_csv(
         fileobj,
@@ -1508,7 +1509,7 @@ def write_artis_csv(df: pl.DataFrame, fileobj: t.IO[bytes]) -> None:
         separator=" ",
         line_terminator="\n",
         float_scientific=True,
-        float_precision=7,
+        float_precision=significantfigures - 1,
         null_value="0.0",
         compression="zstd",
     )
@@ -1639,7 +1640,7 @@ def get_version2_headerlines(inputcellids: pl.Series, modelmeta: dict[str, t.Any
             f"The cell edges give {gridshape} = {npts_model} cells, but the model has {inputcellids.len()} cells with"
             f" the first cell id {inputcellids.item(0) if inputcellids.len() else None}. In format version 2, the cell"
             f" ids are 0 to {npts_model - 1}, and the index of {firstaxis} changes fastest. Give the same cell ids to"
-            " gridcontributions.txt and opacity.txt, e.g. call with_cell_ids_from_zero"
+            " gridcontributions.txt, e.g. call with_cell_ids_from_zero"
         )
         raise ValueError(msg)
 
@@ -1786,9 +1787,9 @@ def save_modeldata(
     The cells of a version 2 file have no position column. The cell id is the index of the cell in the grid of the
     edges, from 0. The index of the first axis changes fastest, e.g. i_r + n_r * (i_theta + n_theta * i_phi). Thus
     dfmodel must have the cell ids 0 to N - 1 for version 2, where N is the count of the cells. gridcontributions.txt
-    and opacity.txt of the model must hold the same ids (see with_cell_ids_from_zero). A cell with no line is empty,
-    thus the function writes no line for an empty cell (rho = 0). A file needs one cell line, thus a model with no
-    density keeps the line of its first cell. Each version 2 file holds rho, and no version 2 file holds logrho.
+    of the model must hold the same ids (see with_cell_ids_from_zero). A cell with no line is empty, thus the function
+    writes no line for an empty cell (rho = 0). A file needs one cell line, thus a model with no density keeps the
+    line of its first cell. Each version 2 file holds rho, and no version 2 file holds logrho.
 
     A version 2 file needs only the columns inputcellid and rho. The columns X_Fegroup, X_Ni56, X_Co56, X_Fe52,
     X_Cr48, X_Ni57, and X_Co57 have a fixed place in version 1. In version 2, such a column that is absent holds zero
@@ -2030,7 +2031,7 @@ def save_modeldata(
                 if not col.startswith("pos") and col != "inputcellid" and dfmodel.schema[col].is_float()
             )
             write_zstd_lines(fmodel, headertextlines)
-            write_artis_csv(dfmodel, fmodel)
+            write_artis_csv(dfmodel, fmodel, significantfigures=9 if formatversion == 2 else 8)
 
     remove_parquet_cache(modelfilepath)
     print_saved(modelfilepath)

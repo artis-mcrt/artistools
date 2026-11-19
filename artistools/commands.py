@@ -397,7 +397,7 @@ subcommandtree: CommandTree = {
         ),
         "makeartismodelfromparticlegridmap": CommandSpec(
             "inputmodel.modelfromhydro",
-            helptext="Create an ARTIS format model from grid.dat.",
+            helptext="Create an ARTIS format model from grid.dat or grid_spherical.dat.",
             examples=(("-i . -d 1", "a 1D ARTIS model from the grid.dat in the working folder"),),
             exampletestfolder="kilonova",
         ),
