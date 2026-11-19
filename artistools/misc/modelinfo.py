@@ -621,8 +621,8 @@ def read_keyword_model_header(
     coordinates = coordinatetokens[0]
 
     timevalues = get_floats("t_model_init_days")
-    if len(timevalues) != 1 or not timevalues[0] > 0.0:
-        msg = f"{modelfilepath}: the key t_model_init_days must have one value above 0, not {timevalues!r}"
+    if len(timevalues) != 1 or not timevalues[0] > 0.0 or not math.isfinite(timevalues[0]):
+        msg = f"{modelfilepath}: the key t_model_init_days must have one finite value above 0, not {timevalues!r}"
         raise ValueError(msg)
 
     edges = validate_model_edges(

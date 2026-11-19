@@ -4267,6 +4267,7 @@ def test_plotinitialcomposition_of_a_spherical_model_gives_each_point_the_value_
         ),
         ("columns inputcellid rho X_Fegroup", (), "must end with the key columns"),
         ("t_model_init_days 1.0  # an inline comment", (), "the header has no key t_model_init_days"),
+        ("t_model_init_days 1.0  # an inline comment", ("t_model_init_days inf",), "one finite value above 0"),
         ("vel_r_edges_kmps 0 1000 3000", ("vel_r_edges_kmps 0 3000 1000",), "must increase"),
         (
             f"theta_edges_radians 0 1.5 {math.pi!r}",
@@ -4621,16 +4622,22 @@ def test_spherical_deposit_agrees_with_a_sum_over_all_cells(normalisekernelweigh
             [0.0, 0.0, 1200.0],  # outside the grid
             [-300.0, 200.0, -100.0],  # a kernel that holds no cell mid-point
             [1.0, 0.0, -700.0],  # near the -z axis
+            [0.0, 0.0, 0.0],  # at the centre, with the mid-points of the second shell at the edge of its kernel
         ],
         rng.uniform(-550.0, 550.0, (40, 3)),
     ))
-    h = np.concatenate(([150.0, 80.0, 80.0, 100.0, 60.0, 400.0, 1e-3, 120.0], rng.uniform(20.0, 300.0, 40)))
+    # the kernel radius 2h of the particle at the centre is the mid-point radius of the second shell
+    h_centre = (edges[0][1] + edges[0][2]) / 4.0
+    h = np.concatenate(([150.0, 80.0, 80.0, 100.0, 60.0, 400.0, 1e-3, 120.0, h_centre], rng.uniform(20.0, 300.0, 40)))
     mass = rng.uniform(1.0, 2.0, len(h))
     wij = get_wij()
 
     pairparticle, paircell, pairmass, weightsums = get_spherical_deposit(
         position, h, mass, edges, wij, normalisekernelweights
     )
+    # A cell mid-point at the edge of a kernel has a weight of zero. Such a pair counted as a tracer of the cell, and
+    # a cell with only such pairs got 0 / 0 as the fraction of its mass
+    assert (pairmass > 0.0).all()
 
     r_mid, theta_mid, phi_mid = np.meshgrid(*((edge[:-1] + edge[1:]) / 2.0 for edge in edges), indexing="ij")
     cellposition = np.stack(

@@ -212,13 +212,15 @@ def get_spherical_deposit(
         weightsum = float(weights.sum())
         weightsums[n] = weightsum
 
+        # A cell mid-point at the edge of the kernel has a weight of zero. Such a pair gives no mass, thus it is not a
+        # tracer of the cell, and a cell with only such pairs would get 0 / 0 as the fraction of its mass
+        hasweight = weights > 0.0
+        cellsofparticle = (cell_r + ngridr * (cell_theta + ngridtheta * cell_phi))[hasweight]
         if not normalisekernelweights:
-            # as in the Cartesian map, each cell mid-point in the kernel makes a pair, also with a weight of zero
-            paircells.append(cell_r + ngridr * (cell_theta + ngridtheta * cell_phi))
-            pairmasses.append(mass[n] * weights)
+            paircells.append(cellsofparticle)
+            pairmasses.append(mass[n] * weights[hasweight])
         elif weightsum > 0.0:
-            hasweight = weights > 0.0
-            paircells.append((cell_r + ngridr * (cell_theta + ngridtheta * cell_phi))[hasweight])
+            paircells.append(cellsofparticle)
             pairmasses.append(mass[n] * weights[hasweight] / weightsum)
         else:
             # a cell holds its lower edge, and the last cell of an axis also holds the upper edge of the grid
