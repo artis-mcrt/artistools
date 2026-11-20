@@ -4382,6 +4382,7 @@ def test_a_working_folder_that_is_not_artis_gives_an_error(
     (tmp_path / "mymodel").mkdir()
     for argsraw, hint in (
         (["Te", "mymodle"], "No folder 'mymodle' exists. Did you mean mymodel?"),
+        (["-p", "Te", "mymodle"], "No folder 'mymodle' exists. Did you mean mymodel?"),
         (["Te", "./mymodle"], "No folder './mymodle' exists."),
         (["Te", "~/mymodle"], "the shell expands '~'"),
         (["Te", "yscale=log"], None),
@@ -4396,6 +4397,11 @@ def test_a_working_folder_that_is_not_artis_gives_an_error(
             assert "No folder '" not in stderr, argsraw
         else:
             assert hint in stderr, argsraw
+
+    # a script can give a Path as a plot item, and the hint called str methods on it
+    with pytest.raises(SystemExit):
+        at.estimators.plotestimators.main(argsraw=["-t", "1"], plotitems=["Te", Path("mymodle")])
+    assert "No folder 'mymodle' exists" in capsys.readouterr().err
 
     with pytest.raises(SystemExit):
         at.estimators.plotestimators.main(argsraw=["Te", str(tmp_path / "notamodel"), "-t", "1"])

@@ -3489,7 +3489,9 @@ def require_artis_folder(modelpath: Path, lastitem: str | None = None) -> None:
 
 def resolve_plot_args(args: argparse.Namespace) -> tuple[Path, list[int]]:
     """Apply the defaults and the cell selection to the arguments, and return the model path and the timesteps."""
-    lastitem = args.plotitems[-1] if args.plotitems else None
+    # a script can give a Path as an item, and the -plot form keeps the folder in its last group
+    lastgroup = args.plotitems or (args.plotlist[-1] if args.plotlist else [])
+    lastitem = str(lastgroup[-1]) if lastgroup else None
     resolve_positional_args(args)
     modelpath = Path(args.modelpath)
     require_artis_folder(modelpath, lastitem)
