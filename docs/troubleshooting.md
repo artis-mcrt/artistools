@@ -21,8 +21,11 @@ run folder.
 
 The conversion takes all the timesteps of the text, thus a timestep with no NLTE populations, e.g. an LTE timestep,
 also writes the cache. A read of some cells, e.g. a run of `artistools plotnltepops`, reads only the ranks of these
-cells. Thus it writes no cache. artistools writes the cache only when the NLTE files hold 1 GiB of text or more. A reader takes a smaller
-text directly, thus such a model needs no cache.
+cells. Thus it writes no cache.
+
+artistools makes a new NLTE cache only when the NLTE files hold 1 GiB of text or more. A reader takes a smaller text
+directly. A cache that exists is different: when the text changes, a reader replaces the cache for each size of
+text. Thus a model folder that holds a cache needs a current cache.
 
 A reader writes a new cache when the text file changes. Thus a model folder where the user cannot write a file needs
 current caches. Do these steps as a user who can write to the model folder:

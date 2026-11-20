@@ -157,13 +157,16 @@ dftemperature = at.scan_estimators(modelpath).filter(pl.col("timestep") == 40).s
 timestepmin, timestepmax, _, _ = at.misc.get_time_range(modelpath, timemin=300, timemax=320)
 dfspectrum = at.spectra.scan_spectra(modelpath, timestepmin, timestepmax, directionbins=[-1])[-1].collect()
 
-# scan_lightcurve reads a file, and find_lightcurve_file gives the light curve file of a model folder
+# scan_lightcurve takes a file and not a model folder, thus find_lightcurve_file finds the file, e.g. a
+# compressed light_curve.out.zst
 dflightcurve = at.lightcurve.scan_lightcurve(at.lightcurve.find_lightcurve_file(modelpath))[-1].collect()
 ```
 
 The [data reference](https://artistools.readthedocs.io/en/latest/data.html) gives the columns and the units of the main readers.
 
-A function with the prefix `scan_` returns a polars LazyFrame, or a result that holds LazyFrames and sometimes other values. For example, `scan_modeldata` returns a LazyFrame and a dictionary of the model parameters, and `at.packets.scan_packets` returns the number of ranks and a LazyFrame. `at.spectra.scan_spectra` returns a dictionary with one LazyFrame for each direction bin. Call `.collect()` on a LazyFrame to get the data. A function with the prefix `read_` returns the data at once, e.g. a DataFrame or a dictionary. Each function with the prefix `get_` in the tables below returns its value at once, e.g. a number, a dictionary, or a DataFrame. The direction bin -1 is the average over all directions.
+A function with the prefix `scan_` returns a polars LazyFrame, or a result that holds LazyFrames and sometimes other values. For example, `scan_modeldata` returns a LazyFrame and a dictionary of the model parameters, and `at.packets.scan_packets` returns the number of ranks and a LazyFrame. `at.spectra.scan_spectra` returns a dictionary with one LazyFrame for each direction bin. Call `.collect()` on a LazyFrame to get the data.
+
+A function with the prefix `read_` returns the data at once, e.g. a DataFrame or a dictionary. Each function with the prefix `get_` in the tables below returns its value at once, e.g. a number, a dictionary, or a DataFrame. The direction bin -1 is the average over all directions.
 
 Some of these functions had an older name, e.g. `get_modeldata` in place of `scan_modeldata`, and `read_spec` in place of `scan_spec`. A script can still call the old name, but each call gives a `DeprecationWarning` that names the new function. A later release will delete the old names.
 

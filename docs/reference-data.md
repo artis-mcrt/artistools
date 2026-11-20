@@ -15,8 +15,8 @@ artistools looks for the file in the working folder first. Then it looks in the 
 artistools also accepts a compressed file, e.g. with the extension `.zst`, `.gz`, or `.xz`.
 
 A reference spectrum is a text file with two columns or more: the wavelength in Å, then the flux density f_λ. A line
-that starts with `#` is a comment. The file `<name>.meta.yml` beside it gives the metadata. These keys change the
-plot:
+that starts with `#` is a comment. The file `<name>.meta.yml` beside it gives the metadata. The name of the metadata
+file has no compression extension, e.g. `spectrum.txt.meta.yml` for `spectrum.txt.zst`. These keys change the plot:
 
 | Key | Effect |
 | --- | --- |
