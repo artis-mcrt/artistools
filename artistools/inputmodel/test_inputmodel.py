@@ -3574,7 +3574,8 @@ def write_e2e_model(datpath: Path, isopath: Path) -> None:
         qdot=np.full((ntraj, ntimes), 1e10),
         hnuloss=np.zeros((ntraj, ntimes)),
         time=np.linspace(0.0, 2.0 * t_model_init_s, ntimes),
-        nz=rng.uniform(0.01, 0.2, size=(ntraj, 2)),
+        # number fractions whose mass fractions sum to less than 1, because sn3d stops for a larger sum
+        nz=rng.uniform(0.01, 0.2, size=(ntraj, 2)) * np.array([0.5, 0.01]),
         t5out=np.column_stack([np.zeros((ntraj, 4)), np.full(ntraj, 0.3)]),
     )
     # the neutron number and the atomic number of He4 and Zn56
@@ -4415,6 +4416,126 @@ def test_otherstable_columns_give_the_element_mass_fractions() -> None:
         dfelabundances.filter(~isfirstcell),
     )
 
+    # X_n gives the free neutrons, but the reader of an otherstable column takes the symbol n as nitrogen
+    with_otherstable_columns = at.inputmodel.core.with_otherstable_columns
+    dfneutrons = with_otherstable_columns(
+        pl.DataFrame({"inputcellid": [0], "rho": [1e-12], "X_n1": [0.2], "X_He4": [0.8]}),
+        pl.DataFrame({"inputcellid": [0], "X_n": [0.2], "X_He": [0.8]}),
+    )
+    assert not [col for col in dfneutrons.columns if col.endswith("_otherstable")]
+
+    # The nuclide columns of nickel hold more than its element mass fraction, within the tolerance of sn3d. Thus the
+    # otherstable value of nickel is 0, and the elements sum to 1.005, which sn3d stops for
+    with pytest.raises(ValueError, match=r"sum to more than 1\.001, up to 1\.005"):
+        with_otherstable_columns(
+            pl.DataFrame({"inputcellid": [0], "rho": [1e-12], "X_Ni56": [0.505]}),
+            pl.DataFrame({"inputcellid": [0], "X_Fe": [0.5], "X_Ni": [0.5]}),
+        )
+
+    # a 1D model of version 1 gives logrho, and a cell with logrho -99 is empty and needs no row
+    df1d = with_otherstable_columns(
+        pl.DataFrame({"inputcellid": [1, 2], "logrho": [-10.0, -99.0], "X_Ni56": [0.25, 0.0]}),
+        pl.DataFrame({"inputcellid": [1], "X_Fe": [0.5], "X_Ni": [0.5]}),
+    )
+    assert df1d["X_Ni_otherstable"].to_list() == pytest.approx([0.25, 0.0])
+
+
+def test_conversion_reads_the_folder_of_a_file_path_and_changes_no_file_before_its_checks_pass(tmp_path: Path) -> None:
+    """A conversion takes the files of the model folder also for a path of model.txt, and it stops before a write.
+
+    A path of model.txt gave the folder model.txt to the readers of abundances.txt and Ye.txt, thus the converted
+    model lost its elements and its electron fractions. A conversion that stopped at the element check had already
+    deleted the abundances.txt of the output folder. A Ye.txt of an earlier model in the output folder of a version
+    1 model would give its values to the new model, because sn3d reads Ye.txt after model.txt.
+    """
+    sourcefolder = tmp_path / "source"
+    sourcefolder.mkdir()
+    lines1d = [
+        "2",
+        "1.0",
+        "#inputcellid vel_r_max_kmps logrho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48 Ye",
+        "1 1000.00 -10.00000000 0.5 0.0 0.0 0.0 0.0 0.35",
+        "2 2000.00 -11.00000000 0.5 0.0 0.0 0.0 0.0 0.35",
+    ]
+    (sourcefolder / "model.txt").write_text("\n".join(lines1d) + "\n", encoding="utf-8")
+    (sourcefolder / "abundances.txt").write_text("1 0.8 0.2\n2 0.8 0.2\n", encoding="utf-8")
+    (sourcefolder / "Ye.txt").write_text("2\n1 0.49\n2 0.49\n", encoding="utf-8")
+
+    # a path of model.txt, a 1D model with logrho, and a Ye.txt for each cell
+    outputfolder = tmp_path / "version2"
+    at.inputmodel.makeartismodel.main(
+        argsraw=[], modelpath=[sourcefolder / "model.txt"], format_version=2, outputfile=outputfolder
+    )
+    dfversion2 = at.inputmodel.scan_modeldata(outputfolder, get_elemabundances=True)[0].collect()
+    assert dfversion2["X_H"].to_list() == pytest.approx([0.8, 0.8])
+    assert dfversion2["Ye"].to_list() == pytest.approx([0.49, 0.49])
+
+    def get_folder_text(folder: Path) -> dict[str, bytes]:
+        return {path.name: path.read_bytes() for path in sorted(folder.iterdir()) if path.is_file()}
+
+    # a Ye.txt of an earlier model stops a conversion to version 1 into its folder, and the folder does not change
+    (sourcefolder / "Ye.txt").unlink()
+    version1folder = tmp_path / "version1"
+    version1folder.mkdir()
+    (version1folder / "Ye.txt").write_text("1\n1 0.9\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        at.inputmodel.makeartismodel.main(
+            argsraw=[], modelpath=[sourcefolder], format_version=1, outputfile=version1folder, force=True
+        )
+    assert get_folder_text(version1folder) == {"Ye.txt": b"1\n1 0.9\n"}
+
+    # The nuclide column of nickel holds more than the element, within the tolerance of sn3d. Thus the otherstable
+    # value of nickel is 0, and the elements of version 2 sum to 0.11 + 0.899, which is more than 1.001
+    (sourcefolder / "model.txt").write_text(
+        "\n".join([*lines1d[:3], *(line.replace(" 0.5 0.0 ", " 0.5 0.899 ", 1) for line in lines1d[3:])]) + "\n",
+        encoding="utf-8",
+    )
+    elementvalues = " ".join(["0.11", *["0.0"] * 26, "0.89"])
+    (sourcefolder / "abundances.txt").write_text(f"1 {elementvalues}\n2 {elementvalues}\n", encoding="utf-8")
+    folderbefore = get_folder_text(outputfolder)
+    with pytest.raises(ValueError, match="sum to more than"):
+        at.inputmodel.makeartismodel.main(
+            argsraw=[], modelpath=[sourcefolder], format_version=2, outputfile=outputfolder, force=True
+        )
+    assert get_folder_text(outputfolder) == folderbefore
+
+
+def test_reduction_and_downscale_write_the_format_version_of_the_prompt(tmp_path: Path) -> None:
+    """A reduction and a downscale write the format version that the (y/n) prompt took, and version 2 takes Ye.txt.
+
+    A downscale with --format-version wrote the version of the source model, thus it deleted a Ye.txt that the
+    prompt did not name. A reduction to version 2 ignored the Ye.txt of the source model, which sn3d uses.
+    """
+    sourcefolder = tmp_path / "source"
+    shutil.copytree(at.get_path("testdata") / "test-classicmode_3d", sourcefolder)
+    dfsource = at.inputmodel.scan_modeldata(sourcefolder)[0].collect()
+    (sourcefolder / "Ye.txt").write_text(
+        f"{dfsource.height}\n" + "".join(f"{cellid} 0.49\n" for cellid in dfsource["inputcellid"]), encoding="utf-8"
+    )
+    reducedfolder = tmp_path / "reduced"
+    at.inputmodel.makeartismodel.main(
+        argsraw=[], modelpath=[sourcefolder], dimensionreduce=1, format_version=2, outputfile=reducedfolder
+    )
+    dfreduced = at.inputmodel.scan_modeldata(next(reducedfolder.iterdir()))[0].collect()
+    assert dfreduced.filter(pl.col("rho") > 0)["Ye"].to_list() == pytest.approx([0.49] * 5, rel=1e-6)
+
+    version2folder = tmp_path / "version2"
+    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[sourcefolder], format_version=2, outputfile=version2folder)
+    for formatversion in (1, 2):
+        sourceversion = 2 if formatversion == 1 else 1
+        smallfolder = tmp_path / f"small{formatversion}"
+        smallfolder.mkdir()
+        at.inputmodel.makeartismodel.main(
+            argsraw=[],
+            modelpath=[version2folder if sourceversion == 2 else sourcefolder],
+            downscale3dgrid=True,
+            outputgridsize=5,
+            format_version=formatversion,
+            outputfile=smallfolder,
+            force=True,
+        )
+        assert at.inputmodel.scan_modeldata(smallfolder)[1]["formatversion"] == formatversion
+
 
 def test_version_2_edges_of_a_cartesian_grid_must_have_equal_steps() -> None:
     """A Cartesian grid has equal cells to one vmax in sn3d and in artistools, thus other edges are an error."""
@@ -4862,7 +4983,8 @@ def test_from_e2e_model_spherical_grid_holds_both_halves_of_a_symmetric_model(tm
         qdot=np.full((ntraj, ntimes), 1e10),
         hnuloss=np.zeros((ntraj, ntimes)),
         time=np.linspace(0.0, 2.0 * t_model_init_s, ntimes),
-        nz=rng.uniform(0.01, 0.2, size=(ntraj, 2)),
+        # number fractions whose mass fractions sum to less than 1, because sn3d stops for a larger sum
+        nz=rng.uniform(0.01, 0.2, size=(ntraj, 2)) * np.array([0.5, 0.01]),
         t5out=np.column_stack([np.zeros((ntraj, 4)), np.full(ntraj, 0.3)]),
     )
     np.save(tmp_path / "iso_table.npy", np.array([[2, 2], [26, 30]]))

@@ -1088,6 +1088,20 @@ LOGRHO_FROM_RHO = pl.when(pl.col("rho") > 0).then(pl.max_horizontal(-99, pl.col(
 RHO_FROM_LOGRHO = pl.when(pl.col("logrho") > -98).then(10 ** pl.col("logrho")).otherwise(0.0)
 
 
+def get_has_density_expr(colnames: Sequence[str]) -> pl.Expr:
+    """Return an expression that is true for each cell with density.
+
+    A 1D model of format version 1 gives log10(rho) in the column logrho, and each other model gives rho. A value of
+    -98 or less of logrho gives an empty cell, as RHO_FROM_LOGRHO does.
+    """
+    if "rho" in colnames:
+        return pl.col("rho") > 0
+    if "logrho" in colnames:
+        return pl.col("logrho") > -98
+    msg = f"The cells have no column rho and no column logrho, but the columns {', '.join(colnames)}"
+    raise ValueError(msg)
+
+
 def get_spherical_cell_indices(
     colnames: Sequence[str], modelmeta: dict[str, t.Any]
 ) -> tuple[pl.Expr, pl.Expr, pl.Expr]:
@@ -1459,6 +1473,8 @@ OTHERSTABLE_SUFFIX = "_otherstable"
 OTHERSTABLE_NEGATIVE_LIMIT = 1e-2
 # a remainder below this fraction of the mass fraction of the element is rounding of the Float32 values
 OTHERSTABLE_ROUNDING_RTOL = 1e-5
+# sn3d stops for a cell whose element mass fractions sum to more than this value, which permits rounding
+ELEMENT_MASSFRAC_SUM_LIMIT = 1.0 + 1e-3
 
 
 def customcolsortkey(col: str) -> tuple[float, int]:
@@ -1518,11 +1534,16 @@ def with_otherstable_columns(dfmodel: pl.DataFrame, dfelabundances: pl.DataFrame
     is rounding and becomes 0, and an element with no remainder in any cell gets no column.
 
     The function stops if a cell with density has no row in dfelabundances. Such a cell got no otherstable value,
-    thus it lost the elements that its nuclide columns do not hold.
+    thus it lost the elements that its nuclide columns do not hold. It also stops if the element mass fractions of a
+    cell sum to more than ELEMENT_MASSFRAC_SUM_LIMIT, which sn3d also stops for. Such a sum can come from nuclide
+    columns that hold more than their element, because the otherstable value of that element is then 0.
+
+    A column of dfelabundances that is not an element, e.g. X_n for the free neutrons, gets no otherstable column.
+    sn3d reads X_n_otherstable as nitrogen. The writer of abundances.txt also leaves out such a column.
     """
     dfmodel = dfmodel.drop(cs.ends_with(OTHERSTABLE_SUFFIX))
     elementcols = get_element_columns_of_model(dfmodel.columns)
-    hasdensity = pl.col("rho") > 0 if "rho" in dfmodel.columns else pl.lit(value=True)
+    hasdensity = get_has_density_expr(dfmodel.columns)
     cellswithnoelements = dfmodel.filter(hasdensity).join(
         dfelabundances.select("inputcellid"), on="inputcellid", how="anti"
     )
@@ -1535,9 +1556,11 @@ def with_otherstable_columns(dfmodel: pl.DataFrame, dfelabundances: pl.DataFrame
         raise ValueError(msg)
     remainders = {}
     for elcol in dfelabundances.columns:
-        if elcol == "inputcellid":
+        elsymbol = elcol.removeprefix("X_")
+        # get_atomic_number does not use the case of the symbol, thus n for the free neutrons gives nitrogen
+        if elcol == "inputcellid" or get_elsymbol(get_atomic_number(elsymbol)) != elsymbol:
             continue
-        nuclidecols = elementcols.get(get_atomic_number(elcol.removeprefix("X_")), [])
+        nuclidecols = elementcols.get(get_atomic_number(elsymbol), [])
         elmassfrac = pl.col(elcol).fill_null(0.0).cast(pl.Float64)
         remainder = elmassfrac - (
             pl.sum_horizontal([pl.col(col).cast(pl.Float64) for col in nuclidecols]) if nuclidecols else pl.lit(0.0)
@@ -1549,12 +1572,46 @@ def with_otherstable_columns(dfmodel: pl.DataFrame, dfelabundances: pl.DataFrame
             .otherwise(0.0)
         )
     nuclidecolsofmodel = [col for cols in elementcols.values() for col in cols]
+    densitycols = [col for col in ("rho", "logrho") if col in dfmodel.columns]
     dfremainders = (
         dfmodel
-        .select("inputcellid", *(["rho"] if "rho" in dfmodel.columns else []), *nuclidecolsofmodel)
+        .select("inputcellid", *densitycols, *nuclidecolsofmodel)
         .join(dfelabundances, on="inputcellid", how="left", maintain_order="left")
         .select(**remainders)
     )
+    # sn3d takes the sum of the nuclide columns and the otherstable values of each element with Z of 1 or more
+    elementsums = (
+        dfmodel
+        .select(
+            "inputcellid",
+            hasdensity.alias("hasdensity"),
+            pl.sum_horizontal([pl.col(col).cast(pl.Float64) for col in nuclidecolsofmodel] or [pl.lit(0.0)]).alias(
+                "nuclidesum"
+            ),
+        )
+        .with_columns(
+            elementsum=pl.col("nuclidesum")
+            + (
+                dfremainders.select(pl.sum_horizontal(pl.all().clip(lower_bound=0.0))).to_series()
+                if remainders
+                else 0.0
+            )
+        )
+        .filter(pl.col("hasdensity") & (pl.col("elementsum") > ELEMENT_MASSFRAC_SUM_LIMIT))
+    )
+    if not elementsums.is_empty():
+        msg = (
+            f"The element mass fractions of {elementsums.height} cells sum to more than {ELEMENT_MASSFRAC_SUM_LIMIT:g},"
+            f" up to {elementsums['elementsum'].max():.6g} in the cell with inputcellid"
+            f" {elementsums.sort('elementsum')['inputcellid'][-1]}. In format version 2, the mass fraction of an"
+            " element is the sum of its nuclide columns and its otherstable column, and the nuclide columns of an"
+            " element hold more than its mass fraction in the element abundances. sn3d stops for such a cell"
+        )
+        raise ValueError(msg)
+    if not remainders:
+        # the nuclide columns alone give each element
+        print("  0 elements get an otherstable column, because the element abundances have no element column.")
+        return dfmodel
     lowest: dict[str, float] = dfremainders.select(pl.all().min().fill_null(0.0)).row(0, named=True)
     highest: dict[str, float] = dfremainders.select(pl.all().max().fill_null(0.0)).row(0, named=True)
     for col, lowestremainder in lowest.items():

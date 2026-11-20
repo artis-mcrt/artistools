@@ -67,10 +67,12 @@ def make_downscaled_3d_grid(
     plot: bool = False,
     outputfolder: Path | str | None = None,
     args: argparse.Namespace | None = None,
+    formatversion: int | None = None,
 ) -> Path:
     """Get a 3D model with smallgrid^3 cells from a 3D model with grid^3 cells.
 
     Should be same as downscale_3d_grid.pro. args gives the options of the diagnostic plot, e.g. --darkmode.
+    formatversion is the format version of the small model.txt, and None keeps the version of the model.
     """
     modelpath = Path(modelpath)
 
@@ -118,8 +120,11 @@ def make_downscaled_3d_grid(
     # the cell order of an ARTIS 3D file varies x fastest, which is the Fortran order of the arrays above
     xmax = vmax * t_model_days * day_to_s
     axispos = -xmax + 2 * xmax * np.arange(smallgrid) / smallgrid
-    # the small model keeps the format version of the model, and the cell ids of format version 2 start at 0
-    firstinputcellid = 0 if modelmeta.get("formatversion") == 2 else 1
+    # the small model keeps the format version of the model with no formatversion, and the cell ids of format version 2
+    # start at 0
+    if formatversion is None:
+        formatversion = int(modelmeta.get("formatversion", 1))
+    firstinputcellid = 0 if formatversion == 2 else 1
     inputcellid = pl.Series("inputcellid", range(firstinputcellid, smallgrid**3 + firstinputcellid), dtype=pl.Int32)
 
     dfmodel_small = pl.DataFrame({
@@ -135,6 +140,7 @@ def make_downscaled_3d_grid(
     )
 
     modelmeta_small = modelmeta | {
+        "formatversion": formatversion,
         "npts_model": smallgrid**3,
         "ncoordgridx": smallgrid,
         "ncoordgridy": smallgrid,

@@ -20,7 +20,6 @@ from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import dimension_reduce_model
 from artistools.inputmodel.core import get_written_format_version
 from artistools.inputmodel.core import MODEL_FILE_NAMES
-from artistools.inputmodel.core import remove_parquet_cache
 from artistools.inputmodel.core import save_empty_abundance_file
 from artistools.inputmodel.core import save_initelemabundances
 from artistools.inputmodel.core import save_modeldata
@@ -544,13 +543,9 @@ def makemodelfromgriddata(
         dfmodel = dfmodel.with_columns(pl.col("tracercount").cast(pl.Int32))
 
     if dfelabundances is None and not hasabundancefile:
-        # A model with no trajectories has no element mass fractions. sn3d stops for an abundances.txt beside a
-        # version 2 model, thus the file of an earlier model in this folder goes. The user agreed to overwrite it
-        for oldabundancefile in get_file_copies(Path(outputpath, "abundances.txt")):
-            if oldabundancefile.is_file():
-                oldabundancefile.unlink()
-                remove_parquet_cache(oldabundancefile)
-                print(f"Deleted {oldabundancefile}, because a model.txt of format version 2 has no abundances.txt")
+        # A model with no trajectories has no element mass fractions, thus the nuclide columns alone give each element.
+        # save_modeldata then deletes an abundances.txt of an earlier model in this folder after the write
+        dfelabundances = dfmodel.select("inputcellid")
 
     # a version 2 model gets the element mass fractions as otherstable columns of model.txt
     save_modeldata(

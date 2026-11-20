@@ -12,10 +12,10 @@ from artistools.constants import Msun_to_g
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import CELL_ID_FILE_NAMES
 from artistools.inputmodel.core import dimension_reduce_model
+from artistools.inputmodel.core import get_has_density_expr
 from artistools.inputmodel.core import get_model_text_folder
 from artistools.inputmodel.core import get_modelmeta
 from artistools.inputmodel.core import MODEL_FILE_NAMES
-from artistools.inputmodel.core import remove_parquet_cache
 from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.core import scan_initelemabundances
 from artistools.inputmodel.core import scan_modeldata
@@ -38,6 +38,7 @@ from artistools.misc import exit_with_error
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_file_copies
 from artistools.misc import get_model_coordinates
+from artistools.misc import get_model_folder
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
@@ -140,6 +141,15 @@ def get_dimreduce_outputfolder(outputfile: Path | None, modelpath: Path, ndim_ou
     )
 
 
+def get_source_folder(modelpath: Path) -> Path:
+    """Return the folder that holds model.txt and the other input files of a model path.
+
+    A model path can name the folder or a file in it, e.g. model.txt. A code comparison path is virtual, and
+    get_model_text_folder gives the folder of its ARTIS input files.
+    """
+    return get_model_folder(get_model_text_folder(modelpath))
+
+
 def with_ye_of_yefile(dfmodel: pl.DataFrame, yefilepath: Path) -> pl.DataFrame:
     """Return the cells of a version 1 model with the electron fractions of its Ye.txt in the column Ye.
 
@@ -172,10 +182,10 @@ def with_ye_of_yefile(dfmodel: pl.DataFrame, yefilepath: Path) -> pl.DataFrame:
         .drop("Ye_file")
     )
     print(
-        f"  Version 2 has no Ye.txt. The column Ye of model.txt gets the {dfye.height} electron fractions of Ye.txt,"
-        " and each other cell keeps the value of that column."
+        f"  The column Ye of model.txt gets the {dfye.height} electron fractions of Ye.txt, and each other cell keeps"
+        " the value of that column."
     )
-    novaluecount = dfmodel.filter(pl.col("Ye").is_null() & (pl.col("rho") > 0)).height
+    novaluecount = dfmodel.filter(pl.col("Ye").is_null() & get_has_density_expr(dfmodel.columns)).height
     if novaluecount > 0:
         print_warning(
             f"{novaluecount} cells with density have no electron fraction in Ye.txt or in model.txt. The column Ye"
@@ -214,7 +224,8 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
 
     # save_modeldata can write the file that the query scans, thus the read is complete before the write
     dfmodel = lzmodel.collect()
-    sourcefolder = get_model_text_folder(modelpath)
+    sourcefolder = get_source_folder(modelpath)
+    hasotherfolder = outputfolder.resolve() != sourcefolder.resolve()
     # sn3d also reads a compressed copy of Ye.txt
     yefilepath = firstexisting_or_none("Ye.txt", folder=sourcefolder, tryzipped=True, search_subfolders=False)
     if yefilepath is not None and modelmeta["formatversion"] == 2:
@@ -233,7 +244,15 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
             )
         print("  Version 2 has no opacity.txt, thus the output folder gets no copy of it. sn3d does not read the file.")
     if yefilepath is not None and formatversion == 2:
+        print("  Version 2 has no Ye.txt.")
         dfmodel = with_ye_of_yefile(dfmodel, yefilepath)
+    staleyefiles = [path for path in get_file_copies(outputfolder / "Ye.txt") if path.is_file()]
+    if hasotherfolder and formatversion == 1 and yefilepath is None and staleyefiles:
+        # sn3d reads Ye.txt after model.txt, thus the file of an earlier model would replace the values of the new model
+        exit_with_error(
+            f"{staleyefiles[0]} is a file of an earlier model, and {sourcefolder} holds no Ye.txt",
+            "sn3d reads Ye.txt for a model.txt of format version 1. Delete the file, or give a different -o",
+        )
     gridcolumns = {"inputcellid", "modelgridindex", "rho", "logrho"}
     customcols = [col for col in dfmodel.columns if col not in gridcolumns and not col.startswith(("pos_", "vel_"))]
     outputfolder.mkdir(exist_ok=True, parents=True)
@@ -241,16 +260,20 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
     # the element mass fractions come from abundances.txt (version 1) or from the columns of model.txt (version 2)
     haselements = (
         modelmeta["formatversion"] == 2
-        or firstexisting_or_none("abundances.txt", folder=get_model_text_folder(modelpath), tryzipped=True) is not None
+        or firstexisting_or_none("abundances.txt", folder=sourcefolder, tryzipped=True) is not None
     )
-    dfelabundances = scan_initelemabundances(modelpath, printwarningsonly=True).collect() if haselements else None
+    dfelabundances = scan_initelemabundances(sourcefolder, printwarningsonly=True).collect() if haselements else None
+    if formatversion == 2 and dfelabundances is None:
+        # with no element mass fractions, the nuclide columns alone give each element. save_modeldata then deletes an
+        # abundances.txt of the output folder after the write
+        dfelabundances = dfmodel.select("inputcellid")
 
     dfgridcontributions = None
     if formatversion == 2 and dfmodel["inputcellid"].min() != 0:
         # each file of a model has the same cell ids, and version 2 has cell ids from 0
         print("  Version 2 has cell ids from 0, thus gridcontributions.txt gets the same ids.")
         dfmodel, dfelabundances, dfgridcontributions = with_cell_ids_from_zero(
-            dfmodel, dfelabundances, get_gridparticlecontributions_or_none(modelpath)
+            dfmodel, dfelabundances, get_gridparticlecontributions_or_none(sourcefolder)
         )
 
     if formatversion == 2:
@@ -258,18 +281,9 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
             "  Version 2 has no abundances.txt. The mass fraction of an element is the sum of its nuclide columns and"
             " of its column X_<element>_otherstable."
         )
-    hasotherfolder = outputfolder.resolve() != sourcefolder.resolve()
-    if hasotherfolder and formatversion == 2:
-        # save_modeldata stops for an abundances.txt beside a version 2 model that gets no element mass fractions.
-        # In a different output folder, that file is of an earlier model, and the (y/n) prompt named it
-        for oldfile in get_file_copies(outputfolder / "abundances.txt"):
-            if oldfile.is_file():
-                oldfile.unlink()
-                remove_parquet_cache(oldfile)
-                print(f"Deleted {oldfile}, which is a file of an earlier model in the output folder")
-
-    # save_modeldata checks the cells and can stop, thus it comes before gridcontributions.txt gets new cell ids. With
-    # dfelabundances, version 1 also gets abundances.txt, and version 2 gets the otherstable columns
+    # save_modeldata checks the cells and the element mass fractions, and it can stop before it writes a file. Thus it
+    # comes before each change of the other files of the output folder. With dfelabundances, version 1 also gets
+    # abundances.txt, and version 2 gets the otherstable columns
     save_modeldata(
         dfmodel,
         outpath=outputfolder,
@@ -288,9 +302,9 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
             unchangedfilenames.append("gridcontributions.txt")
         for filename in unchangedfilenames:
             sourcefile = firstexisting_or_none(filename, folder=sourcefolder, tryzipped=True, search_subfolders=False)
-            # A version 1 model can have its own Ye.txt and opacity.txt, thus the command leaves these two files in
-            # the output folder if the source model has none. The particle contributions of an earlier model do not
-            # go with the cells of the new model.txt
+            # The command stopped above for a Ye.txt of an earlier model, and sn3d does not read opacity.txt, thus
+            # a version 1 output keeps these files if the source model has none. The particle contributions of an
+            # earlier model do not go with the cells of the new model.txt
             if sourcefile is None and filename != "gridcontributions.txt":
                 continue
             # the copy replaces each copy of the file in the output folder, e.g. a plain Ye.txt beside Ye.txt.zst
@@ -350,20 +364,24 @@ def get_model_output_folders(args: argparse.Namespace, modelpath_given: bool) ->
                 "Give one model path with -o, or give no -o to convert each model.txt in its model folder",
             )
         outputfolders["convertformat"] = [
-            Path(args.outputfile) if args.outputfile is not None else get_model_text_folder(modelpath)
+            Path(args.outputfile) if args.outputfile is not None else get_source_folder(modelpath)
             for modelpath in args.modelpath
         ]
     return outputfolders
 
 
-def writes_format_version_2(args: argparse.Namespace) -> bool:
-    """Return True if a reduction or a downscale of the models of args writes a model.txt of format version 2.
+def get_output_format_version(args: argparse.Namespace, modelpath: Path) -> int:
+    """Return the format version of the model.txt that a reduction or a downscale of a model path writes.
 
-    A model keeps its format version if the user gives no --format-version.
+    --format-version gives the version. Without it, a downscale keeps the version of the model. A reduction gives
+    version 2 to a 2D spherical model, which has no version 1, and version 1 to each other model.
     """
     if args.format_version is not None:
-        return bool(args.format_version == 2)
-    return any(get_modelmeta(modelpath)["formatversion"] == 2 for modelpath in args.modelpath)
+        return int(args.format_version)
+    modelmeta = get_modelmeta(modelpath)
+    if args.downscale3dgrid:
+        return int(modelmeta["formatversion"])
+    return 2 if get_model_coordinates(modelmeta) == "spherical3d" and args.dimensionreduce == 2 else 1
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -400,7 +418,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         filenames = outputfilenames.get(action)
         if filenames is None:
             # save_modeldata deletes a Ye.txt and an opacity.txt beside a model of format version 2
-            filenames = (*MODEL_FILE_NAMES, *CELL_ID_FILE_NAMES) if writes_format_version_2(args) else MODEL_FILE_NAMES
+            writesversion2 = any(get_output_format_version(args, modelpath) == 2 for modelpath in args.modelpath)
+            filenames = (*MODEL_FILE_NAMES, *CELL_ID_FILE_NAMES) if writesversion2 else MODEL_FILE_NAMES
         confirm_overwrite(folders, filenames, force=args.force)
 
     if args.downscale3dgrid:
@@ -410,6 +429,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             plot=args.downscaleplot,
             outputfolder=outputfolders["downscale3dgrid"][0],
             args=args,
+            formatversion=get_output_format_version(args, Path(args.modelpath[0])),
         )
         return
 
@@ -423,8 +443,17 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 msg = f"Cannot reduce {ndim_in}D model to {ndim_out}D"
                 raise ValueError(msg)
 
-            dfelabundances = scan_initelemabundances(modelpath)
-            dfgridcontributions = get_gridparticlecontributions_or_none(modelpath)
+            sourcefolder = get_source_folder(modelpath)
+            dfelabundances = scan_initelemabundances(sourcefolder)
+            dfgridcontributions = get_gridparticlecontributions_or_none(sourcefolder)
+            outputformatversion = get_output_format_version(args, modelpath)
+            yefilepath = firstexisting_or_none("Ye.txt", folder=sourcefolder, tryzipped=True, search_subfolders=False)
+            if yefilepath is not None and outputformatversion == 2:
+                # sn3d takes the electron fractions of Ye.txt for the source model, and the reduced model of version 2
+                # gets them in its column Ye. A reduced model of version 1 gets the values of the column Ye of the
+                # source model.txt, as before
+                print("  Version 2 has no Ye.txt.")
+                dfmodel = with_ye_of_yefile(dfmodel.collect(), yefilepath).lazy()
 
             (dfmodel_out, dfelabundances_out, dfgridcontributions_out, modelmeta_out) = dimension_reduce_model(
                 dfmodel=dfmodel,
@@ -438,9 +467,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 *modelmeta.get("headercommentlines", []),
                 f"Dimension reduced from {ndim_in}-dimensional model",
             ]
-            if args.format_version is not None:
-                modelmeta_out["formatversion"] = args.format_version
-            if args.format_version == 2:
+            modelmeta_out["formatversion"] = outputformatversion
+            if outputformatversion == 2:
                 # version 2 has cell ids from 0 in each file of the model
                 dfmodel_out, dfelabundances_zero, dfgridcontributions_zero = with_cell_ids_from_zero(
                     dfmodel_out,
