@@ -31,9 +31,12 @@ from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_bin_index_expr
 from artistools.misc import get_cell_direction_range
+from artistools.misc import get_costhetabin_expr
 from artistools.misc import get_file_copies
 from artistools.misc import get_file_identity
 from artistools.misc import get_parquet_cache_name
+from artistools.misc import get_phibin_expr
+from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import is_remote_path
 from artistools.misc import modelpath_cache
 from artistools.misc import MTIME_TOLERANCE_S
@@ -1870,9 +1873,10 @@ def get_cell_direction_selection(directionrange: CellDirectionRange, columns: Se
     """Return a selection that is true for a cell whose centre has a direction in the range.
 
     columns are the columns of the cells, which must hold vel_r_mid_on_c and vel_z_mid_on_c. A range of ϕ also needs
-    vel_x_mid_on_c and vel_y_mid_on_c, thus a 2D model needs the range of resolve_cell_direction_range. ϕ =
-    atan2(v_y, v_x), as in the direction bins of ARTIS. A 1D model has no direction of a cell, thus the function stops
-    with an error for it. See get_cell_selection for the edges.
+    vel_x_mid_on_c and vel_y_mid_on_c, thus a 2D model needs the range of resolve_cell_direction_range. --dirbin
+    selects a cell with the bins of ARTIS for a packet in the direction of the cell centre, thus each cell is in one
+    bin. A 1D model has no direction of a cell, thus the function stops with an error for it. See get_cell_selection
+    for the edges of a range of --costhetamin and --costhetamax.
     """
     if "vel_z_mid_on_c" not in columns:
         exit_with_error(
@@ -1880,24 +1884,32 @@ def get_cell_direction_selection(directionrange: CellDirectionRange, columns: Se
             " cells",
             "Remove --dirbin, --costhetamin, and --costhetamax",
         )
-    selection = get_cell_selection(
-        thetamin=math.degrees(math.acos(directionrange.costhetamax)),
-        thetamax=math.degrees(math.acos(directionrange.costhetamin)),
-    )
-    if directionrange.phirange is None:
-        return selection
-    if "vel_x_mid_on_c" not in columns or "vel_y_mid_on_c" not in columns:
-        msg = "A range of ϕ needs the columns vel_x_mid_on_c and vel_y_mid_on_c. For a 2D model, give phirange=None"
-        raise ValueError(msg)
+    if directionrange.dirbin is None:
+        return get_cell_selection(
+            thetamin=math.degrees(math.acos(directionrange.costhetamax)),
+            thetamax=math.degrees(math.acos(directionrange.costhetamin)),
+        )
 
-    phimin, phimax = directionrange.phirange
-    phi_atol = math.radians(POLAR_ANGLE_ATOL_DEG)
-    phi = pl.arctan2(pl.col("vel_y_mid_on_c"), pl.col("vel_x_mid_on_c"))
-    # a range at an end of [0, 2π] must also find a cell with ϕ near the other end, e.g. 9π/5 ≤ ϕ ≤ 2π and ϕ = 0.01
-    inrange = [
-        (phi + offset).is_between(phimin - phi_atol, phimax + phi_atol) for offset in (-2 * math.pi, 0.0, 2 * math.pi)
-    ]
-    return selection & pl.any_horizontal(inrange).fill_null(value=False)
+    costhetabin, phibin = divmod(directionrange.dirbin, get_viewingdirection_phibincount())
+    is3d = "vel_x_mid_on_c" in columns and "vel_y_mid_on_c" in columns
+    vel_x = pl.col("vel_x_mid_on_c")
+    vel_y = pl.col("vel_y_mid_on_c")
+    vel_z = pl.col("vel_z_mid_on_c")
+    # add_packet_directions_lazypolars takes |v| of the three parts. vel_r_mid_on_c can differ in the last bit, and
+    # then a cell on the edge of a bin goes to a different bin
+    vel_r = (vel_x**2 + vel_y**2 + vel_z**2).sqrt() if is3d else pl.col("vel_r_mid_on_c")
+    # the cell at the origin has no direction. The packet code casts cos θ and cos ϕ to Float32, thus this code does too
+    conditions = [vel_r > 0.0, get_costhetabin_expr((vel_z / vel_r).cast(pl.Float32)) == costhetabin]
+    if directionrange.phirange is not None:
+        if not is3d:
+            msg = "A range of ϕ needs the columns vel_x_mid_on_c and vel_y_mid_on_c. For a 2D model, give phirange=None"
+            raise ValueError(msg)
+        vel_rcyl = (vel_x**2 + vel_y**2).sqrt()
+        # add_packet_directions_lazypolars gives cos ϕ = v_x / v_rcyl and testphi = -v_y / |v|, and cos ϕ = 1 on the
+        # z axis, as ARTIS does
+        cosphi = pl.when(vel_rcyl > 1e-12 * vel_r).then(vel_x / vel_rcyl).otherwise(1.0).cast(pl.Float32)
+        conditions.append(get_phibin_expr(cosphi, -vel_y) == phibin)
+    return pl.all_horizontal(conditions).fill_null(value=False)
 
 
 # the names before the readers took the prefix scan_ or read_. Each alias keeps the old signature, thus a script

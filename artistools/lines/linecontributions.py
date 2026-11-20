@@ -601,8 +601,7 @@ def get_cell_line_inputs(
         )
 
     if directionrange is not None:
-        # a cell on a bound stays in the selection, although the Float32 error of the velocities can move it across
-        # the bound. The cell at the centre of the grid has no direction, thus the selection leaves it out
+        # the cell at the centre of the grid has no direction, thus the selection leaves it out
         lfestimators = lfestimators.filter(get_cell_direction_selection(directionrange, estimatorcolumns))
         print_detail(
             f"The cells have a centre with {format_cell_direction_range(directionrange)}, where cos θ = v_z / |v| and"
