@@ -1152,7 +1152,12 @@ def scan_local_modeldata(
     firstinputcellid = dfmodel.select(pl.col("inputcellid").first()).collect().item()
 
     if get_elemabundances:
-        abundancedata = scan_initelemabundances(modelpath, printwarningsonly=printwarningsonly)
+        # the element mass fractions are of the model file that the reader opened, also beside a different model.txt
+        abundancedata = (
+            get_elemabundances_of_model_columns(dfmodel)
+            if modelmeta.get("formatversion", 1) == 2
+            else scan_initelemabundances(textfilepath, printwarningsonly=printwarningsonly)
+        )
         # an inner join drops a cell that abundances.txt does not give, and each mass then leaves that cell out
         missingcellcount = dfmodel.join(abundancedata, how="anti", on="inputcellid").select(pl.len()).collect().item()
         if missingcellcount:
@@ -2368,14 +2373,20 @@ def scan_initelemabundances(modelpath: Path | str = ".", printwarningsonly: bool
         with zopen(modelfilepath) as fmodel:
             formatversion = get_model_format_version(fmodel.readline(), modelfilepath)
         if formatversion == 2:
-            if firstexisting_or_none("abundances.txt", folder=modelfolder, tryzipped=True) is not None:
+            if (
+                firstexisting_or_none("abundances.txt", folder=modelfolder, tryzipped=True, search_subfolders=False)
+                is not None
+            ):
                 print_warning(
                     f"{modelfolder} holds abundances.txt, but its model.txt has format version 2, which gives the"
                     " element mass fractions. artistools does not read abundances.txt, and sn3d stops for it"
                 )
             return get_elemabundances_of_model_columns(scan_modeldata(modelpath, printwarningsonly=True)[0])
 
-    return scan_abundance_file(firstexisting("abundances.txt", folder=modelfolder, tryzipped=True), printwarningsonly)
+    # sn3d reads the abundances.txt beside model.txt, and a file in a subfolder is of a different model
+    return scan_abundance_file(
+        firstexisting("abundances.txt", folder=modelfolder, tryzipped=True, search_subfolders=False), printwarningsonly
+    )
 
 
 def scan_abundance_file(textfilepath: Path, printwarningsonly: bool = False) -> pl.LazyFrame:

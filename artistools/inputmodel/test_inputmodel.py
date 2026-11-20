@@ -4713,6 +4713,18 @@ def test_reduction_and_downscale_take_the_elements_of_the_selected_model_file(tm
         outputfile=smallfolder,
     )
     assert math.isclose(get_hydrogen_mass(smallfolder), hydrogenmass, rel_tol=1e-5)
+    # the model reader also takes the elements of the selected file
+    assert math.isclose(get_hydrogen_mass(altfolder / "model_alt.txt.zst"), hydrogenmass, rel_tol=1e-6)
+
+    # sn3d reads the abundances.txt beside model.txt, and a file in a subfolder is of a different model
+    version1folder = tmp_path / "version1"
+    (version1folder / "sub").mkdir(parents=True)
+    for sourcefile in (at.get_path("testdata") / "test-classicmode_3d").glob("model.txt*"):
+        shutil.copy(sourcefile, version1folder)
+    for sourcefile in (at.get_path("testdata") / "test-classicmode_3d").glob("abundances.txt*"):
+        shutil.copy(sourcefile, version1folder / "sub")
+    with pytest.raises(FileNotFoundError):
+        at.inputmodel.scan_initelemabundances(version1folder).collect()
 
 
 def test_reduction_and_downscale_write_the_format_version_of_the_prompt(tmp_path: Path) -> None:
