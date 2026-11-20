@@ -153,11 +153,16 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             os.dup2(nullfd, sys.stdout.fileno())
         os.close(nullfd)
         raise SystemExit(1) from None
-    except (AssertionError, EOFError, ImportError, OSError, ValueError) as exc:
+    except (AssertionError, EOFError, ImportError, OSError, ValueError, pl.exceptions.NoDataError) as exc:
         if os.environ.get("ARTISTOOLS_TRACEBACK"):
             raise
-        # a bad argument, a missing or incomplete input file, a read-only model folder, a server that stopped, or an
-        # optional package that does not import is a user problem, thus report it without a traceback.
+        # each of these is a user problem, thus report it without a traceback:
+        # - a bad argument;
+        # - a missing, empty, or incomplete input file (polars gives NoDataError for an empty file);
+        # - a read-only model folder;
+        # - a server that stopped;
+        # - an optional package that does not import.
+        # A different error of polars is usually a fault in artistools, thus it keeps its traceback.
         # import_optional names the install command. An assert that carries no message is an internal check,
         # thus say so rather than let the user read it as a mistake of their own, and name the variable that gives
         # the full traceback

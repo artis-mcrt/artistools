@@ -1132,7 +1132,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_cellvelocity(cellgroup, multiple=True)
 
-    parser.add_argument("-exc-temperature", type=float, default=6000.0, help="Default if no estimator data")
+    parser.add_argument(
+        "-exc-temperature",
+        type=float,
+        default=6000.0,
+        help="The electron and radiation temperature [K] of the populations of a model with no estimators",
+    )
 
     parser.add_argument(
         "-x", choices=["index", "config", "time", "velocity", "none"], default="index", help="Horizontal axis variable"
