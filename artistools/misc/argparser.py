@@ -126,8 +126,11 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
         A fixed column of 50 left 30 characters for the help on a terminal of 80 columns, and the help of
         plotspectra took 470 lines. A long option name goes on its own line.
         """
+        # argparse takes 24 as the default and keeps the column below the width minus 20. Thus the init gets the upper
+        # limit of 50, and the line below can then move the column to the right on a wide terminal
+        kwargs["max_help_position"] = 50
         super().__init__(*args, **kwargs)
-        self._max_help_position = min(self._max_help_position, max(24, min(50, self._width * 3 // 10)))
+        self._max_help_position = min(self._max_help_position, max(24, self._width * 3 // 10))
         self.short = False
 
     def make_short(self) -> None:

@@ -772,6 +772,27 @@ def test_short_help_gives_the_first_sentence_of_each_option(capsys: pytest.Captu
     assert at.misc.argparser.get_first_sentence("Give a time, e.g. 300. A unit is optional") == "Give a time, e.g. 300"
 
 
+def test_help_column_follows_the_width_of_the_terminal() -> None:
+    """The help column starts at 3/10 of the width, from 24 to 50 characters.
+
+    argparse takes 24 as the default of max_help_position, and a min() after its init kept the column at 24 for each
+    width.
+    """
+    import artistools.__main__
+
+    def get_help_column(columns: int) -> int:
+        with mock.patch.dict(os.environ, {"COLUMNS": str(columns)}):
+            parser = artistools.__main__.build_parser()
+            subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+            helptext: str = subactions[0].choices["plotspectra"].format_help()
+        line = next(line for line in helptext.splitlines() if line.lstrip().startswith("--normalised "))
+        return line.index("Normalise")
+
+    assert get_help_column(80) == 24
+    assert get_help_column(120) == 35
+    assert get_help_column(300) == 50
+
+
 def test_each_short_flag_has_one_meaning_in_the_help() -> None:
     """-v is --verbose and -f is --force in each command, as in ruff and uv. An older meaning stays a hidden alias.
 
