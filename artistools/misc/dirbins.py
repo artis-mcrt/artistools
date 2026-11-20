@@ -469,9 +469,14 @@ def check_dirbin(
         if (allowall and dirbin == -1) or 0 <= dirbin < nphibins:
             return
         alltext = "-1 for all the directions, or " if allowall else ""
+        exampletext = (
+            f", e.g. {dirbin % nphibins} for the ϕ range of {dirbin}"
+            if 0 <= dirbin < get_viewingdirectionbincount()
+            else ""
+        )
         exit_with_error(
             f"{optionname} {dirbin} is not the first direction bin of a phi bin",
-            f"Give {alltext}a bin from 0 to {nphibins - 1}, e.g. {dirbin % nphibins} for the ϕ range of {dirbin}",
+            f"Give {alltext}a bin from 0 to {nphibins - 1}{exampletext}",
         )
     ndirbins = get_viewingdirectionbincount()
     if (allowall and dirbin == -1) or 0 <= dirbin < ndirbins:

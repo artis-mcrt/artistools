@@ -629,7 +629,8 @@ def get_cell_line_inputs(
         if directionrange is not None:
             exit_with_error(
                 "No cell with matter has its centre in the direction range",
-                "Give a wider range of cos θ or a different --dirbin, or add --average-over-phi-angle",
+                "Give a wider range of cos θ or a different --dirbin, or add an average flag, e.g."
+                " --average-over-phi-angle",
             )
         exit_with_error(f"The estimators hold no cell for timestep {timestep}", "Give a different time")
 
