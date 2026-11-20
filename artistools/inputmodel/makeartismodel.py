@@ -20,6 +20,7 @@ from artistools.inputmodel.core import MODEL_FILE_NAMES
 from artistools.inputmodel.core import remove_parquet_cache
 from artistools.inputmodel.core import require_no_ye_file_of_earlier_model
 from artistools.inputmodel.core import save_modeldata
+from artistools.inputmodel.core import scan_abundance_file
 from artistools.inputmodel.core import scan_initelemabundances
 from artistools.inputmodel.core import scan_modeldata
 from artistools.inputmodel.core import with_cell_ids_from_zero
@@ -215,11 +216,12 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
     if modelmeta["formatversion"] == 2:
         dfelabundances = get_elemabundances_of_model_columns(dfmodel.lazy()).collect()
     elif (
-        firstexisting_or_none("abundances.txt", folder=sourcefolder, tryzipped=True, search_subfolders=False)
-        is not None
-    ):
+        abundancefile := firstexisting_or_none(
+            "abundances.txt", folder=sourcefolder, tryzipped=True, search_subfolders=False
+        )
+    ) is not None:
         # sn3d reads the abundances.txt beside model.txt, and a file in a subfolder is of a different model
-        dfelabundances = scan_initelemabundances(sourcefolder, printwarningsonly=True).collect()
+        dfelabundances = scan_abundance_file(abundancefile, printwarningsonly=True).collect()
     if formatversion == 2 and dfelabundances is None:
         # with no element mass fractions, the nuclide columns alone give each element. save_modeldata then deletes an
         # abundances.txt of the output folder after the write

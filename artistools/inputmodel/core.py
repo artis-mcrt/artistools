@@ -754,6 +754,11 @@ def get_text_source_cached(
     cached = scan_parquet_cache(
         parquetfilepath, textsource_mtime, metadatakeys=metadatakeys, printwarningsonly=printwarningsonly
     )
+    # model.txt and model.txt.zst have one cache, thus the time of the file alone does not show the file of a cache
+    sourceidentity = {"textsource_name": textfilepath.name, "textsource_size": str(textsource_stat.st_size)}
+    if cached is not None and any(cached[1].get(key) != value for key, value in sourceidentity.items()):
+        print(f"{parquetfilepath} is not a cache of {textfilepath}, because it has a different file name or size.")
+        cached = None
     if cached is not None:
         if validate_metadata is None:
             return cached
@@ -799,6 +804,7 @@ def get_text_source_cached(
             "cacheversion": str(CACHEVERSION),
             "textsource_mtime": str(textsource_mtime),
         }
+        | sourceidentity
         | extrametadata,
     )
 
@@ -2340,7 +2346,11 @@ def scan_initelemabundances(modelpath: Path | str = ".", printwarningsonly: bool
                 )
             return get_elemabundances_of_model_columns(scan_modeldata(modelpath, printwarningsonly=True)[0])
 
-    textfilepath = firstexisting("abundances.txt", folder=modelfolder, tryzipped=True)
+    return scan_abundance_file(firstexisting("abundances.txt", folder=modelfolder, tryzipped=True), printwarningsonly)
+
+
+def scan_abundance_file(textfilepath: Path, printwarningsonly: bool = False) -> pl.LazyFrame:
+    """Return the table of the elemental mass fractions of each cell of an abundances.txt file."""
 
     def read_text() -> tuple[pl.LazyFrame, dict[str, str]]:
         if not printwarningsonly:

@@ -4,6 +4,7 @@ import itertools
 import json
 import math
 import multiprocessing
+import os
 import re
 import shutil
 import tarfile
@@ -4573,6 +4574,22 @@ def test_conversion_reads_the_files_of_the_model_file_and_keeps_the_source_after
             argsraw=[], modelpath=[version2folder / "model.txt.zst"], format_version=1, outputfile=tmp_path / "selected"
         )
 
+    # a selected model file of version 1 takes the abundances.txt beside it, also beside a model.txt of version 2
+    (version2folder / "model.txt.zst").rename(version2folder / "model_v2.txt.zst")
+    altfolder = tmp_path / "alt"
+    altfolder.mkdir()
+    (altfolder / "model_alt.txt").write_text("\n".join(lines1d) + "\n", encoding="utf-8")
+    (altfolder / "abundances.txt").write_text("1 0.8 0.2\n2 0.8 0.2\n", encoding="utf-8")
+    with at.zopen(version2folder / "model_v2.txt.zst") as fmodel:
+        (altfolder / "model.txt").write_text(fmodel.read().replace(" 8.0", " 2.0"), encoding="utf-8")
+    (version2folder / "model_v2.txt.zst").rename(version2folder / "model.txt.zst")
+    altversion2folder = tmp_path / "altversion2"
+    at.inputmodel.makeartismodel.main(
+        argsraw=[], modelpath=[altfolder / "model_alt.txt"], format_version=2, outputfile=altversion2folder
+    )
+    dfalt = at.inputmodel.scan_modeldata(altversion2folder, get_elemabundances=True)[0].collect()
+    assert dfalt["X_H"].to_list() == pytest.approx([0.8, 0.8])
+
     # sn3d reads the abundances.txt beside model.txt, and a file in a subfolder is of a different model
     nearfolder = tmp_path / "near"
     (nearfolder / "sub").mkdir(parents=True)
@@ -4611,6 +4628,32 @@ def test_conversion_reads_the_files_of_the_model_file_and_keeps_the_source_after
     ):
         at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[modelfolder], format_version=2, force=True)
     assert get_folder_bytes(modelfolder) == sourcefiles
+
+
+def test_parquet_cache_of_model_txt_is_not_the_cache_of_its_compressed_copy(tmp_path: Path) -> None:
+    """model.txt and model.txt.zst have one parquet cache, and the cache of one copy does not give the other copy.
+
+    The cache took the time of the text file alone, thus a different file with the same time took the old cache.
+    """
+    lines = ["2", "1.0", "#inputcellid vel_r_max_kmps logrho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48"]
+    (tmp_path / "model.txt").write_text(
+        "\n".join([*lines, "1 1000.00 -10.00000000 0.5 0.0 0.0 0.0 0.0", "2 2000.00 -11.00000000 0.5 0.0 0.0 0.0 0.0"])
+        + "\n",
+        encoding="utf-8",
+    )
+    # a cache file that exists makes the reader write a cache also for a small text file
+    cachepath = at.inputmodel.core.get_parquet_cache_path(tmp_path / "model.txt")
+    cachepath.write_bytes(b"")
+    assert at.inputmodel.scan_modeldata(tmp_path)[0].collect()["X_Fegroup"].to_list() == pytest.approx([0.5, 0.5])
+    plainmtime = (tmp_path / "model.txt").stat().st_mtime
+    (tmp_path / "model.txt").unlink()
+    with (tmp_path / "model.txt.zst").open("wb") as fmodel:
+        at.misc.write_zstd_lines(
+            fmodel,
+            [*lines, "1 1000.00 -10.00000000 0.25 0.0 0.0 0.0 0.0", "2 2000.00 -11.00000000 0.25 0.0 0.0 0.0 0.0"],
+        )
+    os.utime(tmp_path / "model.txt.zst", (plainmtime, plainmtime))
+    assert at.inputmodel.scan_modeldata(tmp_path)[0].collect()["X_Fegroup"].to_list() == pytest.approx([0.25, 0.25])
 
 
 def test_reduction_and_downscale_write_the_format_version_of_the_prompt(tmp_path: Path) -> None:
