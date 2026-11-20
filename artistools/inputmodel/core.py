@@ -1882,12 +1882,17 @@ def get_edges_of_position_columns(dfmodel: pl.DataFrame, modelmeta: dict[str, t.
 def get_version2_headerlines(inputcellids: pl.Series, modelmeta: dict[str, t.Any]) -> list[str]:
     """Return the key lines of a version 2 model.txt, from the key coordinates to the last list of edges.
 
-    The function checks the cell edges of the metadata and the sorted cell ids against them. The cell ids of a
-    version 2 file are 0 to N - 1, where N is the count of the cells. The function sets the cell counts in the
-    metadata, and for spherical2d and spherical3d also vmax_cmps and firstinputcellid. Each edge
+    The function checks the model time and the cell edges of the metadata, and the sorted cell ids against the edges.
+    The cell ids of a version 2 file are 0 to N - 1, where N is the count of the cells. The function sets the cell
+    counts in the metadata, and for spherical2d and spherical3d also vmax_cmps and firstinputcellid. Each edge
     has the shortest text that gives its float again, e.g. 0.7. A line has a comment only for information that
     its key does not give.
     """
+    # the reader of version 2 rejects a different model time, thus the writer must not write it
+    tmodel_days = float(modelmeta["t_model_init_days"])
+    if not math.isfinite(tmodel_days) or tmodel_days <= 0.0:
+        msg = f"t_model_init_days must be one finite value above 0, not {modelmeta['t_model_init_days']!r}"
+        raise ValueError(msg)
     coordinates = modelmeta["coordinates"]
     edgekeys = MODEL_EDGE_KEYS[coordinates]
     edges = validate_model_edges(
@@ -2173,6 +2178,16 @@ def save_modeldata(
             modelmeta |= get_edges_of_position_columns(dfmodel, modelmeta)
         if coordinates == "spherical1d":
             dfmodel = with_rho_of_1d_model(dfmodel)
+        # the writer gives no line to a cell with no density. The reader then gives rho = 0 to a NaN density
+        isvaliddensity = (pl.col("rho").is_finite() & (pl.col("rho") >= 0.0)).fill_null(value=False)
+        dfinvaliddensity = dfmodel.filter(~isvaliddensity)
+        if dfinvaliddensity.height:
+            msg = (
+                f"{dfinvaliddensity.height} cells have a density that is not finite or is below 0, e.g. the cell"
+                f" {dfinvaliddensity['inputcellid'].item(0)} with rho = {dfinvaliddensity['rho'].item(0)!r}. Each"
+                " cell of format version 2 needs a finite density of 0 or more"
+            )
+            raise ValueError(msg)
         # an absent composition column holds zero in version 2. The writer gives a null and a NaN as zero
         compositioncols = [col for col in inputcols if col.startswith("X_")]
         isnonzero = dfmodel.select(

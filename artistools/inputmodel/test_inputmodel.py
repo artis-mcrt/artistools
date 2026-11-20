@@ -4829,6 +4829,39 @@ def test_ye_merge_and_version_2_writer_follow_the_rules_of_sn3d(tmp_path: Path) 
     assert dfwritten["X_Ni56"].to_list() == [0.5, 0.0]
 
 
+@pytest.mark.parametrize(
+    ("change", "match"),
+    [
+        ({"t_model_init_days": 0.0}, "t_model_init_days must be one finite value above 0"),
+        ({"t_model_init_days": float("nan")}, "t_model_init_days must be one finite value above 0"),
+        ({"rho": [1e-12, float("nan")]}, "1 cells have a density that is not finite or is below 0"),
+        ({"rho": [1e-12, -1e-12]}, "1 cells have a density that is not finite or is below 0"),
+        ({"rho": [1e-12, float("inf")]}, "1 cells have a density that is not finite or is below 0"),
+    ],
+)
+def test_version_2_writer_stops_for_a_value_that_the_reader_rejects(
+    change: dict[str, t.Any], match: str, tmp_path: Path
+) -> None:
+    """The writer of version 2 wrote a model time that its reader rejects, and it lost a NaN or negative density.
+
+    A cell with such a density got no line, thus the reader gave it rho = 0. The writer now stops before it writes.
+    """
+    modelmeta = {
+        "coordinates": "spherical2d",
+        "t_model_init_days": 1.0,
+        "vel_r_edges_kmps": [0.0, 1000.0, 2000.0],
+        "theta_edges_radians": [0.0, math.pi],
+    }
+    dfmodel = pl.DataFrame({"inputcellid": [0, 1], "rho": [1e-12, 1e-12]})
+    if "rho" in change:
+        dfmodel = dfmodel.with_columns(rho=pl.Series(change["rho"]))
+    else:
+        modelmeta |= change
+    with pytest.raises(ValueError, match=match):
+        at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta=modelmeta)
+    assert not list(tmp_path.glob("model.txt*"))
+
+
 def test_reduction_and_downscale_take_the_elements_of_the_selected_model_file(tmp_path: Path) -> None:
     """A reduction and a downscale of a selected model file take its elements, also beside a different model.txt.
 
