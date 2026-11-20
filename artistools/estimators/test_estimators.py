@@ -2131,6 +2131,17 @@ def test_get_elemcolor_is_stable_and_unbounded() -> None:
     unreserved = [get_elemcolor(atomic_number=Z) for Z in range(1, 93) if Z not in reservedZ]
     assert not set(elementcolors.values()).intersection(unreserved)
 
+    # a group such as Fegroup or lanthanides has the atomic number -1, and get_elsymbol refuses -1
+    assert get_elemcolor(atomic_number=at.get_atomic_number("Fegroup")) not in elementcolors.values()
+
+
+def test_unknown_element_of_averageionisation_names_the_element() -> None:
+    """The error named the atomic number -1, which the user did not give, in place of the name of the element."""
+    from artistools.estimators.plotestimators import get_average_charge_expr
+
+    with pytest.raises(ValueError, match="No element data found for Xx"):
+        get_average_charge_expr("Xx", ["nnelement_Fe", "nnion_Fe_II"])
+
 
 def test_estimparse_index_columns_are_integers() -> None:
     """The timestep and modelgridindex columns must be parsed as integers, not floats.

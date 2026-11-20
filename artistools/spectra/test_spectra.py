@@ -235,9 +235,10 @@ def test_spectra_get_spectrum() -> None:
 
 
 def test_scan_spectra_refuses_a_bad_timestep_range() -> None:
-    """A negative timestep selected no column, and the sum of no columns gave an infinite flux on every row."""
-    with pytest.raises(ValueError, match="Timestep -1 is not in this model"):
-        at.spectra.scan_spectra(modelpath, -1, -1, directionbins=[-1])
+    """The timestep -1 gave an infinite flux on every row, and the timestep -2 gave the flux of a late timestep."""
+    for timestep in (-1, -2):
+        with pytest.raises(ValueError, match=f"Timestep {timestep} is not in this model"):
+            at.spectra.scan_spectra(modelpath, timestep, timestep, directionbins=[-1])
     with pytest.raises(ValueError, match="after the last timestep"):
         at.spectra.scan_spectra(modelpath, 60, 55, directionbins=[-1])
 

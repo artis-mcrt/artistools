@@ -46,7 +46,6 @@ from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_auto_velocity_unit
 from artistools.misc import get_average_group_dirbins
-from artistools.misc import get_bad_timestep_message
 from artistools.misc import get_bin_index_expr
 from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_dirbins
@@ -817,9 +816,14 @@ def scan_spectra(
     if timestepmax is None or timestepmax < 0:
         timestepmax = timestepmin
 
-    # a negative timestep selected no column, and the sum of no columns then gave an infinite flux
+    # the timestep -1 selected the nu column and divided by the empty sum of the widths, thus the flux was infinite.
+    # A timestep below -1 selected the column of a late timestep, thus the flux was finite and wrong
     if timestepmin < 0:
-        raise ValueError(get_bad_timestep_message(modelpath, timestepmin))
+        msg = (
+            f"Timestep {timestepmin} is not in this model. The timesteps start at 0, and the timestep -1 of"
+            " get_time_range shows a time range outside the model"
+        )
+        raise ValueError(msg)
     if timestepmin > timestepmax:
         msg = f"The first timestep {timestepmin} is after the last timestep {timestepmax}"
         raise ValueError(msg)

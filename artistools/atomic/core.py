@@ -1007,12 +1007,19 @@ def add_ion_str_column(lz: pl.LazyFrame) -> pl.LazyFrame:
 
 
 def get_elsymbol(atomic_number: int | np.int64) -> str:
-    """Return the element symbol of an atomic number, or raise a ValueError for a number that no element has."""
+    """Return the element symbol of an atomic number.
+
+    A negative number gives a ValueError, and a number above the table gives an IndexError. pynonthermal catches that
+    IndexError for an element above Z = 118.
+    """
     elsymbols = get_elsymbolslist()
     # a negative index of a tuple reads from the end, thus the -1 from get_atomic_number("Xx") gave "Uuo"
-    if not 0 <= atomic_number < len(elsymbols):
+    if atomic_number < 0:
         msg = f"No element has the atomic number {atomic_number}"
         raise ValueError(msg)
+    if atomic_number >= len(elsymbols):
+        msg = f"No element has the atomic number {atomic_number}. The table ends at {len(elsymbols) - 1}"
+        raise IndexError(msg)
     return elsymbols[atomic_number]
 
 
@@ -1073,9 +1080,17 @@ def get_ionstring(
         # nuclides like Sr89 get passed in as atomic_number=38, ion_stage='Sr89'
         return ion_stage
 
+    # a str is a permitted type, e.g. a nuclide such as Sr89, thus another str is a bad value. The command line then
+    # reports the ValueError with no traceback
     if isinstance(ion_stage, str):
         msg = f"The ion stage {ion_stage!r} is not an integer, 'ALL', or a nuclide of the element"
-        raise TypeError(msg)
+        raise ValueError(msg)  # ruff:ignore[type-check-without-type-error]
+
+    # a negative index reads from the end of the list, thus the stage -1 gave "Fe CXIX". pynonthermal catches an
+    # IndexError for a stage above the list
+    if not 1 <= ion_stage < len(roman_numerals):
+        msg = f"No ion has the ion stage {ion_stage}"
+        raise IndexError(msg)
 
     if style == "spectral":
         return f"{get_elsymbol(atomic_number)}{sep}{roman_numerals[ion_stage]}"
