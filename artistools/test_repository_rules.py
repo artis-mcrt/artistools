@@ -140,8 +140,15 @@ def test_help_shows_the_top_level_names_and_the_readers() -> None:
     __all__, thus help(at) listed no function. Five packages had __all__ = ["plot"], thus their help listed only plot.
     """
     import pydoc
+    import types
 
-    assert set(at.__all__) == TOPLEVEL_API
+    # a star import takes __all__, thus __all__ also keeps the deprecated aliases and the modules that it gave before
+    namespace: dict[str, t.Any] = {}
+    exec("from artistools import *", namespace)  # ruff:ignore[exec-builtin]
+    deprecatedaliases = {"get_deposition", "get_modeldata"}
+    assert TOPLEVEL_API | deprecatedaliases | {"inputmodel", "misc", "paths", "spectra"} <= namespace.keys()
+    othernames = set(at.__all__) - TOPLEVEL_API - deprecatedaliases
+    assert not [name for name in othernames if not isinstance(getattr(at, name), types.ModuleType)]
     packagereaders = {
         at.estimators: ["read_estimators", "scan_estimators"],
         at.lightcurve: ["scan_lightcurve", "scan_lightcurve_from_packets"],
