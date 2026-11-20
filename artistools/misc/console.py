@@ -117,8 +117,8 @@ HELP_NOTE_PREFIX: t.Final = "help: "
 def add_help_note[E: BaseException](exc: E, helptext: str) -> E:
     """Add the help text to an exception as a note, and return the exception.
 
-    A library function raises such an exception in place of exit_with_error, because a notebook cannot catch
-    SystemExit. The command line prints the note on the help line of the error, as exit_with_error does.
+    A library function raises such an exception in place of exit_with_error. A script that catches Exception does not
+    catch SystemExit. The command line prints the note on the help line of the error, as exit_with_error does.
     """
     exc.add_note(f"{HELP_NOTE_PREFIX}{helptext}")
     return exc

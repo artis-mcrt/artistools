@@ -240,7 +240,7 @@ def velocity_kmps_arg(text: str) -> float:
 
 
 def velocity_on_c_arg(text: str) -> float:
-    """Return the velocity as a fraction of c of a command line value, e.g. 0.1, 0.1c, or 5000km/s.
+    """Return the fraction of c that a command line value gives, e.g. 0.1, 0.1c, or 5000km/s.
 
     A bare number is a fraction of c, because the earlier version of the option took only that form.
     """
@@ -248,7 +248,7 @@ def velocity_on_c_arg(text: str) -> float:
     if stripped.lower().endswith("km/s"):
         velocity_kmps, _ = parse_velocity_argument(stripped)
         return velocity_kmps * km_to_cm / C_cm_per_s
-    # the float of the text itself, because a conversion to km/s and back can change the last bit
+    # use the float of the text, because a conversion to km/s and back can change the last bit
     numbertext = stripped[:-1] if stripped.lower().endswith("c") else stripped
     try:
         number = float(numbertext)

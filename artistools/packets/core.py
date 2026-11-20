@@ -1076,7 +1076,8 @@ def scan_packets(
     Divide a sum of the packet energies by the number of ranks, e.g. for a luminosity. The main columns are:
 
     - type_id and escape_type_id, the type of the packet and its escape type (see type_ids);
-    - posx, posy, and posz (the position at the escape, cm), and dirx, diry, and dirz (the direction);
+    - posx, posy, and posz (cm), the position, which is the escape position for an escaped packet;
+    - dirx, diry, and dirz, the direction;
     - e_rf and e_cmf (erg), the energy in the rest frame and in the comoving frame;
     - nu_rf and nu_cmf (Hz), the frequency in the rest frame and in the comoving frame;
     - tdecay, escape_time, and em_time (s), the time of the decay, of the escape, and of the last emission;

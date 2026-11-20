@@ -2498,7 +2498,7 @@ def test_plotinitialcomposition_floor_value_keeps_the_hidden_empty_cells(tmp_pat
 def test_plotinitialabundances_takes_a_velocity_with_a_unit(tmp_path: Path) -> None:
     """-vmin and -vmax take a value with a unit, as in plotopacity, and a bare number is still a fraction of c.
 
-    plotopacity took "0.1c or 5000km/s", and plotinitialabundances took only a bare float in c. A bare number must
+    plotopacity takes "0.1c or 5000km/s", and plotinitialabundances took only a bare float in c. A bare number must
     give the same float as before, because a cell exactly at a limit can otherwise change its side.
     """
     from artistools.constants import C_cm_per_s

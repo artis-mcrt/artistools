@@ -5095,8 +5095,8 @@ def test_cell_selection_of_a_reader_raises_an_error_that_a_script_can_catch(
 ) -> None:
     """get_cells_along_axis raised SystemExit, which a notebook cannot catch.
 
-    The reader now raises ValueError with the help text as a note, and the command line prints that note on the help
-    line, as exit_with_error did.
+    The reader now raises ValueError with the help text as a note. The command line prints that note on the help line,
+    as exit_with_error did.
     """
     import argparse
 

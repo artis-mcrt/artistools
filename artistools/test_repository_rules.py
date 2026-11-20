@@ -137,7 +137,7 @@ def test_help_shows_the_top_level_names_and_the_readers() -> None:
     """help(at) and help(at.spectra) list the readers.
 
     pydoc lists only the names of __all__ for a function that a different module defines. The top level had no
-    __all__, thus help(at) listed no function. Each package had __all__ = ["plot"], thus help listed only plot.
+    __all__, thus help(at) listed no function. Five packages had __all__ = ["plot"], thus their help listed only plot.
     """
     import pydoc
 
