@@ -175,6 +175,13 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
     dfmodel = lzmodel.collect()
     sourcefolder = get_model_input_folder(modelpath)
     hasotherfolder = outputfolder.resolve() != sourcefolder.resolve()
+    modelcopies = [path for path in get_file_copies(sourcefolder / "model.txt") if path.is_file()]
+    if len(modelcopies) > 1:
+        # a reader of each copy can take the parquet cache of the other copy, and abundances.txt is of one of them
+        exit_with_error(
+            f"{sourcefolder} holds {' and '.join(path.name for path in modelcopies)}",
+            "sn3d reads model.txt, and the other copy can hold different values. Delete one copy",
+        )
     # sn3d also reads a compressed copy of Ye.txt
     yefilepath = firstexisting_or_none("Ye.txt", folder=sourcefolder, tryzipped=True, search_subfolders=False)
     if yefilepath is not None and modelmeta["formatversion"] == 2:
@@ -207,7 +214,11 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
     dfelabundances = None
     if modelmeta["formatversion"] == 2:
         dfelabundances = get_elemabundances_of_model_columns(dfmodel.lazy()).collect()
-    elif firstexisting_or_none("abundances.txt", folder=sourcefolder, tryzipped=True) is not None:
+    elif (
+        firstexisting_or_none("abundances.txt", folder=sourcefolder, tryzipped=True, search_subfolders=False)
+        is not None
+    ):
+        # sn3d reads the abundances.txt beside model.txt, and a file in a subfolder is of a different model
         dfelabundances = scan_initelemabundances(sourcefolder, printwarningsonly=True).collect()
     if formatversion == 2 and dfelabundances is None:
         # with no element mass fractions, the nuclide columns alone give each element. save_modeldata then deletes an

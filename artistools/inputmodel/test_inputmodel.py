@@ -4517,6 +4517,7 @@ def test_conversion_reads_the_folder_of_a_file_path_and_changes_no_file_before_i
 
     # The nuclide column of nickel holds more than the element, within the tolerance of sn3d. Thus the otherstable
     # value of nickel is 0, and the elements of version 2 sum to 0.11 + 0.899, which is more than 1.001
+    (sourcefolder / "model.txt.zst").unlink()
     (sourcefolder / "model.txt").write_text(
         "\n".join([*lines1d[:3], *(line.replace(" 0.5 0.0 ", " 0.5 0.899 ", 1) for line in lines1d[3:])]) + "\n",
         encoding="utf-8",
@@ -4562,18 +4563,30 @@ def test_conversion_reads_the_files_of_the_model_file_and_keeps_the_source_after
     assert dfversion2["X_H"].to_list() == pytest.approx([0.8, 0.8])
     assert dfversion2["Ye"].to_list() == pytest.approx([0.49, 0.49])
 
-    # the elements come from the selected copy of model.txt, and not from the plain copy that a folder path selects
+    # Two copies of model.txt can hold different values, and a reader of one copy can take the parquet cache of the
+    # other copy. Thus a conversion stops for a folder with two copies, and sn3d reads the plain copy
     with at.zopen(version2folder / "model.txt.zst") as fmodel:
         version2text = fmodel.read()
     (version2folder / "model.txt").write_text(version2text.replace(" 8.0", " 2.0"), encoding="utf-8")
-    assert at.inputmodel.scan_modeldata(version2folder / "model.txt", get_elemabundances=True)[0].collect()[
-        "X_H"
-    ].to_list() != pytest.approx([0.8, 0.8])
-    selectedfolder = tmp_path / "selected"
+    with pytest.raises(SystemExit):
+        at.inputmodel.makeartismodel.main(
+            argsraw=[], modelpath=[version2folder / "model.txt.zst"], format_version=1, outputfile=tmp_path / "selected"
+        )
+
+    # sn3d reads the abundances.txt beside model.txt, and a file in a subfolder is of a different model
+    nearfolder = tmp_path / "near"
+    (nearfolder / "sub").mkdir(parents=True)
+    (nearfolder / "model.txt").write_text("\n".join(lines1d) + "\n", encoding="utf-8")
+    (nearfolder / "sub" / "abundances.txt").write_text("1 0.8 0.2\n2 0.8 0.2\n", encoding="utf-8")
+    nearversion2folder = tmp_path / "nearversion2"
     at.inputmodel.makeartismodel.main(
-        argsraw=[], modelpath=[version2folder / "model.txt.zst"], format_version=1, outputfile=selectedfolder
+        argsraw=[], modelpath=[nearfolder], format_version=2, outputfile=nearversion2folder
     )
-    assert at.inputmodel.scan_initelemabundances(selectedfolder).collect()["X_H"].to_list() == pytest.approx([0.8, 0.8])
+    assert not [
+        col
+        for col in at.inputmodel.scan_modeldata(nearversion2folder)[0].collect_schema().names()
+        if col.endswith("_otherstable")
+    ]
 
     def get_folder_bytes(folder: Path) -> dict[str, bytes]:
         return {path.name: path.read_bytes() for path in sorted(folder.iterdir()) if path.is_file()}
