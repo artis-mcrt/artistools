@@ -4629,6 +4629,35 @@ def test_conversion_reads_the_files_of_the_model_file_and_keeps_the_source_after
     assert get_folder_bytes(modelfolder) == sourcefiles
 
 
+def test_ye_merge_and_version_2_writer_follow_the_rules_of_sn3d(tmp_path: Path) -> None:
+    """The values of Ye.txt and a NaN mass fraction of a version 2 file follow the rules of sn3d.
+
+    The merge of Ye.txt ignored the count of its first line, thus a file that lost its last lines gave the old value
+    of the column to the cells of those lines. sn3d stops for such a file, and it reads no value after the count.
+    The writer of version 2 wrote a NaN mass fraction as NaN, which sn3d stops for.
+    """
+    dfmodel = pl.DataFrame({"inputcellid": [1, 2], "rho": [1e-12, 1e-12], "Ye": [0.3, 0.3]})
+    yefile = tmp_path / "Ye.txt"
+    yefile.write_text("3\n1 0.4\n2 0.4\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="ends after 2 of its 3 cell lines"):
+        at.inputmodel.core.with_ye_of_yefile(dfmodel, yefile)
+    yefile.write_text("1\n1 0.4\n2 0.45\n", encoding="utf-8")
+    assert at.inputmodel.core.with_ye_of_yefile(dfmodel, yefile)["Ye"].to_list() == pytest.approx([0.4, 0.3])
+
+    at.inputmodel.save_modeldata(
+        pl.DataFrame({"inputcellid": [0, 1], "rho": [1e-12, 1e-12], "X_Ni56": [0.5, float("nan")]}),
+        outpath=tmp_path,
+        modelmeta={
+            "coordinates": "spherical2d",
+            "t_model_init_days": 1.0,
+            "vel_r_edges_kmps": [0.0, 1000.0, 2000.0],
+            "theta_edges_radians": [0.0, math.pi],
+        },
+    )
+    dfwritten = at.inputmodel.scan_modeldata(tmp_path)[0].collect()
+    assert dfwritten["X_Ni56"].to_list() == [0.5, 0.0]
+
+
 def test_reduction_and_downscale_take_the_elements_of_the_selected_model_file(tmp_path: Path) -> None:
     """A reduction and a downscale of a selected model file take its elements, also beside a different model.txt.
 

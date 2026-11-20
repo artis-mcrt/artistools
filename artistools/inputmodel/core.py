@@ -852,16 +852,42 @@ def with_ye_of_yefile(dfmodel: pl.DataFrame, yefilepath: Path) -> pl.DataFrame:
     sn3d reads Ye.txt after model.txt, thus a value of Ye.txt replaces the value of the column Ye. Ye.txt can hold
     only some of the cells, and each other cell keeps the value of the column. A cell with no value from the two
     sources gets 0. sn3d with TANAKA2020_ELECTRONFRAC stops for such a cell, as it does in format version 1.
+
+    The first value of Ye.txt is the count of the cell lines. sn3d reads that count of pairs of a cell id and an
+    electron fraction, and it stops for a file with fewer pairs. Thus the function also stops for such a file, and it
+    gives a warning for a value after the last pair, which sn3d does not read.
     """
     with zopen(yefilepath) as yefile:
-        yelines = [line.split() for line in yefile.read().splitlines()[1:] if line.strip()]
-    if any(len(tokens) != 2 for tokens in yelines):
-        msg = f"{yefilepath}: each line after the first line must hold a cell id and an electron fraction"
+        tokens = yefile.read().split()
+    try:
+        linecount = int(tokens[0]) if tokens else -1
+    except ValueError:
+        linecount = -1
+    if linecount < 0:
+        msg = f"{yefilepath} must start with the count of its cell lines, but the count is unreadable or negative"
         raise ValueError(msg)
-    dfye = pl.DataFrame(
-        {"inputcellid": [int(cellid) for cellid, _ in yelines], "Ye_file": [float(ye) for _, ye in yelines]},
-        schema={"inputcellid": pl.Int32, "Ye_file": pl.Float32},
-    ).unique(subset="inputcellid", keep="last")
+    pairtokens = tokens[1 : 1 + 2 * linecount]
+    if len(pairtokens) < 2 * linecount:
+        msg = (
+            f"{yefilepath} ends after {len(pairtokens) // 2} of its {linecount} cell lines. sn3d stops for such a file"
+        )
+        raise ValueError(msg)
+    if len(tokens) > 1 + 2 * linecount:
+        print_warning(
+            f"{yefilepath} has {len(tokens) - 1 - 2 * linecount} values after its {linecount} cell lines, which sn3d"
+            " does not read. artistools also does not read them"
+        )
+    try:
+        dfye = pl.DataFrame(
+            {
+                "inputcellid": [int(value) for value in pairtokens[0::2]],
+                "Ye_file": [float(v) for v in pairtokens[1::2]],
+            },
+            schema={"inputcellid": pl.Int32, "Ye_file": pl.Float32},
+        ).unique(subset="inputcellid", keep="last")
+    except ValueError:
+        msg = f"{yefilepath}: each cell line must hold a cell id and an electron fraction"
+        raise ValueError(msg) from None
     unknownids = dfye.join(dfmodel.select("inputcellid"), on="inputcellid", how="anti")
     if not unknownids.is_empty():
         msg = (
@@ -2253,6 +2279,10 @@ def save_modeldata(
                 for col in dfcells.columns
                 if not col.startswith("pos") and col != "inputcellid" and dfcells.schema[col].is_float()
             )
+            if formatversion == 2:
+                # a NaN mass fraction, e.g. from an interpolation, becomes zero, as in the 1D writer of version 1.
+                # sn3d stops for a NaN
+                dfcells = dfcells.with_columns(cs.starts_with("X_").fill_nan(0.0))
             write_zstd_lines(fmodel, headertextlines)
             write_artis_csv(dfcells, fmodel, significantfigures=9 if formatversion == 2 else 8)
 
