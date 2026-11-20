@@ -17,7 +17,7 @@ docs/data.md gives the columns and the units of each reader.
 
 # ruff:file-ignore[non-empty-init-module]
 # pydoc lists only the names of __all__, because the functions of the top level come from the packages
-__all__ = [
+__all__ = (
     "add_derived_cols_to_modeldata",
     "decode_roman_numeral",
     "firstexisting",
@@ -37,7 +37,7 @@ __all__ = [
     "scan_estimators",
     "scan_modeldata",
     "zopen",
-]
+)
 
 import os
 import sys

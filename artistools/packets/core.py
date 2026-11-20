@@ -1084,7 +1084,8 @@ def scan_packets(
     - t_arrive_d (days), the arrival time at an observer at a large distance;
     - costheta, phi, and dirbin, the direction and its direction bin.
 
-    maxpacketfiles reads only the packets files of the first ranks. packet_type keeps one type, e.g. "TYPE_ESCAPE".
+    maxpacketfiles reads only the whole batches of 100 ranks below it, e.g. 150 reads 100 files. A value below the
+    number of ranks of the first batch raises ValueError. packet_type keeps one type, e.g. "TYPE_ESCAPE".
     escape_type keeps the escaped packets of one type, "TYPE_RPKT" or "TYPE_GAMMA".
 
     Before it returns, the reader writes a parquet cache for each batch of 100 packets files that has no current cache.

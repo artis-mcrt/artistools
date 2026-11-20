@@ -1,6 +1,6 @@
 """Read the log files of an ARTIS model, and summarise the messages, the ranks, and the time of each stage."""
 
-__all__ = ["plot"]
+__all__ = ("plot",)
 
 from artistools.logs.core import get_folder_log_ranks as get_folder_log_ranks
 from artistools.logs.core import get_log_summary as get_log_summary

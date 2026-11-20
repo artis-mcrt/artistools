@@ -243,7 +243,8 @@ def scan_lightcurve_from_packets(
 
     - escape_type is "TYPE_RPKT" for the ultraviolet, optical, and infrared (UVOIR) light curve, or "TYPE_GAMMA" for
       the gamma-ray light curve;
-    - maxpacketfiles reads only the packets files of the first ranks;
+    - maxpacketfiles reads only the whole batches of 100 ranks below it, e.g. 150 reads 100 files. A value below the
+      number of ranks of the first batch raises ValueError;
     - directionbins selects the bins. None gives the bin -1, which is the average over all directions;
     - average_over_phi gives each bin the mean of the bins with the same theta. average_over_theta gives each bin the
       mean of the bins with the same phi;

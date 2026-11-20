@@ -1,6 +1,6 @@
 """Artistools - non-LTE population functions."""
 
-__all__ = ["plot", "read_nltepops"]
+__all__ = ("plot", "read_nltepops")
 
 # the core module comes first. A module of a different package imports these names from this package, and
 # the plot modules below import such modules, thus a name must exist before a cycle comes back here

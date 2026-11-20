@@ -572,7 +572,8 @@ def scan_spectra_from_packets(
       - "escape" gives the comoving-frame escape time, with the comoving-frame energy e_cmf;
     - lambda_bin_edges gives the wavelength bins (Å). None gives the bins of spec.out or gamma_spec.out. Without that
       file, None gives 1000 default bins;
-    - maxpacketfiles reads only the packets files of the first ranks;
+    - maxpacketfiles reads only the whole batches of 100 ranks below it, e.g. 150 reads 100 files. A value below the
+      number of ranks of the first batch raises ValueError;
     - fluxfilterfunc changes f_lambda, but it does not change relnoise;
     - nprocs_read_dfpackets gives the number of ranks and the packets that the caller read, thus the call reads no
       packets file;
