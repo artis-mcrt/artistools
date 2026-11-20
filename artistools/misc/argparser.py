@@ -108,7 +108,7 @@ ARGUMENTGROUPORDER = (
 )
 
 
-# the column of the help text in the short help of -h. 24 is the default of argparse
+# the largest column of the help text in the short help of -h, which a wide terminal reaches
 SHORT_HELP_POSITION = 32
 
 
@@ -121,19 +121,26 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
     """Custom argparse formatter to show default values in help text, sorted with dashes last."""
 
     def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
-        """Widen the help column so long option names stay on one line."""
+        """Start the help column at 3/10 of the width, between 24 and 50 characters.
+
+        A fixed column of 50 left 30 characters for the help on a terminal of 80 columns, and the help of
+        plotspectra took 470 lines. A long option name goes on its own line.
+        """
+        # argparse takes 24 as the default and keeps the column below the width minus 20. Thus the init gets the upper
+        # limit of 50, and the line below can then move the column to the right on a wide terminal
         kwargs["max_help_position"] = 50
         super().__init__(*args, **kwargs)
+        self._max_help_position = min(self._max_help_position, max(24, self._width * 3 // 10))
         self.short = False
 
     def make_short(self) -> None:
         """Give the short help of -h: the first sentence of the help of each option, as uv does.
 
-        The column of the help starts nearer to the left, thus a sentence takes fewer lines. A long flag then goes on
-        its own line. argparse limits the column by the width of the terminal, as __init__ does.
+        The column of the help is the column of the full help, but at most SHORT_HELP_POSITION. Below 112 columns of
+        the terminal, the two columns are the same. A long flag then goes on its own line.
         """
         self.short = True
-        self._max_help_position = min(SHORT_HELP_POSITION, max(self._width - 20, 2 * self._indent_increment))
+        self._max_help_position = min(SHORT_HELP_POSITION, self._max_help_position)
 
     @t.override
     def _get_help_string(self, action: argparse.Action) -> str | None:

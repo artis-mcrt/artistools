@@ -397,7 +397,11 @@ def test_cli_no_command_prints_help(capsys: pytest.CaptureFixture[str]) -> None:
     import artistools.__main__
 
     artistools.__main__.main(argsraw=[])
-    assert "plotspectra" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "plotspectra" in output
+    # the short help lists the commands with no examples, and it names --help for the full help
+    assert "for the full help and the examples" in output
+    assert "Examples" not in output
 
 
 def test_command_groups_name_every_visible_command() -> None:
@@ -766,17 +770,41 @@ def test_short_help_gives_the_first_sentence_of_each_option(capsys: pytest.Captu
     import artistools.__main__
 
     helptexts = {}
-    for flag in ("-h", "--help"):
-        with pytest.raises(SystemExit) as exitinfo:
-            artistools.__main__.main(argsraw=["plotspectra", flag])
-        assert exitinfo.value.code == 0
-        helptexts[flag] = capsys.readouterr().out
-    assert len(helptexts["-h"].splitlines()) < len(helptexts["--help"].splitlines()) / 2
+    # the column depends on the width of the terminal, thus a COLUMNS of 120 in the environment failed the ratio below
+    with mock.patch.dict(os.environ, {"COLUMNS": "80"}):
+        for flag in ("-h", "--help"):
+            with pytest.raises(SystemExit) as exitinfo:
+                artistools.__main__.main(argsraw=["plotspectra", flag])
+            assert exitinfo.value.code == 0
+            helptexts[flag] = capsys.readouterr().out
+    # at 80 columns the full help starts its column at 24 characters and -h at 24 too, thus -h has 2/3 of the lines
+    assert len(helptexts["-h"].splitlines()) < len(helptexts["--help"].splitlines()) * 2 / 3
     assert "plotspectra --help` for the full help and the examples" in helptexts["-h"]
     assert "Examples" not in helptexts["-h"]
     assert "Examples" in helptexts["--help"]
     # the first sentence of a help text stays, and a later sentence goes, also after an abbreviation such as e.g.
     assert at.misc.argparser.get_first_sentence("Give a time, e.g. 300. A unit is optional") == "Give a time, e.g. 300"
+
+
+def test_help_column_follows_the_width_of_the_terminal() -> None:
+    """The help column starts at 3/10 of the width, from 24 to 50 characters.
+
+    argparse takes 24 as the default of max_help_position, and a min() after its init kept the column at 24 for each
+    width.
+    """
+    import artistools.__main__
+
+    def get_help_column(columns: int) -> int:
+        with mock.patch.dict(os.environ, {"COLUMNS": str(columns)}):
+            parser = artistools.__main__.build_parser()
+            subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+            helptext: str = subactions[0].choices["plotspectra"].format_help()
+        line = next(line for line in helptext.splitlines() if line.lstrip().startswith("--normalised "))
+        return line.index("Normalise")
+
+    assert get_help_column(80) == 24
+    assert get_help_column(120) == 35
+    assert get_help_column(300) == 50
 
 
 def test_each_short_flag_has_one_meaning_in_the_help() -> None:
@@ -1454,24 +1482,25 @@ def test_a_command_that_asks_before_it_overwrites_has_force() -> None:
     assert not askswithoutforce
 
 
-def test_the_command_listing_gives_one_line_to_each_command() -> None:
-    """The listing of the commands must take one line for each of them.
+def test_the_command_listing_stays_short() -> None:
+    """The listing of the commands must take fewer than 1.75 lines for each command at 80 columns.
 
     The name of a command with every alias took 36 columns and left 38 for the text, thus almost every
-    description wrapped over two or three lines and the listing ran to 88 lines.
+    description wrapped over two or three lines and the listing ran to 88 lines for 45 commands. A long
+    name or a long description still takes a second line, thus one line for each command is not the limit.
     """
     import artistools.__main__
 
-    helptext = artistools.__main__.build_parser().format_help()
+    with mock.patch.dict(os.environ, {"COLUMNS": "80"}):
+        helptext = artistools.__main__.build_parser().format_help()
     listing = helptext.partition("Plot commands:")[2].partition("\nOptions:")[0]
     assert "Positional arguments:" not in helptext, "the headings of the groups replace the heading of argparse"
     assert "\nOther commands:\n  catalog " in listing
 
-    # a line of the listing holds a command, or it is the heading of a group, or it is empty
-    for line in listing.splitlines():
-        if not line.strip() or not line.startswith("  "):
-            continue
-        assert line.split()[0][0].isalpha(), f"a description wrapped onto its own line: {line!r}"
+    # a command line has an indent of two spaces, and a wrapped description has the indent of the description column
+    commandlines = [line for line in listing.splitlines() if line.startswith("  ") and line[2] != " "]
+    wrappedlines = [line for line in listing.splitlines() if line.startswith("   ")]
+    assert len(commandlines) + len(wrappedlines) < 1.75 * len(commandlines), wrappedlines
 
 
 def test_the_help_of_a_long_command_holds_no_wall_of_flags() -> None:

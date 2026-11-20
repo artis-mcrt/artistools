@@ -92,6 +92,7 @@ from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timeminmax
 from artistools.misc import addarg_timestep
 from artistools.misc import addarg_verbose
+from artistools.misc import arggroup
 from artistools.misc import artis_subfolders
 from artistools.misc import dashes_arg
 from artistools.misc import exit_with_error
@@ -2842,7 +2843,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_timeminmax(parser)
 
-    parser.add_argument(
+    arggroup(parser, "Output").add_argument(
         "--multiplot",
         action="store_true",
         help=(
@@ -2851,16 +2852,19 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         ),
     )
 
-    parser.add_argument("-x", default=None, help="Horizontal axis variable, e.g. velocity, timestep, or time")
+    arggroup(parser, "Horizontal axis").add_argument(
+        "-x", default=None, help="Horizontal axis variable, e.g. velocity, timestep, or time"
+    )
 
     addarg_axislimits(
         parser,
         include_y=False,
         xminhelp="Plot range: minimum x value in the units of -x, e.g. km/s for velocity, c for beta, days for time",
         xmaxhelp="Plot range: maximum x value in the units of -x, e.g. km/s for velocity, c for beta, days for time",
+        grouptitle="Horizontal axis",
     )
 
-    parser.add_argument(
+    arggroup(parser, "Horizontal axis").add_argument(
         "-xbins",
         type=int,
         default=None,
@@ -2870,7 +2874,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         ),
     )
 
-    parser.add_argument(
+    arggroup(parser, "Horizontal axis").add_argument(
         "--logscalex",
         action="store_true",
         help=(
@@ -2879,9 +2883,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         ),
     )
 
-    parser.add_argument("--hidexlabel", action="store_true", help="Hide the bottom horizontal axis label")
+    arggroup(parser, "Appearance").add_argument(
+        "--hidexlabel", action="store_true", help="Hide the bottom horizontal axis label"
+    )
 
-    parser.add_argument(
+    arggroup(parser, "Appearance").add_argument(
         "-linewidthscale",
         type=positive_float_arg,
         default=1.0,
@@ -2889,9 +2895,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         " linewidth of a series style",
     )
 
-    parser.add_argument("--markers", action="store_true", help="Plot markers instead of shaded area")
+    arggroup(parser, "Appearance").add_argument(
+        "--markers", action="store_true", help="Plot markers instead of shaded area"
+    )
 
-    parser.add_argument(
+    arggroup(parser, "Appearance").add_argument(
         "--histogram",
         action="store_true",
         help=(
@@ -2902,11 +2910,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_filter(parser)
 
-    parser.add_argument("-format", default="pdf", choices=["pdf", "png"], help="Set format of output plot files")
+    arggroup(parser, "Output").add_argument(
+        "-format", default="pdf", choices=["pdf", "png"], help="Set format of output plot files"
+    )
     # the older short form. The help gives -f one meaning, --force, as rm -f does
     parser.add_argument("-f", dest="format", choices=["pdf", "png"], help=argparse.SUPPRESS)
 
-    parser.add_argument(
+    arggroup(parser, "Output").add_argument(
         "--makegif", action="store_true", help="Make a gif of the time evolution, one frame per timestep"
     )
 
@@ -2988,7 +2998,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_output(parser, kind="file", default=Path(), helptext="Filename for PDF file")
     addarg_data_output(parser)
 
-    parser.add_argument(
+    arggroup(parser, "Appearance").add_argument(
         "--colorbyion",
         action="store_true",
         help=(
@@ -3006,7 +3016,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         ),
     )
 
-    parser.add_argument(
+    arggroup(parser, "Cell selection").add_argument(
         "-readonlymgi",
         default=False,
         choices=["alongaxis", "cone"],
@@ -3043,7 +3053,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         ),
     )
 
-    parser.add_argument(
+    arggroup(parser, "Cell selection").add_argument(
         "-coneangle",
         type=float,
         default=30.0,
@@ -3063,7 +3073,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         ),
     )
 
-    parser.add_argument(
+    arggroup(parser, "Appearance").add_argument(
         "-subplotsperrow",
         type=int,
         default=1,
