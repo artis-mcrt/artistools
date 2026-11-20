@@ -24,7 +24,7 @@ from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g
-from artistools.misc import exit_with_error
+from artistools.misc import add_help_note
 from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_bin_index_expr
@@ -1328,21 +1328,18 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float) -> int:
     """Return the modelgridindex of the first cell of a 1D model with an outer velocity [km/s] of velocity or above."""
     # a negative value was the default that gave no velocity, and searchsorted takes it as the first cell
     if velocity < 0.0:
-        exit_with_error(f"--velocity {velocity:g} km/s is below zero", "Give a radial velocity of 0 or more")
+        msg = f"--velocity {velocity:g} km/s is below zero"
+        raise add_help_note(ValueError(msg), "Give a radial velocity of 0 or more")
     dfmodel, modelmeta = scan_modeldata(modelpath)
     if modelmeta["dimensions"] != 1:
-        exit_with_error(
-            f"--velocity selects a shell of a 1D model, and this model has {modelmeta['dimensions']} dimensions",
-            "Give --modelgridindex",
-        )
+        msg = f"--velocity selects a shell of a 1D model, and this model has {modelmeta['dimensions']} dimensions"
+        raise add_help_note(ValueError(msg), "Give --modelgridindex")
     arr_vouter = dfmodel.select("vel_r_max_kmps").collect().to_series().to_numpy()
 
     mgi_upper = int(np.searchsorted(arr_vouter, velocity))
     if mgi_upper >= len(arr_vouter):
-        exit_with_error(
-            f"--velocity {velocity:g} km/s is above the outer velocity {arr_vouter[-1]:g} km/s of the last cell",
-            "Give a lower velocity",
-        )
+        msg = f"--velocity {velocity:g} km/s is above the outer velocity {arr_vouter[-1]:g} km/s of the last cell"
+        raise add_help_note(ValueError(msg), "Give a lower velocity")
     return mgi_upper
 
 
@@ -1853,14 +1850,13 @@ def get_costheta_selection(costhetarange: tuple[float, float], columns: Sequence
     """Return a selection that is true for a cell whose centre has cos θ = v_z / |v| in the range.
 
     columns are the columns of the cells, which must hold vel_r_mid_on_c and vel_z_mid_on_c. A 1D model has no
-    direction of a cell, thus the function stops with an error for it. See get_cell_selection for the edges.
+    direction of a cell, thus the function raises ValueError for it. See get_cell_selection for the edges.
     """
     if "vel_z_mid_on_c" not in columns:
-        exit_with_error(
-            "A 1D model has no direction of a cell, thus --dirbin, --costhetamin, and --costhetamax cannot select"
-            " cells",
-            "Remove --dirbin, --costhetamin, and --costhetamax",
+        msg = (
+            "A 1D model has no direction of a cell, thus --dirbin, --costhetamin, and --costhetamax cannot select cells"
         )
+        raise add_help_note(ValueError(msg), "Remove --dirbin, --costhetamin, and --costhetamax")
     return get_cell_selection(
         thetamin=math.degrees(math.acos(costhetarange[1])), thetamax=math.degrees(math.acos(costhetarange[0]))
     )

@@ -79,8 +79,11 @@ from artistools.misc.commandoutput import resolve_frameset_paths as resolve_fram
 from artistools.misc.commandoutput import resolve_outputfile as resolve_outputfile
 from artistools.misc.commandoutput import resolve_table_outputfile as resolve_table_outputfile
 from artistools.misc.commandoutput import write_gif as write_gif
+from artistools.misc.console import add_help_note as add_help_note
 from artistools.misc.console import confirm_deletion as confirm_deletion
 from artistools.misc.console import exit_with_error as exit_with_error
+from artistools.misc.console import get_help_notes as get_help_notes
+from artistools.misc.console import HELP_NOTE_PREFIX as HELP_NOTE_PREFIX
 from artistools.misc.console import print_detail as print_detail
 from artistools.misc.console import print_error as print_error
 from artistools.misc.console import print_heading as print_heading

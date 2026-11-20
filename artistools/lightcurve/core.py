@@ -28,10 +28,10 @@ from artistools.constants import Lsun_to_erg_per_s
 from artistools.constants import Mbol_sun
 from artistools.constants import megaparsec_to_cm
 from artistools.constants import omega_matter
+from artistools.misc import add_help_note
 from artistools.misc import average_direction_bins
 from artistools.misc import check_averaging_angles
 from artistools.misc import df_filter_minmax_bracketed
-from artistools.misc import exit_with_error
 from artistools.misc import find_reference_data_file
 from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
@@ -743,11 +743,11 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pl.Dat
         metadatasource = Path(get_path("artistools_dir"), "data/lightcurves", data_path.name)
         metadata = dict(get_file_metadata(metadatasource))
 
-    # the time column below needs the timecorrection value. The command stops when the metadata
-    # gives no such value
+    # the time column below needs the timecorrection value
     if "timecorrection" not in metadata:
-        exit_with_error(
-            f"The reference light curve {data_path} has no timecorrection value",
+        msg = f"The reference light curve {data_path} has no timecorrection value"
+        raise add_help_note(
+            ValueError(msg),
             f"Write {get_metadata_path(data_path).name} in the folder of the data, with a timecorrection value and a"
             " label",
         )
@@ -929,9 +929,9 @@ def read_artis_lightcurve(
             msg = "Only the packets give the nuclide and the decay time of a pellet, thus give frompackets=True"
             raise ValueError(msg)
         if vpkt_observers:
-            exit_with_error(
-                "--plotvspecpol names virtual packet observers, which light_curve_res.out does not hold",
-                "Give --frompackets to make the light curve of each virtual observer from the packets.",
+            msg = "--plotvspecpol names virtual packet observers, which light_curve_res.out does not hold"
+            raise add_help_note(
+                ValueError(msg), "Give --frompackets to make the light curve of each virtual observer from the packets."
             )
         try:
             lcpath = (
@@ -953,11 +953,12 @@ def read_artis_lightcurve(
                 average_over_theta=average_over_theta,
             )
         except ValueError as exc:
-            exit_with_error(
-                str(exc),
+            add_help_note(
+                exc,
                 "Give --plotviewingangle with light_curve_res.out, give no --plotviewingangle with light_curve.out, and"
                 " give a file that ARTIS wrote in full",
             )
+            raise
         if directionresolved:
             warn_direction_bin_noise(
                 lcpath.name, average_over_phi=average_over_phi, average_over_theta=average_over_theta

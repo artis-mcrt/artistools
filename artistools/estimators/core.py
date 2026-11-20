@@ -43,6 +43,7 @@ from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import scan_modeldata
 from artistools.inputmodel.slice1dfromconein3dmodel import get_profile_along_axis
 from artistools.inputmodel.slice1dfromconein3dmodel import make_cone
+from artistools.misc import add_help_note
 from artistools.misc import clear_at_reload
 from artistools.misc import contiguous_runs
 from artistools.misc import exit_with_error
@@ -1990,17 +1991,13 @@ def get_cells_of_slice(modelpath: Path, conditions: Sequence[tuple[str, float, s
     """
     lzmodel, modelmeta = scan_modeldata(modelpath)
     if modelmeta["dimensions"] != 3:
-        exit_with_error(
-            f"--slice needs a 3D model, and this model has {modelmeta['dimensions']} dimension(s)",
-            "Remove --slice to plot the variables against the velocity",
-        )
+        msg = f"--slice needs a 3D model, and this model has {modelmeta['dimensions']} dimension(s)"
+        raise add_help_note(ValueError(msg), "Remove --slice to plot the variables against the velocity")
     vmax_cmps = float(modelmeta["vmax_cmps"])
     for axisname, velocity_cmps, label in conditions:
         if abs(velocity_cmps) >= vmax_cmps:
-            exit_with_error(
-                f"{label} lies outside the model, which ends at {vmax_cmps / C_cm_per_s:.3g}c",
-                "Give a velocity inside the model",
-            )
+            msg = f"{label} lies outside the model, which ends at {vmax_cmps / C_cm_per_s:.3g}c"
+            raise add_help_note(ValueError(msg), "Give a velocity inside the model")
         layerindex = get_layer_index(velocity_cmps, vmax_cmps, int(modelmeta[f"ncoordgrid{axisname}"]))
         poscolumn = pl.col(f"pos_{axisname}_min")
         lzmodel = lzmodel.filter(poscolumn == poscolumn.unique().sort().get(layerindex))
@@ -2014,11 +2011,11 @@ def get_cells_along_axis(modelpath: Path, args: argparse.Namespace) -> list[int]
     lzmodel, modelmeta = scan_modeldata(modelpath)
     # the selection reads the positions of the cells on three axes, which only a 3D model gives
     if modelmeta["dimensions"] != 3:
-        exit_with_error(
+        msg = (
             f"--readonlymgi {args.readonlymgi} needs a 3D model, and this model has {modelmeta['dimensions']}"
-            " dimension(s)",
-            "Remove --readonlymgi to plot every cell against the velocity",
+            " dimension(s)"
         )
+        raise add_help_note(ValueError(msg), "Remove --readonlymgi to plot every cell against the velocity")
     if args.readonlymgi == "alongaxis":
         print(f"Getting mgi along {args.axis} axis")
         dfmodel = lzmodel.select("modelgridindex", "rho", "pos_x_min", "pos_y_min", "pos_z_min").collect()
