@@ -415,7 +415,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 raise ValueError(msg)
 
             sourcefolder = get_model_input_folder(modelpath)
-            dfelabundances = scan_initelemabundances(sourcefolder)
+            dfelabundances = scan_initelemabundances(modelpath)
             dfgridcontributions = get_gridparticlecontributions_or_none(sourcefolder)
             outputformatversion = get_output_format_version(args, modelpath)
             yefilepath = firstexisting_or_none("Ye.txt", folder=sourcefolder, tryzipped=True, search_subfolders=False)

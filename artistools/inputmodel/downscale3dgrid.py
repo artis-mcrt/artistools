@@ -101,7 +101,7 @@ def make_downscaled_3d_grid(
     massweightedcols = [col for col in ("Ye", "q") if col in modelcolnames]
     summedcols = [col for col in ("tracercount",) if col in modelcolnames]
     dfmodel = pldfmodel.select("rho", cs.starts_with("X_"), *massweightedcols, *summedcols).collect()
-    dfelemabund = scan_initelemabundances(modelpath=sourcefolder).collect()
+    dfelemabund = scan_initelemabundances(modelpath=modelpath).collect()
 
     grid = int(modelmeta["ncoordgridx"])
     smallgrid = outputgridsize

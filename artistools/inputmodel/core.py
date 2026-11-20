@@ -754,11 +754,6 @@ def get_text_source_cached(
     cached = scan_parquet_cache(
         parquetfilepath, textsource_mtime, metadatakeys=metadatakeys, printwarningsonly=printwarningsonly
     )
-    # model.txt and model.txt.zst have one cache, thus the time of the file alone does not show the file of a cache
-    sourceidentity = {"textsource_name": textfilepath.name, "textsource_size": str(textsource_stat.st_size)}
-    if cached is not None and any(cached[1].get(key) != value for key, value in sourceidentity.items()):
-        print(f"{parquetfilepath} is not a cache of {textfilepath}, because it has a different file name or size.")
-        cached = None
     if cached is not None:
         if validate_metadata is None:
             return cached
@@ -804,7 +799,6 @@ def get_text_source_cached(
             "cacheversion": str(CACHEVERSION),
             "textsource_mtime": str(textsource_mtime),
         }
-        | sourceidentity
         | extrametadata,
     )
 
@@ -836,15 +830,20 @@ def get_model_input_folder(modelpath: Path | str) -> Path:
     a folder that holds only model.txt.zst. A code comparison path is virtual, and get_model_text_folder gives the
     folder of its ARTIS input files.
     """
+    modelfile = get_model_file_path(modelpath)
+    return get_model_text_folder(modelpath) if modelfile is None else modelfile.parent
+
+
+def get_model_file_path(modelpath: Path | str) -> Path | None:
+    """Return the model.txt that the reader of model.txt opens for a local model path, or None.
+
+    A model path can name a folder, and the reader then also searches its subfolders. A model path can also name a
+    file, e.g. model_alt.txt, or model.txt for a folder that holds only model.txt.zst.
+    """
     inputpath = Path(modelpath)
     if inputpath.is_dir():
-        modelfile = firstexisting_or_none("model.txt", folder=inputpath, tryzipped=True)
-        return inputpath if modelfile is None else modelfile.parent
-    if (
-        namedfile := firstexisting_or_none(inputpath.name, folder=inputpath.parent, search_subfolders=False)
-    ) is not None:
-        return namedfile.parent
-    return get_model_text_folder(inputpath)
+        return firstexisting_or_none("model.txt", folder=inputpath, tryzipped=True)
+    return firstexisting_or_none(inputpath.name, folder=inputpath.parent, search_subfolders=False)
 
 
 def with_ye_of_yefile(dfmodel: pl.DataFrame, yefilepath: Path) -> pl.DataFrame:
@@ -2333,8 +2332,8 @@ def scan_initelemabundances(modelpath: Path | str = ".", printwarningsonly: bool
     The table comes from abundances.txt. A model.txt of format version 2 has no abundances.txt, and the table is
     then the sum of the nuclide columns and the otherstable column of each element, as in sn3d.
     """
+    modelfilepath = get_model_file_path(modelpath)
     modelfolder = get_model_input_folder(modelpath)
-    modelfilepath = firstexisting_or_none("model.txt", folder=modelfolder, tryzipped=True)
     if modelfilepath is not None:
         with zopen(modelfilepath) as fmodel:
             formatversion = get_model_format_version(fmodel.readline(), modelfilepath)

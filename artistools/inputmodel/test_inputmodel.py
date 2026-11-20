@@ -269,7 +269,6 @@ def test_trajectory_cache_replaces_a_stale_cache_and_outlives_its_archive(tmp_pa
     assert pqmetadata["textsource"] == "114511.tar.xz"
 
     # a copy with cp -p keeps the modification time, thus the size of the archive shows the change
-    import os
 
     archivetime = Path(archivepath).stat().st_mtime
     shutil.copy(testdatapath / "kilonova" / "trajectories" / "109215.tar.xz", archivepath)
@@ -4630,30 +4629,61 @@ def test_conversion_reads_the_files_of_the_model_file_and_keeps_the_source_after
     assert get_folder_bytes(modelfolder) == sourcefiles
 
 
-def test_parquet_cache_of_model_txt_is_not_the_cache_of_its_compressed_copy(tmp_path: Path) -> None:
-    """model.txt and model.txt.zst have one parquet cache, and the cache of one copy does not give the other copy.
+def test_reduction_and_downscale_take_the_elements_of_the_selected_model_file(tmp_path: Path) -> None:
+    """A reduction and a downscale of a selected model file take its elements, also beside a different model.txt.
 
-    The cache took the time of the text file alone, thus a different file with the same time took the old cache.
+    The reader of the element mass fractions opened the model.txt of the folder again, thus the output got the
+    elements of a different model.
     """
-    lines = ["2", "1.0", "#inputcellid vel_r_max_kmps logrho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48"]
-    (tmp_path / "model.txt").write_text(
-        "\n".join([*lines, "1 1000.00 -10.00000000 0.5 0.0 0.0 0.0 0.0", "2 2000.00 -11.00000000 0.5 0.0 0.0 0.0 0.0"])
-        + "\n",
-        encoding="utf-8",
+    version2folder = tmp_path / "version2"
+    at.inputmodel.makeartismodel.main(
+        argsraw=[],
+        modelpath=[at.get_path("testdata") / "test-classicmode_3d"],
+        format_version=2,
+        outputfile=version2folder,
     )
-    # a cache file that exists makes the reader write a cache also for a small text file
-    cachepath = at.inputmodel.core.get_parquet_cache_path(tmp_path / "model.txt")
-    cachepath.write_bytes(b"")
-    assert at.inputmodel.scan_modeldata(tmp_path)[0].collect()["X_Fegroup"].to_list() == pytest.approx([0.5, 0.5])
-    plainmtime = (tmp_path / "model.txt").stat().st_mtime
-    (tmp_path / "model.txt").unlink()
-    with (tmp_path / "model.txt.zst").open("wb") as fmodel:
-        at.misc.write_zstd_lines(
-            fmodel,
-            [*lines, "1 1000.00 -10.00000000 0.25 0.0 0.0 0.0 0.0", "2 2000.00 -11.00000000 0.25 0.0 0.0 0.0 0.0"],
-        )
-    os.utime(tmp_path / "model.txt.zst", (plainmtime, plainmtime))
-    assert at.inputmodel.scan_modeldata(tmp_path)[0].collect()["X_Fegroup"].to_list() == pytest.approx([0.25, 0.25])
+    lzselected, metaselected = at.inputmodel.scan_modeldata(version2folder, get_elemabundances=True)
+    selectedmodel = at.inputmodel.add_derived_cols_to_modeldata(lzselected, metaselected).collect()
+    hydrogenmass = float((selectedmodel["X_H"] * selectedmodel["mass_g"]).sum())
+    assert hydrogenmass > 0.0
+
+    # the folder holds the selected model as model_alt.txt.zst and a model.txt with half of its hydrogen
+    altfolder = tmp_path / "alt"
+    otherfolder = tmp_path / "other"
+    altfolder.mkdir()
+    (version2folder / "model.txt.zst").rename(altfolder / "model_alt.txt.zst")
+    dfother = at.inputmodel.scan_modeldata(altfolder / "model_alt.txt.zst")[0].drop("modelgridindex").collect()
+    at.inputmodel.save_modeldata(
+        dfother.with_columns(pl.col("X_H_otherstable") * 0.5), outpath=otherfolder, modelmeta=dict(metaselected)
+    )
+    with at.zopen(otherfolder / "model.txt.zst") as fmodel:
+        (altfolder / "model.txt").write_text(fmodel.read(), encoding="utf-8")
+
+    def get_hydrogen_mass(modelfolder: Path) -> float:
+        lzmodel, modelmeta = at.inputmodel.scan_modeldata(modelfolder, get_elemabundances=True)
+        dfmodel = at.inputmodel.add_derived_cols_to_modeldata(lzmodel, modelmeta).collect()
+        return float((dfmodel["X_H"] * dfmodel["mass_g"]).sum())
+
+    reducedfolder = tmp_path / "reduced"
+    at.inputmodel.makeartismodel.main(
+        argsraw=[],
+        modelpath=[altfolder / "model_alt.txt.zst"],
+        dimensionreduce=1,
+        format_version=2,
+        outputfile=reducedfolder,
+    )
+    assert math.isclose(get_hydrogen_mass(next(reducedfolder.iterdir())), hydrogenmass, rel_tol=1e-5)
+
+    smallfolder = tmp_path / "small"
+    at.inputmodel.makeartismodel.main(
+        argsraw=[],
+        modelpath=[altfolder / "model_alt.txt.zst"],
+        downscale3dgrid=True,
+        outputgridsize=5,
+        format_version=2,
+        outputfile=smallfolder,
+    )
+    assert math.isclose(get_hydrogen_mass(smallfolder), hydrogenmass, rel_tol=1e-5)
 
 
 def test_reduction_and_downscale_write_the_format_version_of_the_prompt(tmp_path: Path) -> None:
