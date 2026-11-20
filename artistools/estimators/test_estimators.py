@@ -4383,6 +4383,7 @@ def test_a_working_folder_that_is_not_artis_gives_an_error(
     for argsraw, hint in (
         (["Te", "mymodle"], "No folder 'mymodle' exists. Did you mean mymodel?"),
         (["-p", "Te", "mymodle"], "No folder 'mymodle' exists. Did you mean mymodel?"),
+        (["Te", "-p", "rho", "mymodle"], "No folder 'mymodle' exists. Did you mean mymodel?"),
         (["Te", "./mymodle"], "No folder './mymodle' exists."),
         (["Te", "~/mymodle"], "the shell expands '~'"),
         (["Te", "yscale=log"], None),

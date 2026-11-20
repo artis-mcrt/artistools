@@ -3454,13 +3454,13 @@ def get_missing_folder_hint(lastitem: str) -> str:
     return ""
 
 
-def require_artis_folder(modelpath: Path, lastitem: str | None = None) -> None:
+def require_artis_folder(modelpath: Path, lastitems: Sequence[str] = ()) -> None:
     """Stop with an error message when the path does not name an ARTIS model folder.
 
     The command reads the working folder when the user names no folder. A user can run the command in
     a folder that is not an ARTIS model folder. The message then names that folder and not an absent file.
-    lastitem is the last positional argument. A folder that does not exist stays a plot item, thus a folder
-    name with an error, e.g. "mymodle", comes here as the last item.
+    lastitems holds the last item of each list of plot items. A folder that does not exist stays a plot item, thus
+    a folder name with an error, e.g. "mymodle", comes here as one of them.
     """
     if path_is_codecomparison(modelpath) or folder_is_artis_model(modelpath):
         return
@@ -3477,7 +3477,7 @@ def require_artis_folder(modelpath: Path, lastitem: str | None = None) -> None:
     )
 
     if modelpath == Path():
-        if lastitem is not None and (folderhint := get_missing_folder_hint(lastitem)):
+        if folderhint := next((hint for item in lastitems if (hint := get_missing_folder_hint(item))), ""):
             helptext = f"{folderhint} {helptext}"
         exit_with_error(
             "The command line gives no ARTIS model folder, and the working folder is not an ARTIS model folder",
@@ -3489,12 +3489,13 @@ def require_artis_folder(modelpath: Path, lastitem: str | None = None) -> None:
 
 def resolve_plot_args(args: argparse.Namespace) -> tuple[Path, list[int]]:
     """Apply the defaults and the cell selection to the arguments, and return the model path and the timesteps."""
-    # a script can give a Path as an item, and the -plot form keeps the folder in its last group
-    lastgroup = args.plotitems or (args.plotlist[-1] if args.plotlist else [])
-    lastitem = str(lastgroup[-1]) if lastgroup else None
+    # the folder can end the positional items or the last -plot group, and the parsed arguments do not keep the order
+    # of the command line. A script can give a Path as an item
+    lastgroups = [args.plotitems or [], args.plotlist[-1] if args.plotlist else []]
+    lastitems = [str(group[-1]) for group in lastgroups if group]
     resolve_positional_args(args)
     modelpath = Path(args.modelpath)
-    require_artis_folder(modelpath, lastitem)
+    require_artis_folder(modelpath, lastitems)
     args.classicartis = args.classicartis or has_classic_estimator_format(modelpath)
     resolve_snapshot_arguments(args)
     timestepmin, timestepmax = set_x_and_timesteps(args, modelpath)
