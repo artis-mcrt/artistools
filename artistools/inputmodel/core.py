@@ -1846,18 +1846,20 @@ def get_cell_selection(
 
 
 def resolve_cell_direction_range(
-    args: argparse.Namespace, modelpath: Path | str, quiet: bool = False
+    args: argparse.Namespace, modelpath: Path | str, quiet: bool = False, *, dimensions: int | None = None
 ) -> CellDirectionRange | None:
     """Return the direction range of the options, as get_cell_direction_range does, for the cells of the model.
 
     A 2D model is symmetric around the z axis, thus the range of --dirbin then has no range of ϕ. The titles and the
-    method lines then give the range of the selected cells. With quiet, the function does not log the range.
+    method lines then give the range of the selected cells. With quiet, the function does not log the range. Code on
+    the host of a remote model gives dimensions, because args.modelpath there still names the host.
     """
     directionrange = get_cell_direction_range(args, quiet=quiet)
     if directionrange is None or directionrange.phirange is None:
         return directionrange
-    _, modelmeta = scan_modeldata(modelpath, printwarningsonly=True)
-    if modelmeta["dimensions"] != 2:
+    if dimensions is None:
+        dimensions = scan_modeldata(modelpath, printwarningsonly=True)[1]["dimensions"]
+    if dimensions != 2:
         return directionrange
     if not quiet:
         print_detail("A 2D model is symmetric around the z axis, thus --dirbin selects the cells at each ϕ")
