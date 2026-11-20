@@ -12,9 +12,13 @@ import polars as pl
 import polars.selectors as cs
 
 from artistools.constants import day_to_s
+from artistools.inputmodel.core import get_model_input_folder
+from artistools.inputmodel.core import require_no_ye_file_of_earlier_model
 from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.core import scan_initelemabundances
 from artistools.inputmodel.core import scan_modeldata
+from artistools.inputmodel.core import with_ye_of_yefile
+from artistools.misc import firstexisting_or_none
 from artistools.misc import require_cartesian3d_model
 from artistools.plottools import save_figure
 from artistools.plottools import set_mpl_style
@@ -73,17 +77,31 @@ def make_downscaled_3d_grid(
 
     Should be same as downscale_3d_grid.pro. args gives the options of the diagnostic plot, e.g. --darkmode.
     formatversion is the format version of the small model.txt, and None keeps the version of the model.
+
+    A small model of format version 2 gets the electron fractions of the Ye.txt of the model in its column Ye,
+    because sn3d takes them for the model. A small model of version 1 gets the values of the column Ye of model.txt,
+    and the function stops for a Ye.txt in the output folder, because that file is of a different model.
     """
     modelpath = Path(modelpath)
 
     pldfmodel, modelmeta = scan_modeldata(modelpath)
     require_cartesian3d_model(modelmeta, "The merge of cells to a smaller grid needs", "Give a 3D Cartesian model")
+    if formatversion is None:
+        formatversion = int(modelmeta.get("formatversion", 1))
+    outputfolder = get_downscale_outputfolder(modelpath, outputgridsize, outputfolder)
+    if formatversion == 1:
+        require_no_ye_file_of_earlier_model(outputfolder, modelpath)
+    sourcefolder = get_model_input_folder(modelpath)
+    yefilepath = firstexisting_or_none("Ye.txt", folder=sourcefolder, tryzipped=True, search_subfolders=False)
+    if yefilepath is not None and formatversion == 2:
+        print("  Version 2 has no Ye.txt.")
+        pldfmodel = with_ye_of_yefile(pldfmodel.collect(), yefilepath).lazy()
     # save_modeldata also writes Ye, q, and tracercount, thus the downscaled model must keep them
     modelcolnames = pldfmodel.collect_schema().names()
     massweightedcols = [col for col in ("Ye", "q") if col in modelcolnames]
     summedcols = [col for col in ("tracercount",) if col in modelcolnames]
     dfmodel = pldfmodel.select("rho", cs.starts_with("X_"), *massweightedcols, *summedcols).collect()
-    dfelemabund = scan_initelemabundances(modelpath=modelpath).collect()
+    dfelemabund = scan_initelemabundances(modelpath=sourcefolder).collect()
 
     grid = int(modelmeta["ncoordgridx"])
     smallgrid = outputgridsize
@@ -91,7 +109,6 @@ def make_downscaled_3d_grid(
     assert grid % smallgrid == 0
     merge = grid // smallgrid
 
-    outputfolder = get_downscale_outputfolder(modelpath, outputgridsize, outputfolder)
     outputfolder.mkdir(exist_ok=True)
     smallmodelfile = outputfolder / "model.txt"
 
@@ -120,10 +137,7 @@ def make_downscaled_3d_grid(
     # the cell order of an ARTIS 3D file varies x fastest, which is the Fortran order of the arrays above
     xmax = vmax * t_model_days * day_to_s
     axispos = -xmax + 2 * xmax * np.arange(smallgrid) / smallgrid
-    # the small model keeps the format version of the model with no formatversion, and the cell ids of format version 2
-    # start at 0
-    if formatversion is None:
-        formatversion = int(modelmeta.get("formatversion", 1))
+    # the cell ids of format version 2 start at 0
     firstinputcellid = 0 if formatversion == 2 else 1
     inputcellid = pl.Series("inputcellid", range(firstinputcellid, smallgrid**3 + firstinputcellid), dtype=pl.Int32)
 

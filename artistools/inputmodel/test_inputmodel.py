@@ -3971,6 +3971,31 @@ def test_abundance_write_failure_keeps_the_previous_file(tmp_path: Path, extensi
     assert sorted(tmp_path.iterdir()) == [output]
 
 
+@pytest.mark.parametrize("extension", ["", ".zst"])
+def test_model_write_failure_keeps_the_previous_file(tmp_path: Path, extension: str) -> None:
+    """A write of model.txt that stops early leaves the old model.txt, e.g. of a conversion in its model folder.
+
+    The writer deleted the old file and then wrote the new file at its place, thus a stop left a part of the file.
+    """
+    output = tmp_path / f"model.txt{extension}"
+    original = b"previous model data"
+    output.write_bytes(original)
+    dfmodel = pl.DataFrame({"inputcellid": [0], "rho": [1e-12]})
+    modelmeta = {"coordinates": "spherical1d", "formatversion": 2, "t_model_init_days": 1.0}
+    msg = "Write failed"
+    with (
+        mock.patch("artistools.inputmodel.core.write_artis_csv", side_effect=OSError(msg)),
+        pytest.raises(OSError, match=msg),
+    ):
+        at.inputmodel.save_modeldata(
+            dfmodel.with_columns(vel_r_max_kmps=pl.lit(1000.0), logrho=pl.lit(-12.0)),
+            outpath=tmp_path,
+            modelmeta=modelmeta,
+        )
+    assert output.read_bytes() == original
+    assert sorted(tmp_path.iterdir()) == [output]
+
+
 @pytest.mark.parametrize("empty_slice", [False, True])
 def test_random_density_perturbations_preserve_each_slice_mass(empty_slice: bool) -> None:
     from artistools.inputmodel.from_e2e_model import apply_density_perturbations
@@ -4461,14 +4486,20 @@ def test_conversion_reads_the_folder_of_a_file_path_and_changes_no_file_before_i
     (sourcefolder / "abundances.txt").write_text("1 0.8 0.2\n2 0.8 0.2\n", encoding="utf-8")
     (sourcefolder / "Ye.txt").write_text("2\n1 0.49\n2 0.49\n", encoding="utf-8")
 
-    # a path of model.txt, a 1D model with logrho, and a Ye.txt for each cell
+    # A path of model.txt, a 1D model with logrho, and a Ye.txt for each cell. The path of model.txt also names its
+    # compressed copy, as for the reader of model.txt
     outputfolder = tmp_path / "version2"
-    at.inputmodel.makeartismodel.main(
-        argsraw=[], modelpath=[sourcefolder / "model.txt"], format_version=2, outputfile=outputfolder
-    )
-    dfversion2 = at.inputmodel.scan_modeldata(outputfolder, get_elemabundances=True)[0].collect()
-    assert dfversion2["X_H"].to_list() == pytest.approx([0.8, 0.8])
-    assert dfversion2["Ye"].to_list() == pytest.approx([0.49, 0.49])
+    for modelfilename in ("model.txt", "model.txt.zst"):
+        if modelfilename == "model.txt.zst":
+            with (sourcefolder / modelfilename).open("wb") as fmodel:
+                at.misc.write_zstd_lines(fmodel, lines1d)
+            (sourcefolder / "model.txt").unlink()
+        at.inputmodel.makeartismodel.main(
+            argsraw=[], modelpath=[sourcefolder / "model.txt"], format_version=2, outputfile=outputfolder, force=True
+        )
+        dfversion2 = at.inputmodel.scan_modeldata(outputfolder, get_elemabundances=True)[0].collect()
+        assert dfversion2["X_H"].to_list() == pytest.approx([0.8, 0.8])
+        assert dfversion2["Ye"].to_list() == pytest.approx([0.49, 0.49])
 
     def get_folder_text(folder: Path) -> dict[str, bytes]:
         return {path.name: path.read_bytes() for path in sorted(folder.iterdir()) if path.is_file()}
@@ -4521,20 +4552,31 @@ def test_reduction_and_downscale_write_the_format_version_of_the_prompt(tmp_path
 
     version2folder = tmp_path / "version2"
     at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[sourcefolder], format_version=2, outputfile=version2folder)
+    downscaleargs: dict[str, t.Any] = {"argsraw": [], "downscale3dgrid": True, "outputgridsize": 5, "force": True}
     for formatversion in (1, 2):
         sourceversion = 2 if formatversion == 1 else 1
         smallfolder = tmp_path / f"small{formatversion}"
         smallfolder.mkdir()
         at.inputmodel.makeartismodel.main(
-            argsraw=[],
+            **downscaleargs,
             modelpath=[version2folder if sourceversion == 2 else sourcefolder],
-            downscale3dgrid=True,
-            outputgridsize=5,
             format_version=formatversion,
             outputfile=smallfolder,
-            force=True,
         )
-        assert at.inputmodel.scan_modeldata(smallfolder)[1]["formatversion"] == formatversion
+        dfsmall, metasmall = at.inputmodel.scan_modeldata(smallfolder)
+        assert metasmall["formatversion"] == formatversion
+        # the small model of version 2 gets the values of the Ye.txt of the source model
+        if formatversion == 2:
+            yevalues = dfsmall.filter(pl.col("rho") > 0).collect()["Ye"].to_numpy()
+            assert yevalues.size > 0
+            assert np.allclose(yevalues, 0.49, rtol=1e-6, atol=0.0)
+
+    # a Ye.txt in the output folder of a small model of version 1 is of a different model, thus the command stops
+    (tmp_path / "small1" / "Ye.txt").write_text("1\n1 0.9\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        at.inputmodel.makeartismodel.main(
+            **downscaleargs, modelpath=[version2folder], format_version=1, outputfile=tmp_path / "small1"
+        )
 
 
 def test_version_2_edges_of_a_cartesian_grid_must_have_equal_steps() -> None:

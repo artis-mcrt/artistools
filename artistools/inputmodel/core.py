@@ -822,6 +822,79 @@ def get_model_text_folder(modelpath: Path | str) -> Path:
     return inputpath
 
 
+def get_model_input_folder(modelpath: Path | str) -> Path:
+    """Return the folder of the input files of a local model path, e.g. abundances.txt and Ye.txt.
+
+    The rule is the rule of the reader of model.txt. A model path can name the folder, or a file in it, e.g.
+    model.txt for a folder that holds only model.txt.zst. A code comparison path is virtual, and
+    get_model_text_folder gives the folder of its ARTIS input files.
+    """
+    inputpath = Path(modelpath)
+    if inputpath.is_dir():
+        return inputpath
+    if firstexisting_or_none(inputpath.name, folder=inputpath.parent, search_subfolders=False) is not None:
+        return inputpath.parent
+    return get_model_text_folder(inputpath)
+
+
+def with_ye_of_yefile(dfmodel: pl.DataFrame, yefilepath: Path) -> pl.DataFrame:
+    """Return the cells of a version 1 model with the electron fractions of its Ye.txt in the column Ye.
+
+    sn3d reads Ye.txt after model.txt, thus a value of Ye.txt replaces the value of the column Ye. Ye.txt can hold
+    only some of the cells, and each other cell keeps the value of the column. A cell with no value from the two
+    sources gets 0. sn3d with TANAKA2020_ELECTRONFRAC stops for such a cell, as it does in format version 1.
+    """
+    with zopen(yefilepath) as yefile:
+        yelines = [line.split() for line in yefile.read().splitlines()[1:] if line.strip()]
+    if any(len(tokens) != 2 for tokens in yelines):
+        msg = f"{yefilepath}: each line after the first line must hold a cell id and an electron fraction"
+        raise ValueError(msg)
+    dfye = pl.DataFrame(
+        {"inputcellid": [int(cellid) for cellid, _ in yelines], "Ye_file": [float(ye) for _, ye in yelines]},
+        schema={"inputcellid": pl.Int32, "Ye_file": pl.Float32},
+    ).unique(subset="inputcellid", keep="last")
+    unknownids = dfye.join(dfmodel.select("inputcellid"), on="inputcellid", how="anti")
+    if not unknownids.is_empty():
+        msg = (
+            f"{yefilepath}: {unknownids.height} cell ids are not in model.txt, e.g. {unknownids['inputcellid'].min()}."
+            " The cell ids of Ye.txt must be the ids of model.txt"
+        )
+        raise ValueError(msg)
+
+    columnvalue = pl.col("Ye") if "Ye" in dfmodel.columns else pl.lit(None, dtype=pl.Float32)
+    dfmodel = (
+        dfmodel
+        .join(dfye, on="inputcellid", how="left", maintain_order="left")
+        .with_columns(Ye=pl.coalesce(pl.col("Ye_file"), columnvalue))
+        .drop("Ye_file")
+    )
+    print(
+        f"  The column Ye of model.txt gets the {dfye.height} electron fractions of Ye.txt, and each other cell keeps"
+        " the value of that column."
+    )
+    novaluecount = dfmodel.filter(pl.col("Ye").is_null() & get_has_density_expr(dfmodel.columns)).height
+    if novaluecount > 0:
+        print_warning(
+            f"{novaluecount} cells with density have no electron fraction in Ye.txt or in model.txt. The column Ye"
+            " gets 0 for these cells, and sn3d with TANAKA2020_ELECTRONFRAC stops for an electron fraction of 0"
+        )
+    return dfmodel.with_columns(pl.col("Ye").fill_null(0.0))
+
+
+def require_no_ye_file_of_earlier_model(outputfolder: Path, modelpath: Path | str) -> None:
+    """Stop before a write of a version 1 model.txt into a folder that holds the Ye.txt of an earlier model.
+
+    sn3d reads Ye.txt after model.txt, thus the values of that file would replace the electron fractions of the new
+    model. The command does not delete the file, because a version 1 model can have its own Ye.txt.
+    """
+    oldyefiles = [path for path in get_file_copies(outputfolder / "Ye.txt") if path.is_file()]
+    if oldyefiles:
+        exit_with_error(
+            f"{oldyefiles[0]} is a file of an earlier model, and the new model.txt of {modelpath} has format version 1",
+            "sn3d reads Ye.txt for a model.txt of format version 1. Delete the file, or give a different output folder",
+        )
+
+
 @on_model_host
 def get_modelmeta(modelpath: Path) -> dict[str, t.Any]:
     """Return the metadata of the model, e.g. the dimensions and the time of the model.
@@ -2103,9 +2176,11 @@ def save_modeldata(
         dfmodel = dfmodel.filter(hasdensity | (~hasdensity.any() & (pl.int_range(pl.len()) == 0)))
         version2keylines.append(f"cell_line_count {dfmodel.height}")
 
-    modelfilepath = prepare_zstd_output(resolve_outputfile(outpath, "model.txt"))
+    modelfilepath = with_compressed_extension(
+        without_compressed_extension(resolve_outputfile(outpath, "model.txt")), ".zst"
+    )
 
-    with modelfilepath.open("wb") as fmodel:
+    def write_model_file(fmodel: t.IO[bytes]) -> None:
         # sn3d reads the first comment line after the header values as the column names, thus each
         # other comment line comes before those values. sn3d reads the numbers at the start of a header
         # line, thus an inline comment can follow them
@@ -2161,18 +2236,21 @@ def save_modeldata(
         else:
             # startcols are the standard ones, but excluding any abundances
             startcols = [col for col in standardcols if not col.startswith("X_")]
-            dfmodel = dfmodel.select([*startcols, *abundandcustomcols])
+            dfcells = dfmodel.select([*startcols, *abundandcustomcols])
             # fast polars writer
             # set abundances to null for cells with zero density (so that shorter form "0.0" can be written)
-            dfmodel = dfmodel.with_columns(
+            dfcells = dfcells.with_columns(
                 pl.when(pl.col("rho") > 0).then(pl.col(col)).otherwise(pl.lit(None)).alias(col)
-                for col in dfmodel.columns
-                if not col.startswith("pos") and col != "inputcellid" and dfmodel.schema[col].is_float()
+                for col in dfcells.columns
+                if not col.startswith("pos") and col != "inputcellid" and dfcells.schema[col].is_float()
             )
             write_zstd_lines(fmodel, headertextlines)
-            write_artis_csv(dfmodel, fmodel, significantfigures=9 if formatversion == 2 else 8)
+            write_artis_csv(dfcells, fmodel, significantfigures=9 if formatversion == 2 else 8)
 
-    remove_parquet_cache(modelfilepath)
+    # The new file replaces the old file only after a complete write. Thus a write that stops early leaves the old
+    # model, e.g. of a conversion in its model folder. Each other copy of the old file goes after the write
+    write_file_atomic(modelfilepath, write_model_file)
+    prepare_zstd_output(modelfilepath)
     print_saved(modelfilepath)
     if dfelabundances is not None and formatversion == 1:
         save_initelemabundances(dfelabundances, outpath=modelfilepath.parent)
@@ -2245,7 +2323,7 @@ def scan_initelemabundances(modelpath: Path | str = ".", printwarningsonly: bool
     The table comes from abundances.txt. A model.txt of format version 2 has no abundances.txt, and the table is
     then the sum of the nuclide columns and the otherstable column of each element, as in sn3d.
     """
-    modelfolder = get_model_text_folder(modelpath)
+    modelfolder = get_model_input_folder(modelpath)
     modelfilepath = firstexisting_or_none("model.txt", folder=modelfolder, tryzipped=True)
     if modelfilepath is not None:
         with zopen(modelfilepath) as fmodel:

@@ -12,14 +12,15 @@ from artistools.constants import Msun_to_g
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import CELL_ID_FILE_NAMES
 from artistools.inputmodel.core import dimension_reduce_model
-from artistools.inputmodel.core import get_has_density_expr
-from artistools.inputmodel.core import get_model_text_folder
+from artistools.inputmodel.core import get_model_input_folder
 from artistools.inputmodel.core import get_modelmeta
 from artistools.inputmodel.core import MODEL_FILE_NAMES
+from artistools.inputmodel.core import require_no_ye_file_of_earlier_model
 from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.core import scan_initelemabundances
 from artistools.inputmodel.core import scan_modeldata
 from artistools.inputmodel.core import with_cell_ids_from_zero
+from artistools.inputmodel.core import with_ye_of_yefile
 from artistools.inputmodel.downscale3dgrid import get_downscale_outputfolder
 from artistools.inputmodel.downscale3dgrid import make_downscaled_3d_grid
 from artistools.inputmodel.energyinputfiles import ENERGY_FILE_NAMES
@@ -38,13 +39,11 @@ from artistools.misc import exit_with_error
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_file_copies
 from artistools.misc import get_model_coordinates
-from artistools.misc import get_model_folder
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
 from artistools.misc import SPHERICAL_EDGE_COORDINATES
-from artistools.misc import zopen
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -141,59 +140,6 @@ def get_dimreduce_outputfolder(outputfile: Path | None, modelpath: Path, ndim_ou
     )
 
 
-def get_source_folder(modelpath: Path) -> Path:
-    """Return the folder that holds model.txt and the other input files of a model path.
-
-    A model path can name the folder or a file in it, e.g. model.txt. A code comparison path is virtual, and
-    get_model_text_folder gives the folder of its ARTIS input files.
-    """
-    return get_model_folder(get_model_text_folder(modelpath))
-
-
-def with_ye_of_yefile(dfmodel: pl.DataFrame, yefilepath: Path) -> pl.DataFrame:
-    """Return the cells of a version 1 model with the electron fractions of its Ye.txt in the column Ye.
-
-    sn3d reads Ye.txt after model.txt, thus a value of Ye.txt replaces the value of the column Ye. Ye.txt can hold
-    only some of the cells, and each other cell keeps the value of the column. A cell with no value from the two
-    sources gets 0. sn3d with TANAKA2020_ELECTRONFRAC stops for such a cell, as it does in format version 1.
-    """
-    with zopen(yefilepath) as yefile:
-        yelines = [line.split() for line in yefile.read().splitlines()[1:] if line.strip()]
-    if any(len(tokens) != 2 for tokens in yelines):
-        msg = f"{yefilepath}: each line after the first line must hold a cell id and an electron fraction"
-        raise ValueError(msg)
-    dfye = pl.DataFrame(
-        {"inputcellid": [int(cellid) for cellid, _ in yelines], "Ye_file": [float(ye) for _, ye in yelines]},
-        schema={"inputcellid": pl.Int32, "Ye_file": pl.Float32},
-    ).unique(subset="inputcellid", keep="last")
-    unknownids = dfye.join(dfmodel.select("inputcellid"), on="inputcellid", how="anti")
-    if not unknownids.is_empty():
-        msg = (
-            f"{yefilepath}: {unknownids.height} cell ids are not in model.txt, e.g. {unknownids['inputcellid'].min()}."
-            " The cell ids of Ye.txt must be the ids of model.txt"
-        )
-        raise ValueError(msg)
-
-    columnvalue = pl.col("Ye") if "Ye" in dfmodel.columns else pl.lit(None, dtype=pl.Float32)
-    dfmodel = (
-        dfmodel
-        .join(dfye, on="inputcellid", how="left", maintain_order="left")
-        .with_columns(Ye=pl.coalesce(pl.col("Ye_file"), columnvalue))
-        .drop("Ye_file")
-    )
-    print(
-        f"  The column Ye of model.txt gets the {dfye.height} electron fractions of Ye.txt, and each other cell keeps"
-        " the value of that column."
-    )
-    novaluecount = dfmodel.filter(pl.col("Ye").is_null() & get_has_density_expr(dfmodel.columns)).height
-    if novaluecount > 0:
-        print_warning(
-            f"{novaluecount} cells with density have no electron fraction in Ye.txt or in model.txt. The column Ye"
-            " gets 0 for these cells, and sn3d with TANAKA2020_ELECTRONFRAC stops for an electron fraction of 0"
-        )
-    return dfmodel.with_columns(pl.col("Ye").fill_null(0.0))
-
-
 def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int) -> None:
     """Convert the model.txt of a model to the format version formatversion, and write it into outputfolder.
 
@@ -224,7 +170,7 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
 
     # save_modeldata can write the file that the query scans, thus the read is complete before the write
     dfmodel = lzmodel.collect()
-    sourcefolder = get_source_folder(modelpath)
+    sourcefolder = get_model_input_folder(modelpath)
     hasotherfolder = outputfolder.resolve() != sourcefolder.resolve()
     # sn3d also reads a compressed copy of Ye.txt
     yefilepath = firstexisting_or_none("Ye.txt", folder=sourcefolder, tryzipped=True, search_subfolders=False)
@@ -246,13 +192,9 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
     if yefilepath is not None and formatversion == 2:
         print("  Version 2 has no Ye.txt.")
         dfmodel = with_ye_of_yefile(dfmodel, yefilepath)
-    staleyefiles = [path for path in get_file_copies(outputfolder / "Ye.txt") if path.is_file()]
-    if hasotherfolder and formatversion == 1 and yefilepath is None and staleyefiles:
-        # sn3d reads Ye.txt after model.txt, thus the file of an earlier model would replace the values of the new model
-        exit_with_error(
-            f"{staleyefiles[0]} is a file of an earlier model, and {sourcefolder} holds no Ye.txt",
-            "sn3d reads Ye.txt for a model.txt of format version 1. Delete the file, or give a different -o",
-        )
+    if hasotherfolder and formatversion == 1 and yefilepath is None:
+        # a version 1 output in a different folder gets the Ye.txt of the source model, and here there is none
+        require_no_ye_file_of_earlier_model(outputfolder, modelpath)
     gridcolumns = {"inputcellid", "modelgridindex", "rho", "logrho"}
     customcols = [col for col in dfmodel.columns if col not in gridcolumns and not col.startswith(("pos_", "vel_"))]
     outputfolder.mkdir(exist_ok=True, parents=True)
@@ -364,7 +306,7 @@ def get_model_output_folders(args: argparse.Namespace, modelpath_given: bool) ->
                 "Give one model path with -o, or give no -o to convert each model.txt in its model folder",
             )
         outputfolders["convertformat"] = [
-            Path(args.outputfile) if args.outputfile is not None else get_source_folder(modelpath)
+            Path(args.outputfile) if args.outputfile is not None else get_model_input_folder(modelpath)
             for modelpath in args.modelpath
         ]
     return outputfolders
@@ -443,7 +385,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 msg = f"Cannot reduce {ndim_in}D model to {ndim_out}D"
                 raise ValueError(msg)
 
-            sourcefolder = get_source_folder(modelpath)
+            sourcefolder = get_model_input_folder(modelpath)
             dfelabundances = scan_initelemabundances(sourcefolder)
             dfgridcontributions = get_gridparticlecontributions_or_none(sourcefolder)
             outputformatversion = get_output_format_version(args, modelpath)
@@ -468,6 +410,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 f"Dimension reduced from {ndim_in}-dimensional model",
             ]
             modelmeta_out["formatversion"] = outputformatversion
+            if outputformatversion == 1:
+                # the reduced model has different cells, thus no Ye.txt of the output folder is of this model
+                require_no_ye_file_of_earlier_model(outdir, modelpath)
             if outputformatversion == 2:
                 # version 2 has cell ids from 0 in each file of the model
                 dfmodel_out, dfelabundances_zero, dfgridcontributions_zero = with_cell_ids_from_zero(
