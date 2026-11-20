@@ -20,7 +20,11 @@ The documentation is at [artistools.readthedocs.io](https://artistools.readthedo
 ## Installation
 Requires Python >= 3.13. A free-threaded Python requires version 3.15 or later, e.g. Python 3.15t.
 
-The artistools command can be invoked with `uvx artistools` (after installing [uv](https://docs.astral.sh/uv/getting-started/installation/)), installed globally with `uv tool install artistools`, or installed into your environment with `pip install artistools`.
+Use one of these ways to get the artistools command:
+
+- `uvx artistools` runs it with no installation. It needs [uv](https://docs.astral.sh/uv/getting-started/installation/).
+- `uv tool install artistools` installs it for your user.
+- `pip install artistools` installs it into the active Python environment.
 
 Some features need the optional packages of `artistools[extras]`:
 
@@ -98,7 +102,7 @@ These commands accept a model path of the form `host:path`, where `host` is a na
 - plotlightcurves and its `--interactive` viewer;
 - plotspectra and its `--interactive` viewer.
 
-In a Python script, give such a path as `Path("host:path")`. These readers then read the model on its host:
+In a Python script, give such a path as `Path("host:path")`. Many readers then read the model on its host, e.g.:
 
 - `at.scan_estimators`, `at.get_timestep_times`, `at.get_timestep_of_timedays`, and `at.misc.get_time_range`;
 - `at.scan_modeldata`, `at.get_inputparams`, `at.get_composition_data`, and `at.scan_deposition`;
@@ -107,7 +111,7 @@ In a Python script, give such a path as `Path("host:path")`. These readers then 
 - `at.lightcurve.find_lightcurve_file`, `at.lightcurve.scan_lightcurve`, and `at.lightcurve.scan_lightcurve_from_packets`;
 - `at.packets.get_packets_column_names`, `at.misc.get_artis_options`, and `at.misc.get_artis_option`.
 
-A different reader stops with an error for a remote model.
+A reader with no support for a remote model stops with an error.
 
 ```sh
 artistools plotspectra -t 300 vae26:~/scratch/mymodel
@@ -159,7 +163,7 @@ dflightcurve = at.lightcurve.scan_lightcurve(at.lightcurve.find_lightcurve_file(
 
 The [data reference](https://artistools.readthedocs.io/en/latest/data.html) gives the columns and the units of the main readers.
 
-A function with the prefix `scan_` returns a polars LazyFrame, or a container of LazyFrames. For example, `scan_modeldata` returns a tuple of a LazyFrame and a dictionary, and `at.spectra.scan_spectra` returns a dictionary with one LazyFrame for each direction bin. Call `.collect()` to get the data. A function with the prefix `read_` returns the data at once, e.g. a DataFrame or a dictionary. Each function with the prefix `get_` in the tables below returns its value at once, e.g. a number, a dictionary, or a DataFrame. The direction bin -1 is the average over all directions.
+A function with the prefix `scan_` returns a polars LazyFrame, or a result that holds LazyFrames and sometimes other values. For example, `scan_modeldata` returns a LazyFrame and a dictionary of the model parameters, and `at.packets.scan_packets` returns the number of ranks and a LazyFrame. `at.spectra.scan_spectra` returns a dictionary with one LazyFrame for each direction bin. Call `.collect()` on a LazyFrame to get the data. A function with the prefix `read_` returns the data at once, e.g. a DataFrame or a dictionary. Each function with the prefix `get_` in the tables below returns its value at once, e.g. a number, a dictionary, or a DataFrame. The direction bin -1 is the average over all directions.
 
 Some of these functions had an older name, e.g. `get_modeldata` in place of `scan_modeldata`, and `read_spec` in place of `scan_spec`. A script can still call the old name, but each call gives a `DeprecationWarning` that names the new function. A later release will delete the old names.
 

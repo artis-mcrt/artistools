@@ -12,14 +12,23 @@ run folder.
 - `artistools cache list mymodel` gives the caches and their sizes.
 - `artistools cache delete mymodel` deletes them.
 
-`cache make` does not convert the NLTE populations. The first read of the NLTE populations writes
-`nltepops_allranks.out.parquet`, e.g. a run of `artistools plotnltepops`.
+`cache make` does not convert the NLTE populations. A read of all the cells of one timestep converts them to
+`nltepops_allranks.out.parquet`:
+
+```sh
+"$(artistools python)" -c 'import artistools as at; at.nltepops.read_nltepops("mymodel", timestep=0)'
+```
+
+The conversion takes all the timesteps of the text, thus a timestep with no NLTE populations, e.g. an LTE timestep,
+also writes the cache. A read of some cells, e.g. a run of `artistools plotnltepops`, reads only the ranks of these
+cells. Thus it writes no cache. artistools writes the cache only when the NLTE files hold 1 GiB of text or more. A reader takes a smaller
+text directly, thus such a model needs no cache.
 
 A reader writes a new cache when the text file changes. Thus a model folder where the user cannot write a file needs
 current caches. Do these steps as a user who can write to the model folder:
 
 1. Run `artistools cache make mymodel`.
-2. If the model has NLTE populations, read them one time, e.g. with `artistools plotnltepops`.
+2. If the model has NLTE populations, run the command above.
 
 Other users can then read the model.
 
@@ -40,14 +49,14 @@ Set `ARTISTOOLS_TRACEBACK=1` to get the full traceback of an error, e.g. `ARTIST
 
 ### The command reads the incorrect model or the incorrect time
 
-Give `--explain`. The command then prints the model folder, the timesteps, and the output file, and it stops before
+Give `--explain`. The command then prints the model folder, the timesteps, and the file of `-o`, and it stops before
 it reads the data.
 
 ### `at` runs a different command
 
 Some systems have a command `at` that runs a job at a later time. Use `artistools`, or put the folder of artistools
-first in `PATH`. For the tab completion of zsh, `artistools completions` gives the steps. These steps put the completion of artistools
-before the completion of `at`.
+first in `PATH`. For the tab completion of zsh, `artistools completions` gives the steps. These steps put the
+completion of artistools before the completion of `at`.
 
 ### The command does not know the name of a variable or a column
 

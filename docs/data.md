@@ -2,8 +2,9 @@
 
 This page gives the columns and the units of the main readers of artistools, and the mistakes that are easy to make
 with them. The text comes from the `artis-data` skill for a large language model (LLM) agent (see "Use with an LLM
-agent" on the home page). Thus the instructions are for the agent, e.g. "give the number of cells that you used". A
-test runs each Python example on the test model.
+agent" on the home page). Thus the instructions are for the agent, e.g. "give the number of cells that you used". The test
+`test_artis_data_skill_examples_run_on_the_test_model` runs each Python example of the skill, thus each example of
+this page, on a test model.
 
 All values are in cgs units, unless the name of a column gives a different unit, e.g. `_Lsun` or `_kmps`.
 
