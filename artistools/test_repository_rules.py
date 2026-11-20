@@ -153,6 +153,8 @@ def test_readme_python_examples_run_on_the_test_model(tmp_path: Path, monkeypatc
         exec(block.replace('Path("mymodel")', f"Path({str(modelpath)!r})"), namespace)  # ruff:ignore[exec-builtin]
 
     assert namespace["dfspectrum"].height > 0
+    # a time range outside the model gave the timestep -1 and an infinite flux on every row
+    assert namespace["dfspectrum"]["f_nu"].is_finite().all()
     assert namespace["dflightcurve"].height > 0
 
 

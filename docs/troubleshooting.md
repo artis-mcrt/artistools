@@ -33,8 +33,8 @@ EOF
 ```
 
 The conversion takes all the timesteps of the text of a run folder. Thus a timestep with no NLTE populations, e.g. an
-LTE timestep, also writes the cache. A read of some cells, e.g. a run of `artistools plotnltepops`, reads only the
-ranks of these cells. Thus it writes no cache.
+LTE timestep, also writes the cache. A read of some cells, e.g. by `artistools plotnltepops`, reads only the ranks of
+these cells. Thus it writes no cache.
 
 artistools makes a new NLTE cache only when the NLTE files hold 1 GiB of text or more. A reader takes a smaller text
 directly. A cache that exists is different: when the text changes, a reader replaces the cache for each size of

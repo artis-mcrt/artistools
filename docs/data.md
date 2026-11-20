@@ -6,7 +6,8 @@ agent" on the home page). Thus the instructions are for the agent, e.g. "give th
 `test_artis_data_skill_examples_run_on_the_test_model` runs each Python example of the skill, thus each example of
 this page, on a test model.
 
-All values are in cgs units, unless the name of a column gives a different unit, e.g. `_Lsun` or `_kmps`.
+Most columns use cgs units. Some columns give their unit at the end of the name, e.g. `_Lsun` or `_kmps`. Each section
+below gives the unit of each column, e.g. `f_lambda` is per Å and not per cm.
 
 ```{include} ../artistools/data/skills/artis-data/SKILL.md
 ---

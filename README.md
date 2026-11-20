@@ -175,9 +175,9 @@ dfmodel, modelmeta = at.scan_modeldata(modelpath)
 times_days = at.get_timestep_times(modelpath, loc="mid")
 dftemperature = at.scan_estimators(modelpath).filter(pl.col("timestep") == 40).select("modelgridindex", "Te").collect()
 
-# get_time_range converts days to timesteps. Direction bin -1 is the average over all directions, thus scan_spectra
-# reads no spec_res.out
-timestepmin, timestepmax, _, _ = at.misc.get_time_range(modelpath, timemin=300, timemax=320)
+# get_time_range converts days to timesteps, and a range outside the model raises an error. Direction bin -1 is the
+# average over all directions, thus scan_spectra reads no spec_res.out
+timestepmin, timestepmax, _, _ = at.misc.get_time_range(modelpath, timedays_range_str="300-320")
 dfspectrum = at.spectra.scan_spectra(modelpath, timestepmin, timestepmax, directionbins=[-1])[-1].collect()
 
 # scan_lightcurve takes a file and not a model folder, thus find_lightcurve_file finds the file, e.g. a
