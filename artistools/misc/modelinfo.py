@@ -373,7 +373,7 @@ def get_inputfilepath(modelpath: Path | str) -> Path:
     check_local_path(modelpath)
     inputfilepath = Path(modelpath, "input.txt")
     if not inputfilepath.is_file():
-        msg = f"{inputfilepath} not found. Is {Path(modelpath).resolve()} an ARTIS folder?"
+        msg = f"{inputfilepath} does not exist. Is {Path(modelpath).resolve()} an ARTIS model folder?"
         raise FileNotFoundError(msg)
     return inputfilepath
 
