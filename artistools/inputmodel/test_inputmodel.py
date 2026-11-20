@@ -4746,12 +4746,19 @@ def test_reduction_and_downscale_write_the_format_version_of_the_prompt(tmp_path
     (sourcefolder / "Ye.txt").write_text(
         f"{dfsource.height}\n" + "".join(f"{cellid} 0.49\n" for cellid in dfsource["inputcellid"]), encoding="utf-8"
     )
-    reducedfolder = tmp_path / "reduced"
-    at.inputmodel.makeartismodel.main(
-        argsraw=[], modelpath=[sourcefolder], dimensionreduce=1, format_version=2, outputfile=reducedfolder
+    # The output folder of the reduction is a subfolder of the source folder, and it holds the particle contributions
+    # of an earlier model. The source model has none, thus the reduced model gets none
+    reducedfolder = sourcefolder / f"{sourcefolder.name}_dimreduce_1d"
+    reducedfolder.mkdir()
+    (reducedfolder / "gridcontributions.txt").write_text(
+        "particleid cellindex frac_of_cellmass\n42 1 1.0\n", encoding="utf-8"
     )
-    dfreduced = at.inputmodel.scan_modeldata(next(reducedfolder.iterdir()))[0].collect()
+    at.inputmodel.makeartismodel.main(
+        argsraw=[], modelpath=[sourcefolder], dimensionreduce=1, format_version=2, outputfile=sourcefolder, force=True
+    )
+    dfreduced = at.inputmodel.scan_modeldata(reducedfolder)[0].collect()
     assert dfreduced.filter(pl.col("rho") > 0)["Ye"].to_list() == pytest.approx([0.49] * 5, rel=1e-6)
+    assert not list(reducedfolder.glob("gridcontributions.txt*"))
 
     version2folder = tmp_path / "version2"
     at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[sourcefolder], format_version=2, outputfile=version2folder)

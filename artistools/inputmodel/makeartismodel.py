@@ -32,7 +32,6 @@ from artistools.inputmodel.energyinputfiles import make_energy_files
 from artistools.inputmodel.modelfromhydro import get_griddata_output_file_names
 from artistools.inputmodel.modelfromhydro import makemodelfromgriddata
 from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions
-from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions_or_none
 from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_force
@@ -145,6 +144,18 @@ def get_dimreduce_outputfolder(outputfile: Path | None, modelpath: Path, ndim_ou
     )
 
 
+def get_contributions_beside_model(sourcefolder: Path) -> pl.DataFrame | None:
+    """Return the particle contributions of the gridcontributions.txt in the folder of model.txt, or None.
+
+    An output folder can be a subfolder of the source folder, and its gridcontributions.txt is of a different model.
+    Thus the function does not search the subfolders.
+    """
+    contributionsfile = firstexisting_or_none(
+        "gridcontributions.txt", folder=sourcefolder, tryzipped=True, search_subfolders=False
+    )
+    return None if contributionsfile is None else get_gridparticlecontributions(sourcefolder)
+
+
 def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int) -> None:
     """Convert the model.txt of a model to the format version formatversion, and write it into outputfolder.
 
@@ -233,12 +244,8 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
         # Each file of a model has the same cell ids, and version 2 has cell ids from 0. The output folder can be a
         # subfolder of the source folder, thus the contributions come from the source folder alone
         print("  Version 2 has cell ids from 0, thus gridcontributions.txt gets the same ids.")
-        hascontributions = (
-            firstexisting_or_none("gridcontributions.txt", folder=sourcefolder, tryzipped=True, search_subfolders=False)
-            is not None
-        )
         dfmodel, dfelabundances, dfgridcontributions = with_cell_ids_from_zero(
-            dfmodel, dfelabundances, get_gridparticlecontributions(sourcefolder) if hascontributions else None
+            dfmodel, dfelabundances, get_contributions_beside_model(sourcefolder)
         )
 
     if formatversion == 2:
@@ -422,7 +429,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
             sourcefolder = get_model_input_folder(modelpath)
             dfelabundances = scan_initelemabundances(modelpath)
-            dfgridcontributions = get_gridparticlecontributions_or_none(sourcefolder)
+            dfgridcontributions = get_contributions_beside_model(sourcefolder)
             outputformatversion = get_output_format_version(args, modelpath)
             yefilepath = firstexisting_or_none("Ye.txt", folder=sourcefolder, tryzipped=True, search_subfolders=False)
             if yefilepath is not None and outputformatversion == 2:
@@ -466,6 +473,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             # the function gives an empty frame for a model with no contributions, thus test the input
             if dfgridcontributions is not None:
                 save_gridparticlecontributions(dfgridcontributions_out, outdir / "gridcontributions.txt")
+            else:
+                # the particle contributions of an earlier model do not go with the cells of the new model.txt
+                for oldfile in get_file_copies(outdir / "gridcontributions.txt"):
+                    if oldfile.is_file():
+                        oldfile.unlink()
+                        print(f"  Deleted {oldfile}, which is a file of an earlier model in the output folder")
 
     for modelpath, outdir in zip(args.modelpath, outputfolders.get("convertformat", []), strict=False):
         convert_model_format(modelpath, outdir, args.format_version)
