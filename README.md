@@ -41,12 +41,18 @@ To enable tab completion, run `artistools completions`. The command detects your
 
 These steps use a model folder `mymodel`, which holds `input.txt` and the output files of ARTIS:
 
-1. `artistools describe mymodel` gives the cells, the timesteps, the output files, the ions, and the direction bins of the model.
+1. `artistools describe mymodel` gives a summary of the model:
+   - the cells;
+   - the timesteps;
+   - the output files;
+   - the ions;
+   - the direction bins.
 2. `artistools check mymodel` tests the output files, e.g. for a run that stopped early.
 3. `artistools plotspectra -t 300 mymodel` writes the spectrum at 300 days to the file `plotspectra_<timemin>d-<timemax>d.pdf` in the working folder. `-o` gives a different file name.
-4. Give `--show` to show the figure in a window, or `--interactive` to change the options in a window.
-5. Give `--print-data` to print the plotted data as a table (see [The plotted data as text](#the-plotted-data-as-text)).
-6. Give `--explain` to see what the arguments select, e.g. the timesteps of a time range. The command then stops and reads no data.
+4. Give `--show` to show the figure in a window.
+5. Give `--interactive` to change the options of the plot in a window.
+6. Give `--print-data` to print the plotted data as a table (see [The plotted data as text](#the-plotted-data-as-text)).
+7. Give `--explain` to see what the arguments select, e.g. the timesteps of a time range. The command then stops and reads no data.
 
 ## Development (editable installation)
 For development, you will need [a rust compiler](https://www.rust-lang.org/tools/install) and a clone of the repository:

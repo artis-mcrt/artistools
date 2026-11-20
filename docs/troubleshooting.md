@@ -7,8 +7,12 @@ faster. The cache is beside the text file, e.g. `model.txt.parquet` in the model
 `packetsbatch<n>_<first>_<last>.out.parquet` in the folder of the packets files. A cache of the estimators is in each
 run folder.
 
-- `artistools cache make mymodel` writes the caches of the input model, the line list, the estimators, the packets, and
-  the virtual packets at one time, e.g. in the job script after a run of ARTIS.
+- `artistools cache make mymodel` writes these caches at one time, e.g. in the job script after a run of ARTIS:
+  - the input model;
+  - the line list;
+  - the estimators;
+  - the packets;
+  - the virtual packets.
 - `artistools cache list mymodel` gives the caches and their sizes.
 - `artistools cache delete mymodel` deletes them.
 
@@ -16,7 +20,7 @@ run folder.
 `nltepops_allranks.out.parquet`:
 
 ```sh
-"$(artistools python)" -c 'import artistools as at; at.nltepops.read_nltepops("mymodel", timestep=0)'
+"$(artistools python)" -P -c 'import artistools as at; at.nltepops.read_nltepops("mymodel", timestep=0)'
 ```
 
 The conversion takes all the timesteps of the text, thus a timestep with no NLTE populations, e.g. an LTE timestep,
