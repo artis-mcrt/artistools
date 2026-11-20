@@ -1,6 +1,6 @@
 # artistools
 
-[![DOI](https://zenodo.org/badge/53433932.svg)](https://zenodo.org/badge/latestdoi/53433932)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.6418832.svg)](https://doi.org/10.5281/zenodo.6418832)
 [![PyPI - Version](https://img.shields.io/pypi/v/artistools)](https://pypi.org/project/artistools)
 [![License](https://img.shields.io/github/license/artis-mcrt/artistools)](https://github.com/artis-mcrt/artistools/blob/main/LICENSE.txt)
 
@@ -67,7 +67,7 @@ prek install
 
 ## Citing artistools
 
-If you use artistools for a paper or a presentation, please cite it. For details, see [https://zenodo.org/badge/latestdoi/53433932](https://zenodo.org/badge/latestdoi/53433932).
+If you use artistools for a paper or a presentation, please cite it with the DOI [10.5281/zenodo.6418832](https://doi.org/10.5281/zenodo.6418832). This DOI names all the versions of artistools, and it always resolves to the latest version. `CITATION.cff` gives the authors.
 
 ## Usage
 Run "artistools" (or the short alias "at") at the command-line to get a full list of subcommands, and "artistools --version" to check the installed version. Some common commands are:
