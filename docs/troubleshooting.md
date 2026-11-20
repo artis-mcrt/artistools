@@ -57,7 +57,8 @@ The feature needs a package of `artistools[extras]`. Install artistools with the
 
 ### `--interactive` does not open a window
 
-The window needs PySide6, which a free-threaded Python cannot load. Use a Python that is not free-threaded.
+The window needs PySide6, which has no wheels for a free-threaded Python. Thus `artistools[extras]` does not install
+on such a Python. Use a Python that is not free-threaded.
 
 ### The error message is not enough
 

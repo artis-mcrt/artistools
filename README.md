@@ -28,12 +28,14 @@ Use one of these ways to get the artistools command:
 
 Some features need the optional packages of `artistools[extras]`:
 
-- the windows of `--interactive` need PySide6, which a free-threaded Python cannot load;
+- the windows of `--interactive` need PySide6;
 - `plotviewingangles` needs plotly;
 - `spencerfano` needs pynonthermal;
 - the 3D view of `plotinitialcomposition` needs pyvista.
 
 To install them, run `uv tool install 'artistools[extras]'` or `pip install 'artistools[extras]'`. Keep the quotes. Without them, zsh reads the square brackets as a pattern.
+
+A free-threaded Python cannot install `artistools[extras]`, because PySide6 has no wheels for it. On such a Python, install each other package that you need, e.g. `pip install plotly`. The windows of `--interactive` then do not work.
 
 To enable tab completion, run `artistools completions`. The command detects your shell and gives the steps for it.
 
