@@ -3418,12 +3418,12 @@ def resolve_positional_args(args: argparse.Namespace) -> None:
 
 
 def require_artis_folder(modelpath: Path, lastitem: str | None = None) -> None:
-    """Stop with an error message when the path does not name an ARTIS folder.
+    """Stop with an error message when the path does not name an ARTIS model folder.
 
     The command reads the working folder when the user names no folder. A user can run the command in
-    a folder that is not an ARTIS folder. The message then names that folder and not an absent file.
-    lastitem is the last positional argument. A folder that does not exist stays an item, thus a mistyped
-    folder name, e.g. "mymodle", comes here as the last item.
+    a folder that is not an ARTIS model folder. The message then names that folder and not an absent file.
+    lastitem is the last positional argument. A folder that does not exist stays a plot item, thus a folder
+    name with an error, e.g. "mymodle", comes here as the last item.
     """
     if path_is_codecomparison(modelpath) or folder_is_artis_model(modelpath):
         return
@@ -3434,16 +3434,20 @@ def require_artis_folder(modelpath: Path, lastitem: str | None = None) -> None:
         f"Name one of these subfolders after the variables: {', '.join(nearby)}"
         if nearby
         else (
-            "An ARTIS folder holds input.txt. Name one after the variables, e.g. `artistools plotestimators Te mymodel`"
+            "An ARTIS model folder holds input.txt. Name one after the variables, e.g."
+            " `artistools plotestimators Te mymodel`"
         )
     )
 
     if modelpath == Path():
         # the hint is not useful for a name that is a known variable or an ion, e.g. "Te" or "Fe II"
         if lastitem is not None and get_series_name(lastitem) not in VARIABLES and not could_be_ion(lastitem):
-            helptext = f"No folder '{lastitem}' exists. If it is the ARTIS folder, correct its name. {helptext}"
+            helptext = (
+                f"No folder '{lastitem}' exists. If '{lastitem}' is the model folder, correct the spelling. {helptext}"
+            )
         exit_with_error(
-            "No ARTIS model folder was given, and the working folder is not an ARTIS model folder", helptext
+            "The command line gives no ARTIS model folder, and the working folder is not an ARTIS model folder",
+            helptext,
         )
 
     exit_with_error(f"'{modelpath}' is not an ARTIS model folder", helptext)

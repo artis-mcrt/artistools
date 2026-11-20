@@ -445,6 +445,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     if not folder_is_artis_model(modelpath):
         exit_with_error(
             f"'{modelpath}' is not an ARTIS model folder",
-            "An ARTIS model folder holds input.txt. Give the folder of a model, e.g. `artistools describe mymodel`",
+            "An ARTIS model folder holds input.txt. Give a model folder, e.g. `artistools describe mymodel`",
         )
     print_product(args, "\n".join(get_model_summary(modelpath, alloptions=args.alloptions)))

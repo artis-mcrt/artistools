@@ -233,7 +233,7 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
 
 
 def get_nested_command_suggestion(command: str, groupparsers: Iterable[argparse.ArgumentParser]) -> str:
-    """Return a sentence that names the group that holds the command, e.g. inputmodel for maptogrid, or "".
+    """Return a sentence that names the group of the command, e.g. inputmodel for maptogrid, or "" for no group.
 
     A user often writes a command of a group without the group, and a close match at the top level then
     names a different command.

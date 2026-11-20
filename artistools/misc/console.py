@@ -21,8 +21,8 @@ def suggest_names(name: str, candidates: "Collection[str]", aliasgroup: "Callabl
 
     The sentence goes on the help line of an error, thus it carries no leading space. A name that
     differs only in case comes first, because that mistake is common and difflib scores a short name
-    such as "te" against "Te" below its own threshold. aliasgroup returns the same value for two
-    aliases of one thing. The sentence then names that thing one time.
+    such as "te" against "Te" below its own threshold. aliasgroup returns the same value for each
+    alias of one candidate. The sentence then names that candidate one time.
     """
     import difflib
 
@@ -30,7 +30,7 @@ def suggest_names(name: str, candidates: "Collection[str]", aliasgroup: "Callabl
     if samecase := [other for other in names if other.lower() == name.lower() and other != name]:
         return f"Did you mean {samecase[0]}?"
 
-    # all the close matches, because the removal of the aliases can leave fewer than 3. difflib refuses n=0
+    # get all the close matches, because the removal of the aliases can leave fewer than 3. difflib refuses n=0
     matches = difflib.get_close_matches(name, names, n=max(len(names), 1), cutoff=0.6)
     if aliasgroup is not None:
         matchesofgroup = {aliasgroup(match): match for match in reversed(matches)}
