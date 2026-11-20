@@ -60,6 +60,7 @@ from artistools.estimators.plotitems import get_column_name
 from artistools.estimators.plotitems import get_directive_name
 from artistools.estimators.plotitems import get_iontuple
 from artistools.estimators.plotitems import get_iontuple_sortkey
+from artistools.estimators.plotitems import get_item_directive
 from artistools.estimators.plotitems import get_series_name
 from artistools.estimators.plotitems import get_styles_of_subplots
 from artistools.estimators.plotitems import is_ionseriestype
@@ -3418,6 +3419,30 @@ def resolve_positional_args(args: argparse.Namespace) -> None:
         args.plotlist = [plotvars, *(args.plotlist or [])]
 
 
+def get_missing_folder_hint(lastitem: str) -> str:
+    """Return a hint when the last positional argument is probably a model folder that does not exist, or "".
+
+    With no model, the command cannot know each valid plot item, e.g. a directive such as yscale=log or a column such as
+    heating_dep/total_dep. Thus the hint needs evidence of a folder: a path such as ./mymodle, or a folder that exists
+    with a close name, e.g. mymodel for mymodle.
+    """
+    # a known variable, an alias such as T_e, an ion, or a directive is a plot item, even when a folder has a close name
+    name = get_series_name(resolve_item_alias(lastitem))
+    if name in VARIABLES or could_be_ion(lastitem) or get_item_directive(lastitem) is not None:
+        return ""
+
+    if lastitem.startswith(("/", "./", "../", "~")):
+        return f"No folder '{lastitem}' exists."
+
+    parent = Path(lastitem).parent
+    if not parent.is_dir():
+        return ""
+    folders = [path.name for path in parent.iterdir() if path.is_dir()]
+    if suggestion := suggest_names(Path(lastitem).name, folders):
+        return f"No folder '{lastitem}' exists. {suggestion}"
+    return ""
+
+
 def require_artis_folder(modelpath: Path, lastitem: str | None = None) -> None:
     """Stop with an error message when the path does not name an ARTIS model folder.
 
@@ -3441,16 +3466,8 @@ def require_artis_folder(modelpath: Path, lastitem: str | None = None) -> None:
     )
 
     if modelpath == Path():
-        # the hint is not useful for a name that is a known variable or an ion, e.g. "Te" or "Fe II"
-        # an alias such as T_e is a variable too, thus the test reads the variable of the alias
-        if (
-            lastitem is not None
-            and get_series_name(resolve_item_alias(lastitem)) not in VARIABLES
-            and not could_be_ion(lastitem)
-        ):
-            helptext = (
-                f"No folder '{lastitem}' exists. If '{lastitem}' is the model folder, correct the spelling. {helptext}"
-            )
+        if lastitem is not None and (folderhint := get_missing_folder_hint(lastitem)):
+            helptext = f"{folderhint} {helptext}"
         exit_with_error(
             "The command line gives no ARTIS model folder, and the working folder is not an ARTIS model folder",
             helptext,

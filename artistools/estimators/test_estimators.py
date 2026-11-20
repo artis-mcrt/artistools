@@ -4376,10 +4376,23 @@ def test_a_working_folder_that_is_not_artis_gives_an_error(
         at.estimators.plotestimators.main(argsraw=["T_e", "-t", "1"])
     assert "No folder 'T_e' exists" not in capsys.readouterr().err
 
-    # a folder that does not exist stays a plot item, and the old error said only that the user gave no folder
-    with pytest.raises(SystemExit):
-        at.estimators.plotestimators.main(argsraw=["Te", "mymodle", "-t", "1"])
-    assert "No folder 'mymodle' exists" in capsys.readouterr().err
+    # a folder that does not exist stays a plot item, and the old error said only that the user gave no folder. The hint
+    # needs evidence of a folder, a folder with a close name or a path, because a directive such as yscale=log and a
+    # column such as heating_dep/total_dep are valid items that no table lists without a model
+    (tmp_path / "mymodel").mkdir()
+    for argsraw, hint in (
+        (["Te", "mymodle"], "No folder 'mymodle' exists. Did you mean mymodel?"),
+        (["Te", "./mymodle"], "No folder './mymodle' exists."),
+        (["Te", "yscale=log"], None),
+        (["Te", "heating_dep/total_dep"], None),
+    ):
+        with pytest.raises(SystemExit):
+            at.estimators.plotestimators.main(argsraw=[*argsraw, "-t", "1"])
+        stderr = capsys.readouterr().err
+        if hint is None:
+            assert "No folder '" not in stderr, argsraw
+        else:
+            assert hint in stderr, argsraw
 
     with pytest.raises(SystemExit):
         at.estimators.plotestimators.main(argsraw=["Te", str(tmp_path / "notamodel"), "-t", "1"])
