@@ -2,9 +2,43 @@
 
 A collection of plotting, analysis, and file format conversion tools
 for the ARTIS radiative transfer code.
+
+The main entry points are:
+
+- `artistools` on the command line, which lists the commands, e.g. `artistools plotspectra`;
+- `at.scan_modeldata`, which reads the cells and the parameters of a model;
+- `at.scan_estimators`, which reads the estimators of each timestep and cell;
+- `at.spectra.scan_spectra` and `at.lightcurve.scan_lightcurve`, which read the spectra and the light curves;
+- `at.packets.scan_packets`, which reads the packets files;
+- the `plot` function of a package, e.g. `at.spectra.plot`, which runs the command of that package.
+
+docs/data.md gives the columns and the units of each reader.
 """
 
 # ruff:file-ignore[non-empty-init-module]
+# pydoc lists only the names of __all__, because the functions of the top level come from the packages
+__all__ = [
+    "add_derived_cols_to_modeldata",
+    "decode_roman_numeral",
+    "firstexisting",
+    "get_atomic_number",
+    "get_composition_data",
+    "get_elsymbol",
+    "get_inputparams",
+    "get_ion_tuple",
+    "get_ionstring",
+    "get_model_name",
+    "get_nprocs",
+    "get_path",
+    "get_timestep_of_timedays",
+    "get_timestep_times",
+    "get_z_a_nucname",
+    "scan_deposition",
+    "scan_estimators",
+    "scan_modeldata",
+    "zopen",
+]
+
 import os
 import sys
 

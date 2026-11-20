@@ -133,6 +133,31 @@ def test_top_level_api_is_the_documented_list() -> None:
         assert readmenames <= TOPLEVEL_API, f"the README names {sorted(readmenames - TOPLEVEL_API)} at the top level"
 
 
+def test_help_shows_the_top_level_names_and_the_readers() -> None:
+    """help(at) and help(at.spectra) list the readers.
+
+    pydoc lists only the names of __all__ for a function that a different module defines. The top level had no
+    __all__, thus help(at) listed no function. Each package had __all__ = ["plot"], thus help listed only plot.
+    """
+    import pydoc
+
+    assert set(at.__all__) == TOPLEVEL_API
+    packagereaders = {
+        at.estimators: ["read_estimators", "scan_estimators"],
+        at.lightcurve: ["scan_lightcurve", "scan_lightcurve_from_packets"],
+        at.nltepops: ["read_nltepops"],
+        at.packets: ["scan_packets"],
+        at.spectra: ["scan_spectra", "scan_spectra_from_packets"],
+    }
+    for package, readers in [(at, sorted(TOPLEVEL_API)), *packagereaders.items()]:
+        assert not [name for name in package.__all__ if getattr(package, name, None) is None], package.__name__
+        helptext = pydoc.plain(pydoc.render_doc(package))
+        # a cached reader is an object and not a function, thus pydoc lists it as "name = <...>"
+        assert not [name for name in readers if not re.search(rf"^    {name}[ (]", helptext, re.MULTILINE)], (
+            package.__name__
+        )
+
+
 def test_readme_python_examples_run_on_the_test_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Each Python block of the README must run, because a change of a reader can break a block and no other test fails.
 
