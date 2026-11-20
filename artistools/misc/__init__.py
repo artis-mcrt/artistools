@@ -89,14 +89,16 @@ from artistools.misc.console import print_error as print_error
 from artistools.misc.console import print_heading as print_heading
 from artistools.misc.console import print_warning as print_warning
 from artistools.misc.console import suggest_names as suggest_names
-from artistools.misc.dirbins import addarg_costhetarange as addarg_costhetarange
+from artistools.misc.dirbins import addarg_celldirectionrange as addarg_celldirectionrange
 from artistools.misc.dirbins import average_direction_bins as average_direction_bins
+from artistools.misc.dirbins import CellDirectionRange as CellDirectionRange
 from artistools.misc.dirbins import check_averaging_angles as check_averaging_angles
 from artistools.misc.dirbins import check_dirbin as check_dirbin
-from artistools.misc.dirbins import format_costheta_range as format_costheta_range
+from artistools.misc.dirbins import format_cell_direction_range as format_cell_direction_range
 from artistools.misc.dirbins import get_average_group_dirbins as get_average_group_dirbins
+from artistools.misc.dirbins import get_cell_direction_range as get_cell_direction_range
 from artistools.misc.dirbins import get_costheta_bins as get_costheta_bins
-from artistools.misc.dirbins import get_costheta_range as get_costheta_range
+from artistools.misc.dirbins import get_costhetabin_expr as get_costhetabin_expr
 from artistools.misc.dirbins import get_costhetabin_phibin_labels as get_costhetabin_phibin_labels
 from artistools.misc.dirbins import get_dirbin_centre_direction as get_dirbin_centre_direction
 from artistools.misc.dirbins import get_dirbin_definitions as get_dirbin_definitions
@@ -105,6 +107,7 @@ from artistools.misc.dirbins import get_dirbins as get_dirbins
 from artistools.misc.dirbins import get_opacity_condition_label as get_opacity_condition_label
 from artistools.misc.dirbins import get_phi_bin_edges_ascending as get_phi_bin_edges_ascending
 from artistools.misc.dirbins import get_phi_bins as get_phi_bins
+from artistools.misc.dirbins import get_phibin_expr as get_phibin_expr
 from artistools.misc.dirbins import get_phibin_rank_ascending as get_phibin_rank_ascending
 from artistools.misc.dirbins import get_viewingdirection_costhetabincount as get_viewingdirection_costhetabincount
 from artistools.misc.dirbins import get_viewingdirection_phibincount as get_viewingdirection_phibincount

@@ -5319,7 +5319,7 @@ def test_element_group_mass_fractions_take_only_the_elements_of_the_group() -> N
 def test_dirbin_selects_the_cells_and_a_mass_fraction_takes_the_mass_weight(
     tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
 ) -> None:
-    """-dirbin 50 keeps the cells with 0 ≤ cos θ ≤ 0.2 at the centre, and init_X_Fe uses the cell masses as weights.
+    """-dirbin 50 with --average-over-phi-angle keeps the cells with 0 ≤ cos θ ≤ 0.2, and init_X_Fe takes mass weights.
 
     Te uses the volume as the weight. A mean of a mass fraction with that weight gave too much weight to the cells of
     low density.
@@ -5330,6 +5330,7 @@ def test_dirbin_selects_the_cells_and_a_mass_fraction_takes_the_mass_weight(
         modelpath=modelpath_classic_3d,
         outputfile=tmp_path,
         dirbin=50,
+        average_over_phi_angle=True,
         plotlist=[["init_X_Fe", "Te"]],
         write_data=True,
     )
@@ -5489,3 +5490,32 @@ def test_image_mean_takes_the_finite_values_alone(weight: float) -> None:
     drawn = plotestimators.get_drawn_image_values(means["panel0"].to_numpy(), logscale=False)
     assert np.ma.getmaskarray(drawn).tolist() == [False, True]
     assert drawn[0] == pytest.approx(3.0)
+
+
+def test_dirbin_on_the_host_of_a_remote_model_reads_no_model_again() -> None:
+    """The host takes the dimensions of its model for the ϕ range of -dirbin, and it reads the model no more.
+
+    On the host, args.modelpath still names the host, thus a read of the model there started a new remote read.
+    """
+    args = argparse.Namespace(
+        modelgridindex=[0, 1],
+        dimensionreduce=0,
+        dirbin=93,
+        average_over_phi_angle=False,
+        costhetamin=None,
+        costhetamax=None,
+        modelpath="nohost:/no/model",
+    )
+    estimators = pl.LazyFrame({
+        "modelgridindex": [0, 1],
+        "vel_r_mid_on_c": [0.1, 0.1],
+        "vel_x_mid_on_c": [-0.01, 0.01],
+        "vel_y_mid_on_c": [-0.01, 0.01],
+        "vel_z_mid_on_c": [0.098, 0.098],
+        "volume": [1.0, 1.0],
+        "twidth_days": [1.0, 1.0],
+    })
+    with mock.patch("artistools.inputmodel.core.scan_modeldata", side_effect=AssertionError) as mockscan:
+        selected, _ = plotestimators.add_plot_columns(args, estimators, {"dimensions": 3})
+        assert selected.collect()["modelgridindex"].to_list() == [0]
+    mockscan.assert_not_called()

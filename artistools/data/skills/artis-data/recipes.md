@@ -304,9 +304,10 @@ Do these steps in this sequence, for each direction bin:
    wavelength than the trough. The median is an estimate of the velocity of the photosphere in that direction. The
    quartiles show the width of the region.
 3. Compare the optical depth of the lines in the cells of each direction: `artistools plotlinecontributions <modelpath>
-   -t <days> --lambdamin <Å> --lambdamax <Å> --costhetamin 0.8`. These are the cells of the costheta bin of `--dirbin 90`.
-   For the cells of `--dirbin 50`, give `--costhetamin 0 --costhetamax 0.2`. A line makes an absorption trough only with
-   tau_sobolev above 1 in front of the photosphere, i.e. at a velocity above the median of step 2.
+   -t <days> --lambdamin <Å> --lambdamax <Å> --dirbin 90 --average-over-phi-angle`. These are the cells in the costheta
+   bin of direction bin 90, at each ϕ. For the cells near the equator, give `--dirbin 50 --average-over-phi-angle`. A
+   line makes an absorption trough only with tau_sobolev above 1 in front of the photosphere, i.e. at a velocity above
+   the median of step 2.
 4. Estimate the trough: `artistools plotlinecontributions ... --troughdirbin 90 --average-over-phi-angle
    --photospherevelocity <v>`, with the median of step 2 and its unit, e.g. `0.157c` or `47000km/s`. The estimate has no
    emission of the lines, no limb darkening, and only the ranked lines. If the estimate gives a deep trough and the

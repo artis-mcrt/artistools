@@ -159,7 +159,19 @@ def test_values_warn_about_a_requested_cell_in_the_direction_range(capsys: pytes
     """
     from artistools.estimators.values import main
 
-    main(argsraw=["Te", "-ts", "25", "-dirbin", "90", "-cell", "402,644,932", str(modelpath_classic_3d)])
+    main(
+        argsraw=[
+            "Te",
+            "-ts",
+            "25",
+            "-dirbin",
+            "90",
+            "--average-over-phi-angle",
+            "-cell",
+            "402,644,932",
+            str(modelpath_classic_3d),
+        ]
+    )
 
     stderr = capsys.readouterr().err
     assert "modelgridindex 932 has no estimators" in stderr
