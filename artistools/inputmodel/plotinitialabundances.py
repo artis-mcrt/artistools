@@ -27,6 +27,7 @@ from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
+from artistools.misc import velocity_on_c_arg
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
@@ -180,8 +181,18 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         choices=["massfraction", "abundance"],
         help="Vertical axis quantity: mass fraction or number abundance",
     )
-    parser.add_argument("-vmin", type=float, default=None, help="Minimum mid-point velocity of a cell [c]")
-    parser.add_argument("-vmax", type=float, default=None, help="Maximum mid-point velocity of a cell [c]")
+    # plotopacity takes a velocity with a unit. A bare number keeps the meaning of a fraction of c
+    for name, limit in (("vmin", "Minimum"), ("vmax", "Maximum")):
+        parser.add_argument(
+            f"-{name}",
+            type=velocity_on_c_arg,
+            default=None,
+            metavar="VELOCITY",
+            help=(
+                f"{limit} mid-point velocity of a cell. Give a fraction of c, e.g. 0.1 or 0.1c, or a number that ends"
+                " in km/s, e.g. 5000km/s"
+            ),
+        )
     parser.add_argument(
         "-thetamin", type=float, default=None, help="Minimum polar angle of a cell from the z axis [degrees]"
     )

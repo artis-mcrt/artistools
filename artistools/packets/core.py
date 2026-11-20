@@ -1073,7 +1073,27 @@ def scan_packets(
     packet_type: str | None = None,
     escape_type: str | None = None,
 ) -> tuple[int, pl.LazyFrame]:
-    """Return the number of MPI ranks read and a lazy frame of the model's packets, filtered by type if given."""
+    """Return the number of MPI ranks that the reader reads, and a LazyFrame of the packets of the model.
+
+    Divide a sum of the packet energies by the number of ranks, e.g. for a luminosity. The main columns are:
+
+    - type_id and escape_type_id, the type of the packet and its escape type (see type_ids);
+    - posx, posy, and posz (cm), the position, which is the escape position for an escaped packet;
+    - dirx, diry, and dirz, the direction;
+    - e_rf and e_cmf (erg), the energy in the rest frame and in the comoving frame;
+    - nu_rf and nu_cmf (Hz), the frequency in the rest frame and in the comoving frame;
+    - tdecay, escape_time, and em_time (s), the time of the decay, of the escape, and of the last emission;
+    - t_arrive_d (days), the arrival time at an observer at a large distance;
+    - costheta, phi, and dirbin, the direction and its direction bin.
+
+    maxpacketfiles reads only the whole batches of 100 ranks below it, e.g. 150 reads 100 files. A value below the
+    number of ranks of the first batch raises ValueError. packet_type keeps one type, e.g. "TYPE_ESCAPE".
+    escape_type keeps the escaped packets of one type, "TYPE_RPKT" or "TYPE_GAMMA".
+
+    Before it returns, the reader writes a parquet cache for each batch of 100 packets files that has no current cache.
+    On a large model, this takes many minutes. get_packets_column_names gives the columns and writes no cache. The
+    reader stops with an error for a remote model. docs/data.md gives each column.
+    """
     if escape_type is not None:
         assert packet_type in {None, "TYPE_ESCAPE"}
         if packet_type is None:

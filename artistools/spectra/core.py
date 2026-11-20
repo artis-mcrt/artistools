@@ -552,14 +552,36 @@ def scan_spectra_from_packets(
     gamma: bool = False,
     relnoise: bool = False,
 ) -> dict[int, pl.LazyFrame]:
-    """Return a spectrum dataframe. The packets files are the input.
+    """Return a dict with a LazyFrame of the spectrum of each direction bin, from the packets files.
 
-    The directionbins parameter selects the viewing direction bins. The default is all the direction bins.
-    A query for each direction bin has a cost. Thus a caller that needs one bin must request one bin.
+    For the real packets, the key -1 is the average over all directions. The spectrum is the mean over the time range
+    from timelowdays to timehighdays. Each LazyFrame has these columns:
 
-    With the argument relnoise=True, the dataframe has the column relnoise, which is the relative Monte Carlo noise of
-    each bin. relnoise = sqrt(sum(e^2)) / sum(e), where e is the energy of each packet in the bin. relnoise is null for
-    a bin with no packet energy. fluxfilterfunc changes f_lambda, but it does not change relnoise.
+    - lambda_angstroms (Å), delta_lambda (Å), and nu (Hz), the centre, the width, and the frequency of the bin;
+    - packetcount, the number of packets in the bin;
+    - f_lambda (erg/s/cm^2/Å) and f_nu (erg/s/cm^2/Hz), the flux at a distance of 1 Mpc;
+    - with relnoise, relnoise = sqrt(sum(e^2)) / sum(e), where e is the energy of each packet in the bin.
+
+    relnoise is the relative Monte Carlo noise, and it is null for a bin with no packet energy. The arguments are:
+
+    - directionbins selects the bins, and None gives every bin. A query for each bin has a cost. Thus ask only for the
+      bins that you need;
+    - use_time selects the time of a packet:
+      - "arrival" gives the arrival time at the observer;
+      - "emission" gives the emission time, moved by the mean difference to the arrival time;
+      - "escape" gives the comoving-frame escape time, with the comoving-frame energy e_cmf;
+    - lambda_bin_edges gives the wavelength bins (Å). None gives the bins of spec.out or gamma_spec.out. Without that
+      file, None gives 1000 default bins;
+    - maxpacketfiles reads only the whole batches of 100 ranks below it, e.g. 150 reads 100 files. A value below the
+      number of ranks of the first batch raises ValueError;
+    - fluxfilterfunc changes f_lambda, but it does not change relnoise;
+    - nprocs_read_dfpackets gives the number of ranks and the packets that the caller read, thus the call reads no
+      packets file;
+    - directionbins_are_vpkt_observers reads the virtual packets, and each bin is then an observer of vpkt.txt;
+    - gamma reads the escaped gamma-ray packets (TYPE_GAMMA) in place of the r-packets (TYPE_RPKT).
+
+    Before it returns, the call writes a parquet cache for each batch of packets files that has no current cache. On a
+    large model, this takes many minutes. docs/data.md gives each column.
     """
     assert use_time in {"arrival", "emission", "escape"}
     if directionbins_are_vpkt_observers and use_time != "arrival":
@@ -806,12 +828,21 @@ def scan_spectra(
 ) -> dict[int, pl.LazyFrame]:
     """Return the emergent ultraviolet, optical, and infrared (UVOIR) spectra, one LazyFrame for each direction bin.
 
+    The key -1 is the average over all directions from spec.out or specpol.out. Each LazyFrame has these columns:
+
+    - nu (Hz) and lambda_angstroms (Å), the frequency and the wavelength of the bin;
+    - f_nu (erg/s/cm^2/Hz) and f_lambda (erg/s/cm^2/Å), the flux at a distance of 1 Mpc.
+
     directionbins selects the bins, and None gives every bin. A 3D model has 100 bins in spec_res.out, and a remote
     model sends each bin through ssh, thus a caller asks for its own bins. A request of bin -1 alone reads no
     spec_res.out. A requested bin that the model does not have is not in the result, thus a caller tests for it.
 
     The flux is the mean of the fluxes of the timesteps from timestepmin to timestepmax (inclusive). The weight of each
-    timestep is its width Δt. A timestepmax of None or below 0 gives the timestep timestepmin alone.
+    timestep is its width Δt. A timestepmax of None or below 0 gives the timestep timestepmin alone. gamma reads
+    gamma_spec.out in place of spec.out. fluxfilterfunc changes f_nu before the calculation of f_lambda.
+
+    The call reads the text files, and it writes no cache to the disk. artistools keeps the last two spectrum files of
+    each kind in memory. docs/data.md gives each column.
     """
     if timestepmax is None or timestepmax < 0:
         timestepmax = timestepmin

@@ -1,6 +1,6 @@
 """Artistools - light curve functions."""
 
-__all__ = ["plot", "plotlightcurve"]
+__all__ = ("plot", "plotlightcurve", "scan_lightcurve", "scan_lightcurve_from_packets")
 
 # the core module comes first. A module of a different package imports these names from this package, and
 # the plot modules below import such modules, thus a name must exist before a cycle comes back here

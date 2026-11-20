@@ -2822,31 +2822,30 @@ def test_average_of_a_light_curve_with_more_direction_bins_stops(tmp_path: Path)
         at.lightcurve.scan_lightcurve(lcpath, directionresolved=True, average_over_phi=True)
 
 
-def test_named_light_curve_file_must_agree_with_the_direction_bins(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_named_light_curve_file_must_agree_with_the_direction_bins(tmp_path: Path) -> None:
     """A user can name light_curve_res.out with no -plotviewingangle. The command then stops with a message.
 
     The command read the 100 tables of the file as one table of the angle average, and plotted half of them.
+    read_artis_lightcurve raises ValueError and not SystemExit, because a script can call it.
     """
-    with pytest.raises(SystemExit):
+    with pytest.raises(ValueError, match="direction-resolved light curve") as excinfo:
         at.lightcurve.plot(
             argsraw=[], modelpath=[modelpath_classic_3d / "light_curve_res.out"], outputfile=tmp_path / "lc.pdf"
         )
-    assert "-plotviewingangle" in capsys.readouterr().err
+    assert "--plotviewingangle" in "".join(at.misc.get_help_notes(excinfo.value))
 
 
 def test_colour_at_peak_stops_before_the_fits_without_the_phillips_data(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The package holds no CfA3_Phillips.dat, thus --colouratpeak must stop with its name before the slow fits.
 
     The command fitted the light curve of each direction bin first, then stopped with FileNotFoundError.
     """
     monkeypatch.chdir(tmp_path)
-    with pytest.raises(SystemExit):
+    with pytest.raises(FileNotFoundError, match=r"CfA3_Phillips\.dat") as excinfo:
         at.lightcurve.plot(argsraw=[], modelpath=[modelpath], filter=["B", "V"], colouratpeak=True)
-    assert "CfA3_Phillips.dat" in capsys.readouterr().err
+    assert at.misc.get_help_notes(excinfo.value)
     assert not list(tmp_path.iterdir())
 
 

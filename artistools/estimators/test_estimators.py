@@ -3430,12 +3430,22 @@ def test_estimator_slice_of_two_axes_gives_a_line(mockplot: mock.MagicMock, tmp_
 
 def test_estimator_image_refuses_arguments_that_do_not_apply(tmp_path: Path) -> None:
     """An image and a slice stop the command for a model, a plane, or an argument that does not fit."""
-    with pytest.raises(SystemExit):
+    # get_cells_of_slice is a reader that a script can call, thus it raises ValueError and not SystemExit
+    with pytest.raises(ValueError, match="--slice needs a 3D model"):
         at.estimators.plot(
             argsraw=[], modelpath=modelpath, plotlist=[["Te"]], outputfile=tmp_path, timestep="40", slice="xy"
         )
+    with pytest.raises(ValueError, match="lies outside the model"):
+        at.estimators.plot(
+            argsraw=[],
+            modelpath=modelpath_classic_3d,
+            plotlist=[["Te"]],
+            outputfile=tmp_path,
+            timestep="8",
+            slice="z=0.5c",
+        )
     badkwargs: list[dict[str, t.Any]] = [
-        *({"slice": slicetext} for slicetext in ("xx", "w=0", "z=fast", "z=0.5c", "z=0,z=0.01c", "x=0,y=0,z=0")),
+        *({"slice": slicetext} for slicetext in ("xx", "w=0", "z=fast", "z=0,z=0.01c", "x=0,y=0,z=0")),
         # -slice and an image select the cells, thus -cell and -readonlymgi do not apply
         {"slice": "xy", "modelgridindex": "5"},
         {"dimensionreduce": 2, "modelgridindex": "5"},
@@ -5064,10 +5074,6 @@ def test_a_model_with_no_estimators_gives_a_message(
             },
             "only a 1D model has shells",
         ),
-        (
-            {"modelpath": CLASSIC1DPATH, "plotlist": [["rho"]], "timestep": "5", "readonlymgi": "alongaxis"},
-            "-readonlymgi alongaxis needs a 3D model",
-        ),
         ({"modelpath": modelpath_classic_3d, "plotlist": [["Te"]], "x": "time", "modelgridindex": "0"}, "no row"),
     ],
 )
@@ -5081,6 +5087,44 @@ def test_a_selection_that_cannot_give_a_plot_stops_with_a_message(
 
     assert excinfo.value.code == 1
     assert expected in capsys.readouterr().err
+    assert not list(tmp_path.glob("*.pdf"))
+
+
+def test_cell_selection_of_a_reader_raises_an_error_that_a_script_can_catch(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """get_cells_along_axis raised SystemExit, which a notebook cannot catch.
+
+    The reader now raises ValueError with the help text as a note. The command line prints that note on the help line,
+    as exit_with_error did.
+    """
+    import argparse
+
+    import artistools.__main__
+
+    args = argparse.Namespace(readonlymgi="alongaxis")
+    with pytest.raises(ValueError, match="-readonlymgi alongaxis needs a 3D model") as excinfo:
+        at.estimators.core.get_cells_along_axis(CLASSIC1DPATH, args)
+    assert at.misc.get_help_notes(excinfo.value) == ["Remove --readonlymgi to plot every cell against the velocity"]
+
+    with pytest.raises(SystemExit) as exitinfo:
+        artistools.__main__.main(
+            argsraw=[
+                "plotestimators",
+                "rho",
+                "-t",
+                "5",
+                "--readonlymgi",
+                "alongaxis",
+                "-o",
+                str(tmp_path),
+                str(CLASSIC1DPATH),
+            ]
+        )
+    assert exitinfo.value.code == 1
+    errorlines = capsys.readouterr().err.splitlines()
+    assert any(line.startswith("error: --readonlymgi alongaxis needs a 3D model") for line in errorlines)
+    assert "help: Remove --readonlymgi to plot every cell against the velocity" in errorlines
     assert not list(tmp_path.glob("*.pdf"))
 
 

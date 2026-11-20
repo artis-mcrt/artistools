@@ -111,6 +111,28 @@ def exit_with_error(message: str, helptext: str = "") -> t.NoReturn:
     raise SystemExit(1)
 
 
+HELP_NOTE_PREFIX: t.Final = "help: "
+
+
+def add_help_note[E: BaseException](exc: E, helptext: str) -> E:
+    """Add the help text to an exception as a note, and return the exception.
+
+    A library function raises such an exception in place of exit_with_error. A script that catches Exception does not
+    catch SystemExit. The command line prints the note on the help line of the error, as exit_with_error does.
+    """
+    exc.add_note(f"{HELP_NOTE_PREFIX}{helptext}")
+    return exc
+
+
+def get_help_notes(exc: BaseException) -> list[str]:
+    """Return the help texts that add_help_note gave to an exception, without their prefix."""
+    return [
+        note.removeprefix(HELP_NOTE_PREFIX)
+        for note in getattr(exc, "__notes__", [])
+        if isinstance(note, str) and note.startswith(HELP_NOTE_PREFIX)
+    ]
+
+
 def confirm_overwrite_of_files(existingfiles: Sequence[Path], force: bool) -> None:
     """Warn about each file that exists, and stop the command if the user does not agree to overwrite them."""
     if not existingfiles:

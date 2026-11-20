@@ -18,6 +18,7 @@ from artistools.misc import exit_with_error
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_dirbins
+from artistools.misc import get_help_notes
 from artistools.misc import modelpath_cache
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_file
@@ -380,7 +381,7 @@ def run_command_step_with_warning(
         message = get_first_line(errors.getvalue())
     except USER_ERRORS as exc:
         if echo:
-            print_error(str(exc) or type(exc).__name__)
+            print_error(str(exc) or type(exc).__name__, "\n".join(get_help_notes(exc)))
         message = get_first_line(str(exc))
     except Exception as exc:  # ruff:ignore[blind-except]
         errors.write(traceback.format_exc())

@@ -197,15 +197,24 @@ TRUNCATED_FILE_HELP = (
 def get_context_notes(exc: BaseException) -> list[str]:
     """Return the notes of one line of an exception, e.g. the file of a polars error or the host of a remote error.
 
-    A note of more lines holds a traceback, e.g. the traceback of the server, which ARTISTOOLS_TRACEBACK=1 shows.
+    A note of more lines holds a traceback, e.g. the traceback of the server, which ARTISTOOLS_TRACEBACK=1 shows. The
+    help line shows the notes of add_help_note, thus this list leaves them out.
     """
-    return [note for note in getattr(exc, "__notes__", []) if isinstance(note, str) and "\n" not in note]
+    from artistools.misc import HELP_NOTE_PREFIX
+
+    return [
+        note
+        for note in getattr(exc, "__notes__", [])
+        if isinstance(note, str) and "\n" not in note and not note.startswith(HELP_NOTE_PREFIX)
+    ]
 
 
 def get_error_help(exc: BaseException) -> str:
-    """Return the help line for an error that comes from an input file that ends too early, or an empty string."""
+    """Return the help line of an error: the notes of add_help_note, or the help for an input file that ends early."""
+    from artistools.misc import get_help_notes
+
     istruncated = isinstance(exc, EOFError) or (isinstance(exc, OSError) and "unexpected end of file" in str(exc))
-    return TRUNCATED_FILE_HELP if istruncated else ""
+    return "\n".join([*get_help_notes(exc), *([TRUNCATED_FILE_HELP] if istruncated else [])])
 
 
 def get_polars_panic() -> type[BaseException]:
