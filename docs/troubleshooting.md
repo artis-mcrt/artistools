@@ -16,16 +16,23 @@ run folder.
 - `artistools cache list mymodel` gives the caches and their sizes.
 - `artistools cache delete mymodel` deletes them.
 
-`cache make` does not convert the NLTE populations. A read of all the cells of one timestep converts them to
-`nltepops_allranks.out.parquet`:
+`cache make` does not convert the NLTE populations. A read of all the cells converts the text of each run folder that
+holds a timestep of the read to `nltepops_allranks.out.parquet` in that folder. A restarted model has more than one run
+folder, thus the read takes one timestep of each run folder:
 
 ```sh
-"$(artistools python)" -P -c 'import artistools as at; at.nltepops.read_nltepops("mymodel", timestep=0)'
+"$(artistools python)" -P - <<'EOF'
+import artistools as at
+
+modelpath = "mymodel"
+timesteps = [at.misc.get_runfolder_timesteps(folder)[0] for folder in at.misc.get_runfolders(modelpath)]
+at.nltepops.read_nltepops(modelpath, timestep=timesteps)
+EOF
 ```
 
-The conversion takes all the timesteps of the text, thus a timestep with no NLTE populations, e.g. an LTE timestep,
-also writes the cache. A read of some cells, e.g. a run of `artistools plotnltepops`, reads only the ranks of these
-cells. Thus it writes no cache.
+The conversion takes all the timesteps of the text of a run folder, thus a timestep with no NLTE populations, e.g. an
+LTE timestep, also writes the cache. A read of some cells, e.g. a run of `artistools plotnltepops`, reads only the
+ranks of these cells. Thus it writes no cache.
 
 artistools makes a new NLTE cache only when the NLTE files hold 1 GiB of text or more. A reader takes a smaller text
 directly. A cache that exists is different: when the text changes, a reader replaces the cache for each size of
