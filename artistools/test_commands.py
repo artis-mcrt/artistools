@@ -1420,6 +1420,42 @@ def test_every_output_argument_records_what_the_command_writes() -> None:
     assert withoutput > 20, "the tree must hold many commands that write output"
 
 
+def test_a_command_that_asks_before_it_overwrites_has_force() -> None:
+    """--explain says that a command asks before it overwrites a file only when the command has --force.
+
+    Thus a command that asks with no --force would get the text "the command overwrites it", and the user could not
+    give -f to the prompt that it shows.
+    """
+    import artistools.__main__
+
+    modulebycommand: dict[str, str] = {}
+
+    def walktree(tree: dict[str, t.Any]) -> None:
+        for name, node in tree.items():
+            if isinstance(node, at.commands.CommandSpec):
+                modulebycommand[name] = node.module
+            else:
+                walktree(node)
+
+    walktree(at.commands.subcommandtree)
+
+    askingcommands = []
+    askswithoutforce = []
+    for subcommand, subparser in get_every_subcommand(artistools.__main__.build_parser()):
+        if subcommand not in modulebycommand:
+            continue
+        module = REPOPATH / "artistools" / Path(*modulebycommand[subcommand].split(".")).with_suffix(".py")
+        text = module.read_text(encoding="utf-8")
+        if not any(name in text for name in ("confirm_overwrite(", "resolve_table_outputfile(", "user_agrees(")):
+            continue
+        askingcommands.append(subcommand)
+        if "force" not in {action.dest for action in subparser._actions}:  # ruff:ignore[private-member-access]
+            askswithoutforce.append(subcommand)
+
+    assert {"values", "catalog", "linecontributions", "deposition"} <= set(askingcommands)
+    assert not askswithoutforce
+
+
 def test_the_command_listing_gives_one_line_to_each_command() -> None:
     """The listing of the commands must take one line for each of them.
 
