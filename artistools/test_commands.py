@@ -527,6 +527,8 @@ def test_cli_suggests_a_close_subcommand(capsys: pytest.CaptureFixture[str]) -> 
     # estimators"
     for argsraw, expected in (
         (["maptogrid"], "inputmodel maptogrid`?"),
+        # the help suggested the command line that runs maptogrid, and not the one that prints its help
+        (["help", "maptogrid"], "help inputmodel maptogrid`?"),
         (["plotestimatorss"], "help: Did you mean plotestimators, plotdensity"),
     ):
         with pytest.raises(SystemExit):
@@ -1386,17 +1388,7 @@ def test_every_output_argument_records_what_the_command_writes() -> None:
     import artistools.__main__
 
     parser = artistools.__main__.build_parser()
-
-    modulebycommand: dict[str, str] = {}
-
-    def walktree(tree: dict[str, t.Any]) -> None:
-        for name, node in tree.items():
-            if isinstance(node, at.commands.CommandSpec):
-                modulebycommand[name] = node.module
-            else:
-                walktree(node)
-
-    walktree(at.commands.subcommandtree)
+    modulebycommand = get_module_of_each_command()
 
     withoutput = 0
     for subcommand, subparser in get_every_subcommand(parser):
@@ -1410,9 +1402,7 @@ def test_every_output_argument_records_what_the_command_writes() -> None:
         # a command that writes one file names that file, either from the tree or in its own main
         # an alias of a command names the same module, thus the name of the command covers it
         if kind == "file" and subparser.get_default("outputdefaultname") is None and subcommand in modulebycommand:
-            modulename = modulebycommand[subcommand]
-            module = REPOPATH / "artistools" / Path(*modulename.split(".")).with_suffix(".py")
-            text = module.read_text(encoding="utf-8")
+            text = modulebycommand[subcommand].read_text(encoding="utf-8")
             assert any(
                 name in text for name in ("resolve_outputfile", "resolve_frameset_paths", "resolve_table_outputfile")
             ), f"{subcommand} writes one file, thus it must name that file"
@@ -1420,39 +1410,47 @@ def test_every_output_argument_records_what_the_command_writes() -> None:
     assert withoutput > 20, "the tree must hold many commands that write output"
 
 
-def test_a_command_that_asks_before_it_overwrites_has_force() -> None:
-    """--explain says that a command asks before it overwrites a file only when the command has --force.
+def get_module_of_each_command() -> dict[str, Path]:
+    """Return the source file of the module of each command of the tree, keyed by the name of the command."""
+    modulebycommand: dict[str, Path] = {}
 
-    Thus a command that asks with no --force would get the text "the command overwrites it", and the user could not
-    give -f to the prompt that it shows.
-    """
-    import artistools.__main__
-
-    modulebycommand: dict[str, str] = {}
-
-    def walktree(tree: dict[str, t.Any]) -> None:
+    def walktree(tree: at.commands.CommandTree) -> None:
         for name, node in tree.items():
             if isinstance(node, at.commands.CommandSpec):
-                modulebycommand[name] = node.module
+                modulebycommand[name] = REPOPATH / "artistools" / Path(*node.module.split(".")).with_suffix(".py")
             else:
                 walktree(node)
 
     walktree(at.commands.subcommandtree)
+    return modulebycommand
+
+
+def test_a_command_that_asks_before_it_overwrites_has_force() -> None:
+    """--explain says that a command asks before it overwrites a file only when the command has --force.
+
+    If a command asks and has no --force, --explain gives the incorrect text "the command overwrites it". The user also
+    cannot give -f to the prompt.
+    """
+    import artistools.__main__
+
+    modulebycommand = get_module_of_each_command()
+    # confirm_overwrite_matches also asks, e.g. in writespectra
+    asks = re.compile(r"\b(?:confirm_overwrite\w*|resolve_table_outputfile|user_agrees)\(")
 
     askingcommands = []
     askswithoutforce = []
     for subcommand, subparser in get_every_subcommand(artistools.__main__.build_parser()):
         if subcommand not in modulebycommand:
             continue
-        module = REPOPATH / "artistools" / Path(*modulebycommand[subcommand].split(".")).with_suffix(".py")
-        text = module.read_text(encoding="utf-8")
-        if not any(name in text for name in ("confirm_overwrite(", "resolve_table_outputfile(", "user_agrees(")):
+        if not asks.search(modulebycommand[subcommand].read_text(encoding="utf-8")):
             continue
         askingcommands.append(subcommand)
         if "force" not in {action.dest for action in subparser._actions}:  # ruff:ignore[private-member-access]
             askswithoutforce.append(subcommand)
 
-    assert {"values", "catalog", "linecontributions", "deposition"} <= set(askingcommands)
+    assert {"values", "catalog", "linecontributions", "deposition", "writespectra", "writecodecomparisondata"} <= set(
+        askingcommands
+    )
     assert not askswithoutforce
 
 

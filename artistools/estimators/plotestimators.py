@@ -3423,21 +3423,32 @@ def get_missing_folder_hint(lastitem: str) -> str:
     """Return a hint when the last positional argument is probably a model folder that does not exist, or "".
 
     With no model, the command cannot know each valid plot item, e.g. a directive such as yscale=log or a column such as
-    heating_dep/total_dep. Thus the hint needs evidence of a folder: a path such as ./mymodle, or a folder that exists
-    with a close name, e.g. mymodel for mymodle.
+    heating_dep/total_dep. Thus the hint needs evidence of a folder. The evidence is a path such as ./mymodle, or a
+    folder with a close name, e.g. mymodel for mymodle.
     """
-    # a known variable, an alias such as T_e, an ion, or a directive is a plot item, even when a folder has a close name
+    # each of these is a plot item, even when a folder has a close name:
+    # - a known variable, or an alias such as T_e;
+    # - an ion;
+    # - a directive.
     name = get_series_name(resolve_item_alias(lastitem))
     if name in VARIABLES or could_be_ion(lastitem) or get_item_directive(lastitem) is not None:
         return ""
 
-    if lastitem.startswith(("/", "./", "../", "~")):
+    # a path that exists, e.g. "./" for the working folder, has no error in its name
+    if Path(lastitem).exists():
+        return ""
+    # the shell does not expand a "~" in quotes, and artistools does not expand it
+    if lastitem.startswith("~"):
+        return f"No folder '{lastitem}' exists. Give the path with no quotes, thus the shell expands '~'."
+    if lastitem.startswith(("/", "./", "../")):
         return f"No folder '{lastitem}' exists."
 
     parent = Path(lastitem).parent
-    if not parent.is_dir():
+    # a folder that the user can enter but not list gives a permission error, as artis_subfolders allows for
+    try:
+        folders = [path.name for path in parent.iterdir() if path.is_dir()]
+    except OSError:
         return ""
-    folders = [path.name for path in parent.iterdir() if path.is_dir()]
     if suggestion := suggest_names(Path(lastitem).name, folders):
         return f"No folder '{lastitem}' exists. {suggestion}"
     return ""

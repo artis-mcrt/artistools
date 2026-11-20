@@ -4,6 +4,7 @@ import math
 import os
 import re
 import shutil
+import sys
 import typing as t
 from collections.abc import Callable
 from collections.abc import Sequence
@@ -4376,15 +4377,17 @@ def test_a_working_folder_that_is_not_artis_gives_an_error(
         at.estimators.plotestimators.main(argsraw=["T_e", "-t", "1"])
     assert "No folder 'T_e' exists" not in capsys.readouterr().err
 
-    # a folder that does not exist stays a plot item, and the old error said only that the user gave no folder. The hint
-    # needs evidence of a folder, a folder with a close name or a path, because a directive such as yscale=log and a
-    # column such as heating_dep/total_dep are valid items that no table lists without a model
+    # a folder that does not exist stays a plot item. The hint needs a path or a folder with a close name, because
+    # no list of valid items exists without a model, e.g. yscale=log and heating_dep/total_dep are valid
     (tmp_path / "mymodel").mkdir()
     for argsraw, hint in (
         (["Te", "mymodle"], "No folder 'mymodle' exists. Did you mean mymodel?"),
         (["Te", "./mymodle"], "No folder './mymodle' exists."),
+        (["Te", "~/mymodle"], "the shell expands '~'"),
         (["Te", "yscale=log"], None),
         (["Te", "heating_dep/total_dep"], None),
+        # "./" is the working folder, and it exists
+        (["Te", "./"], None),
     ):
         with pytest.raises(SystemExit):
             at.estimators.plotestimators.main(argsraw=[*argsraw, "-t", "1"])
@@ -4400,6 +4403,23 @@ def test_a_working_folder_that_is_not_artis_gives_an_error(
     stderr = capsys.readouterr().err
     assert "notamodel" in stderr
     assert "is not an ARTIS model folder" in stderr
+
+
+@pytest.mark.skipif(sys.platform == "win32" or os.geteuid() == 0, reason="needs a folder mode that the user obeys")
+def test_a_working_folder_that_the_user_cannot_list_gives_the_folder_message(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The hint listed the working folder, thus a folder of mode 0o300 gave "[Errno 13] Permission denied: '.'"."""
+    lockedfolder = tmp_path / "locked"
+    lockedfolder.mkdir(mode=0o300)
+    monkeypatch.chdir(lockedfolder)
+    try:
+        with pytest.raises(SystemExit):
+            at.estimators.plotestimators.main(argsraw=["Te", "mymodle", "-t", "1"])
+    finally:
+        lockedfolder.chmod(0o700)
+
+    assert "The command line gives no ARTIS model folder" in capsys.readouterr().err
 
 
 def test_a_folder_and_modelpath_together_give_an_error(capsys: pytest.CaptureFixture[str]) -> None:

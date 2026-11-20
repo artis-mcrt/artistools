@@ -3882,6 +3882,8 @@ def test_a_keyword_and_its_alias_name_the_conflict() -> None:
         (ImportError("This command needs plotly, which is installed but did not import: libGL"), 1, "needs plotly"),
         (OSError("unexpected end of file"), 1, "A compressed file can be incomplete"),
         (pl.exceptions.PanicException("PyErr { type: <class 'EOFError'> }"), 1, "ends before the end of its data"),
+        # polars gives NoDataError for an empty input file
+        (pl.exceptions.NoDataError("empty CSV"), 1, "empty CSV"),
     ],
 )
 def test_the_dispatcher_reports_an_error_with_no_traceback(

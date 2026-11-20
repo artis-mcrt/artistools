@@ -232,12 +232,16 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
         super().add_arguments(actions)
 
 
-def get_nested_command_suggestion(command: str, groupparsers: Iterable[argparse.ArgumentParser]) -> str:
+def get_nested_command_suggestion(
+    command: str, groupparsers: Iterable[argparse.ArgumentParser], rootprog: str, *, suggestshelp: bool = False
+) -> str:
     """Return a sentence that names the group of the command, e.g. inputmodel for maptogrid, or "" for no group.
 
     A user often writes a command of a group without the group, and a close match at the top level then
-    names a different command.
+    names a different command. With suggestshelp, the sentence names the help of the command, e.g.
+    `artistools help inputmodel maptogrid`.
     """
+    helpword = "help " if suggestshelp else ""
     for groupparser in groupparsers:
         for subaction in groupparser._actions:  # ruff:ignore[private-member-access]
             if (
@@ -245,7 +249,8 @@ def get_nested_command_suggestion(command: str, groupparsers: Iterable[argparse.
                 and subaction.choices is not None
                 and command in subaction.choices
             ):
-                return f"Did you mean `{groupparser.prog} {command}`?"
+                groupwords = groupparser.prog.removeprefix(rootprog).strip()
+                return f"Did you mean `{rootprog} {helpword}{groupwords} {command}`?"
     return ""
 
 
@@ -275,6 +280,8 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
     wantsintermixed: bool = False
     # The dest of the positional items that can end with the model path.
     positionalitemsdest: str | None = None
+    # `artistools help` sets this flag, thus a suggestion names the help of a command and not a command that runs.
+    suggestshelp: bool = False
 
     def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
         """Make the parser. The help of -h starts with a capital letter, as the help of every other argument does.
@@ -357,7 +364,9 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
             # gives each command with its description, thus the help line names --help. An alias and its command
             # share one parser, thus the suggestion names that command one time
             helptext = (
-                get_nested_command_suggestion(str(value), [parsermap[command] for command in listed])
+                get_nested_command_suggestion(
+                    str(value), [parsermap[command] for command in listed], self.prog, suggestshelp=self.suggestshelp
+                )
                 or suggest_names(str(value), choices, aliasgroup=lambda command: id(parsermap[command]))
                 or f"Run `{self.prog} --help` to see the commands"
             )
