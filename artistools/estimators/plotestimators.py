@@ -54,6 +54,7 @@ from artistools.estimators.core import scan_estimators
 from artistools.estimators.core import summarise_columns
 from artistools.estimators.core import VARIABLES
 from artistools.estimators.estimators_classic import has_classic_estimator_format
+from artistools.estimators.plotitems import could_be_ion
 from artistools.estimators.plotitems import DIRECTIVES
 from artistools.estimators.plotitems import get_column_name
 from artistools.estimators.plotitems import get_directive_name
@@ -1141,7 +1142,7 @@ def get_cylindrical_velocity_expr(estimatorcolumns: Collection[str]) -> pl.Expr:
     if "vel_x_mid" not in estimatorcolumns:
         exit_with_error(
             "The ion population type cylradialdensity needs a cylindrical radius, and a 1D model has none",
-            "Give -ionpoptype radialdensity for the radial density of a 1D model",
+            "Give --ionpoptype radialdensity for the radial density of a 1D model",
         )
     return (pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2).sqrt()
 
@@ -1211,7 +1212,7 @@ def get_multi_ion_series_plans(
             exit_with_error(
                 f"A code comparison file gives the ion fractions n_ion / n_element and no element density, thus it has"
                 f" no ion population of type '{poptype}'",
-                "Give -ionpoptype elpop for the fraction of each ion in its element",
+                "Give --ionpoptype elpop for the fraction of each ion in its element",
             )
         print_detail(
             "A code comparison file gives no element density. Thus a mean of the ion fractions over the cells takes"
@@ -3416,11 +3417,13 @@ def resolve_positional_args(args: argparse.Namespace) -> None:
         args.plotlist = [plotvars, *(args.plotlist or [])]
 
 
-def require_artis_folder(modelpath: Path) -> None:
+def require_artis_folder(modelpath: Path, lastitem: str | None = None) -> None:
     """Stop with an error message when the path does not name an ARTIS folder.
 
     The command reads the working folder when the user names no folder. A user can run the command in
     a folder that is not an ARTIS folder. The message then names that folder and not an absent file.
+    lastitem is the last positional argument. A folder that does not exist stays an item, thus a mistyped
+    folder name, e.g. "mymodle", comes here as the last item.
     """
     if path_is_codecomparison(modelpath) or folder_is_artis_model(modelpath):
         return
@@ -3436,16 +3439,22 @@ def require_artis_folder(modelpath: Path) -> None:
     )
 
     if modelpath == Path():
-        exit_with_error("No ARTIS folder was given, and the working folder is not an ARTIS folder", helptext)
+        # the hint is not useful for a name that is a known variable or an ion, e.g. "Te" or "Fe II"
+        if lastitem is not None and get_series_name(lastitem) not in VARIABLES and not could_be_ion(lastitem):
+            helptext = f"No folder '{lastitem}' exists. If it is the ARTIS folder, correct its name. {helptext}"
+        exit_with_error(
+            "No ARTIS model folder was given, and the working folder is not an ARTIS model folder", helptext
+        )
 
-    exit_with_error(f"'{modelpath}' is not an ARTIS folder", helptext)
+    exit_with_error(f"'{modelpath}' is not an ARTIS model folder", helptext)
 
 
 def resolve_plot_args(args: argparse.Namespace) -> tuple[Path, list[int]]:
     """Apply the defaults and the cell selection to the arguments, and return the model path and the timesteps."""
+    lastitem = args.plotitems[-1] if args.plotitems else None
     resolve_positional_args(args)
     modelpath = Path(args.modelpath)
-    require_artis_folder(modelpath)
+    require_artis_folder(modelpath, lastitem)
     args.classicartis = args.classicartis or has_classic_estimator_format(modelpath)
     resolve_snapshot_arguments(args)
     timestepmin, timestepmax = set_x_and_timesteps(args, modelpath)

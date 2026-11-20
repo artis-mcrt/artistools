@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 if t.TYPE_CHECKING:
+    from collections.abc import Callable
     from collections.abc import Collection
 
 
@@ -15,12 +16,13 @@ if t.TYPE_CHECKING:
 FLAG_SUGGESTION_CUTOFF = 0.75
 
 
-def suggest_names(name: str, candidates: "Collection[str]") -> str:
+def suggest_names(name: str, candidates: "Collection[str]", aliasgroup: "Callable[[str], object] | None" = None) -> str:
     """Return a sentence that names the closest candidates, or an empty string when none is close.
 
     The sentence goes on the help line of an error, thus it carries no leading space. A name that
     differs only in case comes first, because that mistake is common and difflib scores a short name
-    such as "te" against "Te" below its own threshold.
+    such as "te" against "Te" below its own threshold. aliasgroup returns the same value for two
+    aliases of one thing. The sentence then names that thing one time.
     """
     import difflib
 
@@ -28,9 +30,13 @@ def suggest_names(name: str, candidates: "Collection[str]") -> str:
     if samecase := [other for other in names if other.lower() == name.lower() and other != name]:
         return f"Did you mean {samecase[0]}?"
 
-    matches = difflib.get_close_matches(name, names, n=3, cutoff=0.6)
+    # all the close matches, because the removal of the aliases can leave fewer than 3. difflib refuses n=0
+    matches = difflib.get_close_matches(name, names, n=max(len(names), 1), cutoff=0.6)
+    if aliasgroup is not None:
+        matchesofgroup = {aliasgroup(match): match for match in reversed(matches)}
+        matches = [match for match in matches if match in matchesofgroup.values()]
 
-    return f"Did you mean {', '.join(matches)}?" if matches else ""
+    return f"Did you mean {', '.join(matches[:3])}?" if matches else ""
 
 
 def is_abbreviation(short: str, name: str) -> bool:

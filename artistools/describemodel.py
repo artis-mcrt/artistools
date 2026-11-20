@@ -25,7 +25,9 @@ from artistools.lightcurve import scan_lightcurve
 from artistools.logs import get_logfiles
 from artistools.logs import RE_TIMESTEP
 from artistools.misc import addarg_modelpath
+from artistools.misc import exit_with_error
 from artistools.misc import firstexisting_or_none
+from artistools.misc import folder_is_artis_model
 from artistools.misc import get_artis_options
 from artistools.misc import get_model_folder
 from artistools.misc import get_rank_outputfiles
@@ -439,4 +441,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Summarise an ARTIS model: its folders, cells, timesteps, output files, ions, ARTIS version, and options."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
     modelpath = get_model_folder(args.modelpath)
+    # each line of the summary gave its own [Errno 2] for a folder that does not exist, and the exit status was 0
+    if not folder_is_artis_model(modelpath):
+        exit_with_error(
+            f"'{modelpath}' is not an ARTIS model folder",
+            "An ARTIS model folder holds input.txt. Give the folder of a model, e.g. `artistools describe mymodel`",
+        )
     print_product(args, "\n".join(get_model_summary(modelpath, alloptions=args.alloptions)))

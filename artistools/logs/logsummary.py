@@ -25,9 +25,7 @@ from artistools.misc import print_product
 def addargs(parser: argparse.ArgumentParser) -> None:
     """Add arguments to an argparse parser object."""
     addarg_modelpath(parser, positional=True, default=Path())
-    parser.add_argument(
-        "-ranks", default="0", help='The MPI ranks of the logs to read, e.g. 0-3,8 or "all". The default is 0'
-    )
+    parser.add_argument("-ranks", default="0", help='The MPI ranks of the logs to read, e.g. 0-3,8 or "all"')
     addarg_modelgridindex(parser, helptext="Read the logs of the ranks that update these cells, in place of --ranks")
 
 

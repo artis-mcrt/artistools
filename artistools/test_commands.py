@@ -523,6 +523,16 @@ def test_cli_suggests_a_close_subcommand(capsys: pytest.CaptureFixture[str]) -> 
     assert "help: Did you mean plotspectra" in message
     assert message.index("error: ") < message.index("help: ")
 
+    # a command of a group gave no suggestion, and an alias came beside its own command, e.g. "plotestimators,
+    # estimators"
+    for argsraw, expected in (
+        (["maptogrid"], "inputmodel maptogrid`?"),
+        (["plotestimatorss"], "help: Did you mean plotestimators, plotdensity"),
+    ):
+        with pytest.raises(SystemExit):
+            artistools.__main__.main(argsraw=argsraw)
+        assert expected in capsys.readouterr().err
+
     # with no close name, the help line names --help. The list of every command filled the line
     with pytest.raises(SystemExit):
         artistools.__main__.main(argsraw=["xyzzy"])

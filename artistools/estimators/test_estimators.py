@@ -4367,14 +4367,21 @@ def test_a_working_folder_that_is_not_artis_gives_an_error(
     with pytest.raises(SystemExit):
         at.estimators.plotestimators.main(argsraw=["Te", "-t", "1"])
 
-    assert "No ARTIS folder was given" in capsys.readouterr().err
+    stderr = capsys.readouterr().err
+    assert "No ARTIS model folder was given" in stderr
+    assert "No folder 'Te' exists" not in stderr
+
+    # a folder that does not exist stays a plot item, and the error then said only that no folder was given
+    with pytest.raises(SystemExit):
+        at.estimators.plotestimators.main(argsraw=["Te", "mymodle", "-t", "1"])
+    assert "No folder 'mymodle' exists" in capsys.readouterr().err
 
     with pytest.raises(SystemExit):
         at.estimators.plotestimators.main(argsraw=["Te", str(tmp_path / "notamodel"), "-t", "1"])
 
     stderr = capsys.readouterr().err
     assert "notamodel" in stderr
-    assert "is not an ARTIS folder" in stderr
+    assert "is not an ARTIS model folder" in stderr
 
 
 def test_a_folder_and_modelpath_together_give_an_error(capsys: pytest.CaptureFixture[str]) -> None:

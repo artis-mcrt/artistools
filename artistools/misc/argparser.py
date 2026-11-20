@@ -219,6 +219,10 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
         getinvocation = super()._format_action_invocation
 
         def my_sort(action: argparse.Action) -> str:
+            # the positional arguments keep the order of the command line, e.g. the action before the model path.
+            # The sort is stable, thus one key for all of them keeps that order
+            if not action.option_strings:
+                return ""
             return getinvocation(action).upper().replace("-", "z")  # push dash chars below alphabet
 
         # the help gives the standard spelling of each flag, and the older spellings still work
@@ -226,6 +230,23 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
         if self.short:
             actions = [with_first_sentence(action) for action in actions]
         super().add_arguments(actions)
+
+
+def get_nested_command_suggestion(command: str, groupparsers: Iterable[argparse.ArgumentParser]) -> str:
+    """Return a sentence that names the group that holds the command, e.g. inputmodel for maptogrid, or "".
+
+    A user often writes a command of a group without the group, and a close match at the top level then
+    names a different command.
+    """
+    for groupparser in groupparsers:
+        for subaction in groupparser._actions:  # ruff:ignore[private-member-access]
+            if (
+                isinstance(subaction, argparse._SubParsersAction)  # ruff:ignore[private-member-access]
+                and subaction.choices is not None
+                and command in subaction.choices
+            ):
+                return f"Did you mean `{groupparser.prog} {command}`?"
+    return ""
 
 
 def is_joined_value(value: str, action: argparse.Action) -> bool:
@@ -325,7 +346,6 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
             return
 
         choices = [str(choice) for choice in action.choices]
-        listed = choices
         if isinstance(action, argparse._SubParsersAction):  # ruff:ignore[private-member-access]
             # the help lists no hidden command, e.g. server, thus no message names one. The list names each
             # command once, and a suggestion can also name an alias
@@ -333,13 +353,17 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
             parsermap = action._name_parser_map  # ruff:ignore[private-member-access]
             listedparsers = {id(parsermap[command]) for command in listed}
             choices = [command for command, subparser in parsermap.items() if id(subparser) in listedparsers]
-        # a close match answers the question. The list of the 44 commands filled the help line, and --help gives
-        # each command with its description, thus the help line names --help
-        suggestion = suggest_names(str(value), choices)
-        if isinstance(action, argparse._SubParsersAction):  # ruff:ignore[private-member-access]
-            helptext = suggestion or f"Run `{self.prog} --help` to see the commands"
+            # a close match answers the question. The list of the 44 commands filled the help line, and --help
+            # gives each command with its description, thus the help line names --help. An alias and its command
+            # share one parser, thus the suggestion names that command one time
+            helptext = (
+                get_nested_command_suggestion(str(value), [parsermap[command] for command in listed])
+                or suggest_names(str(value), choices, aliasgroup=lambda command: id(parsermap[command]))
+                or f"Run `{self.prog} --help` to see the commands"
+            )
             self.exit_with_help(f"'{value}' is not a command of {self.prog}", helptext)
-        helptext = suggestion or f"The choices are {', '.join(listed)}"
+
+        helptext = suggest_names(str(value), choices) or f"The choices are {', '.join(choices)}"
         self.exit_with_help(f"Invalid choice '{value}' for {action.metavar or action.dest}", helptext)
 
     def get_visible_flags(self) -> list[str]:

@@ -344,7 +344,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--override-tminmax",
         action="store_true",
         default=None,
-        help="Restrict virtual packets to the time window given by -vspec-tmin and -vspec-tmax",
+        help="Restrict virtual packets to the time window given by --vspec-tmin and --vspec-tmax",
     )
     parser.add_argument("-vspec-tmin", type=float, default=None, help="Start of the virtual packet time window [days]")
     parser.add_argument("-vspec-tmax", type=float, default=None, help="End of the virtual packet time window [days]")

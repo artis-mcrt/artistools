@@ -737,7 +737,7 @@ def addarg_residuals(parser: argparse.ArgumentParser) -> None:
             "Select the residual type: absolute shows series minus baseline."
             " Relative shows series / baseline on a linear y axis."
             " Relativelog shows the same ratio on a logarithmic y axis."
-            " The default is relative. Magnitude panels always show series minus baseline on a linear y axis."
+            " Magnitude panels always show series minus baseline on a linear y axis."
             " The statistics use series minus baseline for every type"
         ),
     )
@@ -1135,10 +1135,19 @@ def print_explanation(
             explain_model_selection(modelpath, args)
 
     if (outputfile := getattr(args, "outputfile", None)) is not None:
-        existstext = (
-            " (the file exists, thus the command asks before it overwrites it)" if Path(outputfile).exists() else ""
-        )
-        print_detail(f"Output: {outputfile}{existstext}")
+        print_detail(f"Output: {outputfile}{get_overwrite_text(Path(outputfile), args)}")
+
+
+def get_overwrite_text(outputpath: Path, args: argparse.Namespace) -> str:
+    """Return the text that says what the command does with an output file that exists, for --explain."""
+    if not outputpath.is_file():
+        return ""
+    # only a command with addarg_force asks before it overwrites a file. A plot command overwrites its figure
+    if not hasattr(args, "force"):
+        return " (the file exists, and the command overwrites it)"
+    if args.force:
+        return " (the file exists, and --force overwrites it with no prompt)"
+    return " (the file exists, thus the command asks before it overwrites it)"
 
 
 def explain_model_selection(modelpath: Path, args: argparse.Namespace) -> None:

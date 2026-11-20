@@ -628,11 +628,11 @@ def test_artis_subfolders_names_the_models_of_a_folder(tmp_path: Path) -> None:
 
 def test_missing_inputfile_error_names_the_path(tmp_path: Path) -> None:
     """A non-ARTIS directory must produce an error naming the path, not a bare 'input.txt' message."""
-    with pytest.raises(FileNotFoundError, match="ARTIS folder") as excinfo:
+    with pytest.raises(FileNotFoundError, match="ARTIS model folder") as excinfo:
         at.get_inputparams(tmp_path / "nonexistentmodel")
     assert "nonexistentmodel" in str(excinfo.value)
 
-    with pytest.raises(FileNotFoundError, match="ARTIS folder"):
+    with pytest.raises(FileNotFoundError, match="ARTIS model folder"):
         at.get_nprocs(tmp_path / "nonexistentmodel")
 
 
@@ -4568,6 +4568,18 @@ def test_explain_gives_the_timesteps_of_each_time_of_a_list(capsys: pytest.Captu
     main(argsraw=["deposition", str(at.get_path("testartismodel")), "-t", "300,330", "--explain"])
     timelines = [line.strip() for line in capsys.readouterr().out.splitlines() if "Time:" in line]
     assert [line.split(",")[0] for line in timelines] == ["Time: timesteps 54 to 54", "Time: timesteps 82 to 82"]
+
+
+def test_explain_says_that_a_plot_command_overwrites_its_figure(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--explain said that a plot command asks before it overwrites a file, but only a command with --force asks."""
+    from artistools.__main__ import main
+
+    outputfile = tmp_path / "plot.pdf"
+    outputfile.touch()
+    main(argsraw=["plotspectra", str(at.get_path("testartismodel")), "-t", "300", "-o", str(outputfile), "--explain"])
+    assert f"Output: {outputfile} (the file exists, and the command overwrites it)" in capsys.readouterr().out
 
 
 def test_moving_average_of_a_capped_opacity_has_its_own_description() -> None:
