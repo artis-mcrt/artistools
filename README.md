@@ -79,6 +79,15 @@ prek install
 
 If you use artistools for a paper or a presentation, please cite it with the DOI [10.5281/zenodo.6418832](https://doi.org/10.5281/zenodo.6418832). This DOI names all the versions of artistools, and it always resolves to the latest version. `CITATION.cff` gives the authors.
 
+To get the BibTeX entry, use one of these ways:
+
+- On the [GitHub page of artistools](https://github.com/artis-mcrt/artistools), click "Cite this repository" in the "About" section. GitHub makes the BibTeX entry from `CITATION.cff`.
+- Run this command. doi.org then gives the BibTeX entry of the DOI.
+
+```sh
+curl -LH "Accept: application/x-bibtex" https://doi.org/10.5281/zenodo.6418832
+```
+
 ## Usage
 Run "artistools" (or the short alias "at") at the command-line to get a full list of subcommands, and "artistools --version" to check the installed version. Some common commands are:
 - artistools plotspectra (alias: at spec)
