@@ -2877,6 +2877,35 @@ def test_topnucs_with_virtual_packet_observers_stops_with_a_message(
         )
 
 
+def test_light_curve_of_the_initial_energy_reads_its_packets() -> None:
+    """The name "initial energy" has no element, thus get_atomic_number gives -1 for it.
+
+    get_elsymbol(-1) gave "Uuo" and then raised a ValueError, thus `--topnucs` stopped for a model with initial energy.
+    The test model has no pellet_nucindex, thus each of its packets gets the index -1 of the initial energy here.
+    """
+    from artistools.lightcurve import core as lightcurvecore
+
+    nuclides = pl.LazyFrame({
+        "pellet_nucindex": [-1, 0],
+        "nucname": ["initial energy", "Ni56"],
+        "atomic_number": [-1, 28],
+    })
+    scan_packets = lightcurvecore.scan_packets
+
+    def scan_packets_of_the_initial_energy(*args: t.Any, **kwargs: t.Any) -> tuple[int, pl.LazyFrame]:
+        nprocs_read, dfpackets = scan_packets(*args, **kwargs)
+        return nprocs_read, dfpackets.with_columns(pellet_nucindex=pl.lit(-1, dtype=pl.Int32))
+
+    with (
+        mock.patch.object(lightcurvecore, "scan_nuclides", return_value=nuclides),
+        mock.patch.object(lightcurvecore, "scan_packets", side_effect=scan_packets_of_the_initial_energy),
+    ):
+        dfinitialenergy = at.lightcurve.scan_lightcurve_from_packets(modelpath, pellet_nucname="initial energy")
+        dfall = at.lightcurve.scan_lightcurve_from_packets(modelpath)
+
+    pltest.assert_frame_equal(dfinitialenergy[-1].collect(), dfall[-1].collect())
+
+
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_nuclide_light_curve_label_keeps_the_model_name(mockplot: mock.MagicMock) -> None:
     """The label of the light curve of one nuclide holds the model name and the gamma marker.

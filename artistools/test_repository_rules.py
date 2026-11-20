@@ -133,6 +133,31 @@ def test_top_level_api_is_the_documented_list() -> None:
         assert readmenames <= TOPLEVEL_API, f"the README names {sorted(readmenames - TOPLEVEL_API)} at the top level"
 
 
+def test_readme_python_examples_run_on_the_test_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each Python block of the README must run, because a change of a reader can break a block and no other test fails.
+
+    A test of the names alone passed an example that read all of spec_res.out for direction bin -1.
+    The blocks share one namespace, because a later block uses the modelpath of the first block.
+    """
+    readme = Path(at.__file__).parent.parent / "README.md"
+    if not readme.is_file():
+        pytest.skip("an installed wheel has no README")
+
+    blocks = re.findall(r"```python\n(.*?)```", readme.read_text(encoding="utf-8"), re.DOTALL)
+    assert len(blocks) >= 2
+    modelpath = at.get_path("testdata") / "testmodel"
+    monkeypatch.chdir(tmp_path)
+    namespace: dict[str, t.Any] = {}
+    for block in blocks:
+        assert 'Path("mymodel")' in block or "modelpath" in block, block
+        exec(block.replace('Path("mymodel")', f"Path({str(modelpath)!r})"), namespace)  # ruff:ignore[exec-builtin]
+
+    assert namespace["dfspectrum"].height > 0
+    # a time range outside the model gave the timestep -1 and an infinite flux on every row
+    assert namespace["dfspectrum"]["f_nu"].is_finite().all()
+    assert namespace["dflightcurve"].height > 0
+
+
 def test_reader_prefix_tells_lazy_from_eager(package_modules: list[Path]) -> None:
     """A reader with the prefix scan_ returns a LazyFrame, and a reader with the prefix read_ returns eager data.
 

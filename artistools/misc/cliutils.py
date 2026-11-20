@@ -124,7 +124,10 @@ def addarg_viewingangle(parser: argparse.ArgumentParser, allow_select_all: bool 
         type=int,
         metavar="n",
         nargs="+",
-        help="Plot viewing angles from vspecpol virtual packets. Expects int for angle = spec number in vspecpol files",
+        help=(
+            "Plot these virtual packet spectra, by their number in the vspecpol files. `artistools describe` gives"
+            " the number of virtual packet spectra of a model"
+        ),
     )
 
     arggroup(parser, "Viewing direction").add_argument(
@@ -134,8 +137,9 @@ def addarg_viewingangle(parser: argparse.ArgumentParser, allow_select_all: bool 
         metavar="n",
         nargs="+",
         help=(
-            "Plot viewing directions. Expects int for direction bin in specpol_res.out"
-            + (". Use -2 to select all viewing angles" if allow_select_all else "")
+            "Plot these direction bins, or -1 for the average over all directions."
+            " `artistools describe` gives the number of direction bins of a model"
+            + (". Give -2 for all the direction bins" if allow_select_all else "")
         ),
     )
     parser.set_defaults(allowalldirbins=allow_select_all)
@@ -470,19 +474,20 @@ def addarg_plotinvalidpart(parser: argparse.ArgumentParser, plotted: str) -> Non
     )
 
 
-def addarg_averageoverphi(parser: argparse.ArgumentParser, optionname: str = "-dirbin") -> None:
-    """Add --average-over-phi-angle, which makes a direction bin of optionname into the mean over its phi bins.
+def addarg_averageoverphi(parser: argparse.ArgumentParser, *optionnames: str) -> None:
+    """Add --average-over-phi-angle, which makes a direction bin of each optionname into its whole costheta bin.
 
     The option has the meaning of --average-over-phi-angle of plotspectra. With the option, --dirbin 90 takes the
-    costheta bin 0.8 to 1. Without it, --dirbin 90 takes the one direction bin 90.
+    costheta bin 0.8 to 1. Without it, --dirbin 90 takes the one direction bin 90. The default optionname is -dirbin.
     """
-    optionname = get_standard_flag(optionname)
+    names = " and ".join(get_standard_flag(optionname) for optionname in optionnames or ("-dirbin",))
+    mustbefirst = f"each of {names}" if len(optionnames) > 1 else names
     parser.add_argument(
         "--average_over_phi_angle",
         action="store_true",
         help=(
-            f"Take the mean over the phi bins of the costheta bin of {optionname}. Then {optionname} must be the first"
-            " bin of its costheta bin, e.g. 90 for the pole at +z"
+            f"Use all the phi bins of the costheta bin of {names}. Then {mustbefirst} must be the first bin of its"
+            " costheta bin, e.g. 90 for the pole at +z"
         ),
     )
 
@@ -572,14 +577,16 @@ def addarg_axislimits(
     include_y: bool = True,
     wavelength_aliases: bool = False,
     xtype: Callable[[str], float] | None = None,
+    grouptitle: str = "Appearance",
 ) -> None:
     """Add the --xmin/--xmax and --ymin/--ymax plot range arguments.
 
     A command whose x axis is a wavelength takes wavelength_aliases, which adds the --lambdamin and --lambdamax
     spellings of the same arguments. Its x axis is in Angstroms, thus a value can also give a different unit, e.g.
-    600nm. plotspectra has its own type, because the unit of its axis comes from --xunit.
+    600nm. plotspectra has its own type, because the unit of its axis comes from --xunit. A command with a group
+    for its x axis, e.g. plotestimators with "Horizontal axis", gives that group as grouptitle.
     """
-    group = arggroup(parser, "Appearance")
+    group = arggroup(parser, grouptitle)
     if include_x:
         xminflags = ("-xmin", "-lambdamin") if wavelength_aliases else ("-xmin",)
         xmaxflags = ("-xmax", "-lambdamax") if wavelength_aliases else ("-xmax",)
@@ -737,7 +744,7 @@ def addarg_residuals(parser: argparse.ArgumentParser) -> None:
             "Select the residual type: absolute shows series minus baseline."
             " Relative shows series / baseline on a linear y axis."
             " Relativelog shows the same ratio on a logarithmic y axis."
-            " The default is relative. Magnitude panels always show series minus baseline on a linear y axis."
+            " Magnitude panels always show series minus baseline on a linear y axis."
             " The statistics use series minus baseline for every type"
         ),
     )
@@ -1135,10 +1142,26 @@ def print_explanation(
             explain_model_selection(modelpath, args)
 
     if (outputfile := getattr(args, "outputfile", None)) is not None:
-        existstext = (
-            " (the file exists, thus the command asks before it overwrites it)" if Path(outputfile).exists() else ""
-        )
-        print_detail(f"Output: {outputfile}{existstext}")
+        print_detail(f"Output: {outputfile}{get_overwrite_text(Path(outputfile), args)}")
+
+
+def get_overwrite_text(outputpath: Path, args: argparse.Namespace) -> str:
+    """Return the text that says what the command does with an output file that exists, for --explain."""
+    # only a command with addarg_force asks before it overwrites a file. A plot command overwrites its figure.
+    # The command names the files of an output folder itself, e.g. grid.dat of maptogrid, thus the text names none
+    if outputpath.is_dir():
+        if not hasattr(args, "force"):
+            return " (the command overwrites the files of the same names in this folder)"
+        if args.force:
+            return " (--force overwrites the files of the same names in this folder with no prompt)"
+        return " (the command asks before it overwrites a file that exists in this folder)"
+    if not outputpath.is_file():
+        return ""
+    if not hasattr(args, "force"):
+        return " (the file exists, and the command overwrites it)"
+    if args.force:
+        return " (the file exists, and --force overwrites it with no prompt)"
+    return " (the file exists, thus the command asks before it overwrites it)"
 
 
 def explain_model_selection(modelpath: Path, args: argparse.Namespace) -> None:

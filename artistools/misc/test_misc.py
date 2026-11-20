@@ -628,11 +628,11 @@ def test_artis_subfolders_names_the_models_of_a_folder(tmp_path: Path) -> None:
 
 def test_missing_inputfile_error_names_the_path(tmp_path: Path) -> None:
     """A non-ARTIS directory must produce an error naming the path, not a bare 'input.txt' message."""
-    with pytest.raises(FileNotFoundError, match="ARTIS folder") as excinfo:
+    with pytest.raises(FileNotFoundError, match="ARTIS model folder") as excinfo:
         at.get_inputparams(tmp_path / "nonexistentmodel")
     assert "nonexistentmodel" in str(excinfo.value)
 
-    with pytest.raises(FileNotFoundError, match="ARTIS folder"):
+    with pytest.raises(FileNotFoundError, match="ARTIS model folder"):
         at.get_nprocs(tmp_path / "nonexistentmodel")
 
 
@@ -1737,7 +1737,7 @@ def test_server_protocol_changes_with_the_readers(package_modules: list[Path]) -
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (19, "69e24cb9f926002e"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (20, "69e24cb9f926002e"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )
@@ -3956,6 +3956,8 @@ def test_a_keyword_and_its_alias_name_the_conflict() -> None:
         (ImportError("This command needs plotly, which is installed but did not import: libGL"), 1, "needs plotly"),
         (OSError("unexpected end of file"), 1, "A compressed file can be incomplete"),
         (pl.exceptions.PanicException("PyErr { type: <class 'EOFError'> }"), 1, "ends before the end of its data"),
+        # polars gives NoDataError for an empty input file
+        (pl.exceptions.NoDataError("empty CSV"), 1, "empty CSV"),
     ],
 )
 def test_the_dispatcher_reports_an_error_with_no_traceback(
@@ -4642,6 +4644,27 @@ def test_explain_gives_the_timesteps_of_each_time_of_a_list(capsys: pytest.Captu
     main(argsraw=["deposition", str(at.get_path("testartismodel")), "-t", "300,330", "--explain"])
     timelines = [line.strip() for line in capsys.readouterr().out.splitlines() if "Time:" in line]
     assert [line.split(",")[0] for line in timelines] == ["Time: timesteps 54 to 54", "Time: timesteps 82 to 82"]
+
+
+def test_explain_says_that_a_plot_command_overwrites_its_figure(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--explain said that a plot command asks before it overwrites a file, but only a command with --force asks."""
+    from artistools.__main__ import main
+
+    outputfile = tmp_path / "plot.pdf"
+    outputfile.touch()
+    main(argsraw=["plotspectra", str(at.get_path("testartismodel")), "-t", "300", "-o", str(outputfile), "--explain"])
+    assert f"Output: {outputfile} (the file exists, and the command overwrites it)" in capsys.readouterr().out
+
+    # a folder gave no text, but a command such as maptogrid asks before it overwrites grid.dat in that folder
+    from artistools.misc.cliutils import get_overwrite_text
+
+    assert "asks before it overwrites a file that exists in this folder" in get_overwrite_text(
+        tmp_path, argparse.Namespace(force=False)
+    )
+    assert "--force overwrites" in get_overwrite_text(tmp_path, argparse.Namespace(force=True))
+    assert "the command overwrites the files" in get_overwrite_text(tmp_path, argparse.Namespace())
 
 
 def test_moving_average_of_a_capped_opacity_has_its_own_description() -> None:

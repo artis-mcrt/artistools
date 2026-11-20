@@ -397,7 +397,11 @@ def test_cli_no_command_prints_help(capsys: pytest.CaptureFixture[str]) -> None:
     import artistools.__main__
 
     artistools.__main__.main(argsraw=[])
-    assert "plotspectra" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "plotspectra" in output
+    # the short help lists the commands with no examples, and it names --help for the full help
+    assert "for the full help and the examples" in output
+    assert "Examples" not in output
 
 
 def test_command_groups_name_every_visible_command() -> None:
@@ -522,6 +526,18 @@ def test_cli_suggests_a_close_subcommand(capsys: pytest.CaptureFixture[str]) -> 
     # the error names the fault, and the help line that follows names the closest subcommand
     assert "help: Did you mean plotspectra" in message
     assert message.index("error: ") < message.index("help: ")
+
+    # a command of a group gave no suggestion, and an alias came beside its own command, e.g. "plotestimators,
+    # estimators"
+    for argsraw, expected in (
+        (["maptogrid"], "inputmodel maptogrid`?"),
+        # the help suggested the command line that runs maptogrid, and not the one that prints its help
+        (["help", "maptogrid"], "help inputmodel maptogrid`?"),
+        (["plotestimatorss"], "help: Did you mean plotestimators, plotdensity"),
+    ):
+        with pytest.raises(SystemExit):
+            artistools.__main__.main(argsraw=argsraw)
+        assert expected in capsys.readouterr().err
 
     # with no close name, the help line names --help. The list of every command filled the line
     with pytest.raises(SystemExit):
@@ -754,17 +770,41 @@ def test_short_help_gives_the_first_sentence_of_each_option(capsys: pytest.Captu
     import artistools.__main__
 
     helptexts = {}
-    for flag in ("-h", "--help"):
-        with pytest.raises(SystemExit) as exitinfo:
-            artistools.__main__.main(argsraw=["plotspectra", flag])
-        assert exitinfo.value.code == 0
-        helptexts[flag] = capsys.readouterr().out
-    assert len(helptexts["-h"].splitlines()) < len(helptexts["--help"].splitlines()) / 2
+    # the column depends on the width of the terminal, thus a COLUMNS of 120 in the environment failed the ratio below
+    with mock.patch.dict(os.environ, {"COLUMNS": "80"}):
+        for flag in ("-h", "--help"):
+            with pytest.raises(SystemExit) as exitinfo:
+                artistools.__main__.main(argsraw=["plotspectra", flag])
+            assert exitinfo.value.code == 0
+            helptexts[flag] = capsys.readouterr().out
+    # at 80 columns the full help starts its column at 24 characters and -h at 24 too, thus -h has 2/3 of the lines
+    assert len(helptexts["-h"].splitlines()) < len(helptexts["--help"].splitlines()) * 2 / 3
     assert "plotspectra --help` for the full help and the examples" in helptexts["-h"]
     assert "Examples" not in helptexts["-h"]
     assert "Examples" in helptexts["--help"]
     # the first sentence of a help text stays, and a later sentence goes, also after an abbreviation such as e.g.
     assert at.misc.argparser.get_first_sentence("Give a time, e.g. 300. A unit is optional") == "Give a time, e.g. 300"
+
+
+def test_help_column_follows_the_width_of_the_terminal() -> None:
+    """The help column starts at 3/10 of the width, from 24 to 50 characters.
+
+    argparse takes 24 as the default of max_help_position, and a min() after its init kept the column at 24 for each
+    width.
+    """
+    import artistools.__main__
+
+    def get_help_column(columns: int) -> int:
+        with mock.patch.dict(os.environ, {"COLUMNS": str(columns)}):
+            parser = artistools.__main__.build_parser()
+            subactions = [a for a in parser._actions if isinstance(a, argparse._SubParsersAction)]  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+            helptext: str = subactions[0].choices["plotspectra"].format_help()
+        line = next(line for line in helptext.splitlines() if line.lstrip().startswith("--normalised "))
+        return line.index("Normalise")
+
+    assert get_help_column(80) == 24
+    assert get_help_column(120) == 35
+    assert get_help_column(300) == 50
 
 
 def test_each_short_flag_has_one_meaning_in_the_help() -> None:
@@ -1376,17 +1416,7 @@ def test_every_output_argument_records_what_the_command_writes() -> None:
     import artistools.__main__
 
     parser = artistools.__main__.build_parser()
-
-    modulebycommand: dict[str, str] = {}
-
-    def walktree(tree: dict[str, t.Any]) -> None:
-        for name, node in tree.items():
-            if isinstance(node, at.commands.CommandSpec):
-                modulebycommand[name] = node.module
-            else:
-                walktree(node)
-
-    walktree(at.commands.subcommandtree)
+    modulebycommand = get_module_of_each_command()
 
     withoutput = 0
     for subcommand, subparser in get_every_subcommand(parser):
@@ -1400,9 +1430,7 @@ def test_every_output_argument_records_what_the_command_writes() -> None:
         # a command that writes one file names that file, either from the tree or in its own main
         # an alias of a command names the same module, thus the name of the command covers it
         if kind == "file" and subparser.get_default("outputdefaultname") is None and subcommand in modulebycommand:
-            modulename = modulebycommand[subcommand]
-            module = REPOPATH / "artistools" / Path(*modulename.split(".")).with_suffix(".py")
-            text = module.read_text(encoding="utf-8")
+            text = modulebycommand[subcommand].read_text(encoding="utf-8")
             assert any(
                 name in text for name in ("resolve_outputfile", "resolve_frameset_paths", "resolve_table_outputfile")
             ), f"{subcommand} writes one file, thus it must name that file"
@@ -1410,24 +1438,69 @@ def test_every_output_argument_records_what_the_command_writes() -> None:
     assert withoutput > 20, "the tree must hold many commands that write output"
 
 
-def test_the_command_listing_gives_one_line_to_each_command() -> None:
-    """The listing of the commands must take one line for each of them.
+def get_module_of_each_command() -> dict[str, Path]:
+    """Return the source file of the module of each command of the tree, keyed by the name of the command."""
+    modulebycommand: dict[str, Path] = {}
 
-    The name of a command with every alias took 36 columns and left 38 for the text, thus almost every
-    description wrapped over two or three lines and the listing ran to 88 lines.
+    def walktree(tree: at.commands.CommandTree) -> None:
+        for name, node in tree.items():
+            if isinstance(node, at.commands.CommandSpec):
+                modulebycommand[name] = REPOPATH / "artistools" / Path(*node.module.split(".")).with_suffix(".py")
+            else:
+                walktree(node)
+
+    walktree(at.commands.subcommandtree)
+    return modulebycommand
+
+
+def test_a_command_that_asks_before_it_overwrites_has_force() -> None:
+    """--explain says that a command asks before it overwrites a file only when the command has --force.
+
+    If a command asks and has no --force, --explain gives the incorrect text "the command overwrites it". The user also
+    cannot give -f to the prompt.
     """
     import artistools.__main__
 
-    helptext = artistools.__main__.build_parser().format_help()
+    modulebycommand = get_module_of_each_command()
+    # confirm_overwrite_matches also asks, e.g. in writespectra
+    asks = re.compile(r"\b(?:confirm_overwrite\w*|resolve_table_outputfile|user_agrees)\(")
+
+    askingcommands = []
+    askswithoutforce = []
+    for subcommand, subparser in get_every_subcommand(artistools.__main__.build_parser()):
+        if subcommand not in modulebycommand:
+            continue
+        if not asks.search(modulebycommand[subcommand].read_text(encoding="utf-8")):
+            continue
+        askingcommands.append(subcommand)
+        if "force" not in {action.dest for action in subparser._actions}:  # ruff:ignore[private-member-access]
+            askswithoutforce.append(subcommand)
+
+    assert {"values", "catalog", "linecontributions", "deposition", "writespectra", "writecodecomparisondata"} <= set(
+        askingcommands
+    )
+    assert not askswithoutforce
+
+
+def test_the_command_listing_stays_short() -> None:
+    """The listing of the commands must take fewer than 1.75 lines for each command at 80 columns.
+
+    The name of a command with every alias took 36 columns and left 38 for the text, thus almost every
+    description wrapped over two or three lines and the listing ran to 88 lines for 45 commands. A long
+    name or a long description still takes a second line, thus one line for each command is not the limit.
+    """
+    import artistools.__main__
+
+    with mock.patch.dict(os.environ, {"COLUMNS": "80"}):
+        helptext = artistools.__main__.build_parser().format_help()
     listing = helptext.partition("Plot commands:")[2].partition("\nOptions:")[0]
     assert "Positional arguments:" not in helptext, "the headings of the groups replace the heading of argparse"
     assert "\nOther commands:\n  catalog " in listing
 
-    # a line of the listing holds a command, or it is the heading of a group, or it is empty
-    for line in listing.splitlines():
-        if not line.strip() or not line.startswith("  "):
-            continue
-        assert line.split()[0][0].isalpha(), f"a description wrapped onto its own line: {line!r}"
+    # a command line has an indent of two spaces, and a wrapped description has the indent of the description column
+    commandlines = [line for line in listing.splitlines() if line.startswith("  ") and line[2] != " "]
+    wrappedlines = [line for line in listing.splitlines() if line.startswith("   ")]
+    assert len(commandlines) + len(wrappedlines) < 1.75 * len(commandlines), wrappedlines
 
 
 def test_the_help_of_a_long_command_holds_no_wall_of_flags() -> None:

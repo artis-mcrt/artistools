@@ -54,24 +54,28 @@ from artistools.estimators.core import scan_estimators
 from artistools.estimators.core import summarise_columns
 from artistools.estimators.core import VARIABLES
 from artistools.estimators.estimators_classic import has_classic_estimator_format
+from artistools.estimators.plotitems import could_be_ion
 from artistools.estimators.plotitems import DIRECTIVES
 from artistools.estimators.plotitems import get_column_name
 from artistools.estimators.plotitems import get_directive_name
 from artistools.estimators.plotitems import get_iontuple
 from artistools.estimators.plotitems import get_iontuple_sortkey
+from artistools.estimators.plotitems import get_item_directive
 from artistools.estimators.plotitems import get_series_name
 from artistools.estimators.plotitems import get_styles_of_subplots
 from artistools.estimators.plotitems import is_ionseriestype
 from artistools.estimators.plotitems import normalise_plotitems
+from artistools.estimators.plotitems import resolve_item_alias
 from artistools.estimators.plotitems import SERIES_LINESTYLES
 from artistools.estimators.plotitems import SERIES_STYLE_MARK
 from artistools.estimators.plotitems import SERIESTYPES
 from artistools.estimators.plotitems import split_plotitem_styles
 from artistools.estimators.plotitems import VARIABLE_ALIASES
-from artistools.inputmodel import get_costheta_selection
+from artistools.inputmodel import get_cell_direction_selection
 from artistools.inputmodel import get_spherical_image_cell_indices
+from artistools.inputmodel import resolve_cell_direction_range
 from artistools.misc import addarg_axislimits
-from artistools.misc import addarg_costhetarange
+from artistools.misc import addarg_celldirectionrange
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
 from artistools.misc import addarg_dpi
@@ -90,15 +94,15 @@ from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timeminmax
 from artistools.misc import addarg_timestep
 from artistools.misc import addarg_verbose
+from artistools.misc import arggroup
 from artistools.misc import artis_subfolders
 from artistools.misc import dashes_arg
 from artistools.misc import exit_with_error
 from artistools.misc import flatten_list
 from artistools.misc import folder_is_artis_model
-from artistools.misc import format_costheta_range
+from artistools.misc import format_cell_direction_range
 from artistools.misc import format_frame_path
 from artistools.misc import get_bin_index_expr
-from artistools.misc import get_costheta_range
 from artistools.misc import get_filterfunc
 from artistools.misc import get_model_coordinates
 from artistools.misc import get_model_name
@@ -196,8 +200,8 @@ def get_elemcolor(atomic_number: int) -> t.Any:
     call order instead made an element's colour depend on which plots preceded it in the same process, and ran
     off the end of the ten-colour list once eleven elements had been seen.
     """
-    elsymbol = get_elsymbol(atomic_number)
-    if elsymbol in elementcolors:
+    # a group of elements, e.g. Fegroup or lanthanides, has the atomic number -1 and takes a colour of the palette
+    if atomic_number >= 0 and (elsymbol := get_elsymbol(atomic_number)) in elementcolors:
         return elementcolors[elsymbol]
 
     palette = get_unreserved_elemcolors()
@@ -714,8 +718,9 @@ def get_average_charge_expr(element: str, colnames: Collection[str]) -> tuple[pl
 
     The mean takes the number density of each ion as the weight, thus it is the charge for each nucleus.
     """
-    elsymb = get_elsymbol(get_atomic_number(element))
-    if f"nnelement_{elsymb}" not in colnames:
+    atomic_number = get_atomic_number(element)
+    elsymb = get_elsymbol(atomic_number) if atomic_number >= 0 else None
+    if elsymb is None or f"nnelement_{elsymb}" not in colnames:
         msg = f"ERROR: No element data found for {element}"
         raise ValueError(msg)
 
@@ -744,11 +749,11 @@ def get_average_ionisation_plans(
     maxioncharge = 0
     for paramvalue in params:
         print(f"  Plotting averageionisation {paramvalue}")
+        # get_average_charge_expr comes first, because its error names the element that the user gave
+        expr_charge_per_nuc, elementmaxcharge = get_average_charge_expr(paramvalue, colnames)
         atomic_number = get_atomic_number(paramvalue)
-
         color = get_elemcolor(atomic_number=atomic_number)
         elsymb = get_elsymbol(atomic_number)
-        expr_charge_per_nuc, elementmaxcharge = get_average_charge_expr(paramvalue, colnames)
         maxioncharge = max(maxioncharge, elementmaxcharge)
 
         dfplotdata = estimators.with_columns(
@@ -1145,7 +1150,7 @@ def get_cylindrical_velocity_expr(estimatorcolumns: Collection[str]) -> pl.Expr:
     if "vel_x_mid" not in estimatorcolumns:
         exit_with_error(
             "The ion population type cylradialdensity needs a cylindrical radius, and a 1D model has none",
-            "Give -ionpoptype radialdensity for the radial density of a 1D model",
+            "Give --ionpoptype radialdensity for the radial density of a 1D model",
         )
     return (pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2).sqrt()
 
@@ -1215,7 +1220,7 @@ def get_multi_ion_series_plans(
             exit_with_error(
                 f"A code comparison file gives the ion fractions n_ion / n_element and no element density, thus it has"
                 f" no ion population of type '{poptype}'",
-                "Give -ionpoptype elpop for the fraction of each ion in its element",
+                "Give --ionpoptype elpop for the fraction of each ion in its element",
             )
         print_detail(
             "A code comparison file gives no element density. Thus a mean of the ion fractions over the cells takes"
@@ -2031,8 +2036,8 @@ def get_line_figure_data(
         if args.slice is not None:
             figure_title += f", {args.slicelabel}"
         framefields = {"timestep": strtimestep, "timedays": strtimedays}
-    if (costhetarange := get_costheta_range(args, quiet=True)) is not None:
-        figure_title += f", {format_costheta_range(costhetarange)}"
+    if (directionrange := resolve_cell_direction_range(args, modelpath, quiet=True)) is not None:
+        figure_title += f", {format_cell_direction_range(directionrange)}"
     if "cell" not in framefields:
         print("  Plotting " + figure_title.replace("\n", " "))
 
@@ -2339,8 +2344,8 @@ def get_image_panels(plotlist: list[list[t.Any]], estimatorcolumns: Collection[s
                     weights[colname] = weight
             elif plotitem[0] == "averageionisation":
                 for element in plotitem[1]:
-                    elsymb = get_elsymbol(get_atomic_number(element))
                     chargeexpr, _ = get_average_charge_expr(element, estimatorcolumns)
+                    elsymb = get_elsymbol(get_atomic_number(element))
                     colname = f"averageionisation_{elsymb}"
                     columns.append((chargeexpr.alias(colname), colname, f"Average ion charge of {elsymb}"))
                     # the line of a subplot takes the same weight, thus the image gives the charge of each nucleus
@@ -2599,8 +2604,9 @@ def get_image_figure_data(
     elif not isplane and modelmeta["dimensions"] == 3:
         strimage = "average around the z axis"
     figure_title = f"{get_model_name(modelpath)}\nTimestep {strtimestep} ({strtimedays}), {strimage}"
-    if (costhetarange := get_costheta_range(args, quiet=True)) is not None:
-        figure_title += f", {format_costheta_range(costhetarange)}"
+    directionrange = resolve_cell_direction_range(args, modelpath, quiet=True, dimensions=modelmeta["dimensions"])
+    if directionrange is not None:
+        figure_title += f", {format_cell_direction_range(directionrange)}"
     print("  Plotting " + figure_title.replace("\n", " "))
 
     return ImageFigureData(
@@ -2888,7 +2894,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_modelgridindex(parser, helptext="Model grid cell for the time evolution plot")
 
-    addarg_costhetarange(parser)
+    addarg_celldirectionrange(parser)
 
     addarg_timestep(parser, helptext="Timestep number for internal structure plot")
 
@@ -2896,7 +2902,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_timeminmax(parser)
 
-    parser.add_argument(
+    arggroup(parser, "Output").add_argument(
         "--multiplot",
         action="store_true",
         help=(
@@ -2905,16 +2911,19 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         ),
     )
 
-    parser.add_argument("-x", default=None, help="Horizontal axis variable, e.g. velocity, timestep, or time")
+    arggroup(parser, "Horizontal axis").add_argument(
+        "-x", default=None, help="Horizontal axis variable, e.g. velocity, timestep, or time"
+    )
 
     addarg_axislimits(
         parser,
         include_y=False,
         xminhelp="Plot range: minimum x value in the units of -x, e.g. km/s for velocity, c for beta, days for time",
         xmaxhelp="Plot range: maximum x value in the units of -x, e.g. km/s for velocity, c for beta, days for time",
+        grouptitle="Horizontal axis",
     )
 
-    parser.add_argument(
+    arggroup(parser, "Horizontal axis").add_argument(
         "-xbins",
         type=int,
         default=None,
@@ -2924,7 +2933,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         ),
     )
 
-    parser.add_argument(
+    arggroup(parser, "Horizontal axis").add_argument(
         "--logscalex",
         action="store_true",
         help=(
@@ -2933,9 +2942,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         ),
     )
 
-    parser.add_argument("--hidexlabel", action="store_true", help="Hide the bottom horizontal axis label")
+    arggroup(parser, "Appearance").add_argument(
+        "--hidexlabel", action="store_true", help="Hide the bottom horizontal axis label"
+    )
 
-    parser.add_argument(
+    arggroup(parser, "Appearance").add_argument(
         "-linewidthscale",
         type=positive_float_arg,
         default=1.0,
@@ -2943,9 +2954,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         " linewidth of a series style",
     )
 
-    parser.add_argument("--markers", action="store_true", help="Plot markers instead of shaded area")
+    arggroup(parser, "Appearance").add_argument(
+        "--markers", action="store_true", help="Plot markers instead of shaded area"
+    )
 
-    parser.add_argument(
+    arggroup(parser, "Appearance").add_argument(
         "--histogram",
         action="store_true",
         help=(
@@ -2956,11 +2969,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_filter(parser)
 
-    parser.add_argument("-format", default="pdf", choices=["pdf", "png"], help="Set format of output plot files")
+    arggroup(parser, "Output").add_argument(
+        "-format", default="pdf", choices=["pdf", "png"], help="Set format of output plot files"
+    )
     # the older short form. The help gives -f one meaning, --force, as rm -f does
     parser.add_argument("-f", dest="format", choices=["pdf", "png"], help=argparse.SUPPRESS)
 
-    parser.add_argument(
+    arggroup(parser, "Output").add_argument(
         "--makegif", action="store_true", help="Make a gif of the time evolution, one frame per timestep"
     )
 
@@ -3042,7 +3057,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     addarg_output(parser, kind="file", default=Path(), helptext="Filename for PDF file")
     addarg_data_output(parser)
 
-    parser.add_argument(
+    arggroup(parser, "Appearance").add_argument(
         "--colorbyion",
         action="store_true",
         help=(
@@ -3060,7 +3075,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         ),
     )
 
-    parser.add_argument(
+    arggroup(parser, "Cell selection").add_argument(
         "-readonlymgi",
         default=False,
         choices=["alongaxis", "cone"],
@@ -3097,7 +3112,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         ),
     )
 
-    parser.add_argument(
+    arggroup(parser, "Cell selection").add_argument(
         "-coneangle",
         type=float,
         default=30.0,
@@ -3117,7 +3132,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         ),
     )
 
-    parser.add_argument(
+    arggroup(parser, "Appearance").add_argument(
         "-subplotsperrow",
         type=int,
         default=1,
@@ -3475,11 +3490,48 @@ def resolve_positional_args(args: argparse.Namespace) -> None:
         args.plotlist = [plotvars, *(args.plotlist or [])]
 
 
-def require_artis_folder(modelpath: Path) -> None:
-    """Stop with an error message when the path does not name an ARTIS folder.
+def get_missing_folder_hint(lastitem: str) -> str:
+    """Return a hint when the last positional argument is probably a model folder that does not exist, or "".
+
+    With no model, the command cannot know each valid plot item, e.g. a directive such as yscale=log or a column such as
+    heating_dep/total_dep. Thus the hint needs evidence of a folder. The evidence is a path such as ./mymodle, or a
+    folder with a close name, e.g. mymodel for mymodle.
+    """
+    # each of these is a plot item, even when a folder has a close name:
+    # - a known variable, or an alias such as T_e;
+    # - an ion;
+    # - a directive.
+    name = get_series_name(resolve_item_alias(lastitem))
+    if name in VARIABLES or could_be_ion(lastitem) or get_item_directive(lastitem) is not None:
+        return ""
+
+    # a path that exists, e.g. "./" for the working folder, has no error in its name
+    if Path(lastitem).exists():
+        return ""
+    # the shell does not expand a "~" in quotes, and artistools does not expand it
+    if lastitem.startswith("~"):
+        return f"No folder '{lastitem}' exists. Give the path with no quotes, thus the shell expands '~'."
+    if lastitem.startswith(("/", "./", "../")):
+        return f"No folder '{lastitem}' exists."
+
+    parent = Path(lastitem).parent
+    # a folder that the user can enter but not list gives a permission error, as artis_subfolders allows for
+    try:
+        folders = [path.name for path in parent.iterdir() if path.is_dir()]
+    except OSError:
+        return ""
+    if suggestion := suggest_names(Path(lastitem).name, folders):
+        return f"No folder '{lastitem}' exists. {suggestion}"
+    return ""
+
+
+def require_artis_folder(modelpath: Path, lastitems: Sequence[str] = ()) -> None:
+    """Stop with an error message when the path does not name an ARTIS model folder.
 
     The command reads the working folder when the user names no folder. A user can run the command in
-    a folder that is not an ARTIS folder. The message then names that folder and not an absent file.
+    a folder that is not an ARTIS model folder. The message then names that folder and not an absent file.
+    lastitems holds the last item of each list of plot items. A folder that does not exist stays a plot item, thus
+    a folder name with an error, e.g. "mymodle", comes here as one of them.
     """
     if path_is_codecomparison(modelpath) or folder_is_artis_model(modelpath):
         return
@@ -3490,27 +3542,37 @@ def require_artis_folder(modelpath: Path) -> None:
         f"Name one of these subfolders after the variables: {', '.join(nearby)}"
         if nearby
         else (
-            "An ARTIS folder holds input.txt. Name one after the variables, e.g. `artistools plotestimators Te mymodel`"
+            "An ARTIS model folder holds input.txt. Name one after the variables, e.g."
+            " `artistools plotestimators Te mymodel`"
         )
     )
 
     if modelpath == Path():
-        exit_with_error("No ARTIS folder was given, and the working folder is not an ARTIS folder", helptext)
+        if folderhint := next((hint for item in lastitems if (hint := get_missing_folder_hint(item))), ""):
+            helptext = f"{folderhint} {helptext}"
+        exit_with_error(
+            "The command line gives no ARTIS model folder, and the working folder is not an ARTIS model folder",
+            helptext,
+        )
 
-    exit_with_error(f"'{modelpath}' is not an ARTIS folder", helptext)
+    exit_with_error(f"'{modelpath}' is not an ARTIS model folder", helptext)
 
 
 def resolve_plot_args(args: argparse.Namespace) -> tuple[Path, list[int]]:
     """Apply the defaults and the cell selection to the arguments, and return the model path and the timesteps."""
+    # the folder can end the positional items or the last -plot group, and the parsed arguments do not keep the order
+    # of the command line. A script can give a Path as an item
+    lastgroups = [args.plotitems or [], args.plotlist[-1] if args.plotlist else []]
+    lastitems = [str(group[-1]) for group in lastgroups if group]
     resolve_positional_args(args)
     modelpath = Path(args.modelpath)
-    require_artis_folder(modelpath)
+    require_artis_folder(modelpath, lastitems)
     args.classicartis = args.classicartis or has_classic_estimator_format(modelpath)
     resolve_snapshot_arguments(args)
     timestepmin, timestepmax = set_x_and_timesteps(args, modelpath)
     wantslisting = args.listvariables or args.listnuclides
     # the data code reads the range again with quiet, thus check and log the options here
-    get_costheta_range(args)
+    resolve_cell_direction_range(args, modelpath)
 
     if not wantslisting:
         print(
@@ -3553,8 +3615,10 @@ def add_plot_columns(
     if args.modelgridindex is None and args.dimensionreduce == 1:
         estimators = estimators.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
 
-    if (costhetarange := get_costheta_range(args, quiet=True)) is not None:
-        estimators = estimators.filter(get_costheta_selection(costhetarange, estimators.collect_schema().names()))
+    directionrange = resolve_cell_direction_range(args, args.modelpath, quiet=True, dimensions=modelmeta["dimensions"])
+    if directionrange is not None:
+        columns = estimators.collect_schema().names()
+        estimators = estimators.filter(get_cell_direction_selection(directionrange, columns))
 
     estimators = estimators.with_columns(deltavol_deltat=pl.col("volume") * pl.col("twidth_days"))
     return estimators, estimators.collect_schema().names()

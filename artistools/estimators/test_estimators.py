@@ -4,6 +4,7 @@ import math
 import os
 import re
 import shutil
+import sys
 import typing as t
 from collections.abc import Callable
 from collections.abc import Sequence
@@ -2130,6 +2131,17 @@ def test_get_elemcolor_is_stable_and_unbounded() -> None:
     reservedZ = {at.get_atomic_number(elsymbol) for elsymbol in elementcolors}
     unreserved = [get_elemcolor(atomic_number=Z) for Z in range(1, 93) if Z not in reservedZ]
     assert not set(elementcolors.values()).intersection(unreserved)
+
+    # a group such as Fegroup or lanthanides has the atomic number -1, and get_elsymbol refuses -1
+    assert get_elemcolor(atomic_number=at.get_atomic_number("Fegroup")) not in elementcolors.values()
+
+
+def test_unknown_element_of_averageionisation_names_the_element() -> None:
+    """The error named the atomic number -1, which the user did not give, in place of the name of the element."""
+    from artistools.estimators.plotestimators import get_average_charge_expr
+
+    with pytest.raises(ValueError, match="No element data found for Xx"):
+        get_average_charge_expr("Xx", ["nnelement_Fe", "nnion_Fe_II"])
 
 
 def test_estimparse_index_columns_are_integers() -> None:
@@ -4367,14 +4379,65 @@ def test_a_working_folder_that_is_not_artis_gives_an_error(
     with pytest.raises(SystemExit):
         at.estimators.plotestimators.main(argsraw=["Te", "-t", "1"])
 
-    assert "No ARTIS folder was given" in capsys.readouterr().err
+    stderr = capsys.readouterr().err
+    assert "The command line gives no ARTIS model folder" in stderr
+    assert "No folder 'Te' exists" not in stderr
+
+    # T_e is an alias of Te, thus it is a variable and not a folder with an error in its name
+    with pytest.raises(SystemExit):
+        at.estimators.plotestimators.main(argsraw=["T_e", "-t", "1"])
+    assert "No folder 'T_e' exists" not in capsys.readouterr().err
+
+    # a folder that does not exist stays a plot item. The hint needs a path or a folder with a close name, because
+    # no list of valid items exists without a model, e.g. yscale=log and heating_dep/total_dep are valid
+    (tmp_path / "mymodel").mkdir()
+    for argsraw, hint in (
+        (["Te", "mymodle"], "No folder 'mymodle' exists. Did you mean mymodel?"),
+        (["-p", "Te", "mymodle"], "No folder 'mymodle' exists. Did you mean mymodel?"),
+        (["Te", "-p", "rho", "mymodle"], "No folder 'mymodle' exists. Did you mean mymodel?"),
+        (["Te", "./mymodle"], "No folder './mymodle' exists."),
+        (["Te", "~/mymodle"], "the shell expands '~'"),
+        (["Te", "yscale=log"], None),
+        (["Te", "heating_dep/total_dep"], None),
+        # "./" is the working folder, and it exists
+        (["Te", "./"], None),
+    ):
+        with pytest.raises(SystemExit):
+            at.estimators.plotestimators.main(argsraw=[*argsraw, "-t", "1"])
+        stderr = capsys.readouterr().err
+        if hint is None:
+            assert "No folder '" not in stderr, argsraw
+        else:
+            assert hint in stderr, argsraw
+
+    # a script can give a Path as a plot item, and the hint called str methods on it
+    with pytest.raises(SystemExit):
+        at.estimators.plotestimators.main(argsraw=["-t", "1"], plotitems=["Te", Path("mymodle")])
+    assert "No folder 'mymodle' exists" in capsys.readouterr().err
 
     with pytest.raises(SystemExit):
         at.estimators.plotestimators.main(argsraw=["Te", str(tmp_path / "notamodel"), "-t", "1"])
 
     stderr = capsys.readouterr().err
     assert "notamodel" in stderr
-    assert "is not an ARTIS folder" in stderr
+    assert "is not an ARTIS model folder" in stderr
+
+
+@pytest.mark.skipif(sys.platform == "win32" or os.geteuid() == 0, reason="needs a folder mode that the user obeys")
+def test_a_working_folder_that_the_user_cannot_list_gives_the_folder_message(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The hint listed the working folder, thus a folder of mode 0o300 gave "[Errno 13] Permission denied: '.'"."""
+    lockedfolder = tmp_path / "locked"
+    lockedfolder.mkdir(mode=0o300)
+    monkeypatch.chdir(lockedfolder)
+    try:
+        with pytest.raises(SystemExit):
+            at.estimators.plotestimators.main(argsraw=["Te", "mymodle", "-t", "1"])
+    finally:
+        lockedfolder.chmod(0o700)
+
+    assert "The command line gives no ARTIS model folder" in capsys.readouterr().err
 
 
 def test_a_folder_and_modelpath_together_give_an_error(capsys: pytest.CaptureFixture[str]) -> None:
@@ -5285,7 +5348,7 @@ def test_element_group_mass_fractions_take_only_the_elements_of_the_group() -> N
 def test_dirbin_selects_the_cells_and_a_mass_fraction_takes_the_mass_weight(
     tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
 ) -> None:
-    """-dirbin 50 keeps the cells with 0 ≤ cos θ ≤ 0.2 at the centre, and init_X_Fe uses the cell masses as weights.
+    """-dirbin 50 with --average-over-phi-angle keeps the cells with 0 ≤ cos θ ≤ 0.2, and init_X_Fe takes mass weights.
 
     Te uses the volume as the weight. A mean of a mass fraction with that weight gave too much weight to the cells of
     low density.
@@ -5296,6 +5359,7 @@ def test_dirbin_selects_the_cells_and_a_mass_fraction_takes_the_mass_weight(
         modelpath=modelpath_classic_3d,
         outputfile=tmp_path,
         dirbin=50,
+        average_over_phi_angle=True,
         plotlist=[["init_X_Fe", "Te"]],
         write_data=True,
     )
@@ -5455,3 +5519,32 @@ def test_image_mean_takes_the_finite_values_alone(weight: float) -> None:
     drawn = plotestimators.get_drawn_image_values(means["panel0"].to_numpy(), logscale=False)
     assert np.ma.getmaskarray(drawn).tolist() == [False, True]
     assert drawn[0] == pytest.approx(3.0)
+
+
+def test_dirbin_on_the_host_of_a_remote_model_reads_no_model_again() -> None:
+    """The host takes the dimensions of its model for the ϕ range of -dirbin, and it reads the model no more.
+
+    On the host, args.modelpath still names the host, thus a read of the model there started a new remote read.
+    """
+    args = argparse.Namespace(
+        modelgridindex=[0, 1],
+        dimensionreduce=0,
+        dirbin=93,
+        average_over_phi_angle=False,
+        costhetamin=None,
+        costhetamax=None,
+        modelpath="nohost:/no/model",
+    )
+    estimators = pl.LazyFrame({
+        "modelgridindex": [0, 1],
+        "vel_r_mid_on_c": [0.1, 0.1],
+        "vel_x_mid_on_c": [-0.01, 0.01],
+        "vel_y_mid_on_c": [-0.01, 0.01],
+        "vel_z_mid_on_c": [0.098, 0.098],
+        "volume": [1.0, 1.0],
+        "twidth_days": [1.0, 1.0],
+    })
+    with mock.patch("artistools.inputmodel.core.scan_modeldata", side_effect=AssertionError) as mockscan:
+        selected, _ = plotestimators.add_plot_columns(args, estimators, {"dimensions": 3})
+        assert selected.collect()["modelgridindex"].to_list() == [0]
+    mockscan.assert_not_called()

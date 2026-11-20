@@ -108,7 +108,7 @@ ARGUMENTGROUPORDER = (
 )
 
 
-# the column of the help text in the short help of -h. 24 is the default of argparse
+# the largest column of the help text in the short help of -h, which a wide terminal reaches
 SHORT_HELP_POSITION = 32
 
 
@@ -121,19 +121,26 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
     """Custom argparse formatter to show default values in help text, sorted with dashes last."""
 
     def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
-        """Widen the help column so long option names stay on one line."""
+        """Start the help column at 3/10 of the width, between 24 and 50 characters.
+
+        A fixed column of 50 left 30 characters for the help on a terminal of 80 columns, and the help of
+        plotspectra took 470 lines. A long option name goes on its own line.
+        """
+        # argparse takes 24 as the default and keeps the column below the width minus 20. Thus the init gets the upper
+        # limit of 50, and the line below can then move the column to the right on a wide terminal
         kwargs["max_help_position"] = 50
         super().__init__(*args, **kwargs)
+        self._max_help_position = min(self._max_help_position, max(24, self._width * 3 // 10))
         self.short = False
 
     def make_short(self) -> None:
         """Give the short help of -h: the first sentence of the help of each option, as uv does.
 
-        The column of the help starts nearer to the left, thus a sentence takes fewer lines. A long flag then goes on
-        its own line. argparse limits the column by the width of the terminal, as __init__ does.
+        The column of the help is the column of the full help, but at most SHORT_HELP_POSITION. Below 112 columns of
+        the terminal, the two columns are the same. A long flag then goes on its own line.
         """
         self.short = True
-        self._max_help_position = min(SHORT_HELP_POSITION, max(self._width - 20, 2 * self._indent_increment))
+        self._max_help_position = min(SHORT_HELP_POSITION, self._max_help_position)
 
     @t.override
     def _get_help_string(self, action: argparse.Action) -> str | None:
@@ -219,6 +226,10 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
         getinvocation = super()._format_action_invocation
 
         def my_sort(action: argparse.Action) -> str:
+            # the positional arguments keep the order of the command line, e.g. the action before the model path.
+            # The sort is stable, thus one key for all of them keeps that order
+            if not action.option_strings:
+                return ""
             return getinvocation(action).upper().replace("-", "z")  # push dash chars below alphabet
 
         # the help gives the standard spelling of each flag, and the older spellings still work
@@ -226,6 +237,28 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
         if self.short:
             actions = [with_first_sentence(action) for action in actions]
         super().add_arguments(actions)
+
+
+def get_nested_command_suggestion(
+    command: str, groupparsers: Iterable[argparse.ArgumentParser], rootprog: str, *, suggestshelp: bool = False
+) -> str:
+    """Return a sentence that names the group of the command, e.g. inputmodel for maptogrid, or "" for no group.
+
+    A user often writes a command of a group without the group, and a close match at the top level then
+    names a different command. With suggestshelp, the sentence names the help of the command, e.g.
+    `artistools help inputmodel maptogrid`.
+    """
+    helpword = "help " if suggestshelp else ""
+    for groupparser in groupparsers:
+        for subaction in groupparser._actions:  # ruff:ignore[private-member-access]
+            if (
+                isinstance(subaction, argparse._SubParsersAction)  # ruff:ignore[private-member-access]
+                and subaction.choices is not None
+                and command in subaction.choices
+            ):
+                groupwords = groupparser.prog.removeprefix(rootprog).strip()
+                return f"Did you mean `{rootprog} {helpword}{groupwords} {command}`?"
+    return ""
 
 
 def is_joined_value(value: str, action: argparse.Action) -> bool:
@@ -254,6 +287,8 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
     wantsintermixed: bool = False
     # The dest of the positional items that can end with the model path.
     positionalitemsdest: str | None = None
+    # `artistools help` sets this flag, thus a suggestion names the help of a command and not a command that runs.
+    suggestshelp: bool = False
 
     def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
         """Make the parser. The help of -h starts with a capital letter, as the help of every other argument does.
@@ -325,7 +360,6 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
             return
 
         choices = [str(choice) for choice in action.choices]
-        listed = choices
         if isinstance(action, argparse._SubParsersAction):  # ruff:ignore[private-member-access]
             # the help lists no hidden command, e.g. server, thus no message names one. The list names each
             # command once, and a suggestion can also name an alias
@@ -333,13 +367,19 @@ class SuggestingArgumentParser(argparse.ArgumentParser):
             parsermap = action._name_parser_map  # ruff:ignore[private-member-access]
             listedparsers = {id(parsermap[command]) for command in listed}
             choices = [command for command, subparser in parsermap.items() if id(subparser) in listedparsers]
-        # a close match answers the question. The list of the 44 commands filled the help line, and --help gives
-        # each command with its description, thus the help line names --help
-        suggestion = suggest_names(str(value), choices)
-        if isinstance(action, argparse._SubParsersAction):  # ruff:ignore[private-member-access]
-            helptext = suggestion or f"Run `{self.prog} --help` to see the commands"
+            # a close match answers the question. The list of the 44 commands filled the help line, and --help
+            # gives each command with its description, thus the help line names --help. An alias and its command
+            # share one parser, thus the suggestion names that command one time
+            helptext = (
+                get_nested_command_suggestion(
+                    str(value), [parsermap[command] for command in listed], self.prog, suggestshelp=self.suggestshelp
+                )
+                or suggest_names(str(value), choices, aliasgroup=lambda command: id(parsermap[command]))
+                or f"Run `{self.prog} --help` to see the commands"
+            )
             self.exit_with_help(f"'{value}' is not a command of {self.prog}", helptext)
-        helptext = suggestion or f"The choices are {', '.join(listed)}"
+
+        helptext = suggest_names(str(value), choices) or f"The choices are {', '.join(choices)}"
         self.exit_with_help(f"Invalid choice '{value}' for {action.metavar or action.dest}", helptext)
 
     def get_visible_flags(self) -> list[str]:

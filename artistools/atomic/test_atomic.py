@@ -969,6 +969,15 @@ def test_get_atomic_number_and_elsymbol() -> None:
     assert at.get_elsymbol(1) == "H"
     assert at.get_elsymbol(2) == "He"
 
+    # the -1 of an unknown symbol read the last item of the symbol list, thus "Xx" gave "Uuo"
+    with pytest.raises(ValueError, match="No element has the atomic number -1"):
+        at.get_elsymbol(-1)
+    # pynonthermal catches the IndexError of a number above the table, for an element above Z = 118
+    with pytest.raises(IndexError, match="No element has the atomic number 119"):
+        at.get_elsymbol(119)
+    with pytest.raises(ValueError, match="does not start with an element symbol"):
+        at.get_z_a_nucname("Xx56")
+
 
 def test_decode_roman_numeral() -> None:
     assert at.decode_roman_numeral("I") == 1
@@ -992,6 +1001,14 @@ def test_get_ionstring() -> None:
     assert at.get_ionstring(26, 2, style="charge") == "Fe+"
     assert at.get_ionstring(26, 3, style="charge") == "Fe2+"
     assert at.get_ionstring(26, 1, style="charge") == "Fe0"
+
+    # a bare assert reported a nuclide name in the wrong case as a fault of artistools, e.g. -p populations fe56
+    with pytest.raises(ValueError, match="'fe56' is not an integer"):
+        at.get_ionstring(26, "fe56")
+    # a negative stage read the list of numerals from the end, thus -1 gave "Fe CXIX"
+    for ion_stage in (-1, 0, 120):
+        with pytest.raises(IndexError, match=f"No ion has the ion stage {ion_stage}"):
+            at.get_ionstring(26, ion_stage)
 
 
 def test_get_ion_tuple() -> None:

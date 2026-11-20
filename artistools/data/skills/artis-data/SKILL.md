@@ -68,10 +68,13 @@ The physics options change the meaning of many outputs. More commands help befor
 - `artistools report <modelpath>` makes an HTML page with the check, the summary, the logs, and standard figures.
 - `artistools values Te nne -t 300 --modelgridindex 12 <modelpath>` prints the raw estimators of cells and timesteps,
   with no average and the unit in each column name. Use it for the value of one cell, in place of Python.
-- `--dirbin 90` selects the cells whose centre is in the cos θ range of a direction bin, e.g. near the pole. `values`,
-  `plotestimators`, `plotopacity`, and `plotlinecontributions` take it. Use it to compare two directions, e.g.
-  `artistools plotestimators init_X_lanthanides Ye -t 10 --dirbin 50 <modelpath> --print-data --quiet`. The summary
-  table gives the mean with the mass of each cell as the weight for a mass fraction and for Ye.
+- `--dirbin 93` selects the cells whose centre is in one direction bin: the cos θ range and the ϕ range of the bin.
+  `--average-over-phi-angle` selects the whole cos θ range at each ϕ, e.g. `--dirbin 90 --average-over-phi-angle` for
+  the cells near the pole. `--average-over-theta-angle` selects the ϕ range at each cos θ, e.g. `--dirbin 3
+  --average-over-theta-angle`. `values`, `plotestimators`, `plotopacity`, and `plotlinecontributions` take these options.
+  Use them to compare two directions, e.g. `artistools plotestimators init_X_lanthanides Ye -t 10 --dirbin 50
+  --average-over-phi-angle <modelpath> --print-data --quiet`. The summary table gives the mean with the mass of each
+  cell as the weight for a mass fraction and for Ye.
 
 Each plot command prints the plotted data as a table with `--print-data --quiet`, e.g. `artistools plotestimators Te
 -t 300 <modelpath> --print-data --quiet`. Use it to check a result, or for a quick answer with no Python. A value or a
@@ -150,6 +153,8 @@ The other readers stop with an error. For these readers, run the script on the h
 - To compare two processes, e.g. two heating processes or two ionisation processes, change each one to a rate per unit
   volume. Multiply that rate by `volume`, then add the values of all the cells. A rate per ion or per atom does not show
   which process is more important.
+
+<!-- The page docs/data.md shows the text from this line to the heading "Report". -->
 
 ## Estimators: the values of each cell at each time step
 
@@ -622,8 +627,8 @@ print(f"luminosity in the spectrum: {luminosity:.3e} erg/s")
   - give `maxpacketfiles=100` to read only the packets files of the first 100 ranks;
   - select the columns and filter the rows before `.collect()`.
 
-  `artistools cache make <modelpath>` writes all the caches of a model at one time, and `artistools cache list` gives
-  them.
+  `artistools cache make <modelpath>` writes the caches of the packets and of most other data at one time, and
+  `artistools cache list` gives them. It does not convert the NLTE populations.
 
   `get_packets_column_names` gives the columns of the packets files. The LazyFrame does not have some of these columns,
   and it adds other columns, e.g. `t_arrive_d` and `dirbin`.
