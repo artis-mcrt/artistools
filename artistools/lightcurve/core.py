@@ -259,7 +259,8 @@ def scan_lightcurve_from_packets(
 
     if pellet_nucname is not None:
         atomic_number = get_atomic_number(pellet_nucname)
-        if get_elsymbol(atomic_number) == pellet_nucname:
+        # a name such as "initial energy" has no element, and get_atomic_number gives -1 for it
+        if atomic_number >= 0 and get_elsymbol(atomic_number) == pellet_nucname:
             expr = pl.col("atomic_number") == atomic_number
         else:
             expr = pl.col("nucname") == pellet_nucname

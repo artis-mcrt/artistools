@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Set the package version and release date to today, across pyproject.toml and the other files that carry them."""
+"""Set the package version to the date of today in pyproject.toml and rust/Cargo.toml."""
 
 import argparse
 import datetime as dt
@@ -23,7 +23,11 @@ def replace_line(path: Path, pattern: str, replacement: str) -> None:
 
 
 def main() -> None:
-    """Write today's date as the version and release date wherever they appear in the repository."""
+    """Write the date of today as the version of the package and of the Rust crate.
+
+    CITATION.cff gives no version and no release date. Its concept DOI names all the versions, and Zenodo takes the
+    version of a record from the release tag.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "-revision",
@@ -38,7 +42,6 @@ def main() -> None:
         raise ValueError(msg)
 
     today = dt.datetime.now(dt.UTC).date()
-    date_released = today.isoformat()
     # version has no zero padding and '.' for separator, e.g. 2026.4.20
     version = f"{today.year}.{today.month}.{today.day}"
     # PEP 440 permits a fourth release segment, thus a second release on one date is possible.
@@ -47,7 +50,6 @@ def main() -> None:
     # and the crate is a cdylib that does not go to crates.io
     version_py = f"{version}.{args.revision}" if args.revision else version
     print(f"Setting version to: {version_py}")
-    print(f"Date released: {date_released}")
 
     # a stale lockfile would otherwise join the version bump in one commit, and the workflows that
     # set UV_FROZEN would then use a lockfile that no test run has seen
@@ -61,9 +63,6 @@ def main() -> None:
 
     # --workspace syncs Cargo.lock with the new package version, leaving the dependencies alone
     subprocess.check_call(["cargo", "update", "--workspace"], cwd=rust_path)
-
-    replace_line(repo_path / "CITATION.cff", r"^version: .*$", f"version: {version_py}")
-    replace_line(repo_path / "CITATION.cff", r"^date-released: .*$", f"date-released: {date_released}")
 
     subprocess.check_call(["uv", "lock"], cwd=repo_path)
 
