@@ -811,8 +811,8 @@ def scan_spectra(
     model sends each bin through ssh, thus a caller asks for its own bins. A request of bin -1 alone reads no
     spec_res.out. A requested bin that the model does not have is not in the result, thus a caller tests for it.
 
-    The flux is the mean of the timesteps from timestepmin to timestepmax (inclusive), with the weight of each timestep
-    its width Δt. A timestepmax of None or below 0 gives the timestep timestepmin alone.
+    The flux is the mean of the fluxes of the timesteps from timestepmin to timestepmax (inclusive). The weight of each
+    timestep is its width Δt. A timestepmax of None or below 0 gives the timestep timestepmin alone.
     """
     if timestepmax is None or timestepmax < 0:
         timestepmax = timestepmin
