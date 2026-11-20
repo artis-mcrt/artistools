@@ -1140,9 +1140,16 @@ def print_explanation(
 
 def get_overwrite_text(outputpath: Path, args: argparse.Namespace) -> str:
     """Return the text that says what the command does with an output file that exists, for --explain."""
+    # only a command with addarg_force asks before it overwrites a file. A plot command overwrites its figure.
+    # The command names the files of an output folder itself, e.g. grid.dat of maptogrid, thus the text names none
+    if outputpath.is_dir():
+        if not hasattr(args, "force"):
+            return " (the command overwrites the files of the same names in this folder)"
+        if args.force:
+            return " (--force overwrites the files of the same names in this folder with no prompt)"
+        return " (the command asks before it overwrites a file that exists in this folder)"
     if not outputpath.is_file():
         return ""
-    # only a command with addarg_force asks before it overwrites a file. A plot command overwrites its figure
     if not hasattr(args, "force"):
         return " (the file exists, and the command overwrites it)"
     if args.force:

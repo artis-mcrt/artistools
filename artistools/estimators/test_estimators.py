@@ -4371,6 +4371,11 @@ def test_a_working_folder_that_is_not_artis_gives_an_error(
     assert "The command line gives no ARTIS model folder" in stderr
     assert "No folder 'Te' exists" not in stderr
 
+    # T_e is an alias of Te, thus it is a variable and not a folder with an error in its name
+    with pytest.raises(SystemExit):
+        at.estimators.plotestimators.main(argsraw=["T_e", "-t", "1"])
+    assert "No folder 'T_e' exists" not in capsys.readouterr().err
+
     # a folder that does not exist stays a plot item, and the old error said only that the user gave no folder
     with pytest.raises(SystemExit):
         at.estimators.plotestimators.main(argsraw=["Te", "mymodle", "-t", "1"])

@@ -64,6 +64,7 @@ from artistools.estimators.plotitems import get_series_name
 from artistools.estimators.plotitems import get_styles_of_subplots
 from artistools.estimators.plotitems import is_ionseriestype
 from artistools.estimators.plotitems import normalise_plotitems
+from artistools.estimators.plotitems import resolve_item_alias
 from artistools.estimators.plotitems import SERIES_LINESTYLES
 from artistools.estimators.plotitems import SERIES_STYLE_MARK
 from artistools.estimators.plotitems import SERIESTYPES
@@ -3441,7 +3442,12 @@ def require_artis_folder(modelpath: Path, lastitem: str | None = None) -> None:
 
     if modelpath == Path():
         # the hint is not useful for a name that is a known variable or an ion, e.g. "Te" or "Fe II"
-        if lastitem is not None and get_series_name(lastitem) not in VARIABLES and not could_be_ion(lastitem):
+        # an alias such as T_e is a variable too, thus the test reads the variable of the alias
+        if (
+            lastitem is not None
+            and get_series_name(resolve_item_alias(lastitem)) not in VARIABLES
+            and not could_be_ion(lastitem)
+        ):
             helptext = (
                 f"No folder '{lastitem}' exists. If '{lastitem}' is the model folder, correct the spelling. {helptext}"
             )

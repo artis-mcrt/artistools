@@ -4581,6 +4581,15 @@ def test_explain_says_that_a_plot_command_overwrites_its_figure(
     main(argsraw=["plotspectra", str(at.get_path("testartismodel")), "-t", "300", "-o", str(outputfile), "--explain"])
     assert f"Output: {outputfile} (the file exists, and the command overwrites it)" in capsys.readouterr().out
 
+    # a folder gave no text, but a command such as maptogrid asks before it overwrites grid.dat in that folder
+    from artistools.misc.cliutils import get_overwrite_text
+
+    assert "asks before it overwrites a file that exists in this folder" in get_overwrite_text(
+        tmp_path, argparse.Namespace(force=False)
+    )
+    assert "--force overwrites" in get_overwrite_text(tmp_path, argparse.Namespace(force=True))
+    assert "the command overwrites the files" in get_overwrite_text(tmp_path, argparse.Namespace())
+
 
 def test_moving_average_of_a_capped_opacity_has_its_own_description() -> None:
     """The pattern of the capped opacity also matched its moving average, and gave "capped at 1_movingaverage"."""
