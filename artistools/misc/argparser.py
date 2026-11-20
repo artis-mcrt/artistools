@@ -121,9 +121,13 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
     """Custom argparse formatter to show default values in help text, sorted with dashes last."""
 
     def __init__(self, *args: t.Any, **kwargs: t.Any) -> None:
-        """Widen the help column so long option names stay on one line."""
-        kwargs["max_help_position"] = 50
+        """Start the help column at 3/10 of the width, between 24 and 50 characters.
+
+        A fixed column of 50 left 30 characters for the help on a terminal of 80 columns, and the help of
+        plotspectra took 470 lines. A long option name goes on its own line.
+        """
         super().__init__(*args, **kwargs)
+        self._max_help_position = min(self._max_help_position, max(24, min(50, self._width * 3 // 10)))
         self.short = False
 
     def make_short(self) -> None:
@@ -133,7 +137,7 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
         its own line. argparse limits the column by the width of the terminal, as __init__ does.
         """
         self.short = True
-        self._max_help_position = min(SHORT_HELP_POSITION, max(self._width - 20, 2 * self._indent_increment))
+        self._max_help_position = min(SHORT_HELP_POSITION, self._max_help_position)
 
     @t.override
     def _get_help_string(self, action: argparse.Action) -> str | None:

@@ -524,7 +524,13 @@ subcommandtree: CommandTree = {
         "lightcurve.plotlightcurve",
         script="plotartislightcurve",
         helptext="Plot ARTIS light curves.",
-        examples=((".", "the light curve of a model"),),
+        examples=(
+            (".", "the bolometric light curve of a model"),
+            (". --band B V R --magnitude", "the absolute magnitudes in the bands B, V, and R"),
+            (". --colour-evolution B-V", "the colour B-V against time"),
+            (". --frompackets", "the light curve from the packets files"),
+            (". --plotviewingangle 0 10", "the light curves of the direction bins 0 and 10"),
+        ),
         aliases=("lc", "plotlightcurve"),
     ),
     "plotlinecontributions": CommandSpec(
@@ -601,7 +607,12 @@ subcommandtree: CommandTree = {
         "spectra.plotspectra",
         script="plotartisspectrum",
         helptext="Plot spectra from ARTIS and reference data.",
-        examples=((". -t 300", "the spectrum at 300 days"),),
+        examples=(
+            (". -t 300", "the spectrum at 300 days"),
+            (". -t 300 --lambdamin 3000 --lambdamax 10000", "the spectrum from 3000 to 10000 Å"),
+            (". -t 300 --plotviewingangle 0 10", "the spectra of the direction bins 0 and 10"),
+            (". -t 300 --print-data", "print the plotted spectrum as text"),
+        ),
         aliases=("spec",),
     ),
     "plotspherical": CommandSpec(
@@ -861,8 +872,13 @@ def addsubparsers(parser: argparse.ArgumentParser, subcommandtree: CommandTree, 
     """Register the subcommands in the tree on the parser. path holds the names of the groups above the tree."""
 
     def func(args: argparse.Namespace) -> None:
-        # the help is the product, thus it goes to the standard output and not to the standard error
-        parser.print_help(getattr(args, "productstream", None))
+        # the help is the product, thus it goes to the standard output and not to the standard error. A call with no
+        # command gives the short help of -h, which lists the commands in half the lines of --help and names --help
+        productstream = getattr(args, "productstream", None)
+        if isinstance(parser, SuggestingArgumentParser):
+            parser.print_short_help(productstream)
+        else:
+            parser.print_help(productstream)
 
     parser.set_defaults(func=func)
     subparsers = parser.add_subparsers(

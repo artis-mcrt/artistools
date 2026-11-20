@@ -124,7 +124,10 @@ def addarg_viewingangle(parser: argparse.ArgumentParser, allow_select_all: bool 
         type=int,
         metavar="n",
         nargs="+",
-        help="Plot viewing angles from vspecpol virtual packets. Expects int for angle = spec number in vspecpol files",
+        help=(
+            "Plot these virtual packet spectra, by their number in the vspecpol files. `artistools describe` gives"
+            " the number of virtual packet spectra of a model"
+        ),
     )
 
     arggroup(parser, "Viewing direction").add_argument(
@@ -134,8 +137,9 @@ def addarg_viewingangle(parser: argparse.ArgumentParser, allow_select_all: bool 
         metavar="n",
         nargs="+",
         help=(
-            "Plot viewing directions. Expects int for direction bin in specpol_res.out"
-            + (". Use -2 to select all viewing angles" if allow_select_all else "")
+            "Plot these direction bins, or -1 for the average over all directions."
+            " `artistools describe` gives the number of direction bins of a model"
+            + (". Give -2 for all the direction bins" if allow_select_all else "")
         ),
     )
     parser.set_defaults(allowalldirbins=allow_select_all)
