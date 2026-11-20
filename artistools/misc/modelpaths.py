@@ -11,7 +11,7 @@ from functools import cache
 from functools import lru_cache
 from pathlib import Path
 
-from artistools.misc.console import exit_with_error
+from artistools.misc.console import add_help_note
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import firstexisting_or_none
 from artistools.misc.remote import is_remote_path
@@ -76,15 +76,16 @@ def find_reference_data_file(filename: Path | str, bundledsubfolder: str) -> Pat
 
 
 def require_reference_data_file(filename: Path | str, bundledsubfolder: str, description: str) -> Path:
-    """Return the path of a file of reference data, or stop with a message when no such file exists.
+    """Return the path of a file of reference data, or raise FileNotFoundError when no such file exists.
 
     The description names the kind of the file, e.g. "Kurucz line list". The message of the error
     gives that name to the user.
     """
     found = find_reference_data_file(filename, bundledsubfolder)
     if found is None:
-        exit_with_error(
-            f"Could not find the {description} file {filename}",
+        msg = f"Could not find the {description} file {filename}"
+        raise add_help_note(
+            FileNotFoundError(msg),
             f"Put {filename} in the working folder, or in the data folder of the artistools package",
         )
 

@@ -21,7 +21,7 @@ import polars as pl
 
 from artistools.constants import h_ev_s
 from artistools.constants import km_to_cm
-from artistools.misc.console import exit_with_error
+from artistools.misc.console import add_help_note
 from artistools.misc.console import print_detail
 from artistools.misc.console import print_warning
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
@@ -496,17 +496,15 @@ def get_escape_surface_max_radial_velocity_cmps(modelpath: Path, modelmeta: "Map
 
 
 def require_cartesian3d_model(modelmeta: "Mapping[str, t.Any]", requirement: str, helptext: str) -> None:
-    """Stop with an error if the model grid is not 3D Cartesian.
+    """Raise a ValueError with the help text if the model grid is not 3D Cartesian.
 
     requirement starts the message and names the option or the command, e.g. "--slice needs". Such a feature reads
     the cell positions on the x, y, and z axes, or the equal width of the cells.
     """
     coordinates = get_model_coordinates(modelmeta)
     if coordinates != "cartesian3d":
-        exit_with_error(
-            f"{requirement} a model with 3D Cartesian coordinates, and this model has {coordinates} coordinates",
-            helptext,
-        )
+        msg = f"{requirement} a model with 3D Cartesian coordinates, and this model has {coordinates} coordinates"
+        raise add_help_note(ValueError(msg), helptext)
 
 
 def validate_model_edges(
@@ -762,9 +760,19 @@ def get_nprocs(modelpath: Path) -> int:
 @modelpath_cache(maxsize=8)
 @on_model_host
 def get_inputparams(modelpath: Path) -> dict[str, t.Any]:
-    """Return the parameters that input.txt gives.
+    """Return the parameters that input.txt gives, as a dict.
 
-    Do not change the dictionary that this function returns. The next caller gets the same object.
+    The keys are:
+
+    - pre_zseed, the seed of the random numbers if it is above 0. ARTIS makes a random seed for a different value;
+    - ntstep, the number of timesteps;
+    - itstep and ftstep, the first timestep of the run and the timestep after its last timestep;
+    - tmin and tmax (days), the start time and the end time of the timesteps;
+    - nusyn_min, nusyn_max (Hz), nsyn_time, nsyn_time_start, and nsyn_time_end, which the current ARTIS does not use;
+    - n_dimensions, the number of dimensions of model.txt. The current ARTIS reads that number from model.txt.
+
+    artistools keeps the dict of the last eight models in memory, and the call writes no cache to the disk. Do not
+    change the dict that this function returns. The next caller gets the same object. docs/data.md gives the readers.
     """
     params: dict[str, t.Any] = {}
     with get_inputfilepath(modelpath).open("r", encoding="utf-8") as inputfile:

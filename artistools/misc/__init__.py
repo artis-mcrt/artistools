@@ -79,8 +79,11 @@ from artistools.misc.commandoutput import resolve_frameset_paths as resolve_fram
 from artistools.misc.commandoutput import resolve_outputfile as resolve_outputfile
 from artistools.misc.commandoutput import resolve_table_outputfile as resolve_table_outputfile
 from artistools.misc.commandoutput import write_gif as write_gif
+from artistools.misc.console import add_help_note as add_help_note
 from artistools.misc.console import confirm_deletion as confirm_deletion
 from artistools.misc.console import exit_with_error as exit_with_error
+from artistools.misc.console import get_help_notes as get_help_notes
+from artistools.misc.console import HELP_NOTE_PREFIX as HELP_NOTE_PREFIX
 from artistools.misc.console import print_detail as print_detail
 from artistools.misc.console import print_error as print_error
 from artistools.misc.console import print_heading as print_heading
@@ -266,6 +269,7 @@ from artistools.misc.units import time_days_arg as time_days_arg
 from artistools.misc.units import time_days_range_arg as time_days_range_arg
 from artistools.misc.units import TIME_UNIT_HELP as TIME_UNIT_HELP
 from artistools.misc.units import velocity_kmps_arg as velocity_kmps_arg
+from artistools.misc.units import velocity_on_c_arg as velocity_on_c_arg
 from artistools.misc.units import wavelength_angstroms_arg as wavelength_angstroms_arg
 from artistools.misc.units import WAVELENGTH_UNIT_HELP as WAVELENGTH_UNIT_HELP
 from artistools.misc.units import XUnit as XUnit

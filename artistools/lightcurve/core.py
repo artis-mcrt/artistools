@@ -28,10 +28,10 @@ from artistools.constants import Lsun_to_erg_per_s
 from artistools.constants import Mbol_sun
 from artistools.constants import megaparsec_to_cm
 from artistools.constants import omega_matter
+from artistools.misc import add_help_note
 from artistools.misc import average_direction_bins
 from artistools.misc import check_averaging_angles
 from artistools.misc import df_filter_minmax_bracketed
-from artistools.misc import exit_with_error
 from artistools.misc import find_reference_data_file
 from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
@@ -114,13 +114,23 @@ def scan_lightcurve(
 ) -> dict[int, pl.LazyFrame]:
     """Return a LazyFrame of a light curve file for each direction bin, with an optional average over phi or theta.
 
+    Each LazyFrame has one row for each timestep, with these columns:
+
+    - time_days, the mid time of the timestep;
+    - luminosity_Lsun and luminosity_erg/s, the bolometric luminosity in the observer frame;
+    - luminosity_cmf_Lsun and luminosity_cmf_erg/s, the luminosity in the comoving frame;
+    - mag, the absolute bolometric magnitude. A luminosity of 0 gives inf.
+
     A direction-resolved file, e.g. light_curve_res.out, holds one table for each direction bin. A different file
     holds the angle average as bin -1. The caller knows which file it reads, thus the name of the file decides nothing.
+    Give directionresolved=True for a direction-resolved file. find_lightcurve_file gives the path of each file.
     The angle average of bin -1 is the mean over every direction already, thus it takes no average over phi or theta.
 
     The averaging belongs here rather than to the caller because the magnitude column is not linear in the
     bin contributions. The magnitude comes after the averaging, thus no plot shows the mean of the magnitudes.
     In that mean, a single dark bin sends the whole averaged bin to inf.
+
+    The call reads the text file at each call, and it writes no cache. docs/data.md gives each column.
     """
     check_averaging_angles(average_over_phi, average_over_theta)
     print(f"Reading {filepath}")
@@ -218,7 +228,35 @@ def scan_lightcurve_from_packets(
     timedaysmin: float | None = None,
     timedaysmax: float | None = None,
 ) -> dict[int, pl.LazyFrame]:
-    """Get ARTIS luminosity vs time from packets files."""
+    """Return a dict with a LazyFrame of the luminosity against time of each direction bin, from the packets files.
+
+    Each LazyFrame has one row for each timestep, with these columns:
+
+    - timestep, and time_days (the mid time of the timestep);
+    - packetcount, the number of packets in the timestep;
+    - luminosity_Lsun, luminosity_erg/s, and mag, the observer-frame luminosity and the absolute magnitude;
+    - luminosity_cmf_Lsun and luminosity_cmf_erg/s, the comoving-frame luminosity. Only the real packets give these
+      columns, and only if the model folder holds model.txt;
+    - relnoise = sqrt(sum(e^2)) / sum(e), the relative Monte Carlo noise, where e is the energy of each packet.
+
+    The arguments are:
+
+    - escape_type is "TYPE_RPKT" for the ultraviolet, optical, and infrared (UVOIR) light curve, or "TYPE_GAMMA" for
+      the gamma-ray light curve;
+    - maxpacketfiles reads only the whole batches of 100 ranks below it, e.g. 150 reads 100 files. A value below the
+      number of ranks of the first batch raises ValueError;
+    - directionbins selects the bins. None gives the bin -1, which is the average over all directions;
+    - average_over_phi gives each bin the mean of the bins with the same theta. average_over_theta gives each bin the
+      mean of the bins with the same phi;
+    - directionbins_are_vpkt_observers reads the virtual packets, and each bin is then an observer of vpkt.txt;
+    - pellet_nucname keeps only the packets of the pellets of one nuclide, e.g. "Ni56", or of one element, e.g. "Ni";
+    - use_pellet_decay_time puts each packet at the decay time of its pellet, and not at its arrival time;
+    - timedaysmin and timedaysmax select the timesteps with a mid time in the range, and the nearest timestep beyond
+      each end.
+
+    Before it returns, the call writes a parquet cache for each batch of packets files that has no current cache. On a
+    large model, this takes many minutes. docs/data.md gives each column.
+    """
     if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
         msg = f"Unknown escape type {escape_type}"
         raise ValueError(msg)
@@ -706,11 +744,11 @@ def read_reflightcurve_band_data(lightcurvefilename: Path | str) -> tuple[pl.Dat
         metadatasource = Path(get_path("artistools_dir"), "data/lightcurves", data_path.name)
         metadata = dict(get_file_metadata(metadatasource))
 
-    # the time column below needs the timecorrection value. The command stops when the metadata
-    # gives no such value
+    # the time column below needs the timecorrection value
     if "timecorrection" not in metadata:
-        exit_with_error(
-            f"The reference light curve {data_path} has no timecorrection value",
+        msg = f"The reference light curve {data_path} has no timecorrection value"
+        raise add_help_note(
+            ValueError(msg),
             f"Write {get_metadata_path(data_path).name} in the folder of the data, with a timecorrection value and a"
             " label",
         )
@@ -892,9 +930,9 @@ def read_artis_lightcurve(
             msg = "Only the packets give the nuclide and the decay time of a pellet, thus give frompackets=True"
             raise ValueError(msg)
         if vpkt_observers:
-            exit_with_error(
-                "--plotvspecpol names virtual packet observers, which light_curve_res.out does not hold",
-                "Give --frompackets to make the light curve of each virtual observer from the packets.",
+            msg = "--plotvspecpol names virtual packet observers, which light_curve_res.out does not hold"
+            raise add_help_note(
+                ValueError(msg), "Give --frompackets to make the light curve of each virtual observer from the packets."
             )
         try:
             lcpath = (
@@ -916,11 +954,12 @@ def read_artis_lightcurve(
                 average_over_theta=average_over_theta,
             )
         except ValueError as exc:
-            exit_with_error(
-                str(exc),
+            add_help_note(
+                exc,
                 "Give --plotviewingangle with light_curve_res.out, give no --plotviewingangle with light_curve.out, and"
                 " give a file that ARTIS wrote in full",
             )
+            raise
         if directionresolved:
             warn_direction_bin_noise(
                 lcpath.name, average_over_phi=average_over_phi, average_over_theta=average_over_theta

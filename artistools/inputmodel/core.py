@@ -26,6 +26,7 @@ from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g
+from artistools.misc import add_help_note
 from artistools.misc import ALL_MODEL_EDGE_KEYS
 from artistools.misc import CellDirectionRange
 from artistools.misc import exit_with_error
@@ -1025,22 +1026,29 @@ def get_spatial_scales(modelpath: Path) -> tuple[float, float, str]:
 def scan_modeldata(
     modelpath: Path | str = ".", get_elemabundances: bool = False, printwarningsonly: bool = False
 ) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
-    """Read the velocities, the densities, and the mass fractions of the radioactive nuclides of the cells in model.txt.
+    """Return the cells of model.txt as a LazyFrame, and the parameters of the model as a dict.
 
-    Returns dfmodel, modelmeta
-        - dfmodel: a polars LazyFrame with a row for each cell, and the columns of the model file.
-          add_derived_cols_to_modeldata adds the other columns, e.g. the volume and the mass of each cell.
-        - modelmeta: a dictionary of the model parameters, e.g. the keys t_model_init_days, vmax_cmps, and dimensions.
+    The LazyFrame has one row for each cell. Each value is at the start time t_model_init_days. The columns are:
 
-    Parameters
-    ----------
-    modelpath : Path | str
-        either a path to model.txt file, or a folder containing model.txt
-    get_elemabundances : bool
-        also read elemental abundances (from abundances.txt) and merge with the output DataFrame
-    printwarningsonly : bool
-        if True, print warnings but skip informational progress messages
+    - inputcellid, and modelgridindex, which is the index of the cell in the estimators;
+    - for 1D, vel_r_max_kmps (the outer velocity, km/s) and logrho (log10 of the density in g/cm^3);
+    - for 2D, pos_rcyl_mid and pos_z_mid (the centre of the cell, cm) and rho (g/cm^3);
+    - for 3D, pos_x_min, pos_y_min, and pos_z_min (the corner of the cell, cm) and rho (g/cm^3);
+    - X_Fegroup and X_<nuclide>, e.g. X_Ni56 (mass fractions);
+    - with get_elemabundances, X_<El> (the mass fraction of each element from abundances.txt).
 
+    add_derived_cols_to_modeldata adds more columns, e.g. volume and mass_g. The dict has these keys:
+
+    - dimensions;
+    - npts_model, the number of cells;
+    - t_model_init_days;
+    - vmax_cmps (cm/s).
+
+    A 3D model also gives ncoordgridx and wid_init (cm).
+
+    modelpath is a model folder, a model file such as model_1d.txt, or a remote model as host:path. The reader writes a
+    parquet cache beside a model file of more than 2 MiB. A later call reads that cache while the text file stays the
+    same. printwarningsonly removes the progress messages. docs/data.md gives each column.
     """
     path = resolve_modelpath(modelpath)
     if is_remote_path(path):
@@ -2322,21 +2330,18 @@ def get_mgi_of_velocity_kms(modelpath: Path, velocity: float) -> int:
     """Return the modelgridindex of the first cell of a 1D model with an outer velocity [km/s] of velocity or above."""
     # a negative value was the default that gave no velocity, and searchsorted takes it as the first cell
     if velocity < 0.0:
-        exit_with_error(f"--velocity {velocity:g} km/s is below zero", "Give a radial velocity of 0 or more")
+        msg = f"--velocity {velocity:g} km/s is below zero"
+        raise add_help_note(ValueError(msg), "Give a radial velocity of 0 or more")
     dfmodel, modelmeta = scan_modeldata(modelpath)
     if modelmeta["dimensions"] != 1:
-        exit_with_error(
-            f"--velocity selects a shell of a 1D model, and this model has {modelmeta['dimensions']} dimensions",
-            "Give --modelgridindex",
-        )
+        msg = f"--velocity selects a shell of a 1D model, and this model has {modelmeta['dimensions']} dimensions"
+        raise add_help_note(ValueError(msg), "Give --modelgridindex")
     arr_vouter = dfmodel.select("vel_r_max_kmps").collect().to_series().to_numpy()
 
     mgi_upper = int(np.searchsorted(arr_vouter, velocity))
     if mgi_upper >= len(arr_vouter):
-        exit_with_error(
-            f"--velocity {velocity:g} km/s is above the outer velocity {arr_vouter[-1]:g} km/s of the last cell",
-            "Give a lower velocity",
-        )
+        msg = f"--velocity {velocity:g} km/s is above the outer velocity {arr_vouter[-1]:g} km/s of the last cell"
+        raise add_help_note(ValueError(msg), "Give a lower velocity")
     return mgi_upper
 
 
@@ -2965,15 +2970,14 @@ def get_cell_direction_selection(directionrange: CellDirectionRange, columns: Se
     columns are the columns of the cells, which must hold vel_r_mid_on_c and vel_z_mid_on_c. A ϕ bin also needs
     vel_x_mid_on_c and vel_y_mid_on_c, thus a 2D model needs the range of resolve_cell_direction_range. --dirbin
     selects a cell with the bins of ARTIS for a packet in the direction of the cell centre, thus each cell is in one
-    bin. A 1D model has no direction of a cell, thus the function stops with an error for it. See get_cell_selection
-    for the edges of a range of --costhetamin and --costhetamax.
+    bin. A 1D model has no direction of a cell, thus the function raises ValueError for it. See
+    get_cell_selection for the edges of a range of --costhetamin and --costhetamax.
     """
     if "vel_z_mid_on_c" not in columns:
-        exit_with_error(
-            "A 1D model has no direction of a cell, thus --dirbin, --costhetamin, and --costhetamax cannot select"
-            " cells",
-            "Remove --dirbin, --costhetamin, and --costhetamax",
+        msg = (
+            "A 1D model has no direction of a cell, thus --dirbin, --costhetamin, and --costhetamax cannot select cells"
         )
+        raise add_help_note(ValueError(msg), "Remove --dirbin, --costhetamin, and --costhetamax")
     if directionrange.costhetabin is None and directionrange.phibin is None:
         return get_cell_selection(
             thetamin=math.degrees(math.acos(directionrange.costhetamax)),

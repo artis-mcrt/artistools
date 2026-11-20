@@ -1,6 +1,6 @@
 """Artistools - functions for handling data in estimators_????.out files (e.g., temperatures, densities, abundances)."""
 
-__all__ = ["plot"]
+__all__ = ("plot", "read_estimators", "scan_estimators")
 
 # the core module comes first. A module of a different package imports these names from this package, and
 # the plot modules below import such modules, thus a name must exist before a cycle comes back here

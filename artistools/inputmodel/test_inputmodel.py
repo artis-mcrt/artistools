@@ -2497,6 +2497,34 @@ def test_plotinitialcomposition_floor_value_keeps_the_hidden_empty_cells(tmp_pat
     assert np.ma.getmaskarray(colorscale).any(), "the 3D test model holds an empty cell to hide"
 
 
+def test_plotinitialabundances_takes_a_velocity_with_a_unit(tmp_path: Path) -> None:
+    """-vmin and -vmax take a value with a unit, as in plotopacity, and a bare number is still a fraction of c.
+
+    plotopacity takes "0.1c or 5000km/s", and plotinitialabundances took only a bare float in c. A bare number must
+    give the same float as before, because a cell exactly at a limit can otherwise change its side.
+    """
+    from artistools.constants import C_cm_per_s
+    from artistools.constants import km_to_cm
+    from artistools.inputmodel import plotinitialabundances
+
+    parser = argparse.ArgumentParser()
+    plotinitialabundances.addargs(parser)
+    assert np.isclose(parser.parse_args(["-vmin", "0.1"]).vmin, 0.1, rtol=0.0, atol=0.0)
+    assert np.isclose(parser.parse_args(["-vmin", "0.1c"]).vmin, 0.1, rtol=0.0, atol=0.0)
+    vmax_kmps = 0.02 * C_cm_per_s / km_to_cm
+    assert np.isclose(parser.parse_args(["-vmax", f"{vmax_kmps!r}km/s"]).vmax, 0.02, rtol=1e-12, atol=0.0)
+    with pytest.raises(SystemExit):
+        parser.parse_args(["-vmin", "fast"])
+
+    # a keyword of main gives the float directly, and the parser type converts only a text
+    with mock.patch.object(
+        plotinitialabundances, "get_nuclide_massfractions", wraps=plotinitialabundances.get_nuclide_massfractions
+    ) as reader:
+        plotinitialabundances.main(argsraw=["-vmax", "0.02c"], modelpath=[modelpath_classic_3d], outputfile=tmp_path)
+        plotinitialabundances.main(argsraw=[], modelpath=[modelpath_classic_3d], vmax=0.02, outputfile=tmp_path)
+    assert [call.kwargs["vmax"] for call in reader.call_args_list] == [0.02, 0.02]
+
+
 def test_plotinitialabundances_filters_cells_by_velocity_and_polar_angle(tmp_path: Path) -> None:
     """A velocity range and a polar angle range select the expected cells of a 1D, a 2D, and a 3D model.
 

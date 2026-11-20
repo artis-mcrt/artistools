@@ -44,6 +44,7 @@ from artistools.inputmodel import get_spherical_image_cell_indices
 from artistools.inputmodel import scan_modeldata
 from artistools.inputmodel.slice1dfromconein3dmodel import get_profile_along_axis
 from artistools.inputmodel.slice1dfromconein3dmodel import make_cone
+from artistools.misc import add_help_note
 from artistools.misc import clear_at_reload
 from artistools.misc import contiguous_runs
 from artistools.misc import exit_with_error
@@ -1428,11 +1429,30 @@ def scan_estimators(
     classicartis: bool = False,
     batchcaches: "Sequence[EstimatorBatchCache] | None" = None,
 ) -> pl.LazyFrame:
-    """Read estimator files into a polars LazyFrame with columns for timestep, modelgridindex, and estimator values.
+    """Return the estimators of all the run folders of a model as a LazyFrame, with one row for each timestep and cell.
 
-    A selection of timesteps or cells decreases the number of files to read, thus the scan is faster.
-    batchcaches gives the current parquet caches of all the batches of an ARTIS model, as convert_estimator_batch_caches
-    gives them. The scan then selects the caches of the timesteps and the cells, and it checks and converts no file.
+    The main columns are:
+
+    - timestep and modelgridindex;
+    - Te, TR, and TJ (K), and W (the dilution factor);
+    - nne, nnelement_<El>, nnion_<El>_<ion stage>, and nniso_<nuclide> (number densities, cm^-3);
+    - heating_<process>, cooling_<process>, and deposition_<particle> (rates, erg/s/cm^3). A null rate is 0, because
+      ARTIS writes no value for a rate of 0.
+
+    join_modeldata adds these columns:
+
+    - tmid_days;
+    - rho (g/cm^3) at the time of the timestep;
+    - volume and volume_prevtimestep (cm^3);
+    - mass_g;
+    - the values of model.txt with the prefix init_.
+
+    modelgridindex and timestep take one value or a sequence. A selection reads fewer files, thus the scan is faster.
+
+    Before it returns, the scan converts each text file of the selection that has no current cache to a parquet cache
+    in its run folder.
+    batchcaches gives the current caches, as convert_estimator_batch_caches gives them. The scan then checks and
+    converts no file. classicartis reads the estimators of the classic version of ARTIS. docs/data.md gives each column.
     """
     modelpath = Path(modelpath)
     match_modelgridindex: Sequence[int] | None
@@ -1978,17 +1998,13 @@ def get_cells_of_slice(modelpath: Path, conditions: Sequence[tuple[str, float, s
     vmax_cmps = float(modelmeta["vmax_cmps"])
     if get_model_coordinates(modelmeta) == "spherical3d":
         if len(conditions) != 1:
-            exit_with_error(
-                "A line of --slice needs a model with 3D Cartesian coordinates, and this model has spherical3d"
-                " coordinates",
-                "Give one axis for a plane, e.g. --slice z=0",
-            )
+            msg = "A line of --slice needs a model with 3D Cartesian coordinates, and this model has spherical3d"
+            msg += " coordinates"
+            raise add_help_note(ValueError(msg), "Give one axis for a plane, e.g. --slice z=0")
         axisname, velocity_cmps, label = conditions[0]
         if abs(velocity_cmps) >= vmax_cmps:
-            exit_with_error(
-                f"{label} lies outside the model, which ends at {vmax_cmps / C_cm_per_s:.3g}c",
-                "Give a velocity inside the model",
-            )
+            msg = f"{label} lies outside the model, which ends at {vmax_cmps / C_cm_per_s:.3g}c"
+            raise add_help_note(ValueError(msg), "Give a velocity inside the model")
         cellindices = np.unique(get_spherical_image_cell_indices(modelmeta, axisname, velocity_cmps))
         return [int(cellindex) for cellindex in cellindices if cellindex >= 0]
 
@@ -1999,10 +2015,8 @@ def get_cells_of_slice(modelpath: Path, conditions: Sequence[tuple[str, float, s
     )
     for axisname, velocity_cmps, label in conditions:
         if abs(velocity_cmps) >= vmax_cmps:
-            exit_with_error(
-                f"{label} lies outside the model, which ends at {vmax_cmps / C_cm_per_s:.3g}c",
-                "Give a velocity inside the model",
-            )
+            msg = f"{label} lies outside the model, which ends at {vmax_cmps / C_cm_per_s:.3g}c"
+            raise add_help_note(ValueError(msg), "Give a velocity inside the model")
         layerindex = get_layer_index(velocity_cmps, vmax_cmps, int(modelmeta[f"ncoordgrid{axisname}"]))
         poscolumn = pl.col(f"pos_{axisname}_min")
         lzmodel = lzmodel.filter(poscolumn == poscolumn.unique().sort().get(layerindex))

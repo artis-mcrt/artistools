@@ -1,6 +1,6 @@
 """Read ARTIS packets files and bin packets by direction, time, and emission type."""
 
-__all__ = ["plot"]
+__all__ = ("plot", "scan_packets")
 
 from artistools.packets.core import add_derived_columns_lazy as add_derived_columns_lazy
 from artistools.packets.core import add_packet_directions_lazypolars as add_packet_directions_lazypolars
