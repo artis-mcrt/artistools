@@ -7,14 +7,21 @@ faster. The cache is beside the text file, e.g. `model.txt.parquet` in the model
 `packetsbatch<n>_<first>_<last>.out.parquet` in the folder of the packets files. A cache of the estimators is in each
 run folder.
 
-- `artistools cache make mymodel` writes all the caches of a model at one time, e.g. in the job script after a run of
-  ARTIS.
+- `artistools cache make mymodel` writes the caches of the input model, the line list, the estimators, the packets, and
+  the virtual packets at one time, e.g. in the job script after a run of ARTIS.
 - `artistools cache list mymodel` gives the caches and their sizes.
 - `artistools cache delete mymodel` deletes them.
 
+`cache make` does not convert the NLTE populations. The first read of the NLTE populations writes
+`nltepops_allranks.out.parquet`, e.g. a run of `artistools plotnltepops`.
+
 A reader writes a new cache when the text file changes. Thus a model folder where the user cannot write a file needs
-current caches. Run `artistools cache make mymodel` as a user who can write to the model folder. Other users can then
-read the model.
+current caches. Do these steps as a user who can write to the model folder:
+
+1. Run `artistools cache make mymodel`.
+2. If the model has NLTE populations, read them one time, e.g. with `artistools plotnltepops`.
+
+Other users can then read the model.
 
 ## Common problems
 
