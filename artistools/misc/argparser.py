@@ -108,7 +108,7 @@ ARGUMENTGROUPORDER = (
 )
 
 
-# the column of the help text in the short help of -h. 24 is the default of argparse
+# the largest column of the help text in the short help of -h, which a wide terminal reaches
 SHORT_HELP_POSITION = 32
 
 
@@ -136,8 +136,8 @@ class CustomArgHelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
     def make_short(self) -> None:
         """Give the short help of -h: the first sentence of the help of each option, as uv does.
 
-        The column of the help starts nearer to the left, thus a sentence takes fewer lines. A long flag then goes on
-        its own line. argparse limits the column by the width of the terminal, as __init__ does.
+        The column of the help is the column of the full help, but at most SHORT_HELP_POSITION. Below 112 columns of
+        the terminal, the two columns are the same. A long flag then goes on its own line.
         """
         self.short = True
         self._max_help_position = min(SHORT_HELP_POSITION, self._max_help_position)

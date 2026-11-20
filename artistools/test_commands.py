@@ -758,11 +758,13 @@ def test_short_help_gives_the_first_sentence_of_each_option(capsys: pytest.Captu
     import artistools.__main__
 
     helptexts = {}
-    for flag in ("-h", "--help"):
-        with pytest.raises(SystemExit) as exitinfo:
-            artistools.__main__.main(argsraw=["plotspectra", flag])
-        assert exitinfo.value.code == 0
-        helptexts[flag] = capsys.readouterr().out
+    # the column depends on the width of the terminal, thus a COLUMNS of 120 in the environment failed the ratio below
+    with mock.patch.dict(os.environ, {"COLUMNS": "80"}):
+        for flag in ("-h", "--help"):
+            with pytest.raises(SystemExit) as exitinfo:
+                artistools.__main__.main(argsraw=["plotspectra", flag])
+            assert exitinfo.value.code == 0
+            helptexts[flag] = capsys.readouterr().out
     # at 80 columns the full help starts its column at 24 characters and -h at 24 too, thus -h has 2/3 of the lines
     assert len(helptexts["-h"].splitlines()) < len(helptexts["--help"].splitlines()) * 2 / 3
     assert "plotspectra --help` for the full help and the examples" in helptexts["-h"]

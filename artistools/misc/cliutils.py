@@ -576,14 +576,16 @@ def addarg_axislimits(
     include_y: bool = True,
     wavelength_aliases: bool = False,
     xtype: Callable[[str], float] | None = None,
+    grouptitle: str = "Appearance",
 ) -> None:
     """Add the --xmin/--xmax and --ymin/--ymax plot range arguments.
 
     A command whose x axis is a wavelength takes wavelength_aliases, which adds the --lambdamin and --lambdamax
     spellings of the same arguments. Its x axis is in Angstroms, thus a value can also give a different unit, e.g.
-    600nm. plotspectra has its own type, because the unit of its axis comes from --xunit.
+    600nm. plotspectra has its own type, because the unit of its axis comes from --xunit. A command with a group
+    for its x axis, e.g. plotestimators with "Horizontal axis", gives that group as grouptitle.
     """
-    group = arggroup(parser, "Appearance")
+    group = arggroup(parser, grouptitle)
     if include_x:
         xminflags = ("-xmin", "-lambdamin") if wavelength_aliases else ("-xmin",)
         xmaxflags = ("-xmax", "-lambdamax") if wavelength_aliases else ("-xmax",)

@@ -2857,6 +2857,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         include_y=False,
         xminhelp="Plot range: minimum x value in the units of -x, e.g. km/s for velocity, c for beta, days for time",
         xmaxhelp="Plot range: maximum x value in the units of -x, e.g. km/s for velocity, c for beta, days for time",
+        grouptitle="Horizontal axis",
     )
 
     arggroup(parser, "Horizontal axis").add_argument(
@@ -2869,7 +2870,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         ),
     )
 
-    arggroup(parser, "Appearance").add_argument(
+    arggroup(parser, "Horizontal axis").add_argument(
         "--logscalex",
         action="store_true",
         help=(
