@@ -18,14 +18,16 @@ run folder.
 
 `cache make` does not convert the NLTE populations. A read of all the cells converts the text of each run folder that
 holds a timestep of the read to `nltepops_allranks.out.parquet` in that folder. A restarted model has more than one run
-folder, thus the read takes one timestep of each run folder:
+folder, thus the read takes the first timestep of each run folder. This includes a run folder that holds only the last
+timestep of the run before it, which a restart repeats:
 
 ```sh
 "$(artistools python)" -P - <<'EOF'
 import artistools as at
 
 modelpath = "mymodel"
-timesteps = [at.misc.get_runfolder_timesteps(folder)[0] for folder in at.misc.get_runfolders(modelpath)]
+foldertimesteps = [at.misc.get_runfolder_timesteps(folder) for folder in at.misc.get_run_subfolders(modelpath)]
+timesteps = [held[0] for held in foldertimesteps if held]
 at.nltepops.read_nltepops(modelpath, timestep=timesteps)
 EOF
 ```
