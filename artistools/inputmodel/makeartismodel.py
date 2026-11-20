@@ -31,6 +31,7 @@ from artistools.inputmodel.energyinputfiles import ENERGY_FILE_NAMES
 from artistools.inputmodel.energyinputfiles import make_energy_files
 from artistools.inputmodel.modelfromhydro import get_griddata_output_file_names
 from artistools.inputmodel.modelfromhydro import makemodelfromgriddata
+from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions
 from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions_or_none
 from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
 from artistools.misc import addarg_darkmode
@@ -212,27 +213,32 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
 
     # The element mass fractions come from the columns of the model.txt that the command read (version 2), or from
     # abundances.txt (version 1). Another copy of model.txt in the folder can give other values
-    dfelabundances = None
     if modelmeta["formatversion"] == 2:
         dfelabundances = get_elemabundances_of_model_columns(dfmodel.lazy()).collect()
-    elif (
-        abundancefile := firstexisting_or_none(
+    else:
+        # sn3d reads the abundances.txt beside model.txt, and a file in a subfolder is of a different model
+        abundancefile = firstexisting_or_none(
             "abundances.txt", folder=sourcefolder, tryzipped=True, search_subfolders=False
         )
-    ) is not None:
-        # sn3d reads the abundances.txt beside model.txt, and a file in a subfolder is of a different model
+        if abundancefile is None:
+            exit_with_error(
+                f"{sourcefolder} holds no abundances.txt beside its model.txt of format version 1",
+                "sn3d needs abundances.txt for such a model, thus the element mass fractions of the model are not"
+                " known. Give the model its abundances.txt",
+            )
         dfelabundances = scan_abundance_file(abundancefile, printwarningsonly=True).collect()
-    if formatversion == 2 and dfelabundances is None:
-        # with no element mass fractions, the nuclide columns alone give each element. save_modeldata then deletes an
-        # abundances.txt of the output folder after the write
-        dfelabundances = dfmodel.select("inputcellid")
 
     dfgridcontributions = None
     if formatversion == 2 and dfmodel["inputcellid"].min() != 0:
-        # each file of a model has the same cell ids, and version 2 has cell ids from 0
+        # Each file of a model has the same cell ids, and version 2 has cell ids from 0. The output folder can be a
+        # subfolder of the source folder, thus the contributions come from the source folder alone
         print("  Version 2 has cell ids from 0, thus gridcontributions.txt gets the same ids.")
+        hascontributions = (
+            firstexisting_or_none("gridcontributions.txt", folder=sourcefolder, tryzipped=True, search_subfolders=False)
+            is not None
+        )
         dfmodel, dfelabundances, dfgridcontributions = with_cell_ids_from_zero(
-            dfmodel, dfelabundances, get_gridparticlecontributions_or_none(sourcefolder)
+            dfmodel, dfelabundances, get_gridparticlecontributions(sourcefolder) if hascontributions else None
         )
 
     if formatversion == 2:

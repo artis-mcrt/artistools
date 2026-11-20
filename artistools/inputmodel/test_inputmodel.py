@@ -4589,20 +4589,27 @@ def test_conversion_reads_the_files_of_the_model_file_and_keeps_the_source_after
     dfalt = at.inputmodel.scan_modeldata(altversion2folder, get_elemabundances=True)[0].collect()
     assert dfalt["X_H"].to_list() == pytest.approx([0.8, 0.8])
 
-    # sn3d reads the abundances.txt beside model.txt, and a file in a subfolder is of a different model
+    # sn3d reads the abundances.txt beside model.txt, and a file in a subfolder is of a different model. Thus a model
+    # of version 1 with no abundances.txt beside its model.txt has no known element mass fractions
     nearfolder = tmp_path / "near"
     (nearfolder / "sub").mkdir(parents=True)
     (nearfolder / "model.txt").write_text("\n".join(lines1d) + "\n", encoding="utf-8")
     (nearfolder / "sub" / "abundances.txt").write_text("1 0.8 0.2\n2 0.8 0.2\n", encoding="utf-8")
-    nearversion2folder = tmp_path / "nearversion2"
-    at.inputmodel.makeartismodel.main(
-        argsraw=[], modelpath=[nearfolder], format_version=2, outputfile=nearversion2folder
+    with pytest.raises(SystemExit):
+        at.inputmodel.makeartismodel.main(
+            argsraw=[], modelpath=[nearfolder], format_version=2, outputfile=tmp_path / "nearversion2"
+        )
+
+    # the particle contributions of an output folder in a subfolder of the source folder are of a different model
+    (nearfolder / "sub" / "abundances.txt").rename(nearfolder / "abundances.txt")
+    childfolder = nearfolder / "sub"
+    (childfolder / "gridcontributions.txt").write_text(
+        "particleid cellindex frac_of_cellmass\n42 1 1.0\n", encoding="utf-8"
     )
-    assert not [
-        col
-        for col in at.inputmodel.scan_modeldata(nearversion2folder)[0].collect_schema().names()
-        if col.endswith("_otherstable")
-    ]
+    at.inputmodel.makeartismodel.main(
+        argsraw=[], modelpath=[nearfolder], format_version=2, outputfile=childfolder, force=True
+    )
+    assert not list(childfolder.glob("gridcontributions.txt*"))
 
     def get_folder_bytes(folder: Path) -> dict[str, bytes]:
         return {path.name: path.read_bytes() for path in sorted(folder.iterdir()) if path.is_file()}
