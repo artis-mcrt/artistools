@@ -10,6 +10,7 @@ from collections.abc import Sequence
 
 from artistools.misc import parse_cli_args
 from artistools.misc import print_product
+from artistools.misc import SuggestingArgumentParser
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -39,6 +40,8 @@ def get_command_parser(words: Sequence[str]) -> argparse.ArgumentParser:
             parser.error(f"the command {' '.join(words[:index])} has no subcommand {word}")
         else:
             # the check of argparse gives the error and the closest names for a word that names no command
+            if isinstance(parser, SuggestingArgumentParser):
+                parser.suggestshelp = True
             parser._check_value(subparsers, word)  # ruff:ignore[private-member-access]
             parser = subparsers.choices[word]
 
