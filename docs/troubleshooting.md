@@ -32,7 +32,7 @@ at.nltepops.read_nltepops(modelpath, timestep=timesteps)
 EOF
 ```
 
-The conversion takes all the timesteps of the text of a run folder, thus a timestep with no NLTE populations, e.g. an
+The conversion takes all the timesteps of the text of a run folder. Thus a timestep with no NLTE populations, e.g. an
 LTE timestep, also writes the cache. A read of some cells, e.g. a run of `artistools plotnltepops`, reads only the
 ranks of these cells. Thus it writes no cache.
 
@@ -70,9 +70,9 @@ it reads the data.
 
 ### `at` runs a different command
 
-Some systems have a command `at` that runs a job at a later time. Use `artistools`, or put the folder of artistools
-first in `PATH`. For the tab completion of zsh, `artistools completions` gives the steps. These steps put the
-completion of artistools before the completion of `at`.
+Some systems have a command `at` that runs a job at a later time. Use `artistools` in place of `at`. As an
+alternative, put the folder of artistools first in `PATH`. For the tab completion of zsh, `artistools completions` gives
+the steps. These steps put the completion of artistools before the completion of `at`.
 
 ### The command does not know the name of a variable or a column
 

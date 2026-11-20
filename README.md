@@ -119,8 +119,16 @@ These commands accept a model path of the form `host:path`, where `host` is a na
 
 In a Python script, give such a path as `Path("host:path")`. Many readers then read the model on its host, e.g.:
 
-- `at.scan_estimators`, `at.get_timestep_times`, `at.get_timestep_of_timedays`, and `at.misc.get_time_range`;
-- `at.scan_modeldata`, `at.get_inputparams`, `at.get_composition_data`, and `at.scan_deposition`;
+- the estimators and the times:
+  - `at.scan_estimators`;
+  - `at.get_timestep_times`;
+  - `at.get_timestep_of_timedays`;
+  - `at.misc.get_time_range`;
+- the input model and the parameters:
+  - `at.scan_modeldata`;
+  - `at.get_inputparams`;
+  - `at.get_composition_data`;
+  - `at.scan_deposition`;
 - `at.nltepops.read_nltepops`, which needs a `timestep` or a `modelgridindex` for a remote model;
 - `at.spectra.scan_spectra` and `at.spectra.scan_spectra_from_packets`;
 - `at.lightcurve.find_lightcurve_file`, `at.lightcurve.scan_lightcurve`, and `at.lightcurve.scan_lightcurve_from_packets`;
