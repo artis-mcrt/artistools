@@ -22,7 +22,7 @@ from artistools.constants import h_erg_s
 from artistools.constants import K_B_ev_per_K
 from artistools.constants import km_to_cm
 from artistools.estimators import scan_estimators
-from artistools.inputmodel import get_costheta_selection
+from artistools.inputmodel import get_cell_direction_selection
 from artistools.lines.core import addarg_excitationtemperature
 from artistools.lines.core import get_excitation_temperature_column
 from artistools.lines.core import get_opacity_atomic_data
@@ -31,8 +31,10 @@ from artistools.misc import addarg_table_output
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import addarg_wavelengthrange
+from artistools.misc import CellDirectionRange
 from artistools.misc import CommaJoinAction
 from artistools.misc import exit_with_error
+from artistools.misc import format_cell_direction_range
 from artistools.misc import get_average_group_dirbins
 from artistools.misc import get_column_description_lines
 from artistools.misc import get_dirbin_centre_direction
@@ -527,12 +529,12 @@ def get_cell_line_inputs(
     lambdamax: float,
     ions: Collection[tuple[int, int]] | None = None,
     exctemperature: str = "auto",
-    costhetarange: tuple[float, float] | None = None,
+    directionrange: CellDirectionRange | None = None,
     taumin: float | None = None,
 ) -> CellLineInputs:
     """Read the data of the cells and of the lines in the wavelength range for get_cell_line_batches().
 
-    costhetarange selects the cells with cos θ = v_z / |v| of the cell centre in the range, edges included. The z axis
+    directionrange selects the cells whose centre has a direction in the range, edges included. The z axis
     is the polar axis of the direction bins. taumin leaves out each line whose tau_sobolev cannot reach it in a cell,
     see get_lines_that_can_reach_tau(). The function logs the method and the assumptions.
     """
@@ -598,13 +600,12 @@ def get_cell_line_inputs(
             "Give a different wavelength range, or different ions with --ions",
         )
 
-    if costhetarange is not None:
-        # a cell on a bound stays in the selection, although the Float32 error of the velocities can move it across
-        # the bound. The cell at the centre of the grid has no direction, thus the selection leaves it out
-        lfestimators = lfestimators.filter(get_costheta_selection(costhetarange, estimatorcolumns))
+    if directionrange is not None:
+        # the cell at the centre of the grid has no direction, thus the selection leaves it out
+        lfestimators = lfestimators.filter(get_cell_direction_selection(directionrange, estimatorcolumns))
         print_detail(
-            f"The cells have cos θ = v_z / |v| of the cell centre from {costhetarange[0]:g} to {costhetarange[1]:g}."
-            " The z axis is the polar axis of the direction bins"
+            f"The cells have a centre with {format_cell_direction_range(directionrange)}, where cos θ = v_z / |v| and"
+            " ϕ = atan2(v_y, v_x). The z axis is the polar axis of the direction bins"
         )
 
     dfcells = (
@@ -625,10 +626,11 @@ def get_cell_line_inputs(
     )
     # the bound of -taumin is zero with no cell, thus this check comes first
     if dfcells.is_empty():
-        if costhetarange is not None:
+        if directionrange is not None:
             exit_with_error(
-                "No cell with matter has its centre in the range of cos θ",
-                "Give a wider range of cos θ, or a different --dirbin",
+                "No cell with matter has its centre in the direction range",
+                "Give a wider range of cos θ or a different --dirbin, or add an average flag, e.g."
+                " --average-over-phi-angle",
             )
         exit_with_error(f"The estimators hold no cell for timestep {timestep}", "Give a different time")
 

@@ -2595,6 +2595,142 @@ def test_plotinitialabundances_bounds_keep_the_cells_on_the_bound(tmp_path: Path
     assert len(dfbound.filter(get_cell_selection(vmax=0.7))) == 2
 
 
+def test_dirbin_selects_the_cells_that_the_packet_binning_puts_in_the_bin(tmp_path: Path) -> None:
+    """-dirbin selects the cells whose centre direction ARTIS puts in the bin. Thus it also applies the ϕ range.
+
+    The selection took the cos θ range alone, thus -dirbin 93 gave the cells of each ϕ bin from 90 to 99. A 2D model
+    is symmetric around the z axis, and its range has no ϕ range, thus the title gives the cells that it selects.
+    """
+    from artistools.inputmodel import get_cell_direction_selection
+    from artistools.packets import add_packet_directions_lazypolars
+    from artistools.packets import bin_packet_directions_polars
+
+    lzmodel, modelmeta = at.scan_modeldata(modelpath_3d, printwarningsonly=True)
+    dfcells = (
+        at.inputmodel
+        .add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
+        .filter(pl.col("vel_r_mid_on_c") > 0.0)
+        .collect()
+    )
+    dfbinned = (
+        bin_packet_directions_polars(
+            add_packet_directions_lazypolars(
+                dfcells.select(
+                    "modelgridindex",
+                    dirx=pl.col("vel_x_mid_on_c"),
+                    diry=pl.col("vel_y_mid_on_c"),
+                    dirz=pl.col("vel_z_mid_on_c"),
+                )
+            )
+        )
+        .select("modelgridindex", "dirbin", "costhetabin")
+        .collect()
+    )
+    for dirbin in (5, 34, 50, 59, 90, 93, 99):
+        args = argparse.Namespace(dirbin=dirbin, costhetamin=None, costhetamax=None, average_over_phi_angle=False)
+        directionrange = at.misc.get_cell_direction_range(args, quiet=True)
+        assert directionrange is not None
+        selected = dfcells.filter(get_cell_direction_selection(directionrange, dfcells.columns))["modelgridindex"]
+        expected = dfbinned.filter(pl.col("dirbin") == dirbin)["modelgridindex"]
+        assert len(expected) > 0
+        assert sorted(selected) == sorted(expected)
+        if dirbin == 93:
+            assert at.misc.format_cell_direction_range(directionrange) == "0.8 ≤ cos θ ≤ 1.0, 6π/5 < ϕ ≤ 7π/5"
+
+    args = argparse.Namespace(dirbin=90, costhetamin=None, costhetamax=None, average_over_phi_angle=True)
+    directionrange = at.misc.get_cell_direction_range(args, quiet=True)
+    assert directionrange is not None
+    assert directionrange.phibin is None
+    selected = dfcells.filter(get_cell_direction_selection(directionrange, dfcells.columns))["modelgridindex"]
+    assert sorted(selected) == sorted(dfbinned.filter(pl.col("costhetabin") == 9)["modelgridindex"])
+
+    write_2d_model(tmp_path, ncoordgridrcyl=4, ncoordgridz=6, vmax_cmps=1.0e9, t_model_days=1.0)
+    args = argparse.Namespace(dirbin=93, costhetamin=None, costhetamax=None, average_over_phi_angle=False)
+    directionrange = at.inputmodel.resolve_cell_direction_range(args, tmp_path, quiet=True)
+    assert directionrange is not None
+    assert directionrange.phibin is None
+    assert at.misc.format_cell_direction_range(directionrange) == "0.8 ≤ cos θ ≤ 1.0"
+    # a 2D model has no ϕ, thus a ϕ bin at each cos θ would select each cell
+    args = argparse.Namespace(dirbin=3, costhetamin=None, costhetamax=None, average_over_theta_angle=True)
+    with pytest.raises(SystemExit):
+        at.inputmodel.resolve_cell_direction_range(args, tmp_path, quiet=True)
+    directionrange = at.inputmodel.resolve_cell_direction_range(args, modelpath_3d, quiet=True)
+    assert directionrange is not None
+    assert at.misc.format_cell_direction_range(directionrange) == "6π/5 < ϕ ≤ 7π/5"
+    directionrange = at.inputmodel.resolve_cell_direction_range(args, modelpath_3d, quiet=True)
+    assert directionrange is not None
+    assert directionrange.phibin is not None
+
+
+def test_dirbin_puts_each_cell_of_an_odd_grid_in_one_bin() -> None:
+    """Each cell of an odd grid is in the one bin that the packet binning gives, except the cell at the origin.
+
+    An odd grid has cell centres on the edges of the bins, e.g. at ϕ = 0 and on the z axis. The selection included
+    both edges, thus such a cell was in two bins, e.g. in bin 90 and in bin 95. On the 11 x 11 x 11 grid,
+    vel_r_mid_on_c gave cell 148 the cos θ -0.79999995, and the packet code gave -0.80000001 from the three parts.
+    """
+    from artistools.inputmodel import get_cell_direction_selection
+    from artistools.packets import add_packet_directions_lazypolars
+    from artistools.packets import bin_packet_directions_polars
+
+    centres = np.arange(-2.0, 3.0)
+    vel_x, vel_y, vel_z = (axis.ravel() for axis in np.meshgrid(centres, centres, centres, indexing="ij"))
+    dfcells_5 = pl.DataFrame({
+        "modelgridindex": np.arange(len(vel_x)),
+        "vel_x_mid_on_c": vel_x,
+        "vel_y_mid_on_c": vel_y,
+        "vel_z_mid_on_c": vel_z,
+        "vel_r_mid_on_c": np.sqrt(vel_x**2 + vel_y**2 + vel_z**2),
+    })
+    lzmodel_11, modelmeta_11 = get_empty_3d_model(11, 1e9, 1.0)
+    dfcells_11 = (
+        at.inputmodel
+        .add_derived_cols_to_modeldata(lzmodel_11, modelmeta=modelmeta_11)
+        .select("modelgridindex", "vel_x_mid_on_c", "vel_y_mid_on_c", "vel_z_mid_on_c", "vel_r_mid_on_c")
+        .collect()
+    )
+
+    for dfcells_all in (dfcells_5, dfcells_11):
+        dfcells = dfcells_all.filter(pl.col("vel_r_mid_on_c") > 0.0)
+        dfbinned = (
+            bin_packet_directions_polars(
+                add_packet_directions_lazypolars(
+                    dfcells.select(
+                        "modelgridindex",
+                        dirx=pl.col("vel_x_mid_on_c"),
+                        diry=pl.col("vel_y_mid_on_c"),
+                        dirz=pl.col("vel_z_mid_on_c"),
+                    )
+                )
+            )
+            .select("modelgridindex", "dirbin", "phibin")
+            .collect()
+        )
+        expectedbins = dict(zip(dfbinned["modelgridindex"], dfbinned["dirbin"], strict=True))
+        expectedphibins = dict(zip(dfbinned["modelgridindex"], dfbinned["phibin"], strict=True))
+
+        selectedbins: dict[int, list[int]] = {}
+        for dirbin in range(at.misc.get_viewingdirectionbincount()):
+            args = argparse.Namespace(dirbin=dirbin, costhetamin=None, costhetamax=None, average_over_phi_angle=False)
+            directionrange = at.misc.get_cell_direction_range(args, quiet=True)
+            assert directionrange is not None
+            for cell in dfcells.filter(get_cell_direction_selection(directionrange, dfcells.columns))["modelgridindex"]:
+                selectedbins.setdefault(cell, []).append(dirbin)
+
+        assert selectedbins == {cell: [dirbin] for cell, dirbin in expectedbins.items()}
+
+        # --average-over-theta-angle selects the ϕ bin at each cos θ, e.g. the cells on the z axis are in ϕ bin 5
+        selectedphibins: dict[int, list[int]] = {}
+        for dirbin in range(at.misc.get_viewingdirection_phibincount()):
+            args = argparse.Namespace(dirbin=dirbin, costhetamin=None, costhetamax=None, average_over_theta_angle=True)
+            directionrange = at.misc.get_cell_direction_range(args, quiet=True)
+            assert directionrange is not None
+            for cell in dfcells.filter(get_cell_direction_selection(directionrange, dfcells.columns))["modelgridindex"]:
+                selectedphibins.setdefault(cell, []).append(dirbin)
+
+        assert selectedphibins == {cell: [phibin] for cell, phibin in expectedphibins.items()}
+
+
 def test_plotinitialabundances_main_passes_the_selection(tmp_path: Path) -> None:
     """The command sends the four range arguments to the data function, and the file name records them."""
     import matplotlib.axes as mplax

@@ -35,10 +35,12 @@ from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_artis_option
 from artistools.misc import get_bin_index_expr
+from artistools.misc import get_costhetabin_expr
 from artistools.misc import get_file_identity
 from artistools.misc import get_file_state
 from artistools.misc import get_nprocs
 from artistools.misc import get_parquet_cache_name
+from artistools.misc import get_phibin_expr
 from artistools.misc import get_progress_class
 from artistools.misc import get_timestep_times
 from artistools.misc import get_viewingdirection_costhetabincount
@@ -1220,11 +1222,7 @@ def bin_packet_directions_polars(
     if ncosthetabins is None:
         ncosthetabins = get_viewingdirection_costhetabincount()
 
-    dfpackets = dfpackets.with_columns(
-        pl.min_horizontal(
-            ((pl.col("costheta") + 1) / 2.0 * ncosthetabins).fill_nan(0).cast(pl.Int32), ncosthetabins - 1
-        ).alias("costhetabin")
-    )
+    dfpackets = dfpackets.with_columns(get_costhetabin_expr(pl.col("costheta"), ncosthetabins).alias("costhetabin"))
 
     if phibintype == "phibinmonotonicasc":
         # phi reaches exactly 2 pi when cosphi == 1 and testphi > 0, so clamp to the last bin
@@ -1234,21 +1232,8 @@ def bin_packet_directions_polars(
             ).alias("phibinmonotonicasc")
         )
     else:
-        # for historical consistency, this binning method decreases phi angle with increasing bin index
-        # acos(cosphi) + pi reaches exactly 2 pi when cosphi == -1, which would otherwise land in the first phi bin of
-        # the next costheta ring, so clamp to the last bin
         dfpackets = dfpackets.with_columns(
-            pl.min_horizontal(
-                (
-                    pl
-                    .when(pl.col("testphi") > 0)
-                    .then(pl.col("cosphi").arccos() / (2 * math.pi) * nphibins)
-                    .otherwise((pl.col("cosphi").arccos() + math.pi) / (2 * math.pi) * nphibins)
-                )
-                .fill_nan(0)
-                .cast(pl.Int32),
-                nphibins - 1,
-            ).alias("phibin")
+            get_phibin_expr(pl.col("cosphi"), pl.col("testphi"), nphibins).alias("phibin")
         ).with_columns((pl.col("costhetabin") * nphibins + pl.col("phibin")).cast(pl.Int32).alias("dirbin"))
 
     return dfpackets

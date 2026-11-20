@@ -1,5 +1,6 @@
 """Read, write, and derive columns for ARTIS model.txt and abundance input files."""
 
+import argparse
 import datetime as dt
 import errno
 import gc
@@ -24,13 +25,17 @@ from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g
+from artistools.misc import CellDirectionRange
 from artistools.misc import exit_with_error
 from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_bin_index_expr
+from artistools.misc import get_cell_direction_range
+from artistools.misc import get_costhetabin_expr
 from artistools.misc import get_file_copies
 from artistools.misc import get_file_identity
 from artistools.misc import get_parquet_cache_name
+from artistools.misc import get_phibin_expr
 from artistools.misc import is_remote_path
 from artistools.misc import modelpath_cache
 from artistools.misc import MTIME_TOLERANCE_S
@@ -1842,11 +1847,41 @@ def get_cell_selection(
     return pl.all_horizontal(conditions).fill_null(value=False)
 
 
-def get_costheta_selection(costhetarange: tuple[float, float], columns: Sequence[str]) -> pl.Expr:
-    """Return a selection that is true for a cell whose centre has cos θ = v_z / |v| in the range.
+def resolve_cell_direction_range(
+    args: argparse.Namespace, modelpath: Path | str, quiet: bool = False, *, dimensions: int | None = None
+) -> CellDirectionRange | None:
+    """Return the direction range of the options, as get_cell_direction_range does, for the cells of the model.
 
-    columns are the columns of the cells, which must hold vel_r_mid_on_c and vel_z_mid_on_c. A 1D model has no
-    direction of a cell, thus the function stops with an error for it. See get_cell_selection for the edges.
+    A 2D model is symmetric around the z axis, thus the range of --dirbin then has no ϕ bin. The titles and the method
+    lines then give the range of the selected cells. --average-over-theta-angle keeps only the ϕ bin, thus a 2D model
+    refuses it. With quiet, the function does not log the range. Code on the host of a remote model gives dimensions,
+    because args.modelpath there still names the host.
+    """
+    directionrange = get_cell_direction_range(args, quiet=quiet)
+    if directionrange is None or directionrange.phibin is None:
+        return directionrange
+    if dimensions is None:
+        dimensions = scan_modeldata(modelpath, printwarningsonly=True)[1]["dimensions"]
+    if dimensions != 2:
+        return directionrange
+    if directionrange.costhetabin is None:
+        exit_with_error(
+            "A 2D model is symmetric around the z axis, thus --average-over-theta-angle would select each cell",
+            "Remove --average-over-theta-angle, or give --average-over-phi-angle for a range of cos θ",
+        )
+    if not quiet:
+        print_detail("A 2D model is symmetric around the z axis, thus --dirbin selects the cells at each ϕ")
+    return directionrange._replace(phibin=None)
+
+
+def get_cell_direction_selection(directionrange: CellDirectionRange, columns: Sequence[str]) -> pl.Expr:
+    """Return a selection that is true for a cell whose centre has a direction in the range.
+
+    columns are the columns of the cells, which must hold vel_r_mid_on_c and vel_z_mid_on_c. A ϕ bin also needs
+    vel_x_mid_on_c and vel_y_mid_on_c, thus a 2D model needs the range of resolve_cell_direction_range. --dirbin
+    selects a cell with the bins of ARTIS for a packet in the direction of the cell centre, thus each cell is in one
+    bin. A 1D model has no direction of a cell, thus the function stops with an error for it. See get_cell_selection
+    for the edges of a range of --costhetamin and --costhetamax.
     """
     if "vel_z_mid_on_c" not in columns:
         exit_with_error(
@@ -1854,9 +1889,34 @@ def get_costheta_selection(costhetarange: tuple[float, float], columns: Sequence
             " cells",
             "Remove --dirbin, --costhetamin, and --costhetamax",
         )
-    return get_cell_selection(
-        thetamin=math.degrees(math.acos(costhetarange[1])), thetamax=math.degrees(math.acos(costhetarange[0]))
-    )
+    if directionrange.costhetabin is None and directionrange.phibin is None:
+        return get_cell_selection(
+            thetamin=math.degrees(math.acos(directionrange.costhetamax)),
+            thetamax=math.degrees(math.acos(directionrange.costhetamin)),
+        )
+
+    is3d = "vel_x_mid_on_c" in columns and "vel_y_mid_on_c" in columns
+    vel_x = pl.col("vel_x_mid_on_c")
+    vel_y = pl.col("vel_y_mid_on_c")
+    vel_z = pl.col("vel_z_mid_on_c")
+    # add_packet_directions_lazypolars takes |v| of the three parts. vel_r_mid_on_c can differ in the last bit, and
+    # then a cell on the edge of a bin goes to a different bin
+    vel_r = (vel_x**2 + vel_y**2 + vel_z**2).sqrt() if is3d else pl.col("vel_r_mid_on_c")
+    # the cell at the origin has no direction
+    conditions = [vel_r > 0.0]
+    if directionrange.costhetabin is not None:
+        # the packet code casts cos θ and cos ϕ to Float32, thus this code does too
+        conditions.append(get_costhetabin_expr((vel_z / vel_r).cast(pl.Float32)) == directionrange.costhetabin)
+    if directionrange.phibin is not None:
+        if not is3d:
+            msg = "A ϕ bin needs the columns vel_x_mid_on_c and vel_y_mid_on_c. For a 2D model, give phibin=None"
+            raise ValueError(msg)
+        vel_rcyl = (vel_x**2 + vel_y**2).sqrt()
+        # add_packet_directions_lazypolars gives cos ϕ = v_x / v_rcyl and testphi = -v_y / |v|, and cos ϕ = 1 on the
+        # z axis, as ARTIS does
+        cosphi = pl.when(vel_rcyl > 1e-12 * vel_r).then(vel_x / vel_rcyl).otherwise(1.0).cast(pl.Float32)
+        conditions.append(get_phibin_expr(cosphi, -vel_y) == directionrange.phibin)
+    return pl.all_horizontal(conditions).fill_null(value=False)
 
 
 # the names before the readers took the prefix scan_ or read_. Each alias keeps the old signature, thus a script

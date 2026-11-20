@@ -348,8 +348,8 @@ def get_cell_estimators(
             "rho",
             "mass_g",
             "vel_r_mid_on_c",
-            # a 2D or 3D model gives the direction of a cell, e.g. for -costhetamin of plotopacity
-            cs.by_name("vel_z_mid_on_c", require_all=False),
+            # a 2D or 3D model gives the direction of a cell, e.g. for --dirbin of plotopacity
+            cs.by_name("vel_x_mid_on_c", "vel_y_mid_on_c", "vel_z_mid_on_c", require_all=False),
             cs.starts_with("nnion_"),
         )
         .collect()
