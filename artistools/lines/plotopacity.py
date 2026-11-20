@@ -14,6 +14,7 @@ from artistools.constants import C_cm_per_s
 from artistools.constants import km_to_cm
 from artistools.inputmodel import get_cell_direction_selection
 from artistools.inputmodel import get_cell_selection
+from artistools.inputmodel import resolve_cell_direction_range
 from artistools.lines.core import addarg_excitationtemperature
 from artistools.lines.core import DEFAULT_TAUCAPS
 from artistools.lines.core import format_taucap
@@ -46,7 +47,6 @@ from artistools.misc import addarg_yscale
 from artistools.misc import CellDirectionRange
 from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import format_cell_direction_range
-from artistools.misc import get_cell_direction_range
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_progress_class
@@ -733,7 +733,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     )
 
     temperaturecolumn = get_excitation_temperature_column(args.modelpath, args.exctemperature)
-    directionrange = get_cell_direction_range(args)
+    directionrange = resolve_cell_direction_range(args, args.modelpath)
     dfestimators = select_cells_in_ranges(
         get_cell_estimators(args.modelpath, timestep, modelgridindex, temperaturecolumn),
         args.vmin,

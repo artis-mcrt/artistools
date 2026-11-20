@@ -2595,10 +2595,11 @@ def test_plotinitialabundances_bounds_keep_the_cells_on_the_bound(tmp_path: Path
     assert len(dfbound.filter(get_cell_selection(vmax=0.7))) == 2
 
 
-def test_dirbin_selects_the_cells_that_the_packet_binning_puts_in_the_bin() -> None:
+def test_dirbin_selects_the_cells_that_the_packet_binning_puts_in_the_bin(tmp_path: Path) -> None:
     """-dirbin selects the cells whose centre direction ARTIS puts in the bin. Thus it also applies the ϕ range.
 
-    The selection took the cos θ range alone, thus -dirbin 93 gave the cells of each ϕ bin from 90 to 99.
+    The selection took the cos θ range alone, thus -dirbin 93 gave the cells of each ϕ bin from 90 to 99. A 2D model
+    is symmetric around the z axis, and its range has no ϕ range, thus the title gives the cells that it selects.
     """
     from artistools.inputmodel import get_cell_direction_selection
     from artistools.packets import add_packet_directions_lazypolars
@@ -2642,6 +2643,15 @@ def test_dirbin_selects_the_cells_that_the_packet_binning_puts_in_the_bin() -> N
     assert directionrange.phirange is None
     selected = dfcells.filter(get_cell_direction_selection(directionrange, dfcells.columns))["modelgridindex"]
     assert sorted(selected) == sorted(dfbinned.filter(pl.col("costhetabin") == 9)["modelgridindex"])
+
+    write_2d_model(tmp_path, ncoordgridrcyl=4, ncoordgridz=6, vmax_cmps=1.0e9, t_model_days=1.0)
+    args = argparse.Namespace(dirbin=93, costhetamin=None, costhetamax=None, average_over_phi_angle=False)
+    directionrange = at.inputmodel.resolve_cell_direction_range(args, tmp_path, quiet=True)
+    assert directionrange is not None
+    assert directionrange.phirange is None
+    directionrange = at.inputmodel.resolve_cell_direction_range(args, modelpath_3d, quiet=True)
+    assert directionrange is not None
+    assert directionrange.phirange is not None
 
 
 def test_plotinitialabundances_main_passes_the_selection(tmp_path: Path) -> None:

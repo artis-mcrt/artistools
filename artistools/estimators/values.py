@@ -17,6 +17,7 @@ from artistools.estimators.core import get_units
 from artistools.estimators.core import scan_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_cell_direction_selection
+from artistools.inputmodel import resolve_cell_direction_range
 from artistools.inputmodel import scan_modeldata
 from artistools.misc import addarg_celldirectionrange
 from artistools.misc import addarg_modelgridindex
@@ -33,7 +34,6 @@ from artistools.misc import exit_with_error
 from artistools.misc import folder_is_artis_model
 from artistools.misc import format_cell_direction_range
 from artistools.misc import format_range_list
-from artistools.misc import get_cell_direction_range
 from artistools.misc import get_model_folder
 from artistools.misc import get_model_name
 from artistools.misc import get_time_range
@@ -321,7 +321,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     print(f"'{get_model_name(modelpath)}': values of {', '.join(variables)}")
     print_modelpath(modelpath)
     timesteps = resolve_timesteps(args, modelpath)
-    directionrange = get_cell_direction_range(args)
+    directionrange = resolve_cell_direction_range(args, modelpath)
 
     dfvalues = get_values_table(
         modelpath, variables, timesteps, args.modelgridindex, directionrange=directionrange, verbose=args.verbose

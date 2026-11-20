@@ -9,6 +9,7 @@ import matplotlib.colors as mplcolors
 import numpy as np
 import polars as pl
 
+from artistools.inputmodel import resolve_cell_direction_range
 from artistools.inputmodel import scan_modeldata
 from artistools.lines.core import addarg_excitationtemperature
 from artistools.lines.linecontributions import addarg_lineselection
@@ -31,7 +32,6 @@ from artistools.misc import check_dirbin
 from artistools.misc import exit_with_error
 from artistools.misc import format_cell_direction_range
 from artistools.misc import get_artis_option
-from artistools.misc import get_cell_direction_range
 from artistools.misc import get_dirbin_labels
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
@@ -507,7 +507,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     troughsettings = get_trough_settings(args, unit)
     velocityedges_kmps = get_velocity_bin_edges_kmps(args.modelpath, args.nvelocitybins, args.velocitymax_kmps, unit)
     ions = parse_ions(str(args.ions).split(","), "-ions") if args.ions else None
-    directionrange = get_cell_direction_range(args)
+    directionrange = resolve_cell_direction_range(args, args.modelpath)
     inputs = get_cell_line_inputs(
         args.modelpath, timestep, args.xmin, args.xmax, ions, args.exctemperature, directionrange, args.taumin
     )

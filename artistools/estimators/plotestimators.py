@@ -72,6 +72,7 @@ from artistools.estimators.plotitems import SERIESTYPES
 from artistools.estimators.plotitems import split_plotitem_styles
 from artistools.estimators.plotitems import VARIABLE_ALIASES
 from artistools.inputmodel import get_cell_direction_selection
+from artistools.inputmodel import resolve_cell_direction_range
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_celldirectionrange
 from artistools.misc import addarg_darkmode
@@ -101,7 +102,6 @@ from artistools.misc import folder_is_artis_model
 from artistools.misc import format_cell_direction_range
 from artistools.misc import format_frame_path
 from artistools.misc import get_bin_index_expr
-from artistools.misc import get_cell_direction_range
 from artistools.misc import get_filterfunc
 from artistools.misc import get_model_name
 from artistools.misc import get_time_range
@@ -2032,7 +2032,7 @@ def get_line_figure_data(
         if args.slice is not None:
             figure_title += f", {args.slicelabel}"
         framefields = {"timestep": strtimestep, "timedays": strtimedays}
-    if (directionrange := get_cell_direction_range(args, quiet=True)) is not None:
+    if (directionrange := resolve_cell_direction_range(args, modelpath, quiet=True)) is not None:
         figure_title += f", {format_cell_direction_range(directionrange)}"
     if "cell" not in framefields:
         print("  Plotting " + figure_title.replace("\n", " "))
@@ -2546,7 +2546,7 @@ def get_image_figure_data(
     elif not isplane and modelmeta["dimensions"] == 3:
         strimage = "average around the z axis"
     figure_title = f"{get_model_name(modelpath)}\nTimestep {strtimestep} ({strtimedays}), {strimage}"
-    if (directionrange := get_cell_direction_range(args, quiet=True)) is not None:
+    if (directionrange := resolve_cell_direction_range(args, modelpath, quiet=True)) is not None:
         figure_title += f", {format_cell_direction_range(directionrange)}"
     print("  Plotting " + figure_title.replace("\n", " "))
 
@@ -3512,7 +3512,7 @@ def resolve_plot_args(args: argparse.Namespace) -> tuple[Path, list[int]]:
     timestepmin, timestepmax = set_x_and_timesteps(args, modelpath)
     wantslisting = args.listvariables or args.listnuclides
     # the data code reads the range again with quiet, thus check and log the options here
-    get_cell_direction_range(args)
+    resolve_cell_direction_range(args, modelpath)
 
     if not wantslisting:
         print(
@@ -3555,7 +3555,7 @@ def add_plot_columns(
     if args.modelgridindex is None and args.dimensionreduce == 1:
         estimators = estimators.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
 
-    if (directionrange := get_cell_direction_range(args, quiet=True)) is not None:
+    if (directionrange := resolve_cell_direction_range(args, args.modelpath, quiet=True)) is not None:
         columns = estimators.collect_schema().names()
         estimators = estimators.filter(get_cell_direction_selection(directionrange, columns))
 

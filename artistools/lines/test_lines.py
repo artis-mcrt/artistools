@@ -1368,6 +1368,16 @@ def test_plotopacity_velocity_range_takes_the_cells_of_the_range(capsys: pytest.
         dfpolarcells = at.lines.plotopacity.select_cells_in_ranges(dfestimators, args.vmin, args.vmax, directionrange)
         assert set(dfpolarcells["modelgridindex"]) == expectedpolar & set(dfestimators["modelgridindex"])
 
+    # get_cell_estimators kept no v_x and no v_y, thus a ϕ range of -dirbin stopped with a missing column
+    args = at.misc.parse_cli_args(at.lines.plotopacity.addargs, None, None, ["-dirbin", "93"])
+    directionrange = at.inputmodel.resolve_cell_direction_range(args, modelpath_classic_3d)
+    dfbincells = at.lines.plotopacity.select_cells_in_ranges(dfestimators, None, None, directionrange)
+    polarcap = set(dfvelocities.filter(pl.col("costheta") >= 0.8)["modelgridindex"]) & set(
+        dfestimators["modelgridindex"]
+    )
+    assert 0 < dfbincells.height < len(polarcap)
+    assert set(dfbincells["modelgridindex"]) <= polarcap
+
     args = at.misc.parse_cli_args(at.lines.plotopacity.addargs, None, None, ["-vmin", "0.1c", "-vmax", "60000km/s"])
     assert at.lines.plotopacity.get_cells_text(None, args.vmin, args.vmax) == (
         "mass-weighted mean of the cells with vmin = 0.1c and vmax = 60000 km/s"

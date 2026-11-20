@@ -1,5 +1,6 @@
 """Read, write, and derive columns for ARTIS model.txt and abundance input files."""
 
+import argparse
 import datetime as dt
 import errno
 import gc
@@ -29,6 +30,7 @@ from artistools.misc import exit_with_error
 from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_bin_index_expr
+from artistools.misc import get_cell_direction_range
 from artistools.misc import get_file_copies
 from artistools.misc import get_file_identity
 from artistools.misc import get_parquet_cache_name
@@ -1843,13 +1845,32 @@ def get_cell_selection(
     return pl.all_horizontal(conditions).fill_null(value=False)
 
 
+def resolve_cell_direction_range(
+    args: argparse.Namespace, modelpath: Path | str, quiet: bool = False
+) -> CellDirectionRange | None:
+    """Return the direction range of the options, as get_cell_direction_range does, for the cells of the model.
+
+    A 2D model is symmetric around the z axis, thus the range of --dirbin then has no range of ϕ. The titles and the
+    method lines then give the range of the selected cells. With quiet, the function does not log the range.
+    """
+    directionrange = get_cell_direction_range(args, quiet=quiet)
+    if directionrange is None or directionrange.phirange is None:
+        return directionrange
+    _, modelmeta = scan_modeldata(modelpath, printwarningsonly=True)
+    if modelmeta["dimensions"] != 2:
+        return directionrange
+    if not quiet:
+        print_detail("A 2D model is symmetric around the z axis, thus --dirbin selects the cells at each ϕ")
+    return directionrange._replace(phirange=None)
+
+
 def get_cell_direction_selection(directionrange: CellDirectionRange, columns: Sequence[str]) -> pl.Expr:
     """Return a selection that is true for a cell whose centre has a direction in the range.
 
-    columns are the columns of the cells, which must hold vel_r_mid_on_c and vel_z_mid_on_c, and for a 3D model also
-    vel_x_mid_on_c and vel_y_mid_on_c. ϕ = atan2(v_y, v_x), as in the direction bins of ARTIS. A 2D model is
-    symmetric around the z axis. Thus the selection ignores the range of ϕ for it. A 1D model has no direction of a
-    cell, thus the function stops with an error for it. See get_cell_selection for the edges.
+    columns are the columns of the cells, which must hold vel_r_mid_on_c and vel_z_mid_on_c. A range of ϕ also needs
+    vel_x_mid_on_c and vel_y_mid_on_c, thus a 2D model needs the range of resolve_cell_direction_range. ϕ =
+    atan2(v_y, v_x), as in the direction bins of ARTIS. A 1D model has no direction of a cell, thus the function stops
+    with an error for it. See get_cell_selection for the edges.
     """
     if "vel_z_mid_on_c" not in columns:
         exit_with_error(
@@ -1863,9 +1884,9 @@ def get_cell_direction_selection(directionrange: CellDirectionRange, columns: Se
     )
     if directionrange.phirange is None:
         return selection
-    if "vel_rcyl_mid_on_c" in columns:
-        print_detail("A 2D model is symmetric around the z axis, thus the cells of each ϕ are in the direction bin")
-        return selection
+    if "vel_x_mid_on_c" not in columns or "vel_y_mid_on_c" not in columns:
+        msg = "A range of ϕ needs the columns vel_x_mid_on_c and vel_y_mid_on_c. For a 2D model, give phirange=None"
+        raise ValueError(msg)
 
     phimin, phimax = directionrange.phirange
     phi_atol = math.radians(POLAR_ANGLE_ATOL_DEG)
