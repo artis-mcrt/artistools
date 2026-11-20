@@ -2640,7 +2640,7 @@ def test_dirbin_selects_the_cells_that_the_packet_binning_puts_in_the_bin(tmp_pa
     args = argparse.Namespace(dirbin=90, costhetamin=None, costhetamax=None, average_over_phi_angle=True)
     directionrange = at.misc.get_cell_direction_range(args, quiet=True)
     assert directionrange is not None
-    assert directionrange.phirange is None
+    assert directionrange.phibin is None
     selected = dfcells.filter(get_cell_direction_selection(directionrange, dfcells.columns))["modelgridindex"]
     assert sorted(selected) == sorted(dfbinned.filter(pl.col("costhetabin") == 9)["modelgridindex"])
 
@@ -2648,11 +2648,18 @@ def test_dirbin_selects_the_cells_that_the_packet_binning_puts_in_the_bin(tmp_pa
     args = argparse.Namespace(dirbin=93, costhetamin=None, costhetamax=None, average_over_phi_angle=False)
     directionrange = at.inputmodel.resolve_cell_direction_range(args, tmp_path, quiet=True)
     assert directionrange is not None
-    assert directionrange.phirange is None
+    assert directionrange.phibin is None
     assert at.misc.format_cell_direction_range(directionrange) == "0.8 ≤ cos θ ≤ 1.0"
+    # a 2D model has no ϕ, thus a ϕ bin at each cos θ would select each cell
+    args = argparse.Namespace(dirbin=3, costhetamin=None, costhetamax=None, average_over_theta_angle=True)
+    with pytest.raises(SystemExit):
+        at.inputmodel.resolve_cell_direction_range(args, tmp_path, quiet=True)
     directionrange = at.inputmodel.resolve_cell_direction_range(args, modelpath_3d, quiet=True)
     assert directionrange is not None
-    assert directionrange.phirange is not None
+    assert at.misc.format_cell_direction_range(directionrange) == "6π/5 < ϕ ≤ 7π/5"
+    directionrange = at.inputmodel.resolve_cell_direction_range(args, modelpath_3d, quiet=True)
+    assert directionrange is not None
+    assert directionrange.phibin is not None
 
 
 def test_dirbin_puts_each_cell_of_an_odd_grid_in_one_bin() -> None:
@@ -2696,10 +2703,11 @@ def test_dirbin_puts_each_cell_of_an_odd_grid_in_one_bin() -> None:
                     )
                 )
             )
-            .select("modelgridindex", "dirbin")
+            .select("modelgridindex", "dirbin", "phibin")
             .collect()
         )
         expectedbins = dict(zip(dfbinned["modelgridindex"], dfbinned["dirbin"], strict=True))
+        expectedphibins = dict(zip(dfbinned["modelgridindex"], dfbinned["phibin"], strict=True))
 
         selectedbins: dict[int, list[int]] = {}
         for dirbin in range(at.misc.get_viewingdirectionbincount()):
@@ -2710,6 +2718,17 @@ def test_dirbin_puts_each_cell_of_an_odd_grid_in_one_bin() -> None:
                 selectedbins.setdefault(cell, []).append(dirbin)
 
         assert selectedbins == {cell: [dirbin] for cell, dirbin in expectedbins.items()}
+
+        # --average-over-theta-angle selects the ϕ bin at each cos θ, e.g. the cells on the z axis are in ϕ bin 5
+        selectedphibins: dict[int, list[int]] = {}
+        for dirbin in range(at.misc.get_viewingdirection_phibincount()):
+            args = argparse.Namespace(dirbin=dirbin, costhetamin=None, costhetamax=None, average_over_theta_angle=True)
+            directionrange = at.misc.get_cell_direction_range(args, quiet=True)
+            assert directionrange is not None
+            for cell in dfcells.filter(get_cell_direction_selection(directionrange, dfcells.columns))["modelgridindex"]:
+                selectedphibins.setdefault(cell, []).append(dirbin)
+
+        assert selectedphibins == {cell: [phibin] for cell, phibin in expectedphibins.items()}
 
 
 def test_plotinitialabundances_main_passes_the_selection(tmp_path: Path) -> None:

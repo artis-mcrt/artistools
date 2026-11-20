@@ -70,8 +70,9 @@ The physics options change the meaning of many outputs. More commands help befor
   with no average and the unit in each column name. Use it for the value of one cell, in place of Python.
 - `--dirbin 93` selects the cells whose centre is in one direction bin: the cos θ range and the ϕ range of the bin.
   `--average-over-phi-angle` selects the whole cos θ range at each ϕ, e.g. `--dirbin 90 --average-over-phi-angle` for
-  the cells near the pole. `values`, `plotestimators`, `plotopacity`, and `plotlinecontributions` take it. Use it to
-  compare two directions, e.g. `artistools plotestimators init_X_lanthanides Ye -t 10 --dirbin 50
+  the cells near the pole. `--average-over-theta-angle` selects the ϕ range at each cos θ, e.g. `--dirbin 3
+  --average-over-theta-angle`. `values`, `plotestimators`, `plotopacity`, and `plotlinecontributions` take these options.
+  Use them to compare two directions, e.g. `artistools plotestimators init_X_lanthanides Ye -t 10 --dirbin 50
   --average-over-phi-angle <modelpath> --print-data --quiet`. The summary table gives the mean with the mass of each
   cell as the weight for a mass fraction and for Ye.
 
