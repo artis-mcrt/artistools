@@ -42,6 +42,9 @@ from artistools.misc import polars_source
 from artistools.misc import print_warning
 from artistools.misc import read_parquet_cache_metadata
 from artistools.misc import read_wsv
+from artistools.misc import with_compressed_extension
+from artistools.misc import without_compressed_extension
+from artistools.misc import write_file_atomic
 from artistools.misc import write_parquet_atomic
 from artistools.misc import zopen
 
@@ -752,16 +755,20 @@ def save_gridparticlecontributions(
     gridcontribpath = Path(gridcontribpath)
     if gridcontribpath.is_dir():
         gridcontribpath /= "gridcontributions.txt"
-    gridcontribpath = prepare_zstd_output(gridcontribpath)
+    gridcontribpath = with_compressed_extension(without_compressed_extension(gridcontribpath), ".zst")
 
-    dfcontribs.write_csv(
-        gridcontribpath,
-        separator=" ",
-        float_scientific=True if float_precision is not None else None,
-        float_precision=float_precision,
-        compression="zstd",
-    )
-    return gridcontribpath
+    def write_contributions(stream: t.IO[bytes]) -> None:
+        dfcontribs.write_csv(
+            stream,
+            separator=" ",
+            float_scientific=True if float_precision is not None else None,
+            float_precision=float_precision,
+            compression="zstd",
+        )
+
+    # the new file replaces the old file only after a complete write, and each other copy of the old file goes after it
+    write_file_atomic(gridcontribpath, write_contributions)
+    return prepare_zstd_output(gridcontribpath)
 
 
 def get_dfnucabundances(

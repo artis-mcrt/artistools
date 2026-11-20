@@ -4531,6 +4531,75 @@ def test_conversion_reads_the_folder_of_a_file_path_and_changes_no_file_before_i
     assert get_folder_text(outputfolder) == folderbefore
 
 
+def test_conversion_reads_the_files_of_the_model_file_and_keeps_the_source_after_a_failed_write(tmp_path: Path) -> None:
+    """A conversion takes the files beside the model.txt that the reader opens, and a failed write changes no file.
+
+    The elements of a version 2 model came from a different copy of model.txt in the same folder, and a model in a
+    subfolder lost the Ye.txt beside it. A conversion in the model folder that stopped at the write of abundances.txt
+    or of gridcontributions.txt left a new model.txt without the other files of the source model.
+    """
+    sourcefolder = tmp_path / "source"
+    modelfolder = sourcefolder / "run"
+    modelfolder.mkdir(parents=True)
+    lines1d = [
+        "2",
+        "1.0",
+        "#inputcellid vel_r_max_kmps logrho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48 Ye",
+        "1 1000.00 -10.00000000 0.5 0.0 0.0 0.0 0.0 0.35",
+        "2 2000.00 -11.00000000 0.5 0.0 0.0 0.0 0.0 0.35",
+    ]
+    (modelfolder / "model.txt").write_text("\n".join(lines1d) + "\n", encoding="utf-8")
+    (modelfolder / "abundances.txt").write_text("1 0.8 0.2\n2 0.8 0.2\n", encoding="utf-8")
+    (modelfolder / "Ye.txt").write_text("2\n1 0.49\n2 0.49\n", encoding="utf-8")
+    (modelfolder / "gridcontributions.txt").write_text(
+        "particleid cellindex frac_of_cellmass\n7 1 1.0\n8 2 1.0\n", encoding="utf-8"
+    )
+
+    # the reader finds the model in a subfolder, and the files beside that model.txt belong to it
+    version2folder = tmp_path / "version2"
+    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[sourcefolder], format_version=2, outputfile=version2folder)
+    dfversion2 = at.inputmodel.scan_modeldata(version2folder, get_elemabundances=True)[0].collect()
+    assert dfversion2["X_H"].to_list() == pytest.approx([0.8, 0.8])
+    assert dfversion2["Ye"].to_list() == pytest.approx([0.49, 0.49])
+
+    # the elements come from the selected copy of model.txt, and not from the plain copy that a folder path selects
+    with at.zopen(version2folder / "model.txt.zst") as fmodel:
+        version2text = fmodel.read()
+    (version2folder / "model.txt").write_text(version2text.replace(" 8.0", " 2.0"), encoding="utf-8")
+    assert at.inputmodel.scan_modeldata(version2folder / "model.txt", get_elemabundances=True)[0].collect()[
+        "X_H"
+    ].to_list() != pytest.approx([0.8, 0.8])
+    selectedfolder = tmp_path / "selected"
+    at.inputmodel.makeartismodel.main(
+        argsraw=[], modelpath=[version2folder / "model.txt.zst"], format_version=1, outputfile=selectedfolder
+    )
+    assert at.inputmodel.scan_initelemabundances(selectedfolder).collect()["X_H"].to_list() == pytest.approx([0.8, 0.8])
+
+    def get_folder_bytes(folder: Path) -> dict[str, bytes]:
+        return {path.name: path.read_bytes() for path in sorted(folder.iterdir()) if path.is_file()}
+
+    # the write of abundances.txt of a conversion to version 1 in the model folder stops
+    (version2folder / "model.txt").unlink()
+    version2files = get_folder_bytes(version2folder)
+    msg = "Write failed"
+    with (
+        mock.patch("artistools.inputmodel.core.write_artis_csv", side_effect=OSError(msg)),
+        pytest.raises(OSError, match=msg),
+    ):
+        at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[version2folder], format_version=1, force=True)
+    assert get_folder_bytes(version2folder) == version2files
+    assert not [path for path in version2folder.iterdir() if path.is_dir()]
+
+    # the write of gridcontributions.txt with the cell ids from 0 of a conversion to version 2 stops
+    sourcefiles = get_folder_bytes(modelfolder)
+    with (
+        mock.patch("artistools.inputmodel.makeartismodel.save_gridparticlecontributions", side_effect=OSError(msg)),
+        pytest.raises(OSError, match=msg),
+    ):
+        at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[modelfolder], format_version=2, force=True)
+    assert get_folder_bytes(modelfolder) == sourcefiles
+
+
 def test_reduction_and_downscale_write_the_format_version_of_the_prompt(tmp_path: Path) -> None:
     """A reduction and a downscale write the format version that the (y/n) prompt took, and version 2 takes Ye.txt.
 

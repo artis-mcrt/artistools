@@ -825,15 +825,19 @@ def get_model_text_folder(modelpath: Path | str) -> Path:
 def get_model_input_folder(modelpath: Path | str) -> Path:
     """Return the folder of the input files of a local model path, e.g. abundances.txt and Ye.txt.
 
-    The rule is the rule of the reader of model.txt. A model path can name the folder, or a file in it, e.g.
-    model.txt for a folder that holds only model.txt.zst. A code comparison path is virtual, and
-    get_model_text_folder gives the folder of its ARTIS input files.
+    This is the folder of the model.txt that the reader of model.txt opens for the path. A model path can name a
+    folder, and the reader then also searches its subfolders. A model path can also name a file, e.g. model.txt for
+    a folder that holds only model.txt.zst. A code comparison path is virtual, and get_model_text_folder gives the
+    folder of its ARTIS input files.
     """
     inputpath = Path(modelpath)
     if inputpath.is_dir():
-        return inputpath
-    if firstexisting_or_none(inputpath.name, folder=inputpath.parent, search_subfolders=False) is not None:
-        return inputpath.parent
+        modelfile = firstexisting_or_none("model.txt", folder=inputpath, tryzipped=True)
+        return inputpath if modelfile is None else modelfile.parent
+    if (
+        namedfile := firstexisting_or_none(inputpath.name, folder=inputpath.parent, search_subfolders=False)
+    ) is not None:
+        return namedfile.parent
     return get_model_text_folder(inputpath)
 
 

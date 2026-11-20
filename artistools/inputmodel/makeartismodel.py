@@ -2,6 +2,7 @@
 
 import argparse
 import shutil
+import tempfile
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
@@ -12,9 +13,11 @@ from artistools.constants import Msun_to_g
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import CELL_ID_FILE_NAMES
 from artistools.inputmodel.core import dimension_reduce_model
+from artistools.inputmodel.core import get_elemabundances_of_model_columns
 from artistools.inputmodel.core import get_model_input_folder
 from artistools.inputmodel.core import get_modelmeta
 from artistools.inputmodel.core import MODEL_FILE_NAMES
+from artistools.inputmodel.core import remove_parquet_cache
 from artistools.inputmodel.core import require_no_ye_file_of_earlier_model
 from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.core import scan_initelemabundances
@@ -199,12 +202,13 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
     customcols = [col for col in dfmodel.columns if col not in gridcolumns and not col.startswith(("pos_", "vel_"))]
     outputfolder.mkdir(exist_ok=True, parents=True)
 
-    # the element mass fractions come from abundances.txt (version 1) or from the columns of model.txt (version 2)
-    haselements = (
-        modelmeta["formatversion"] == 2
-        or firstexisting_or_none("abundances.txt", folder=sourcefolder, tryzipped=True) is not None
-    )
-    dfelabundances = scan_initelemabundances(sourcefolder, printwarningsonly=True).collect() if haselements else None
+    # The element mass fractions come from the columns of the model.txt that the command read (version 2), or from
+    # abundances.txt (version 1). Another copy of model.txt in the folder can give other values
+    dfelabundances = None
+    if modelmeta["formatversion"] == 2:
+        dfelabundances = get_elemabundances_of_model_columns(dfmodel.lazy()).collect()
+    elif firstexisting_or_none("abundances.txt", folder=sourcefolder, tryzipped=True) is not None:
+        dfelabundances = scan_initelemabundances(sourcefolder, printwarningsonly=True).collect()
     if formatversion == 2 and dfelabundances is None:
         # with no element mass fractions, the nuclide columns alone give each element. save_modeldata then deletes an
         # abundances.txt of the output folder after the write
@@ -223,41 +227,53 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
             "  Version 2 has no abundances.txt. The mass fraction of an element is the sum of its nuclide columns and"
             " of its column X_<element>_otherstable."
         )
-    # save_modeldata checks the cells and the element mass fractions, and it can stop before it writes a file. Thus it
-    # comes before each change of the other files of the output folder. With dfelabundances, version 1 also gets
-    # abundances.txt, and version 2 gets the otherstable columns
-    save_modeldata(
-        dfmodel,
-        outpath=outputfolder,
-        modelmeta=modelmeta | {"formatversion": formatversion},
-        extracols=customcols,
-        dfelabundances=dfelabundances,
-    )
-    if dfgridcontributions is not None:
-        save_gridparticlecontributions(dfgridcontributions, outputfolder / "gridcontributions.txt")
-
-    if hasotherfolder:
+    # A conversion in the model folder replaces the files of the source model. Thus each new file goes first into a
+    # temporary folder in the output folder, and the files replace the old files only after each write is complete.
+    # A rename in one file system needs no space, thus a full disk cannot stop it
+    stagingfolder = Path(tempfile.mkdtemp(prefix=".formatconversion-", dir=outputfolder))
+    try:
+        # With dfelabundances, version 1 also gets abundances.txt, and version 2 gets the otherstable columns
+        save_modeldata(
+            dfmodel,
+            outpath=stagingfolder,
+            modelmeta=modelmeta | {"formatversion": formatversion},
+            extracols=customcols,
+            dfelabundances=dfelabundances,
+        )
+        if dfgridcontributions is not None:
+            save_gridparticlecontributions(dfgridcontributions, stagingfolder / "gridcontributions.txt")
         # A different output folder also gets each file with cell ids that needs no change, thus the model is
         # complete. sn3d also reads a compressed copy of such a file
         unchangedfilenames = [*(CELL_ID_FILE_NAMES if formatversion == 1 else ())]
         if dfgridcontributions is None:
             unchangedfilenames.append("gridcontributions.txt")
-        for filename in unchangedfilenames:
+        obsoletefilenames = ["abundances.txt", *CELL_ID_FILE_NAMES] if formatversion == 2 else []
+        for filename in unchangedfilenames if hasotherfolder else []:
             sourcefile = firstexisting_or_none(filename, folder=sourcefolder, tryzipped=True, search_subfolders=False)
-            # The command stopped above for a Ye.txt of an earlier model, and sn3d does not read opacity.txt, thus
-            # a version 1 output keeps these files if the source model has none. The particle contributions of an
-            # earlier model do not go with the cells of the new model.txt
-            if sourcefile is None and filename != "gridcontributions.txt":
-                continue
-            # the copy replaces each copy of the file in the output folder, e.g. a plain Ye.txt beside Ye.txt.zst
+            if sourcefile is not None:
+                shutil.copy2(sourcefile, stagingfolder / sourcefile.name)
+            elif filename == "gridcontributions.txt":
+                # the particle contributions of an earlier model do not go with the cells of the new model.txt. The
+                # command stopped above for a Ye.txt of an earlier model, and sn3d does not read opacity.txt
+                obsoletefilenames.append(filename)
+
+        for stagedfile in sorted(stagingfolder.iterdir()):
+            newfile = outputfolder / stagedfile.name
+            stagedfile.replace(newfile)
+            # the new file replaces each copy of the old file, e.g. a plain Ye.txt beside the new Ye.txt.zst
+            for oldfile in get_file_copies(newfile):
+                if oldfile != newfile and oldfile.is_file():
+                    oldfile.unlink()
+            remove_parquet_cache(newfile)
+            print(f"  Saved {newfile}")
+        for filename in obsoletefilenames:
             for oldfile in get_file_copies(outputfolder / filename):
                 if oldfile.is_file():
                     oldfile.unlink()
-                    if sourcefile is None:
-                        print(f"Deleted {oldfile}, which is a file of an earlier model in the output folder")
-            if sourcefile is not None:
-                shutil.copy2(sourcefile, outputfolder / sourcefile.name)
-                print(f"Copied {sourcefile.name} to {outputfolder}, because its cell ids need no change")
+                    remove_parquet_cache(oldfile)
+                    print(f"  Deleted {oldfile}, which the converted model has no use for")
+    finally:
+        shutil.rmtree(stagingfolder, ignore_errors=True)
 
 
 def get_converted_file_names(
