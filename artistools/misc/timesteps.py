@@ -384,7 +384,11 @@ def get_time_range(
     timedays_range_str: str | float | None = None,
     clamp_to_timesteps: bool = True,
 ) -> tuple[int, int, float, float]:
-    """Handle a time range specified in either days or timesteps."""
+    """Return (timestepmin, timestepmax, timemin_days, timemax_days) for a range in days or in timesteps.
+
+    A range outside the model gives (-1, -1, -inf, -inf) and a warning. A reader such as scan_spectra refuses
+    the timestep -1, thus a caller must test for this result first.
+    """
     # assertions make sure time is specified either by timesteps or times in days, but not both!
     tstarts = get_timestep_times(modelpath, loc="start")
     tmids = get_timestep_times(modelpath, loc="mid")

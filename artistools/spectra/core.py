@@ -46,6 +46,7 @@ from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_auto_velocity_unit
 from artistools.misc import get_average_group_dirbins
+from artistools.misc import get_bad_timestep_message
 from artistools.misc import get_bin_index_expr
 from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_dirbins
@@ -808,10 +809,20 @@ def scan_spectra(
 
     directionbins selects the bins, and None gives every bin. A 3D model has 100 bins in spec_res.out, and a remote
     model sends each bin through ssh, thus a caller asks for its own bins. A request of bin -1 alone reads no
-    spec_res.out.
+    spec_res.out. A requested bin that the model does not have is not in the result, thus a caller tests for it.
+
+    The flux is the mean of the timesteps from timestepmin to timestepmax (inclusive), with the weight of each timestep
+    its width Δt. A timestepmax of None or below 0 gives the timestep timestepmin alone.
     """
     if timestepmax is None or timestepmax < 0:
         timestepmax = timestepmin
+
+    # a negative timestep selected no column, and the sum of no columns then gave an infinite flux
+    if timestepmin < 0:
+        raise ValueError(get_bad_timestep_message(modelpath, timestepmin))
+    if timestepmin > timestepmax:
+        msg = f"The first timestep {timestepmin} is after the last timestep {timestepmax}"
+        raise ValueError(msg)
 
     check_averaging_angles(average_over_phi, average_over_theta)
 

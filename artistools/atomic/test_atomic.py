@@ -969,6 +969,13 @@ def test_get_atomic_number_and_elsymbol() -> None:
     assert at.get_elsymbol(1) == "H"
     assert at.get_elsymbol(2) == "He"
 
+    # the -1 of an unknown symbol read the last item of the symbol list, thus "Xx" gave "Uuo"
+    for atomic_number in (-1, 1000):
+        with pytest.raises(ValueError, match="No element has the atomic number"):
+            at.get_elsymbol(atomic_number)
+    with pytest.raises(ValueError, match="does not start with an element symbol"):
+        at.get_z_a_nucname("Xx56")
+
 
 def test_decode_roman_numeral() -> None:
     assert at.decode_roman_numeral("I") == 1

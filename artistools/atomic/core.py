@@ -844,7 +844,9 @@ def get_z_a_nucname(nucname: str) -> tuple[int, int]:
 
     # the mass number stays on the name, because it separates the neutron (n1) from nitrogen (N14)
     z = get_atomic_number(nucname)
-    assert z >= 0, f"{nucname} does not start with an element symbol"
+    if z < 0:
+        msg = f"The nuclide name {nucname} does not start with an element symbol"
+        raise ValueError(msg)
 
     a = int(nucname.lower().lstrip(string.ascii_lowercase))
     if a < z:
@@ -976,7 +978,7 @@ def split_compact_ion_name(ionstr: str) -> tuple[int, int] | None:
 
 
 def decode_roman_numeral(strin: str) -> int:
-    """Return the integer corresponding to a Roman numeral."""
+    """Return the integer of a Roman numeral, or -1 for a string that is not a Roman numeral."""
     if strin.upper() in roman_numerals:
         return roman_numerals.index(strin.upper())
     return -1
@@ -1005,8 +1007,13 @@ def add_ion_str_column(lz: pl.LazyFrame) -> pl.LazyFrame:
 
 
 def get_elsymbol(atomic_number: int | np.int64) -> str:
-    """Return the element symbol of an atomic number."""
-    return get_elsymbolslist()[atomic_number]
+    """Return the element symbol of an atomic number, or raise a ValueError for a number that no element has."""
+    elsymbols = get_elsymbolslist()
+    # a negative index of a tuple reads from the end, thus the -1 from get_atomic_number("Xx") gave "Uuo"
+    if not 0 <= atomic_number < len(elsymbols):
+        msg = f"No element has the atomic number {atomic_number}"
+        raise ValueError(msg)
+    return elsymbols[atomic_number]
 
 
 def get_ion_tuple(ionstr: str) -> tuple[int, int] | int:
@@ -1066,7 +1073,9 @@ def get_ionstring(
         # nuclides like Sr89 get passed in as atomic_number=38, ion_stage='Sr89'
         return ion_stage
 
-    assert not isinstance(ion_stage, str)
+    if isinstance(ion_stage, str):
+        msg = f"The ion stage {ion_stage!r} is not an integer, 'ALL', or a nuclide of the element"
+        raise TypeError(msg)
 
     if style == "spectral":
         return f"{get_elsymbol(atomic_number)}{sep}{roman_numerals[ion_stage]}"

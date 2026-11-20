@@ -234,6 +234,14 @@ def test_spectra_get_spectrum() -> None:
     check_spectrum(dfspectrumpkts, expectedmax=1.4601241778685615e-14, expectedmean=3.8221552332231758e-16)
 
 
+def test_scan_spectra_refuses_a_bad_timestep_range() -> None:
+    """A negative timestep selected no column, and the sum of no columns gave an infinite flux on every row."""
+    with pytest.raises(ValueError, match="Timestep -1 is not in this model"):
+        at.spectra.scan_spectra(modelpath, -1, -1, directionbins=[-1])
+    with pytest.raises(ValueError, match="after the last timestep"):
+        at.spectra.scan_spectra(modelpath, 60, 55, directionbins=[-1])
+
+
 @pytest.mark.benchmark
 def test_spectra_get_spectrum_polar_angles() -> None:
     spectra = at.spectra.scan_spectra(
