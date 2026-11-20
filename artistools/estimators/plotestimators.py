@@ -195,8 +195,8 @@ def get_elemcolor(atomic_number: int) -> t.Any:
     call order instead made an element's colour depend on which plots preceded it in the same process, and ran
     off the end of the ten-colour list once eleven elements had been seen.
     """
-    elsymbol = get_elsymbol(atomic_number)
-    if elsymbol in elementcolors:
+    # a group of elements, e.g. Fegroup or lanthanides, has the atomic number -1 and takes a colour of the palette
+    if atomic_number >= 0 and (elsymbol := get_elsymbol(atomic_number)) in elementcolors:
         return elementcolors[elsymbol]
 
     palette = get_unreserved_elemcolors()
@@ -713,8 +713,9 @@ def get_average_charge_expr(element: str, colnames: Collection[str]) -> tuple[pl
 
     The mean takes the number density of each ion as the weight, thus it is the charge for each nucleus.
     """
-    elsymb = get_elsymbol(get_atomic_number(element))
-    if f"nnelement_{elsymb}" not in colnames:
+    atomic_number = get_atomic_number(element)
+    elsymb = get_elsymbol(atomic_number) if atomic_number >= 0 else None
+    if elsymb is None or f"nnelement_{elsymb}" not in colnames:
         msg = f"ERROR: No element data found for {element}"
         raise ValueError(msg)
 
@@ -743,11 +744,11 @@ def get_average_ionisation_plans(
     maxioncharge = 0
     for paramvalue in params:
         print(f"  Plotting averageionisation {paramvalue}")
+        # get_average_charge_expr comes first, because its error names the element that the user gave
+        expr_charge_per_nuc, elementmaxcharge = get_average_charge_expr(paramvalue, colnames)
         atomic_number = get_atomic_number(paramvalue)
-
         color = get_elemcolor(atomic_number=atomic_number)
         elsymb = get_elsymbol(atomic_number)
-        expr_charge_per_nuc, elementmaxcharge = get_average_charge_expr(paramvalue, colnames)
         maxioncharge = max(maxioncharge, elementmaxcharge)
 
         dfplotdata = estimators.with_columns(
@@ -2338,8 +2339,8 @@ def get_image_panels(plotlist: list[list[t.Any]], estimatorcolumns: Collection[s
                     weights[colname] = weight
             elif plotitem[0] == "averageionisation":
                 for element in plotitem[1]:
-                    elsymb = get_elsymbol(get_atomic_number(element))
                     chargeexpr, _ = get_average_charge_expr(element, estimatorcolumns)
+                    elsymb = get_elsymbol(get_atomic_number(element))
                     colname = f"averageionisation_{elsymb}"
                     columns.append((chargeexpr.alias(colname), colname, f"Average ion charge of {elsymb}"))
                     # the line of a subplot takes the same weight, thus the image gives the charge of each nucleus
