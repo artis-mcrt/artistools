@@ -1994,8 +1994,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_axislimits(parser, include_x=False)
 
+    # plotspectra takes the same flags as the time range of its mean spectrum, thus the help names the difference
     addarg_timeminmax(
-        parser, helptext_min="Plot range: minimum time in days", helptext_max="Plot range: maximum time in days"
+        parser,
+        helptext_min=(
+            "Start of the plotted time range. The figure, the summary line, and --print-data show only the points from"
+            " this time. In plotspectra, this option gives the time range of the mean spectrum"
+        ),
+        helptext_max="End of the plotted time range. See --timemin",
     )
     # deprecated spellings kept as hidden aliases
     parser.add_argument("-xmin", dest="timemin", type=float, help=argparse.SUPPRESS)

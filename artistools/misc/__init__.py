@@ -255,6 +255,7 @@ from artistools.misc.units import time_days_arg as time_days_arg
 from artistools.misc.units import time_days_range_arg as time_days_range_arg
 from artistools.misc.units import TIME_UNIT_HELP as TIME_UNIT_HELP
 from artistools.misc.units import velocity_kmps_arg as velocity_kmps_arg
+from artistools.misc.units import velocity_on_c_arg as velocity_on_c_arg
 from artistools.misc.units import wavelength_angstroms_arg as wavelength_angstroms_arg
 from artistools.misc.units import WAVELENGTH_UNIT_HELP as WAVELENGTH_UNIT_HELP
 from artistools.misc.units import XUnit as XUnit
