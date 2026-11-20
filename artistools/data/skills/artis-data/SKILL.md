@@ -151,6 +151,8 @@ The other readers stop with an error. For these readers, run the script on the h
   volume. Multiply that rate by `volume`, then add the values of all the cells. A rate per ion or per atom does not show
   which process is more important.
 
+<!-- The page docs/data.md shows the text from this line to the heading "Report". -->
+
 ## Estimators: the values of each cell at each time step
 
 `at.scan_estimators(modelpath, timestep=..., modelgridindex=..., join_modeldata=False)` gives a LazyFrame with one row
