@@ -393,9 +393,19 @@ def get_nprocs(modelpath: Path) -> int:
 @modelpath_cache(maxsize=8)
 @on_model_host
 def get_inputparams(modelpath: Path) -> dict[str, t.Any]:
-    """Return the parameters that input.txt gives.
+    """Return the parameters that input.txt gives, as a dict.
 
-    Do not change the dictionary that this function returns. The next caller gets the same object.
+    The keys are:
+
+    - pre_zseed, the seed of the random numbers if it is above 0. ARTIS makes a random seed for a different value;
+    - ntstep, the number of timesteps;
+    - itstep and ftstep, the first timestep of the run and the timestep after its last timestep;
+    - tmin and tmax (days), the start time and the end time of the timesteps;
+    - nusyn_min, nusyn_max (Hz), nsyn_time, nsyn_time_start, and nsyn_time_end, which the current ARTIS does not use;
+    - n_dimensions, the number of dimensions of model.txt. The current ARTIS reads that number from model.txt.
+
+    artistools keeps the dict of the last eight models in memory, and the call writes no cache to the disk. Do not
+    change the dict that this function returns. The next caller gets the same object. docs/data.md gives the readers.
     """
     params: dict[str, t.Any] = {}
     with get_inputfilepath(modelpath).open("r", encoding="utf-8") as inputfile:

@@ -702,22 +702,29 @@ def get_spatial_scales(modelpath: Path) -> tuple[float, float, str]:
 def scan_modeldata(
     modelpath: Path | str = ".", get_elemabundances: bool = False, printwarningsonly: bool = False
 ) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
-    """Read the velocities, the densities, and the mass fractions of the radioactive nuclides of the cells in model.txt.
+    """Return the cells of model.txt as a LazyFrame, and the parameters of the model as a dict.
 
-    Returns dfmodel, modelmeta
-        - dfmodel: a polars LazyFrame with a row for each cell, and the columns of the model file.
-          add_derived_cols_to_modeldata adds the other columns, e.g. the volume and the mass of each cell.
-        - modelmeta: a dictionary of the model parameters, e.g. the keys t_model_init_days, vmax_cmps, and dimensions.
+    The LazyFrame has one row for each cell. Each value is at the start time t_model_init_days. The columns are:
 
-    Parameters
-    ----------
-    modelpath : Path | str
-        either a path to model.txt file, or a folder containing model.txt
-    get_elemabundances : bool
-        also read elemental abundances (from abundances.txt) and merge with the output DataFrame
-    printwarningsonly : bool
-        if True, print warnings but skip informational progress messages
+    - inputcellid, and modelgridindex, which is the index of the cell in the estimators;
+    - for 1D, vel_r_max_kmps (the outer velocity, km/s) and logrho (log10 of the density in g/cm^3);
+    - for 2D, pos_rcyl_mid and pos_z_mid (the centre of the cell, cm) and rho (g/cm^3);
+    - for 3D, pos_x_min, pos_y_min, and pos_z_min (the corner of the cell, cm) and rho (g/cm^3);
+    - X_Fegroup and X_<nuclide>, e.g. X_Ni56 (mass fractions);
+    - with get_elemabundances, X_<El> (the mass fraction of each element from abundances.txt).
 
+    add_derived_cols_to_modeldata adds more columns, e.g. volume and mass_g. The dict has these keys:
+
+    - dimensions;
+    - npts_model, the number of cells;
+    - t_model_init_days;
+    - vmax_cmps (cm/s).
+
+    A 3D model also gives ncoordgridx and wid_init (cm).
+
+    modelpath is a model folder, a model file such as model_1d.txt, or a remote model as host:path. The reader writes a
+    parquet cache beside a model file of more than 2 MiB. A later call reads that cache while the text file stays the
+    same. printwarningsonly removes the progress messages. docs/data.md gives each column.
     """
     path = resolve_modelpath(modelpath)
     if is_remote_path(path):

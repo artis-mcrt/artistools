@@ -1424,11 +1424,30 @@ def scan_estimators(
     classicartis: bool = False,
     batchcaches: "Sequence[EstimatorBatchCache] | None" = None,
 ) -> pl.LazyFrame:
-    """Read estimator files into a polars LazyFrame with columns for timestep, modelgridindex, and estimator values.
+    """Return the estimators of all the run folders of a model as a LazyFrame, with one row for each timestep and cell.
 
-    A selection of timesteps or cells decreases the number of files to read, thus the scan is faster.
-    batchcaches gives the current parquet caches of all the batches of an ARTIS model, as convert_estimator_batch_caches
-    gives them. The scan then selects the caches of the timesteps and the cells, and it checks and converts no file.
+    The main columns are:
+
+    - timestep and modelgridindex;
+    - Te, TR, and TJ (K), and W (the dilution factor);
+    - nne, nnelement_<El>, nnion_<El>_<ion stage>, and nniso_<nuclide> (number densities, cm^-3);
+    - heating_<process>, cooling_<process>, and deposition_<particle> (rates, erg/s/cm^3). A null rate is 0, because
+      ARTIS writes no value for a rate of 0.
+
+    join_modeldata adds these columns:
+
+    - tmid_days;
+    - rho (g/cm^3) at the time of the timestep;
+    - volume and volume_prevtimestep (cm^3);
+    - mass_g;
+    - the values of model.txt with the prefix init_.
+
+    modelgridindex and timestep take one value or a sequence. A selection reads fewer files, thus the scan is faster.
+
+    Before it returns, the scan converts each text file of the selection that has no current cache to a parquet cache
+    in its run folder.
+    batchcaches gives the current caches, as convert_estimator_batch_caches gives them. The scan then checks and
+    converts no file. classicartis reads the estimators of the classic version of ARTIS. docs/data.md gives each column.
     """
     modelpath = Path(modelpath)
     match_modelgridindex: Sequence[int] | None

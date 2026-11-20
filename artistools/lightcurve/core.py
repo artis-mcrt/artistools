@@ -114,13 +114,23 @@ def scan_lightcurve(
 ) -> dict[int, pl.LazyFrame]:
     """Return a LazyFrame of a light curve file for each direction bin, with an optional average over phi or theta.
 
+    Each LazyFrame has one row for each timestep, with these columns:
+
+    - time_days, the mid time of the timestep;
+    - luminosity_Lsun and luminosity_erg/s, the bolometric luminosity in the observer frame;
+    - luminosity_cmf_Lsun and luminosity_cmf_erg/s, the luminosity in the comoving frame;
+    - mag, the absolute bolometric magnitude. A luminosity of 0 gives inf.
+
     A direction-resolved file, e.g. light_curve_res.out, holds one table for each direction bin. A different file
     holds the angle average as bin -1. The caller knows which file it reads, thus the name of the file decides nothing.
+    Give directionresolved=True for a direction-resolved file. find_lightcurve_file gives the path of each file.
     The angle average of bin -1 is the mean over every direction already, thus it takes no average over phi or theta.
 
     The averaging belongs here rather than to the caller because the magnitude column is not linear in the
     bin contributions. The magnitude comes after the averaging, thus no plot shows the mean of the magnitudes.
     In that mean, a single dark bin sends the whole averaged bin to inf.
+
+    The call reads the text file at each call, and it writes no cache. docs/data.md gives each column.
     """
     check_averaging_angles(average_over_phi, average_over_theta)
     print(f"Reading {filepath}")
@@ -218,7 +228,34 @@ def scan_lightcurve_from_packets(
     timedaysmin: float | None = None,
     timedaysmax: float | None = None,
 ) -> dict[int, pl.LazyFrame]:
-    """Get ARTIS luminosity vs time from packets files."""
+    """Return a dict with a LazyFrame of the luminosity against time of each direction bin, from the packets files.
+
+    Each LazyFrame has one row for each timestep, with these columns:
+
+    - timestep, and time_days (the mid time of the timestep);
+    - packetcount, the number of packets in the timestep;
+    - luminosity_Lsun, luminosity_erg/s, and mag, the observer-frame luminosity and the absolute magnitude;
+    - luminosity_cmf_Lsun and luminosity_cmf_erg/s, the comoving-frame luminosity. Only the real packets give these
+      columns, and only if the model folder holds model.txt;
+    - relnoise = sqrt(sum(e^2)) / sum(e), the relative Monte Carlo noise, where e is the energy of each packet.
+
+    The arguments are:
+
+    - escape_type is "TYPE_RPKT" for the ultraviolet, optical, and infrared (UVOIR) light curve, or "TYPE_GAMMA" for
+      the gamma-ray light curve;
+    - maxpacketfiles reads only the packets files of the first ranks;
+    - directionbins selects the bins. None gives the bin -1, which is the average over all directions;
+    - average_over_phi gives each bin the mean of the bins with the same theta. average_over_theta gives each bin the
+      mean of the bins with the same phi;
+    - directionbins_are_vpkt_observers reads the virtual packets, and each bin is then an observer of vpkt.txt;
+    - pellet_nucname keeps only the packets of the pellets of one nuclide, e.g. "Ni56", or of one element, e.g. "Ni";
+    - use_pellet_decay_time puts each packet at the decay time of its pellet, and not at its arrival time;
+    - timedaysmin and timedaysmax select the timesteps with a mid time in the range, and the nearest timestep beyond
+      each end.
+
+    Before it returns, the call writes a parquet cache for each batch of packets files that has no current cache. On a
+    large model, this takes many minutes. docs/data.md gives each column.
+    """
     if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
         msg = f"Unknown escape type {escape_type}"
         raise ValueError(msg)
