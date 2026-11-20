@@ -483,58 +483,93 @@ def check_costheta_dirbin(dirbin: int, optionname: str, *, allowall: bool) -> No
     )
 
 
-def addarg_costhetarange(parser: argparse.ArgumentParser) -> None:
-    """Add --dirbin, --costhetamin, and --costhetamax, which select the cells by the direction of their centre."""
+class CellDirectionRange(t.NamedTuple):
+    """The range of the directions of the centres of the cells that a command selects. The range includes both edges.
+
+    cos θ = v_z / |v|, and ϕ is the azimuth from the +x axis toward the +y axis, from 0 to 2π, as in ARTIS. phirange is
+    None to select the cells at each ϕ.
+    """
+
+    costhetamin: float
+    costhetamax: float
+    phirange: tuple[float, float] | None
+
+
+def addarg_celldirectionrange(parser: argparse.ArgumentParser, *, addaverageoverphi: bool = True) -> None:
+    """Add --dirbin, --average-over-phi-angle, --costhetamin, and --costhetamax, which select cells by their direction.
+
+    A command that applies --average-over-phi-angle also to a different option gives addaverageoverphi=False, and then
+    adds the flag with addarg_averageoverphi.
+    """
     parser.add_argument(
         "-dirbin",
         type=int,
         help=(
-            "Select the cells whose centre has cos θ = v_z / |v| in the cos θ range of this direction bin, at all phi."
-            " Give the direction bin with phi bin 0 in the cos θ bin, e.g. 90 for the pole at +z or 50 for"
-            " 0 ≤ cos θ ≤ 0.2. These are the direction bins of the spectra and the light curves"
+            "Select the cells whose centre is in this direction bin. The cos θ = v_z / |v| and the azimuth ϕ of the"
+            " centre must be in the ranges of the bin. These are the direction bins of the spectra and the light"
+            " curves. A 2D model is symmetric around the z axis, thus the ϕ range has no effect for it"
         ),
     )
+    if addaverageoverphi:
+        parser.add_argument(
+            "--average_over_phi_angle",
+            action="store_true",
+            help=(
+                "Select the cells in the cos θ range of --dirbin at each ϕ. Then --dirbin must be the first bin of"
+                " its costheta bin, e.g. 90 or 50"
+            ),
+        )
     parser.add_argument(
         "-costhetamin",
         type=float,
         help=(
-            "Minimum cos θ = v_z / |v| of the centre of a cell, e.g. 0.8 for the cells near the pole of --dirbin 90."
+            "Minimum cos θ = v_z / |v| of the centre of a cell, e.g. 0.8 for the cells near the pole at +z, at each ϕ."
             " Default: -1"
         ),
     )
     parser.add_argument(
         "-costhetamax",
         type=float,
-        help=(
-            "Maximum cos θ = v_z / |v| of the centre of a cell, e.g. 0.2 with --costhetamin 0 for the cells of --dirbin"
-            " 50. Default: 1"
-        ),
+        help="Maximum cos θ = v_z / |v| of the centre of a cell, e.g. 0.2 with --costhetamin 0, at each ϕ. Default: 1",
     )
 
 
-def get_costheta_range(args: argparse.Namespace, quiet: bool = False) -> tuple[float, float] | None:
-    """Return the range of cos θ of --dirbin or of --costhetamin and --costhetamax, or None to keep each cell.
+def get_cell_direction_range(args: argparse.Namespace, quiet: bool = False) -> CellDirectionRange | None:
+    """Return the directions of --dirbin or of --costhetamin and --costhetamax, or None to keep each cell.
 
     The range of --dirbin includes both edges, as the range of --costhetamin and --costhetamax does. Thus a cell with
     its centre on an edge is in two adjacent bins. With quiet, the function does not log the range of --dirbin.
     """
+    averageoverphi = getattr(args, "average_over_phi_angle", False)
     if args.dirbin is not None:
         if args.costhetamin is not None or args.costhetamax is not None:
             exit_with_error(
-                "--dirbin gives a range of cos θ, thus --costhetamin and --costhetamax do not apply",
+                "--dirbin gives a range of directions, thus --costhetamin and --costhetamax do not apply",
                 "Remove --dirbin, or remove --costhetamin and --costhetamax",
             )
-        check_costheta_dirbin(args.dirbin, "-dirbin", allowall=False)
+        check_dirbin(args.dirbin, "-dirbin", averageoverphi=averageoverphi, allowall=False)
         costhetalowers, costhetauppers, _ = get_costheta_bins(usedegrees=False)
-        costhetabin = args.dirbin // get_viewingdirection_phibincount()
-        costhetarange = (costhetalowers[costhetabin], costhetauppers[costhetabin])
+        costhetabin, phibin = divmod(args.dirbin, get_viewingdirection_phibincount())
+        phirange = None
+        if not averageoverphi:
+            philowers, phiuppers, _ = get_phi_bins(usedegrees=False)
+            phirange = (float(philowers[phibin]), float(phiuppers[phibin]))
+        directionrange = CellDirectionRange(
+            float(costhetalowers[costhetabin]), float(costhetauppers[costhetabin]), phirange
+        )
         if not quiet:
             print_detail(
-                f"--dirbin {args.dirbin} selects the cells whose centre has {format_costheta_range(costhetarange)},"
-                " at all phi. The z axis is the polar axis of the direction bins"
+                f"--dirbin {args.dirbin} selects the cells whose centre has"
+                f" {format_cell_direction_range(directionrange)}. The z axis is the polar axis of the direction bins,"
+                " and ϕ = 0 is the +x axis"
             )
-        return costhetarange
+        return directionrange
 
+    # plotlinecontributions applies the flag also to --troughdirbin
+    if averageoverphi and getattr(args, "troughdirbin", None) is None:
+        exit_with_error(
+            "--average-over-phi-angle needs a direction bin", "Give --dirbin, or remove --average-over-phi-angle"
+        )
     if args.costhetamin is None and args.costhetamax is None:
         return None
     costhetarange = (
@@ -546,12 +581,29 @@ def get_costheta_range(args: argparse.Namespace, quiet: bool = False) -> tuple[f
             f"--costhetamin {costhetarange[0]:g} and --costhetamax {costhetarange[1]:g} give no range of cos θ",
             "Give -1 ≤ --costhetamin < --costhetamax ≤ 1",
         )
-    return costhetarange
+    return CellDirectionRange(*costhetarange, phirange=None)
 
 
-def format_costheta_range(costhetarange: tuple[float, float]) -> str:
-    """Return the text of a range of cos θ of the cells, e.g. "0 ≤ cos θ ≤ 0.2". The range includes both edges."""
-    return f"{costhetarange[0]:g} ≤ cos θ ≤ {costhetarange[1]:g}"
+def format_phi(phi: float) -> str:
+    """Return the text of an azimuth that is a multiple of the ϕ step of the direction bins, e.g. "9π/5" or "π"."""
+    halfbins = get_viewingdirection_phibincount() // 2
+    multiple = round(phi / math.pi * halfbins)
+    if multiple == 0:
+        return "0"
+    divisor = math.gcd(multiple, halfbins)
+    numerator, denominator = multiple // divisor, halfbins // divisor
+    return f"{numerator if numerator > 1 else ''}π{f'/{denominator}' if denominator > 1 else ''}"
+
+
+def format_cell_direction_range(directionrange: CellDirectionRange) -> str:
+    """Return the text of a range of the cell directions, e.g. "0 ≤ cos θ ≤ 0.2, 9π/5 ≤ ϕ ≤ 2π".
+
+    The range includes both edges.
+    """
+    text = f"{directionrange.costhetamin:g} ≤ cos θ ≤ {directionrange.costhetamax:g}"
+    if directionrange.phirange is None:
+        return text
+    return f"{text}, {format_phi(directionrange.phirange[0])} ≤ ϕ ≤ {format_phi(directionrange.phirange[1])}"
 
 
 def warn_direction_bin_noise(source: str, *, average_over_phi: bool, average_over_theta: bool) -> None:

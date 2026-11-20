@@ -474,19 +474,20 @@ def addarg_plotinvalidpart(parser: argparse.ArgumentParser, plotted: str) -> Non
     )
 
 
-def addarg_averageoverphi(parser: argparse.ArgumentParser, optionname: str = "-dirbin") -> None:
-    """Add --average-over-phi-angle, which makes a direction bin of optionname into the mean over its phi bins.
+def addarg_averageoverphi(parser: argparse.ArgumentParser, *optionnames: str) -> None:
+    """Add --average-over-phi-angle, which makes a direction bin of each optionname into its whole costheta bin.
 
     The option has the meaning of --average-over-phi-angle of plotspectra. With the option, --dirbin 90 takes the
-    costheta bin 0.8 to 1. Without it, --dirbin 90 takes the one direction bin 90.
+    costheta bin 0.8 to 1. Without it, --dirbin 90 takes the one direction bin 90. The default optionname is -dirbin.
     """
-    optionname = get_standard_flag(optionname)
+    names = " and ".join(get_standard_flag(optionname) for optionname in optionnames or ("-dirbin",))
+    mustbefirst = f"each of {names}" if len(optionnames) > 1 else names
     parser.add_argument(
         "--average_over_phi_angle",
         action="store_true",
         help=(
-            f"Take the mean over the phi bins of the costheta bin of {optionname}. Then {optionname} must be the first"
-            " bin of its costheta bin, e.g. 90 for the pole at +z"
+            f"Use all the phi bins of the costheta bin of {names}. Then {mustbefirst} must be the first bin of its"
+            " costheta bin, e.g. 90 for the pole at +z"
         ),
     )
 

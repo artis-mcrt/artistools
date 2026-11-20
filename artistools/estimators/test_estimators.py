@@ -5275,7 +5275,7 @@ def test_element_group_mass_fractions_take_only_the_elements_of_the_group() -> N
 def test_dirbin_selects_the_cells_and_a_mass_fraction_takes_the_mass_weight(
     tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
 ) -> None:
-    """-dirbin 50 keeps the cells with 0 ≤ cos θ ≤ 0.2 at the centre, and init_X_Fe uses the cell masses as weights.
+    """-dirbin 50 with --average-over-phi-angle keeps the cells with 0 ≤ cos θ ≤ 0.2, and init_X_Fe takes mass weights.
 
     Te uses the volume as the weight. A mean of a mass fraction with that weight gave too much weight to the cells of
     low density.
@@ -5286,6 +5286,7 @@ def test_dirbin_selects_the_cells_and_a_mass_fraction_takes_the_mass_weight(
         modelpath=modelpath_classic_3d,
         outputfile=tmp_path,
         dirbin=50,
+        average_over_phi_angle=True,
         plotlist=[["init_X_Fe", "Te"]],
         write_data=True,
     )

@@ -21,7 +21,7 @@ from artistools.lines.linecontributions import LINEKEYS
 from artistools.lines.linecontributions import parse_ions
 from artistools.lines.linecontributions import TROUGHSAMPLESPERCELL
 from artistools.misc import addarg_averageoverphi
-from artistools.misc import addarg_costhetarange
+from artistools.misc import addarg_celldirectionrange
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
 from artistools.misc import addarg_figscale
@@ -29,9 +29,9 @@ from artistools.misc import addarg_output
 from artistools.misc import addarg_show
 from artistools.misc import check_dirbin
 from artistools.misc import exit_with_error
-from artistools.misc import format_costheta_range
+from artistools.misc import format_cell_direction_range
 from artistools.misc import get_artis_option
-from artistools.misc import get_costheta_range
+from artistools.misc import get_cell_direction_range
 from artistools.misc import get_dirbin_labels
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
@@ -405,7 +405,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         ),
     )
     addarg_velocitybins(parser)
-    addarg_costhetarange(parser)
+    addarg_celldirectionrange(parser, addaverageoverphi=False)
     addarg_taumin(parser)
     parser.add_argument(
         "-troughdirbin",
@@ -416,7 +416,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             " bin, e.g. 90 for the pole at +z"
         ),
     )
-    addarg_averageoverphi(parser, "-troughdirbin")
+    addarg_averageoverphi(parser, "-dirbin", "-troughdirbin")
     parser.add_argument(
         "-photospherevelocity",
         dest="photospherevelocity_kmps",
@@ -507,9 +507,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     troughsettings = get_trough_settings(args, unit)
     velocityedges_kmps = get_velocity_bin_edges_kmps(args.modelpath, args.nvelocitybins, args.velocitymax_kmps, unit)
     ions = parse_ions(str(args.ions).split(","), "-ions") if args.ions else None
-    costhetarange = get_costheta_range(args)
+    directionrange = get_cell_direction_range(args)
     inputs = get_cell_line_inputs(
-        args.modelpath, timestep, args.xmin, args.xmax, ions, args.exctemperature, costhetarange, args.taumin
+        args.modelpath, timestep, args.xmin, args.xmax, ions, args.exctemperature, directionrange, args.taumin
     )
     profiles = get_line_velocity_profiles(inputs, velocityedges_kmps, args.rankby, args.maxlines)
 
@@ -554,8 +554,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
 
     title = f"{get_model_name(args.modelpath)} {get_timestep_time(args.modelpath, timestep):.2f} d"
-    if costhetarange is not None:
-        title += f", {format_costheta_range(costhetarange)}"
+    if directionrange is not None:
+        title += f", {format_cell_direction_range(directionrange)}"
     label_line_axes(axes, args, unit, title, hastrough=troughsettings is not None)
 
     outputfile = Path(args.outputfile)

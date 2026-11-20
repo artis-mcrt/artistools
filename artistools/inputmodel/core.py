@@ -24,6 +24,7 @@ from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g
+from artistools.misc import CellDirectionRange
 from artistools.misc import exit_with_error
 from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
@@ -1842,11 +1843,13 @@ def get_cell_selection(
     return pl.all_horizontal(conditions).fill_null(value=False)
 
 
-def get_costheta_selection(costhetarange: tuple[float, float], columns: Sequence[str]) -> pl.Expr:
-    """Return a selection that is true for a cell whose centre has cos θ = v_z / |v| in the range.
+def get_cell_direction_selection(directionrange: CellDirectionRange, columns: Sequence[str]) -> pl.Expr:
+    """Return a selection that is true for a cell whose centre has a direction in the range.
 
-    columns are the columns of the cells, which must hold vel_r_mid_on_c and vel_z_mid_on_c. A 1D model has no
-    direction of a cell, thus the function stops with an error for it. See get_cell_selection for the edges.
+    columns are the columns of the cells, which must hold vel_r_mid_on_c and vel_z_mid_on_c, and for a 3D model also
+    vel_x_mid_on_c and vel_y_mid_on_c. ϕ = atan2(v_y, v_x), as in the direction bins of ARTIS. A 2D model is
+    symmetric around the z axis. Thus the selection ignores the range of ϕ for it. A 1D model has no direction of a
+    cell, thus the function stops with an error for it. See get_cell_selection for the edges.
     """
     if "vel_z_mid_on_c" not in columns:
         exit_with_error(
@@ -1854,9 +1857,24 @@ def get_costheta_selection(costhetarange: tuple[float, float], columns: Sequence
             " cells",
             "Remove --dirbin, --costhetamin, and --costhetamax",
         )
-    return get_cell_selection(
-        thetamin=math.degrees(math.acos(costhetarange[1])), thetamax=math.degrees(math.acos(costhetarange[0]))
+    selection = get_cell_selection(
+        thetamin=math.degrees(math.acos(directionrange.costhetamax)),
+        thetamax=math.degrees(math.acos(directionrange.costhetamin)),
     )
+    if directionrange.phirange is None:
+        return selection
+    if "vel_rcyl_mid_on_c" in columns:
+        print_detail("A 2D model is symmetric around the z axis, thus the cells of each ϕ are in the direction bin")
+        return selection
+
+    phimin, phimax = directionrange.phirange
+    phi_atol = math.radians(POLAR_ANGLE_ATOL_DEG)
+    phi = pl.arctan2(pl.col("vel_y_mid_on_c"), pl.col("vel_x_mid_on_c"))
+    # a range at an end of [0, 2π] must also find a cell with ϕ near the other end, e.g. 9π/5 ≤ ϕ ≤ 2π and ϕ = 0.01
+    inrange = [
+        (phi + offset).is_between(phimin - phi_atol, phimax + phi_atol) for offset in (-2 * math.pi, 0.0, 2 * math.pi)
+    ]
+    return selection & pl.any_horizontal(inrange).fill_null(value=False)
 
 
 # the names before the readers took the prefix scan_ or read_. Each alias keeps the old signature, thus a script

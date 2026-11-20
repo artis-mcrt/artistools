@@ -12,8 +12,8 @@ import polars as pl
 
 from artistools.constants import C_cm_per_s
 from artistools.constants import km_to_cm
+from artistools.inputmodel import get_cell_direction_selection
 from artistools.inputmodel import get_cell_selection
-from artistools.inputmodel import get_costheta_selection
 from artistools.lines.core import addarg_excitationtemperature
 from artistools.lines.core import DEFAULT_TAUCAPS
 from artistools.lines.core import format_taucap
@@ -30,7 +30,7 @@ from artistools.lines.core import get_opacity_lines
 from artistools.lines.core import get_planck_mean_opacities
 from artistools.lines.core import print_planck_mean_method
 from artistools.misc import addarg_axislimits
-from artistools.misc import addarg_costhetarange
+from artistools.misc import addarg_celldirectionrange
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
 from artistools.misc import addarg_figscale
@@ -43,9 +43,10 @@ from artistools.misc import addarg_show
 from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import addarg_yscale
+from artistools.misc import CellDirectionRange
 from artistools.misc import df_filter_minmax_bracketed
-from artistools.misc import format_costheta_range
-from artistools.misc import get_costheta_range
+from artistools.misc import format_cell_direction_range
+from artistools.misc import get_cell_direction_range
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_progress_class
@@ -512,13 +513,13 @@ def select_cells_in_ranges(
     dfestimators: pl.DataFrame,
     vmin: tuple[float, t.Literal["kmps", "c"]] | None,
     vmax: tuple[float, t.Literal["kmps", "c"]] | None,
-    costhetarange: tuple[float, float] | None = None,
+    directionrange: CellDirectionRange | None = None,
 ) -> pl.DataFrame:
-    """Return the cells with a mid-point velocity and a cos θ of the centre in the ranges, and print their number.
+    """Return the cells with the mid-point velocity and the centre direction in the ranges, and print their number.
 
-    cos θ = v_z / |v| of the cell centre, and the z axis is the polar axis of the direction bins.
+    cos θ = v_z / |v| and ϕ = atan2(v_y, v_x) of the cell centre. The z axis is the polar axis of the direction bins.
     """
-    if vmin is None and vmax is None and costhetarange is None:
+    if vmin is None and vmax is None and directionrange is None:
         return dfestimators
     speedoflight_kmps = C_cm_per_s / km_to_cm
     dfselected = dfestimators.filter(
@@ -527,9 +528,9 @@ def select_cells_in_ranges(
             vmax=None if vmax is None else vmax[0] / speedoflight_kmps,
         )
     )
-    if costhetarange is not None:
-        dfselected = dfselected.filter(get_costheta_selection(costhetarange, dfestimators.columns))
-    boundstext = get_selection_bounds_text(vmin, vmax, costhetarange)
+    if directionrange is not None:
+        dfselected = dfselected.filter(get_cell_direction_selection(directionrange, dfestimators.columns))
+    boundstext = get_selection_bounds_text(vmin, vmax, directionrange)
     print_detail(
         f"{dfselected.height} of {dfestimators.height} cells with estimators are in the range with {boundstext}"
     )
@@ -542,12 +543,12 @@ def select_cells_in_ranges(
 def get_selection_bounds_text(
     vmin: tuple[float, t.Literal["kmps", "c"]] | None,
     vmax: tuple[float, t.Literal["kmps", "c"]] | None,
-    costhetarange: tuple[float, float] | None,
+    directionrange: CellDirectionRange | None,
 ) -> str:
-    """Return the bounds of the velocity and the cos θ of the selected cells, e.g. "vmin = 0.1c and 0.8 ≤ cos θ ≤ 1"."""
+    """Return the bounds of the velocity and the direction of the cells, e.g. "vmin = 0.1c and 0.8 ≤ cos θ ≤ 1"."""
     bounds = [get_velocity_bounds_text(vmin, vmax)] if vmin is not None or vmax is not None else []
-    if costhetarange is not None:
-        bounds.append(format_costheta_range(costhetarange))
+    if directionrange is not None:
+        bounds.append(format_cell_direction_range(directionrange))
     return " and ".join(bounds)
 
 
@@ -590,7 +591,7 @@ def get_cells_text(
     vmin: tuple[float, t.Literal["kmps", "c"]] | None,
     vmax: tuple[float, t.Literal["kmps", "c"]] | None,
     averagetemperaturetext: str | None = None,
-    costhetarange: tuple[float, float] | None = None,
+    directionrange: CellDirectionRange | None = None,
     cellaverage: str = "mean",
 ) -> str:
     """Return the text of the title that names the cells of the plot, with each velocity in the unit of the user.
@@ -599,7 +600,7 @@ def get_cells_text(
     """
     if modelgridindex is not None:
         return f"cell {modelgridindex}"
-    boundstext = get_selection_bounds_text(vmin, vmax, costhetarange)
+    boundstext = get_selection_bounds_text(vmin, vmax, directionrange)
     cellstext = f"the cells with {boundstext}" if boundstext else "all cells"
     if averagetemperaturetext is None:
         return f"mass-weighted {cellaverage} of {cellstext}"
@@ -640,7 +641,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             ),
         )
 
-    addarg_costhetarange(parser)
+    addarg_celldirectionrange(parser)
 
     # the command bins the opacities over the range of the plot, thus a smaller range takes less time
     addarg_axislimits(
@@ -732,12 +733,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     )
 
     temperaturecolumn = get_excitation_temperature_column(args.modelpath, args.exctemperature)
-    costhetarange = get_costheta_range(args)
+    directionrange = get_cell_direction_range(args)
     dfestimators = select_cells_in_ranges(
         get_cell_estimators(args.modelpath, timestep, modelgridindex, temperaturecolumn),
         args.vmin,
         args.vmax,
-        costhetarange,
+        directionrange,
     )
     averagetemperaturetext = None
     if args.averagecell and modelgridindex is None:
@@ -756,7 +757,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     # the frame takes one column of the page, thus the cells take a second line of the title
     cellstext = get_cells_text(
-        modelgridindex, args.vmin, args.vmax, averagetemperaturetext, costhetarange, args.cellaverage
+        modelgridindex, args.vmin, args.vmax, averagetemperaturetext, directionrange, args.cellaverage
     )
     title = f"{get_model_name(args.modelpath)} at {time_days:.1f}d (timestep {timestep})\n{cellstext}"
     windowbins = get_window_bins(args.movingaveragewidth, deltalambda)

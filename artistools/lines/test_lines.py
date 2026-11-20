@@ -1357,15 +1357,15 @@ def test_plotopacity_velocity_range_takes_the_cells_of_the_range(capsys: pytest.
         " with vmin = 0.1c and vmax = 0.2c" in (capsys.readouterr().out)
     )
 
-    # -costhetamin selects the cells near the pole at +z, and -dirbin 90 selects the same cells
+    # -costhetamin selects the cells near the pole at +z, and -dirbin 90 at each ϕ selects the same cells
     expectedpolar = set(
         dfvelocities.filter((pl.col("vel_r_mid_on_c") >= 0.1) & (pl.col("costheta") >= 0.8))["modelgridindex"]
     )
     assert 0 < len(expectedpolar) < len(set(dfestimators["modelgridindex"]))
-    for selectionargs in (["-costhetamin", "0.8"], ["-dirbin", "90"]):
+    for selectionargs in (["-costhetamin", "0.8"], ["-dirbin", "90", "--average-over-phi-angle"]):
         args = at.misc.parse_cli_args(at.lines.plotopacity.addargs, None, None, ["-vmin", "0.1c", *selectionargs])
-        costhetarange = at.misc.get_costheta_range(args)
-        dfpolarcells = at.lines.plotopacity.select_cells_in_ranges(dfestimators, args.vmin, args.vmax, costhetarange)
+        directionrange = at.misc.get_cell_direction_range(args)
+        dfpolarcells = at.lines.plotopacity.select_cells_in_ranges(dfestimators, args.vmin, args.vmax, directionrange)
         assert set(dfpolarcells["modelgridindex"]) == expectedpolar & set(dfestimators["modelgridindex"])
 
     args = at.misc.parse_cli_args(at.lines.plotopacity.addargs, None, None, ["-vmin", "0.1c", "-vmax", "60000km/s"])
