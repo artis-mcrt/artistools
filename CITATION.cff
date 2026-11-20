@@ -23,12 +23,10 @@ authors:
   - family-names: Leck
     given-names: Gerrit
 title: artistools
-version: 2026.11.10
-date-released: 2026-11-10
-doi: 10.5281/zenodo.7728326
+doi: 10.5281/zenodo.6418832
 license: MIT
 repository-code: 'https://github.com/artis-mcrt/artistools'
 abstract: >-
-  Artistools is collection of plotting, analysis, and file
-  format conversion tools for the ARTIS radiative transfer
+  Artistools is a collection of tools that plot data, analyse
+  data, and convert files for the ARTIS radiative transfer
   code.

@@ -1,20 +1,60 @@
 # artistools
 
-[![DOI](https://zenodo.org/badge/53433932.svg)](https://zenodo.org/badge/latestdoi/53433932)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.6418832.svg)](https://doi.org/10.5281/zenodo.6418832)
 [![PyPI - Version](https://img.shields.io/pypi/v/artistools)](https://pypi.org/project/artistools)
 [![License](https://img.shields.io/github/license/artis-mcrt/artistools)](https://github.com/artis-mcrt/artistools/blob/main/LICENSE.txt)
 
 [![Supported Python versions](https://img.shields.io/pypi/pyversions/artistools)](https://pypi.org/project/artistools/)
 [![Installation and pytest](https://github.com/artis-mcrt/artistools/actions/workflows/pytest.yml/badge.svg)](https://github.com/artis-mcrt/artistools/actions/workflows/pytest.yml)
 
-Artistools is collection of plotting, analysis, and file format conversion tools for the [ARTIS](https://github.com/artis-mcrt/artis) radiative transfer code.
+Artistools is a collection of tools that plot data, analyse data, and convert files for the [ARTIS](https://github.com/artis-mcrt/artis) radiative transfer code.
 
-The documentation is at [artistools.readthedocs.io](https://artistools.readthedocs.io). It gives [each command](https://artistools.readthedocs.io/en/latest/commands.html) and [some example outputs](https://artistools.readthedocs.io/en/latest/examples.html).
+The documentation is at [artistools.readthedocs.io](https://artistools.readthedocs.io). It gives:
+
+- [each command](https://artistools.readthedocs.io/en/latest/commands.html);
+- [some example outputs](https://artistools.readthedocs.io/en/latest/examples.html);
+- [the columns and the units of the data](https://artistools.readthedocs.io/en/latest/data.html);
+- [how to plot observed spectra and light curves](https://artistools.readthedocs.io/en/latest/reference-data.html);
+- [the caches and the common problems](https://artistools.readthedocs.io/en/latest/troubleshooting.html).
 
 ## Installation
 Requires Python >= 3.13. A free-threaded Python requires version 3.15 or later, e.g. Python 3.15t.
 
-The artistools command can be invoked with `uvx artistools` (after installing [uv](https://docs.astral.sh/uv/getting-started/installation/)), installed globally with `uv tool install artistools`, or installed into your environment with `pip install artistools`.
+Use one of these ways to get the artistools command:
+
+- `uvx artistools` runs it with no installation. It needs [uv](https://docs.astral.sh/uv/getting-started/installation/).
+- `uv tool install artistools` installs it for your user.
+- `pip install artistools` installs it into the active Python environment.
+
+Some features need the optional packages of `artistools[extras]`:
+
+- the windows of `--interactive` need PySide6;
+- `plotviewingangles` needs plotly;
+- `spencerfano` needs pynonthermal;
+- the 3D view of `plotinitialcomposition` needs pyvista.
+
+To install them, run `uv tool install 'artistools[extras]'` or `pip install 'artistools[extras]'`. Keep the quotes. Without them, zsh reads the square brackets as a pattern.
+
+A free-threaded Python cannot install `artistools[extras]`, because PySide6 has no wheels for it. On such a Python, install each other package that you need, e.g. `pip install plotly`. The windows of `--interactive` then do not work.
+
+To enable tab completion, run `artistools completions`. The command detects your shell and gives the steps for it.
+
+## Get started
+
+These steps use a model folder `mymodel`, which holds `input.txt` and the output files of ARTIS:
+
+1. `artistools describe mymodel` gives a summary of the model:
+   - the cells;
+   - the timesteps;
+   - the output files;
+   - the ions;
+   - the direction bins.
+2. `artistools check mymodel` tests the output files, e.g. for a run that stopped early.
+3. `artistools plotspectra -t 300 mymodel` writes the spectrum at 300 days to the file `plotspectra_<timemin>d-<timemax>d.pdf` in the working folder. `-o` gives a different file name.
+4. Give `--show` to show the figure in a window.
+5. Give `--interactive` to change the options of the plot in a window.
+6. Give `--print-data` to print the plotted data as a table (see [The plotted data as text](#the-plotted-data-as-text)).
+7. Give `--explain` to see what the arguments select, e.g. the timesteps of a time range. The command then stops and reads no data.
 
 ## Development (editable installation)
 For development, you will need [a rust compiler](https://www.rust-lang.org/tools/install) and a clone of the repository:
@@ -29,20 +69,26 @@ uv sync --all-extras
 uv run -- prek install
 ```
 
-`uv run -- artistools` then runs the command of the clone. To make the artistools command available outside the clone, also run `uv tool install --editable .[extras]`.
+`uv run -- artistools` then runs the command of the clone. To make the artistools command available outside the clone, also run `uv tool install --editable '.[extras]'`.
 
 Alternatively, to avoid uv and install into the system environment with pip:
 ```sh
-pip install --group dev --editable .[extras]
+pip install --group dev --editable '.[extras]'
 prek install
 ```
 
-To enable tab completion, run `artistools completions`. The command detects your shell and gives the
-steps for it.
-
 ## Citing artistools
 
-If you use artistools for a paper or a presentation, please cite it. For details, see [https://zenodo.org/badge/latestdoi/53433932](https://zenodo.org/badge/latestdoi/53433932).
+If you use artistools for a paper or a presentation, please cite it with the DOI [10.5281/zenodo.6418832](https://doi.org/10.5281/zenodo.6418832). This DOI names all the versions of artistools, and it always resolves to the latest version. `CITATION.cff` gives the authors.
+
+To get the BibTeX entry, use one of these ways:
+
+- On the [GitHub page of artistools](https://github.com/artis-mcrt/artistools), click "Cite this repository" in the "About" section. GitHub makes the BibTeX entry from `CITATION.cff`.
+- Run this command. doi.org then gives the BibTeX entry of the DOI.
+
+```sh
+curl -LH "Accept: application/x-bibtex" https://doi.org/10.5281/zenodo.6418832
+```
 
 ## Usage
 Run "artistools" (or the short alias "at") at the command-line to get a full list of subcommands, and "artistools --version" to check the installed version. Some common commands are:
@@ -71,8 +117,26 @@ These commands accept a model path of the form `host:path`, where `host` is a na
 
 - plotestimators and its `--interactive` viewer;
 - plotlightcurves and its `--interactive` viewer;
-- plotspectra and its `--interactive` viewer;
-- `at.scan_estimators` in a Python script.
+- plotspectra and its `--interactive` viewer.
+
+In a Python script, give such a path as `Path("host:path")`. Many readers then read the model on its host, e.g.:
+
+- the estimators and the times:
+  - `at.scan_estimators`;
+  - `at.get_timestep_times`;
+  - `at.get_timestep_of_timedays`;
+  - `at.misc.get_time_range`;
+- the input model and the parameters:
+  - `at.scan_modeldata`;
+  - `at.get_inputparams`;
+  - `at.get_composition_data`;
+  - `at.scan_deposition`;
+- `at.nltepops.read_nltepops`, which needs a `timestep` or a `modelgridindex` for a remote model;
+- `at.spectra.scan_spectra` and `at.spectra.scan_spectra_from_packets`;
+- `at.lightcurve.find_lightcurve_file`, `at.lightcurve.scan_lightcurve`, and `at.lightcurve.scan_lightcurve_from_packets`;
+- `at.packets.get_packets_column_names`, `at.misc.get_artis_options`, and `at.misc.get_artis_option`.
+
+A reader with no support for a remote model stops with an error.
 
 ```sh
 artistools plotspectra -t 300 vae26:~/scratch/mymodel
@@ -100,6 +164,8 @@ The environment of such a command must have the same version of polars as the cl
 
 artistools is mainly a set of commands, but a script or a notebook can call the same functions. `import artistools as at` gives a small set of names at the top level. Each package holds the other names, e.g. `at.spectra` and `at.inputmodel`.
 
+`uv tool install artistools` puts artistools in an environment of its own, thus the Python of a different environment cannot import it. `artistools python` prints the path of the Python of that environment. Run a script with that Python, e.g. `"$(artistools python)" myscript.py`. As an alternative, install artistools with pip into the environment of the script.
+
 ```python
 from pathlib import Path
 
@@ -110,10 +176,22 @@ modelpath = Path("mymodel")
 dfmodel, modelmeta = at.scan_modeldata(modelpath)
 times_days = at.get_timestep_times(modelpath, loc="mid")
 dftemperature = at.scan_estimators(modelpath).filter(pl.col("timestep") == 40).select("modelgridindex", "Te").collect()
-dfspectrum = at.spectra.scan_spectra(modelpath, timestepmin=40, timestepmax=45)[-1].collect()
+
+# get_time_range converts days to timesteps, and a range outside the model raises an error. Direction bin -1 is the
+# average over all directions, thus scan_spectra reads no spec_res.out
+timestepmin, timestepmax, _, _ = at.misc.get_time_range(modelpath, timedays_range_str="300-320")
+dfspectrum = at.spectra.scan_spectra(modelpath, timestepmin, timestepmax, directionbins=[-1])[-1].collect()
+
+# scan_lightcurve takes a file and not a model folder, thus find_lightcurve_file finds the file, e.g. a
+# compressed light_curve.out.zst
+dflightcurve = at.lightcurve.scan_lightcurve(at.lightcurve.find_lightcurve_file(modelpath))[-1].collect()
 ```
 
-A function with the prefix `scan_` returns a polars LazyFrame, or one LazyFrame for each direction bin. Call `.collect()` to get the data. A function with the prefix `read_` returns the data at once, e.g. a DataFrame or a dictionary. Each function with the prefix `get_` in the tables below returns its value at once, e.g. a number, a dictionary, or a DataFrame. The direction bin -1 is the average over all directions.
+The [data reference](https://artistools.readthedocs.io/en/latest/data.html) gives the columns and the units of the main readers.
+
+A function with the prefix `scan_` returns a polars LazyFrame, or a result that holds LazyFrames and sometimes other values. For example, `scan_modeldata` returns a LazyFrame and a dictionary of the model parameters, and `at.packets.scan_packets` returns the number of ranks and a LazyFrame. `at.spectra.scan_spectra` returns a dictionary with one LazyFrame for each direction bin. Call `.collect()` on a LazyFrame to get the data.
+
+A function with the prefix `read_` returns the data at once, e.g. a DataFrame or a dictionary. Each function with the prefix `get_` in the tables below returns its value at once, e.g. a number, a dictionary, or a DataFrame. The direction bin -1 is the average over all directions.
 
 Some of these functions had an older name, e.g. `get_modeldata` in place of `scan_modeldata`, and `read_spec` in place of `scan_spec`. A script can still call the old name, but each call gives a `DeprecationWarning` that names the new function. A later release will delete the old names.
 
