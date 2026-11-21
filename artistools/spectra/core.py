@@ -1204,7 +1204,11 @@ def get_vspecpol_bins_inside_vpkt_window(timemids: Sequence[float], vpkt_config:
     windowstart, windowend = float(vpkt_config["initial_time"]), float(vpkt_config["final_time"])
     edges = get_vspecpol_time_bin_edges(timemids)
     if edges is None:
-        return [index for index, timemid in enumerate(timemids) if windowstart <= timemid <= windowend]
+        print_warning(
+            "A file of the virtual packet spectra with one time bin gives no edges of that bin. The time window of"
+            " vpkt.txt can cut the bin, thus the command leaves it out"
+        )
+        return []
     # the file gives the middle times with 6 significant figures, thus a window edge on a bin edge must keep that bin
     relativetolerance = 1e-4
     return [

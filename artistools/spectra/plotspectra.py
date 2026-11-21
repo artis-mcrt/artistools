@@ -130,6 +130,7 @@ from artistools.spectra.core import get_no_sampled_emission_reason
 from artistools.spectra.core import get_reference_spectrum
 from artistools.spectra.core import get_shell_labels
 from artistools.spectra.core import get_spatial_scale_deltalogx
+from artistools.spectra.core import get_vspecpol_bins_inside_vpkt_window
 from artistools.spectra.core import get_vspecpol_time_bin_index
 from artistools.spectra.core import get_x_quantity_label
 from artistools.spectra.core import get_xy_spectrum
@@ -345,7 +346,15 @@ def plot_polarisation(args: argparse.Namespace) -> None:
             vspecpoltimemids, timeavg_float, timeavg_float, f"vspecpol_total-{angle}.out of {modelpath}"
         )
         # the time bins are logarithmic, thus the nearest middle time does not always give the bin that holds the time
-        timecolname = timearray[get_vspecpol_time_bin_index(vspecpoltimemids, timeavg_float, side="right")]
+        timebinindex = get_vspecpol_time_bin_index(vspecpoltimemids, timeavg_float, side="right")
+        if timebinindex not in get_vspecpol_bins_inside_vpkt_window(vspecpoltimemids, get_vpkt_config(modelpath)):
+            exit_with_error(
+                f"The time bin at {timearray[timebinindex]} days of vspecpol_total-{angle}.out of {modelpath} is not"
+                " fully inside the time window of vpkt.txt. ARTIS divides the flux of a bin by the full width of"
+                " the bin, thus the flux of this bin is too low",
+                "Select a time inside the time window of vpkt.txt",
+            )
+        timecolname = timearray[timebinindex]
     else:
         # specpol.out gives the middle time of each timestep, and timeavg is such a middle time
         timecolname = min(timearray, key=timedistance)

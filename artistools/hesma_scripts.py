@@ -125,6 +125,25 @@ def make_hesma_vspecfiles(modelpath: Path, outpath: Path | None = None) -> None:
             angle_name += f", opacity choice {opacchoiceindex}"
         angle_names.append(angle_name)
 
+    # a bin outside the window of vpkt.txt has no flux, and a bin across an edge has too low a flux. The test comes
+    # before the file opens, thus a stop leaves an existing file as it was
+    insidebintimes = []
+    for vspecindex, angle_name in zip(vspecindexes, angle_names, strict=True):
+        allbintimes = scan_vspecpol_data(vspecindex=vspecindex, modelpath=modelpath)["I"].collect_schema().names()[1:]
+        insidebins = get_vspecpol_bins_inside_vpkt_window([float(time) for time in allbintimes], vpkt_config)
+        if not insidebins:
+            exit_with_error(
+                f"No time bin of the virtual packets of {angle_name} lies fully inside the time window"
+                f" {vpkt_config['initial_time']} to {vpkt_config['final_time']} days of vpkt.txt",
+                "Make the time window of vpkt.txt wider than one time bin",
+            )
+        if len(insidebins) < len(allbintimes):
+            print_warning(
+                f"The file leaves out {len(allbintimes) - len(insidebins)} time bins of {angle_name}, because they"
+                " are not fully inside the time window of vpkt.txt"
+            )
+        insidebintimes.append([allbintimes[index] for index in insidebins])
+
     with (outpath / f"{modelname}_vspec_res.dat").open("w", encoding="utf-8") as fout:
         fout.write(
             f"# File contains spectra at observer angles {angle_names} for Model {modelname}.\n# A header line"
@@ -133,25 +152,9 @@ def make_hesma_vspecfiles(modelpath: Path, outpath: Path | None = None) -> None:
             "\n"
         )
 
-        for vspecindex, angle_name in zip(vspecindexes, angle_names, strict=True):
+        for vspecindex, angle_name, timearray in zip(vspecindexes, angle_names, insidebintimes, strict=True):
             print(angle_name)
             vspecdata = scan_vspecpol_data(vspecindex=vspecindex, modelpath=modelpath)["I"].collect()
-
-            # a bin outside the window of vpkt.txt has no flux, and a bin across an edge has too low a flux
-            allbintimes = vspecdata.columns[1:]
-            insidebins = get_vspecpol_bins_inside_vpkt_window([float(time) for time in allbintimes], vpkt_config)
-            timearray = [allbintimes[index] for index in insidebins]
-            if not timearray:
-                exit_with_error(
-                    f"No time bin of the virtual packets of {angle_name} lies fully inside the time window"
-                    f" {vpkt_config['initial_time']} to {vpkt_config['final_time']} days of vpkt.txt",
-                    "Make the time window of vpkt.txt wider than one time bin",
-                )
-            if len(timearray) < len(allbintimes):
-                print_warning(
-                    f"The file leaves out {len(allbintimes) - len(timearray)} time bins, because they are not fully"
-                    " inside the time window of vpkt.txt"
-                )
             vspecdata = (
                 vspecdata
                 .sort("nu", descending=True)
