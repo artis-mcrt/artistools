@@ -4853,6 +4853,7 @@ def test_ye_merge_and_version_2_writer_follow_the_rules_of_sn3d(tmp_path: Path) 
         ({"rho": [1e-12, float("nan")]}, "1 cells have a density that is not finite or is below 0"),
         ({"rho": [1e-12, -1e-12]}, "1 cells have a density that is not finite or is below 0"),
         ({"rho": [1e-12, float("inf")]}, "1 cells have a density that is not finite or is below 0"),
+        ({"X_Ni56": [0.5, float("inf")]}, "The columns X_Ni56 hold an infinite value in a cell with density"),
     ],
 )
 def test_version_2_writer_stops_for_a_value_that_the_reader_rejects(
@@ -4869,8 +4870,8 @@ def test_version_2_writer_stops_for_a_value_that_the_reader_rejects(
         "theta_edges_radians": [0.0, math.pi],
     }
     dfmodel = pl.DataFrame({"inputcellid": [0, 1], "rho": [1e-12, 1e-12]})
-    if "rho" in change:
-        dfmodel = dfmodel.with_columns(rho=pl.Series(change["rho"]))
+    if "rho" in change or "X_Ni56" in change:
+        dfmodel = dfmodel.with_columns(itertools.starmap(pl.Series, change.items()))
     else:
         modelmeta |= change
     with pytest.raises(ValueError, match=match):

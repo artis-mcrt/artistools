@@ -2217,6 +2217,15 @@ def save_modeldata(
                 " cell of format version 2 needs a finite density of 0 or more"
             )
             raise ValueError(msg)
+        # the writer gives a NaN mass fraction as 0, but no value can replace inf, and the reader stops for it
+        isinfinite = dfmodel.select((cs.starts_with("X_").is_infinite() & hasdensity).any())
+        infinitecolumns = [col for col in isinfinite.columns if isinfinite[col].item()]
+        if infinitecolumns:
+            msg = (
+                f"The columns {', '.join(infinitecolumns)} hold an infinite value in a cell with density. Each mass"
+                " fraction of format version 2 must be a finite number"
+            )
+            raise ValueError(msg)
         # an absent composition column holds zero in version 2. The writer gives a null and a NaN as zero
         compositioncols = [col for col in inputcols if col.startswith("X_")]
         isnonzero = dfmodel.select(
