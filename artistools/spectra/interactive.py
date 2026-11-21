@@ -60,6 +60,7 @@ from artistools.viewertools.core import get_nearest_range_start
 from artistools.viewertools.core import get_option_row_tokens
 from artistools.viewertools.core import get_option_tokens
 from artistools.viewertools.core import get_resized_range
+from artistools.viewertools.core import get_row_values
 from artistools.viewertools.core import get_stepped_range
 from artistools.viewertools.core import keep_figwidthscale
 from artistools.viewertools.core import make_command_tokens
@@ -344,7 +345,7 @@ def set_packet_type(values: ControlValues, *, gamma: bool) -> ControlValues:
     """
     xunit = get_default_xunit(gamma=gamma)
     xmin, xmax = get_default_xlimits(xunit, gamma=gamma)
-    return dc.replace(
+    newvalues = dc.replace(
         values,
         gamma=gamma,
         emissionevent="last" if gamma else values.emissionevent,
@@ -355,9 +356,10 @@ def set_packet_type(values: ControlValues, *, gamma: bool) -> ControlValues:
         ymin="",
         ymax="",
         groupby=None,
-        fixedionlist=(),
-        countfromlist=False,
     )
+    # the ion list of one packet type does not apply to the other. remove_series_lock also gives back the default
+    # count of the series in place of a count that came only from the length of the list
+    return remove_series_lock(newvalues)
 
 
 def has_gamma_spectrum(modelfolders: "Sequence[Path]") -> bool:
@@ -404,8 +406,13 @@ class TimestepGrid(t.NamedTuple):
     validtmids: tuple[float, ...]
     hasgammaspectrum: bool
     directionkinds: tuple[str, ...]
-    # the spectra and the time grid of the load
-    loadkey: tuple[tuple[str, ...], str]
+    # the spectra, the time grid, and --plotinvalidpart of the load
+    loadkey: tuple[tuple[str, ...], str, bool]
+
+
+def values_give_plotinvalidpart(values: ControlValues) -> bool:
+    """Return True if the option table of the values holds --plotinvalidpart."""
+    return get_row_values(values.otheroptions, "--plotinvalidpart") is not None
 
 
 def get_grid_selection(grid: TimestepGrid, values: ControlValues) -> tuple[int, int]:
@@ -675,7 +682,7 @@ def read_timestep_grid(spectra: "Sequence[str | Path]", timegrid: str, *, plotin
         hasgammaspectrum=has_gamma_spectrum(modelfolders),
         # the direction controls read the first model, e.g. for the observers of -plotvspecpol
         directionkinds=tuple(get_direction_kinds(modelfolders[0])),
-        loadkey=(tuple(str(path) for path in spectra), timegrid),
+        loadkey=(tuple(str(path) for path in spectra), timegrid, plotinvalidpart),
     )
 
 
@@ -812,17 +819,22 @@ class SpectrumViewer:
         self.drawndeltalogx: float | None = None
         self.deltalogxnote = ""
 
-    def load_models(self, spectra: "Sequence[str | Path]", timegrid: str = "") -> None:
+    def load_models(
+        self, spectra: "Sequence[str | Path]", timegrid: str = "", plotinvalidpart: bool | None = None
+    ) -> None:
         """Read the ARTIS models of the spectra again, and clear the results of the tests of the choices.
 
         The files of the model folders give the results of the tests of the choices, e.g. a new gamma_spec.out
-        after Reload Data. Thus each read of the model folders clears those results.
+        after Reload Data. Thus each read of the model folders clears those results. If plotinvalidpart is None, the
+        function takes --plotinvalidpart from the option table of the current values.
         """
         self.rejections.clear()
         self.autoreasons.clear()
+        if plotinvalidpart is None:
+            plotinvalidpart = values_give_plotinvalidpart(self.values)
         # the worker thread makes the command from the grid while the window reads the models again, e.g. for a new
         # model. One assignment of the complete grid keeps the grid of one load together
-        self.grid = read_timestep_grid(spectra, timegrid, plotinvalidpart=bool(self.args.plotinvalidpart))
+        self.grid = read_timestep_grid(spectra, timegrid, plotinvalidpart=plotinvalidpart)
 
     def snap(self, values: ControlValues, first: int, last: int) -> ControlValues:
         """Return the values for a time range from the middle of the first timestep to the middle of the last."""
@@ -1586,7 +1598,14 @@ def open_window(
     add_row(spectragrid, 2, [QtWidgets.QLabel("--frompackets"), datasourcebox])
 
     def on_option_rows(rows: OptionRows, undoable: bool = True) -> None:
-        apply(dc.replace(viewer.values, otheroptions=rows), undoable=undoable)
+        values = dc.replace(viewer.values, otheroptions=rows)
+        # --plotinvalidpart changes the valid timesteps of the time controls, and apply clamps the time to the grid
+        plotinvalidpart = values_give_plotinvalidpart(values)
+        if plotinvalidpart != viewer.grid.loadkey[2]:
+            viewer.load_models(values.spectra, values.timegrid, plotinvalidpart=plotinvalidpart)
+            if not values.notimeclamp:
+                values = viewer.snap(values, *get_grid_selection(viewer.grid, values))
+        apply(values, undoable=undoable)
 
     commandsections, figscalebox, show_figscale = add_command_sections_with_figscale(
         viewerwindow, viewer, helptexts, CONTROLLED_DESTS | TABLE_EXCLUDED_DESTS, on_option_rows
@@ -1674,7 +1693,7 @@ def open_window(
     # the time sliders have one position for each valid timestep, or SLIDER_STEPS positions for a continuous time
     slidermode: bool | None = None
     # the spectra and the time grid of the models that give the ranges of the time controls
-    shownmodels: tuple[tuple[str, ...], str] | None = None
+    shownmodels: tuple[tuple[str, ...], str, bool] | None = None
 
     def show_model_ranges() -> None:
         """Set the ranges of the time controls and the direction bins from the models of the plot, e.g. after Add Model.
@@ -1792,7 +1811,7 @@ def open_window(
         with blocked_signals(signalwidgets):
             values = viewer.values
             # Undo or a rejected change can give a different list of spectra, and its models have different times
-            if (values.spectra, values.timegrid) != viewer.grid.loadkey:
+            if (values.spectra, values.timegrid, values_give_plotinvalidpart(values)) != viewer.grid.loadkey:
                 viewer.load_models(values.spectra, values.timegrid)
             grid = viewer.grid
             if grid.loadkey != shownmodels:

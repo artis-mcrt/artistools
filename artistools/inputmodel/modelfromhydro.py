@@ -553,6 +553,8 @@ def makemodelfromgriddata(
         dfmodel=dfmodel,
         modelmeta=modelmeta,
         dfelabundances=None if hasabundancefile else dfelabundances,
+        # the overwrite prompt names the Ye.txt and the opacity.txt of an earlier model in the output folder
+        deletecellidfiles=True,
     )
 
 

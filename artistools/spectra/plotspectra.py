@@ -130,6 +130,8 @@ from artistools.spectra.core import get_no_sampled_emission_reason
 from artistools.spectra.core import get_reference_spectrum
 from artistools.spectra.core import get_shell_labels
 from artistools.spectra.core import get_spatial_scale_deltalogx
+from artistools.spectra.core import get_vspecpol_bins_inside_vpkt_window
+from artistools.spectra.core import get_vspecpol_time_bin_index
 from artistools.spectra.core import get_x_quantity_label
 from artistools.spectra.core import get_xy_spectrum
 from artistools.spectra.core import has_gamma_spec_file
@@ -332,20 +334,30 @@ def plot_polarisation(args: argparse.Namespace) -> None:
     assert timemax is not None
 
     timeavg_float = (timemin + timemax) / 2.0
-    if args.plotvspecpol:
-        # the time bins of the virtual packets differ from the timesteps, thus get_time_range does not test them
-        check_time_range_overlaps_time_bins(
-            [float(timestr) for timestr in timearray],
-            timeavg_float,
-            timeavg_float,
-            f"vspecpol_total-{angle}.out of {modelpath}",
-        )
 
     def timedistance(timestr: str) -> float:
         return abs(float(timestr) - timeavg_float)
 
     # select the column by the exact header string, because the file writes the times in its own format
-    timecolname = min(timearray, key=timedistance)
+    if args.plotvspecpol:
+        vspecpoltimemids = [float(timestr) for timestr in timearray]
+        # the time bins of the virtual packets differ from the timesteps, thus get_time_range does not test them
+        check_time_range_overlaps_time_bins(
+            vspecpoltimemids, timeavg_float, timeavg_float, f"vspecpol_total-{angle}.out of {modelpath}"
+        )
+        # the time bins are logarithmic, thus the nearest middle time does not always give the bin that holds the time
+        timebinindex = get_vspecpol_time_bin_index(vspecpoltimemids, timeavg_float, side="right")
+        if timebinindex not in get_vspecpol_bins_inside_vpkt_window(vspecpoltimemids, get_vpkt_config(modelpath)):
+            exit_with_error(
+                f"The time bin at {timearray[timebinindex]} days of vspecpol_total-{angle}.out of {modelpath} is not"
+                " fully inside the time window of vpkt.txt. ARTIS divides the flux of a bin by the full width of"
+                " the bin, thus the flux of this bin is too low",
+                "Select a time inside the time window of vpkt.txt",
+            )
+        timecolname = timearray[timebinindex]
+    else:
+        # specpol.out gives the middle time of each timestep, and timeavg is such a middle time
+        timecolname = min(timearray, key=timedistance)
     timeavg = f"{float(timecolname):.4f}"
 
     dfdrawn = get_polarisation_spectrum(stokes_params, timecolname, args)
@@ -1163,6 +1175,12 @@ def check_codecomparison_args(args: argparse.Namespace) -> None:
         exit_with_error(
             "A code comparison spectrum needs a time, and the command gives no time range",
             "Give --timedays (e.g. -t 300 or -t 290-320), or --timemin and --timemax",
+        )
+    if args.multispecplot:
+        # the code comparison branch draws one spectrum on the first panel, at the middle of all the epochs
+        exit_with_error(
+            "A code comparison spectrum gives one time, and --timedayslist gives a panel for each of several times",
+            "Remove --timedayslist, or plot the code comparison spectrum in a separate command for each time",
         )
     unsupported = [
         option

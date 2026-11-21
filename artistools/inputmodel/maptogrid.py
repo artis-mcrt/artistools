@@ -267,8 +267,8 @@ def map_particles_to_spherical_grid(
     outputfolderpath: Path,
     dfparticles: pl.DataFrame,
     gridshape: tuple[int, int, int],
-    r_outer: float,
-    dtextra: float,
+    r_outer_geomunits: float,
+    dtextra_geomunits: float,
     logprint: Callable[..., None],
     normalisekernelweights: bool = False,
 ) -> None:
@@ -277,10 +277,11 @@ def map_particles_to_spherical_grid(
     dfparticles holds the columns id, x, y, z, h, pmass, mass, and ye of the particles, with the smoothing length
     after the option of --modifysmoothinglength. mass is pmass * rho / rho_rst, which is the mass that the particle
     gives to the density field. gridshape gives the cell counts n_r, n_theta, and n_phi. get_spherical_deposit
-    describes the default method and the method of normalisekernelweights. The cell ids of both files start at 0, as
+    describes the default method and the method of normalisekernelweights. r_outer_geomunits and dtextra_geomunits are
+    in the geometric units of the SPH code (G = c = Msun = 1). The cell ids of both files start at 0, as
     format version 2 of model.txt needs. The files of a Cartesian map have cell ids from 1.
     """
-    edges = get_spherical_grid_edges(r_outer, *gridshape)
+    edges = get_spherical_grid_edges(r_outer_geomunits, *gridshape)
     volumes = get_spherical_cell_volumes(*edges)
     ncells = volumes.size
     logprint(
@@ -289,7 +290,8 @@ def map_particles_to_spherical_grid(
     )
     logprint(
         f"Grid: n_r x n_theta x n_phi = {' x '.join(str(count) for count in gridshape)} = {ncells} cells. The radial"
-        f" edges are uniform from 0 to {r_outer}. The polar edges are uniform in cos(theta), thus the cells of one"
+        f" edges are uniform from 0 to {r_outer_geomunits} (geometric units). The polar edges are uniform in"
+        " cos(theta), thus the cells of one"
         " shell have equal volumes. The azimuthal edges are uniform"
     )
     if normalisekernelweights:
@@ -320,7 +322,7 @@ def map_particles_to_spherical_grid(
         position, dfparticles["h"].to_numpy(), particlemass, edges, get_wij(), normalisekernelweights
     )
 
-    isinside = np.sqrt(np.sum(position**2, axis=1)) <= r_outer
+    isinside = np.sqrt(np.sum(position**2, axis=1)) <= r_outer_geomunits
     hasnocellinkernel = isinside & ~(weightsums > 0.0)
     logprint(
         f"Particles inside the outer radius: {np.count_nonzero(isinside)} of {len(weightsums)}, with the mass"
@@ -376,7 +378,9 @@ def map_particles_to_spherical_grid(
 
     with Path(outputfolderpath, SPHERICAL_GRID_FILE_NAME).open("w", encoding="utf-8") as fgrid:
         fgrid.write("coordinates spherical3d\n")
-        fgrid.write(f"dtextra_geomunits {dtextra} # extra time after explosion simulation ended (in geom units)\n")
+        fgrid.write(
+            f"dtextra_geomunits {dtextra_geomunits} # extra time after explosion simulation ended (in geom units)\n"
+        )
         fgrid.writelines(
             f"{key} {' '.join(f'{edge:.17g}' for edge in axisedges.tolist())}\n"
             for key, axisedges in zip(SPHERICAL_GRIDDAT_EDGE_KEYS, edges, strict=True)
@@ -534,8 +538,8 @@ def maptogrid(
                 ye="ye",
             ),
             sphericalgridshape,
-            r_outer=setgrid_fractionrmax * rmax,
-            dtextra=dtextra,
+            r_outer_geomunits=setgrid_fractionrmax * rmax,
+            dtextra_geomunits=dtextra,
             logprint=logprint,
             normalisekernelweights=normalisekernelweights,
         )

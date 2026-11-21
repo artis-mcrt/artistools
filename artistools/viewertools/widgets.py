@@ -25,6 +25,7 @@ from artistools.viewertools.core import get_helptexts
 from artistools.viewertools.core import get_option_kind
 from artistools.viewertools.core import get_slider_handle_position
 from artistools.viewertools.core import get_table_actions
+from artistools.viewertools.core import option_accumulates
 from artistools.viewertools.core import OptionRows
 
 if t.TYPE_CHECKING:
@@ -1230,6 +1231,18 @@ def make_option_table(
         """
         oldflag = optionrows[row][0] if row < len(optionrows) else ""
         if flag == oldflag or (flag and flag not in actionsbyflag):
+            return
+        existingrow = next(
+            (index for index, (rowflag, _) in enumerate(optionrows) if rowflag == flag and index != row), None
+        )
+        if existingrow is not None and not option_accumulates(actionsbyflag[flag]):
+            # argparse keeps only the values of the last flag of such an option, thus a second row hides the first
+            if row < len(optionrows):
+                del optionrows[row]
+                existingrow -= int(row < existingrow)
+            show_option_rows()
+            optiontable.selectRow(existingrow)
+            on_rows(get_complete_rows())
             return
         if not flag:
             del optionrows[row]

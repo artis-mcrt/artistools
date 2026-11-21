@@ -168,8 +168,37 @@ def fatal_config_error(config: VpktConfig) -> str | None:
             )
         if not config.vgrid_lambda_ranges:
             return "The velocity grid map needs at least one wavelength range"
+        # read_vpktparameterfile() stops for a velocity grid map outside the virtual spectra (ARTIS #667)
+        if config.override_tminmax and not (
+            config.vspec_tmin_in_days <= config.tmin_vgrid_in_days
+            and config.tmax_vgrid_in_days <= config.vspec_tmax_in_days
+        ):
+            return (
+                f"The time range [{fmtnum(config.tmin_vgrid_in_days)}, {fmtnum(config.tmax_vgrid_in_days)}] d of the"
+                " velocity grid map must be inside the time window"
+                f" [{fmtnum(config.vspec_tmin_in_days)}, {fmtnum(config.vspec_tmax_in_days)}] d of the virtual spectra"
+            )
+        if config.custom_lambda_ranges:
+            for gridrange in config.vgrid_lambda_ranges:
+                if not lambda_range_is_covered(gridrange, config.custom_lambda_ranges):
+                    return (
+                        f"The wavelength range [{fmtnum(gridrange[0])}, {fmtnum(gridrange[1])}] A of the velocity"
+                        " grid map must be inside the wavelength ranges of the virtual spectra"
+                    )
 
     return None
+
+
+def lambda_range_is_covered(lambdarange: tuple[float, float], coveringranges: list[tuple[float, float]]) -> bool:
+    """Return True if the union of coveringranges holds lambdarange, as nu_interval_is_in_spectrum_ranges of vpkt.cc.
+
+    Two ranges that touch cover their common edge.
+    """
+    coveredupto, lambdamax = lambdarange
+    for rangemin, rangemax in sorted(coveringranges):
+        if rangemin <= coveredupto:
+            coveredupto = max(coveredupto, rangemax)
+    return coveredupto >= lambdamax
 
 
 def check_config(config: VpktConfig) -> list[str]:
@@ -194,6 +223,31 @@ def check_config(config: VpktConfig) -> list[str]:
                 f" [{fmtnum(ARTIS_VSPEC_LAMBDAMIN_ANGSTROMS)}, {fmtnum(ARTIS_VSPEC_LAMBDAMAX_ANGSTROMS)}] A"
                 " set by VSPEC_NUMIN/VSPEC_NUMAX in vpkt.h"
             )
+
+    # with no override or no custom ranges, sn3d tests the velocity grid map against the constants of vpkt.h
+    if (
+        config.vgrid_on
+        and not config.override_tminmax
+        and not (
+            ARTIS_VSPEC_TIMEMIN_DAYS
+            <= config.tmin_vgrid_in_days
+            <= config.tmax_vgrid_in_days
+            <= ARTIS_VSPEC_TIMEMAX_DAYS
+        )
+    ):
+        warnings.append(
+            f"time range [{fmtnum(config.tmin_vgrid_in_days)}, {fmtnum(config.tmax_vgrid_in_days)}] d of the velocity"
+            f" grid map is outside the default time window [{fmtnum(ARTIS_VSPEC_TIMEMIN_DAYS)},"
+            f" {fmtnum(ARTIS_VSPEC_TIMEMAX_DAYS)}] d of vpkt.h, and sn3d of such a build stops for it"
+        )
+    if config.vgrid_on and not config.custom_lambda_ranges:
+        for lambdamin, lambdamax in config.vgrid_lambda_ranges:
+            if not ARTIS_VSPEC_LAMBDAMIN_ANGSTROMS <= lambdamin < lambdamax <= ARTIS_VSPEC_LAMBDAMAX_ANGSTROMS:
+                warnings.append(
+                    f"wavelength range [{fmtnum(lambdamin)}, {fmtnum(lambdamax)}] A of the velocity grid map is"
+                    f" outside the default wavelength range [{fmtnum(ARTIS_VSPEC_LAMBDAMIN_ANGSTROMS)},"
+                    f" {fmtnum(ARTIS_VSPEC_LAMBDAMAX_ANGSTROMS)}] A of vpkt.h, and sn3d of such a build stops for it"
+                )
 
     return warnings
 

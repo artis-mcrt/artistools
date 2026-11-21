@@ -21,6 +21,7 @@ from artistools.constants import geometric_time_to_s
 from artistools.constants import Msun_to_g
 from artistools.estimators import scan_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
+from artistools.inputmodel import get_model_input_folder
 from artistools.inputmodel import scan_modeldata
 from artistools.inputmodel.modelfromhydro import get_merger_time_geomunits
 from artistools.inputmodel.rprocess_from_trajectory import check_traj_time_matches
@@ -654,8 +655,11 @@ def get_dfcontribsparticledata(
     t_mergertime_s = mergertime_geomunits * geometric_time_to_s
     arr_time_gsi_s_incpremerger = np.array(arr_time_gsi_days) * day_to_s + t_mergertime_s
 
-    # the cell ids of gridcontributions.txt are those of model.txt, which start at 1, or at 0 in format version 2
-    dfpartcontrib = (get_gridparticlecontributions(modelpath).lazy().filter(pl.col("frac_of_cellmass") > 0)).join(
+    # the cell ids of gridcontributions.txt are those of model.txt, which start at 1, or at 0 in format version 2. The
+    # file is beside the model.txt that scan_modeldata reads, which can be in a subfolder of the folder of the model
+    # path
+    dfgridcontributions = get_gridparticlecontributions(get_model_input_folder(modelpath))
+    dfpartcontrib = (dfgridcontributions.lazy().filter(pl.col("frac_of_cellmass") > 0)).join(
         lzdfmodel.select(["inputcellid", "modelgridindex", "cellmass_on_mtot"]),
         left_on="cellindex",
         right_on="inputcellid",

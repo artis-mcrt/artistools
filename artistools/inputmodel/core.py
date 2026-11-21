@@ -1361,6 +1361,18 @@ def get_spherical_cell_index_of_velocities(
     return np.where(index_r < ncoordgridr, cellindex, -1).astype(np.int64)
 
 
+def get_spherical_slice_velocity_cmps(slicevelocity_cmps: float, vmax_cmps: float) -> float:
+    """Return the position of the plane of a slice of a spherical model, 1e-6 vmax above the given plane [cm/s].
+
+    Each point of the image lies on the plane, and a cell holds its lower edge. Thus a plane on a cell edge took the
+    cells of a different side in each half of the image. The plane above takes the cells on the positive side. A
+    slice of a Cartesian model also takes the layer above a plane between two layers. A plane less than 1e-6 vmax
+    below vmax stays, because the plane above is outside the model.
+    """
+    planeabove_cmps = slicevelocity_cmps + 1.0e-6 * vmax_cmps
+    return planeabove_cmps if planeabove_cmps < vmax_cmps else slicevelocity_cmps
+
+
 def get_spherical_image_cell_indices(
     modelmeta: "Mapping[str, t.Any]", sliceaxis: str | None, slicevelocity_cmps: float = 0.0
 ) -> "npt.NDArray[np.int64]":
@@ -1963,18 +1975,31 @@ def with_rho_of_1d_model(dfmodel: pl.DataFrame) -> pl.DataFrame:
     A version 2 file holds rho in place of logrho.
 
     A version 1 file gives logrho only. A dataframe can hold both columns, e.g. from a version 2 file. The function
-    then stops if they do not agree, because it cannot know which column a caller changed.
+    then stops if they do not agree (see require_agreement_of_rho_and_logrho).
     """
     if "rho" not in dfmodel.columns:
         return dfmodel.with_columns(rho=RHO_FROM_LOGRHO.cast(pl.Float32))
-    maxlogdifference = dfmodel.select((LOGRHO_FROM_RHO - pl.col("logrho")).abs().max()).item()
+    require_agreement_of_rho_and_logrho(dfmodel)
+    return dfmodel
+
+
+def require_agreement_of_rho_and_logrho(dfmodel: pl.DataFrame) -> None:
+    """Stop if the dataframe of a 1D model holds rho and logrho, and the two columns do not agree.
+
+    A dataframe can hold both columns, e.g. from a version 2 file. A writer reads one of them, and it cannot know
+    which column a caller changed. An empty cell agrees if rho is 0 and logrho is -98 or less.
+    """
+    if "rho" not in dfmodel.columns or "logrho" not in dfmodel.columns:
+        return
+    isemptyinboth = (pl.col("rho") == 0.0) & (pl.col("logrho") <= -98.0)
+    logdifference = pl.when(isemptyinboth).then(0.0).otherwise((LOGRHO_FROM_RHO - pl.col("logrho")).abs())
+    maxlogdifference = dfmodel.select(logdifference.max()).item()
     if maxlogdifference is not None and maxlogdifference > 1e-4:
         msg = (
             f"The columns rho and logrho of the 1D model do not agree: log10(rho) and logrho have a difference of up"
             f" to {maxlogdifference:.3g}. Change both columns, or drop one of them"
         )
         raise ValueError(msg)
-    return dfmodel
 
 
 def with_cell_ids_from_zero(
@@ -2025,6 +2050,7 @@ def save_modeldata(
     modelmeta: dict[str, t.Any] | None = None,
     extracols: Sequence[str] = (),
     dfelabundances: pl.DataFrame | pl.LazyFrame | None = None,
+    deletecellidfiles: bool = False,
     **kwargs: t.Any,
 ) -> None:
     """Write model.txt, a snapshot of the density and the composition, from the cell properties and the metadata.
@@ -2097,8 +2123,13 @@ def save_modeldata(
     in each cell. Thus the function writes one of these columns only if it is not zero in a cell with density.
 
     A version 2 model has no Ye.txt, because the column Ye of model.txt gives the electron fraction. It also has no
-    opacity.txt, which sn3d does not read. The function deletes a Ye.txt and an opacity.txt of the output folder
-    when it writes a version 2 file. It does not change these two files when it writes a version 1 file.
+    opacity.txt, which sn3d does not read. When the function writes a version 2 file named model.txt, it stops for a
+    Ye.txt or an opacity.txt of the output folder. Such a file can hold the only copy of its values.
+
+    Give deletecellidfiles=True to delete these files. Give it after a merge of Ye.txt (see with_ye_of_yefile). Also
+    give it when the user agreed to replace the files of an earlier model. The function does not change these two
+    files when it writes a version 1 file. It also does not change them when it writes a file with a different name
+    (e.g. model_alt.txt), which is not the model of the folder.
 
     A version 2 model has no abundances.txt. sn3d takes the mass fraction of an element as the sum of its nuclide
     columns and of its column X_<element>_otherstable, e.g. X_Ni56 + X_Ni58 + X_Ni_otherstable. Give dfelabundances
@@ -2157,12 +2188,25 @@ def save_modeldata(
         colnames = [*colnames, "inputcellid"]
 
     outputfolder = resolve_outputfile(outpath, "model.txt").parent
-    # sn3d reads the files beside model.txt. A file with a different name, e.g. model_v2.txt, keeps them for the
-    # model.txt of its folder
-    writesmodelfile = without_compressed_extension(resolve_outputfile(outpath, "model.txt")).name == "model.txt"
+    # sn3d reads the abundances.txt and the Ye.txt beside model.txt. A file with a different name, e.g.
+    # model_alt.txt, is a different model, thus its write leaves these files of the folder as they are
+    writesmodeltxt = without_compressed_extension(resolve_outputfile(outpath, "model.txt")).name == "model.txt"
     oldabundancefiles = [
-        path for path in get_file_copies(outputfolder / "abundances.txt") if writesmodelfile and path.is_file()
+        path for path in get_file_copies(outputfolder / "abundances.txt") if writesmodeltxt and path.is_file()
     ]
+    oldcellidfiles = [
+        path
+        for filename in CELL_ID_FILE_NAMES
+        for path in get_file_copies(outputfolder / filename)
+        if formatversion == 2 and writesmodeltxt and path.is_file()
+    ]
+    if oldcellidfiles and not deletecellidfiles:
+        msg = (
+            f"{oldcellidfiles[0]} gives values of the cells, and a model of format version 2 has no such file. Merge"
+            " the values of Ye.txt with with_ye_of_yefile. Then give deletecellidfiles=True. As an alternative, delete"
+            " the file"
+        )
+        raise ValueError(msg)
     if formatversion == 2:
         if dfelabundances is not None:
             dfmodel = with_otherstable_columns(dfmodel.lazy().collect(), dfelabundances.lazy().collect())
@@ -2201,6 +2245,9 @@ def save_modeldata(
     )
     version2keylines: list[str] = []
     hasdensity = pl.col("rho") > 0
+    if coordinates == "spherical1d" and formatversion == 1:
+        # the writer of version 1 reads logrho alone, thus logrho must agree with a changed rho
+        require_agreement_of_rho_and_logrho(dfmodel)
     if formatversion == 2:
         dfmodel = dfmodel.sort("inputcellid")
         if coordinates not in SPHERICAL_EDGE_COORDINATES:
@@ -2370,12 +2417,9 @@ def save_modeldata(
             oldabundancefile.unlink()
             remove_parquet_cache(oldabundancefile)
             print(f"Deleted {oldabundancefile}, because the model.txt of format version 2 gives the element masses")
-    if formatversion == 2 and writesmodelfile:
-        for filename in CELL_ID_FILE_NAMES:
-            for oldcellfile in get_file_copies(outputfolder / filename):
-                if oldcellfile.is_file():
-                    oldcellfile.unlink()
-                    print(f"Deleted {oldcellfile}, because a model of format version 2 has no {filename}")
+    for oldcellfile in oldcellidfiles:
+        oldcellfile.unlink()
+        print(f"Deleted {oldcellfile}, because a model of format version 2 has no such file")
     print_detail(f"Took {time.perf_counter() - timestart:.1f} seconds")
 
 

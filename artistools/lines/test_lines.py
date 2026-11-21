@@ -1528,3 +1528,40 @@ def test_opacity_lines_name_an_ion_with_no_transition_table() -> None:
     adata = adata.with_columns(pl.Series("transitions", [pl.LazyFrame() for _ in range(adata.height)], dtype=pl.Object))
     with pytest.raises(ValueError, match=r"transitiondata\.txt holds no table for Fe_II"):
         at.lines.core.get_opacity_lines(adata, ["nnion_Fe_II"], [3000.0, 4000.0], 10.0)
+
+
+def test_line_with_two_rows_in_transitiondata_has_the_opacity_of_one_line(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ARTIS merges the rows of one pair of levels into one line with the sum of their A values.
+
+    Each row was a line of its own with a part of the optical depth. Thus the expansion opacity of an optically
+    thick line was up to n times too large for n rows. Here each line has two rows with half of its A value.
+    """
+    timestep = 40
+    time_days = at.get_timestep_times(modelpath)[timestep]
+    dfcell = at.lines.core.get_cell_estimators(modelpath, timestep, None, "Te")
+    edges = at.lines.core.get_lambda_bin_edges(3000.0, 4000.0, 20.0)
+
+    def get_exopac() -> npt.NDArray[np.float64]:
+        lines = at.lines.core.get_opacity_lines(
+            at.lines.core.get_opacity_atomic_data(modelpath), dfcell.columns, edges, time_days
+        )
+        return at.lines.core.get_expansion_opacities(lines, dfcell, edges, time_days)["exopac"].to_numpy()
+
+    exopac_onerow = get_exopac()
+    get_levels = at.lines.core.get_levels
+
+    def get_levels_with_two_rows_per_line(*args: t.Any, **kwargs: t.Any) -> pl.DataFrame:
+        adata = get_levels(*args, **kwargs)
+        splittransitions = []
+        for dftransitions in adata["transitions"]:
+            lztransitions = dftransitions.lazy()
+            if "A" in lztransitions.collect_schema().names():
+                halfrows = lztransitions.with_columns(pl.col("A") / 2)
+                lztransitions = pl.concat([halfrows, halfrows])
+            splittransitions.append(lztransitions)
+        return adata.with_columns(pl.Series("transitions", splittransitions, dtype=pl.Object))
+
+    monkeypatch.setattr(at.lines.core, "get_levels", get_levels_with_two_rows_per_line)
+    exopac_tworows = get_exopac()
+    assert exopac_onerow.max() > 0.0
+    assert np.allclose(exopac_tworows, exopac_onerow, rtol=1e-6, atol=0.0)

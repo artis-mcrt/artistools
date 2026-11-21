@@ -10,6 +10,7 @@ from collections.abc import Mapping
 from collections.abc import Sequence
 from contextlib import suppress
 from functools import lru_cache
+from functools import partial
 from pathlib import Path
 from types import MappingProxyType
 
@@ -49,6 +50,7 @@ from artistools.misc import get_average_group_dirbins
 from artistools.misc import get_bin_index_expr
 from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_dirbins
+from artistools.misc import get_file_copies
 from artistools.misc import get_file_state
 from artistools.misc import get_grid_max_radial_velocity_cmps
 from artistools.misc import get_metadata_path
@@ -60,7 +62,6 @@ from artistools.misc import get_nu_grid
 from artistools.misc import get_timestep_times
 from artistools.misc import get_vpkt_config
 from artistools.misc import get_xunit
-from artistools.misc import match_closest_time
 from artistools.misc import modelpath_cache
 from artistools.misc import on_model_host
 from artistools.misc import parse_metadata_redshift
@@ -77,10 +78,12 @@ from artistools.misc import read_wsv
 from artistools.misc import resolve_modelpath
 from artistools.misc import split_multitable_dataframe
 from artistools.misc import warn_direction_bin_noise
+from artistools.misc import write_file_atomic
 from artistools.misc import XUnit
 from artistools.packets import filter_packets_dirbin
 from artistools.packets import get_emission_velocity_expr
 from artistools.packets import get_emission_velocity_lineofsight_expr
+from artistools.packets import get_escape_time_cmf_days_expr
 from artistools.packets import get_modelgridindex_expr
 from artistools.packets import get_modelgridindex_from_velocity_expr
 from artistools.packets import get_packets_column_names
@@ -478,22 +481,8 @@ def select_dirbins(alldirbins: list[int], requested: Sequence[int] | None) -> li
     return list(requested)
 
 
-@modelpath_cache(maxsize=16)
-def get_escape_surface_gamma(modelpath: Path) -> float:
-    """Return sqrt(1 - beta^2) at the outer model boundary, which is the inverse of the Lorentz factor.
-
-    The cache takes the absolute path, thus a change of the working folder gives the new model.
-    """
-    from artistools.inputmodel import scan_modeldata
-
-    _, modelmeta = scan_modeldata(modelpath, printwarningsonly=True)
-    vmax_beta = float(modelmeta["vmax_cmps"]) / C_cm_per_s
-    return math.sqrt(1 - vmax_beta**2)
-
-
 def filter_packets_by_time(
     dfpackets: pl.LazyFrame,
-    modelpath: Path | str,
     timelowdays: float,
     timehighdays: float,
     use_time: t.Literal["arrival", "emission", "escape"],
@@ -504,10 +493,11 @@ def filter_packets_by_time(
         return dfpackets.filter(pl.col("t_arrive_d").is_between(timelowdays, timehighdays))
 
     if use_time == "escape":
-        escapesurfacegamma = get_escape_surface_gamma(modelpath)
-        return dfpackets.filter(
-            (pl.col("escape_time") * escapesurfacegamma / day_to_s).is_between(timelowdays, timehighdays)
+        print(
+            "  The escape time of each packet is its comoving-frame time sqrt(t_esc^2 - r^2 / c^2) at its escape"
+            " position r, as ARTIS bins its comoving light curve (spectrum_lightcurve.cc)"
         )
+        return dfpackets.filter(get_escape_time_cmf_days_expr().is_between(timelowdays, timehighdays))
 
     col_emit_time = "tdecay" if gamma else "em_time"
     mean_correction = (pl.col(col_emit_time) - pl.col("t_arrive_d") * day_to_s).mean()
@@ -625,9 +615,9 @@ def scan_spectra_from_packets(
     else:
         alldirbins = [-1, *get_dirbins(average_over_phi=average_over_phi, average_over_theta=average_over_theta)]
         energy_column = "e_cmf" if use_time == "escape" else "e_rf"
-        dfpackets = filter_packets_by_time(
-            dfpackets, modelpath, timelowdays, timehighdays, use_time, gamma
-        ).with_columns(lambda_angstroms_rf=constants.c_ang_per_s / pl.col("nu_rf"))
+        dfpackets = filter_packets_by_time(dfpackets, timelowdays, timehighdays, use_time, gamma).with_columns(
+            lambda_angstroms_rf=constants.c_ang_per_s / pl.col("nu_rf")
+        )
 
         dirbinsums = sum_packets_by_dirbin(
             dfpackets,
@@ -955,10 +945,7 @@ def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
     # one running sum for each observer, thus the frames of every rank do not stay in memory together
     fluxsum_of_spec: dict[int, npt.NDArray[np.floating]] = {}
     firstrank_of_spec: dict[int, pl.DataFrame] = {}
-    for mpirank in range(nprocs):
-        vspecpolpath = firstexisting(
-            [f"vspecpol_{mpirank:04d}.out", f"vspecpol_{mpirank}-0.out"], folder=modelpath, tryzipped=True
-        )
+    for mpirank, vspecpolpath in enumerate(get_vspecpol_rank_files(modelpath)):
         print(f"Reading rank {mpirank} filename {vspecpolpath}")
 
         vspecpol_data_alldirs = drop_trailing_null_column(
@@ -984,8 +971,34 @@ def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
         dfvspecpol = pl.concat([dffirst[0], dfflux])
 
         outfile = Path(modelpath, f"vspecpol_total-{spec_index}.out")
-        dfvspecpol.write_csv(outfile, separator=" ", include_header=False)
+        # a write that stops early must not leave a short file, which a later read takes with no error
+        write_file_atomic(outfile, partial(dfvspecpol.write_csv, separator=" ", include_header=False))
+        for oldfile in get_file_copies(outfile):
+            if oldfile != outfile and oldfile.is_file():
+                oldfile.unlink()
         print_saved(outfile)
+
+
+def get_vspecpol_rank_files(modelpath: Path | str) -> list[Path]:
+    """Return the file of the virtual packet spectra of each MPI rank, which make_virtual_spectra_summed_file sums."""
+    return [
+        firstexisting([f"vspecpol_{mpirank:04d}.out", f"vspecpol_{mpirank}-0.out"], folder=modelpath, tryzipped=True)
+        for mpirank in range(get_nprocs(Path(modelpath)))
+    ]
+
+
+def vspecpol_total_is_older_than_its_rank_files(modelpath: Path, totalfile: Path) -> bool:
+    """Return True if a rank file of the virtual packet spectra is newer than a vspecpol_total file.
+
+    A continued run, e.g. after an increase of timestep_finish, writes the rank files again. The old sum then has no
+    flux after the first stop. A model folder with no rank files, e.g. a copy with the totals alone, keeps them.
+    """
+    try:
+        rankfiles = get_vspecpol_rank_files(modelpath)
+    except (FileNotFoundError, IndexError, ValueError):
+        return False
+    totalmtime = totalfile.stat().st_mtime
+    return any(rankfile.stat().st_mtime > totalmtime for rankfile in rankfiles)
 
 
 def make_averaged_vspecfiles(modelpaths: Sequence[Path]) -> None:
@@ -1113,12 +1126,19 @@ def scan_vspecpol_data(modelpath: Path, vspecindex: int) -> dict[str, pl.LazyFra
     """
     # alternatively use f'vspecpol_averaged-{angle}.out' ?
 
-    try:
-        specfilename = firstexisting(f"vspecpol_total-{vspecindex}.out", folder=modelpath, tryzipped=True)
-    except FileNotFoundError:
-        print(f"vspecpol_total-{vspecindex}.out does not exist. Generating all-rank summed vspec files..")
+    # the totals are in the model folder. A subfolder can hold the totals of a different model
+    totalname = f"vspecpol_total-{vspecindex}.out"
+    specfilename = firstexisting_or_none(totalname, folder=modelpath, tryzipped=True, search_subfolders=False)
+    if specfilename is None:
+        print(f"{totalname} does not exist. Generating all-rank summed vspec files..")
         make_virtual_spectra_summed_file(modelpath=modelpath)
-        specfilename = firstexisting(f"vspecpol_total-{vspecindex}.out", folder=modelpath, tryzipped=True)
+    elif vspecpol_total_is_older_than_its_rank_files(Path(modelpath), specfilename):
+        print_warning(
+            f"{specfilename} is older than a rank file of the virtual packets,"
+            " thus the command sums the rank files again"
+        )
+        make_virtual_spectra_summed_file(modelpath=modelpath)
+    specfilename = firstexisting(totalname, folder=modelpath, tryzipped=True, search_subfolders=False)
 
     print(f"Reading {specfilename}")
     specdata = pl.read_csv(polars_source(specfilename), separator=" ", has_header=True, glob=False)
@@ -1143,21 +1163,77 @@ def split_dataframe_stokesparams(specdata: pl.DataFrame | pl.LazyFrame) -> dict[
     }
 
 
+def get_vspecpol_time_bin_edges(timemids: Sequence[float]) -> npt.NDArray[np.float64] | None:
+    """Return the edges of the time bins of the virtual packet spectra [d], from the middle times of the bins.
+
+    ARTIS gives the virtual packet spectra logarithmic time bins, and the file gives the arithmetic middle of each bin
+    (vpkt.cc). A bin from t to r t has the middle t (1 + r) / 2, which is above its geometric centre. Thus the
+    nearest middle time does not always give the bin that holds a time. One middle time gives no ratio r, and the
+    function then gives None.
+    """
+    if len(timemids) < 2:
+        return None
+    middletimes = np.asarray(timemids, dtype=np.float64)
+    ratio = (middletimes[-1] / middletimes[0]) ** (1.0 / (len(middletimes) - 1))
+    loweredges = 2.0 * middletimes / (1.0 + ratio)
+    return np.append(loweredges, loweredges[-1] * ratio)
+
+
+def get_vspecpol_time_bin_index(timemids: Sequence[float], time_days: float, side: t.Literal["left", "right"]) -> int:
+    """Return the index of the time bin of the virtual packet spectra that holds time_days.
+
+    side="right" gives a time on an edge to the later bin. side="left" gives it to the earlier bin, e.g. for the end
+    of a range. A time outside the bins gives the first or the last bin.
+    """
+    edges = get_vspecpol_time_bin_edges(timemids)
+    if edges is None:
+        return 0
+    return int(np.clip(np.searchsorted(edges, time_days, side=side) - 1, 0, len(timemids) - 1))
+
+
+def get_vspecpol_bins_inside_vpkt_window(timemids: Sequence[float], vpkt_config: Mapping[str, t.Any]) -> list[int]:
+    """Return the indices of the time bins of the virtual packet spectra that lie fully inside the window of vpkt.txt.
+
+    ARTIS writes a virtual packet only for an arrival time inside the window (vpkt.cc). It divides the flux of a bin by
+    the full width of the bin. Thus a bin outside the window has no flux, and a bin across an edge of the window
+    has a flux that is too low. With no time override, vpkt.txt takes the window of the constants of the ARTIS build,
+    and each bin stays.
+    """
+    if not vpkt_config["time_limits_enabled"]:
+        return list(range(len(timemids)))
+    windowstart, windowend = float(vpkt_config["initial_time"]), float(vpkt_config["final_time"])
+    edges = get_vspecpol_time_bin_edges(timemids)
+    if edges is None:
+        print_warning(
+            "A file of the virtual packet spectra with one time bin gives no edges of that bin. The time window of"
+            " vpkt.txt can cut the bin, thus the command leaves it out"
+        )
+        return []
+    # the file gives the middle times with 6 significant figures, thus a window edge on a bin edge must keep that bin
+    relativetolerance = 1e-4
+    return [
+        index
+        for index in range(len(timemids))
+        if edges[index] >= windowstart * (1.0 - relativetolerance)
+        and edges[index + 1] <= windowend * (1.0 + relativetolerance)
+    ]
+
+
 def check_time_range_overlaps_time_bins(
     timemids: Sequence[float], timemin: float, timemax: float, filedescription: str
 ) -> None:
     """Stop if no time bin of a spectrum file overlaps the time range. Warn if the time range goes past the bins.
 
-    The file gives the middle time of each bin. The first bin and the last bin reach half the distance to the next
-    middle time beyond their own middle time. A caller takes the bin with the nearest middle time, thus a time outside
-    every bin gave the spectrum of the first or the last bin, and the label gave the requested time.
+    The file gives the middle time of each bin, and get_vspecpol_time_bin_edges gives the edges. A caller takes the
+    bin that holds a time, or the first or the last bin for a time outside every bin. Thus such a time gave the
+    spectrum of that bin, and the label gave the requested time.
     """
-    if len(timemids) < 2:
+    edges = get_vspecpol_time_bin_edges(timemids)
+    if edges is None:
         # one middle time gives no width of the bin
         return
 
-    firstbinstart = timemids[0] - (timemids[1] - timemids[0]) / 2.0
-    lastbinend = timemids[-1] + (timemids[-1] - timemids[-2]) / 2.0
+    firstbinstart, lastbinend = float(edges[0]), float(edges[-1])
     rangetext = f"{timemin:.2f} days" if timemin == timemax else f"{timemin:.2f} to {timemax:.2f} days"
     if timemax < firstbinstart or timemin > lastbinend:
         msg = (
@@ -1171,6 +1247,33 @@ def check_time_range_overlaps_time_bins(
             f"The time bins of {filedescription} cover {firstbinstart:.2f} to {lastbinend:.2f} days, thus the spectrum"
             f" holds only a part of {rangetext}"
         )
+
+
+def get_vspecpol_bin_range_inside_vpkt_window(
+    modelpath: Path, timemids: Sequence[float], timestepmin: int, timestepmax: int
+) -> tuple[int, int]:
+    """Return the first and the last selected time bin of the virtual packet spectra inside the window of vpkt.txt.
+
+    The function leaves out a bin at an end of the range that is not fully inside the window, and it warns about it.
+    It raises a ValueError if no selected bin is fully inside the window.
+    """
+    vpkt_config = get_vpkt_config(modelpath)
+    insidebins = set(get_vspecpol_bins_inside_vpkt_window(timemids, vpkt_config))
+    selectedbins = [index for index in range(timestepmin, timestepmax + 1) if index in insidebins]
+    if not selectedbins:
+        msg = (
+            f"The time bins from {timemids[timestepmin]} to {timemids[timestepmax]} days are"
+            f" outside the virtual packets, which cover {vpkt_config['initial_time']} to {vpkt_config['final_time']}"
+            " days. ARTIS writes a virtual packet only inside the time window of vpkt.txt"
+        )
+        raise ValueError(msg)
+    if len(selectedbins) < timestepmax - timestepmin + 1:
+        print_warning(
+            f"The virtual spectrum leaves out {timestepmax - timestepmin + 1 - len(selectedbins)} time bins, because"
+            f" they are not fully inside the time window {vpkt_config['initial_time']} to"
+            f" {vpkt_config['final_time']} days of vpkt.txt"
+        )
+    return selectedbins[0], selectedbins[-1]
 
 
 def scan_vspecpol_spectrum(
@@ -1197,15 +1300,16 @@ def scan_vspecpol_spectrum(
     check_time_range_overlaps_time_bins(
         arr_tmid, timerangelow, timerangehigh, f"vspecpol_total-{angle}.out of {modelpath}"
     )
-    # the vspecpol files hold only the arrival times inside the time window of vpkt.txt
-    check_time_range_inside_vpkt_window(get_vpkt_config(Path(modelpath)), timerangelow, timerangehigh)
-
     if timemin is not None and timemax is not None:
-        timestepmin = arr_tmid.index(match_closest_time(timemin, arr_tmid))
-        timestepmax = arr_tmid.index(match_closest_time(timemax, arr_tmid))
+        timestepmin = get_vspecpol_time_bin_index(arr_tmid, timemin, side="right")
+        # a range that ends on the lower edge of a bin does not hold that bin
+        timestepmax = max(timestepmin, get_vspecpol_time_bin_index(arr_tmid, timemax, side="left"))
     else:
-        timestepmin = arr_tmid.index(match_closest_time(timeavg, arr_tmid))
+        timestepmin = get_vspecpol_time_bin_index(arr_tmid, timeavg, side="right")
         timestepmax = timestepmin
+    timestepmin, timestepmax = get_vspecpol_bin_range_inside_vpkt_window(
+        Path(modelpath), arr_tmid, timestepmin, timestepmax
+    )
 
     timelower = arr_tmid[timestepmin]
     timeupper = arr_tmid[timestepmax]
@@ -2191,7 +2295,7 @@ def get_flux_contributions_from_packets(
                     lzdfpackets, modelpath, shellgrouping, usethermal=usethermal and getemission
                 )
 
-        lzdfpackets = filter_packets_by_time(lzdfpackets, modelpath, timelowdays, timehighdays, use_time, gamma)
+        lzdfpackets = filter_packets_by_time(lzdfpackets, timelowdays, timehighdays, use_time, gamma)
         if gamma and (groupby in SHELLCOLUMNS or velocityranges):
             check_gamma_emission_record(lzdfpackets)
 
@@ -2716,26 +2820,31 @@ def get_spatial_scale_deltalogx(
 
 
 def model_covers_timedays(modelpath: Path | str, timedays: str | float | None, *, quiet: bool = False) -> bool:
-    """Return False if timedays names one time outside the timesteps of the model, and print a warning unless quiet.
+    """Return False if timedays names a time or a range outside the timesteps of the model, and warn unless quiet.
 
-    A --timemin and --timemax range outside a model skips that model with a warning, thus one time does the same. A
-    range of --timedays and a text that is no number give True, because get_time_range gives their messages.
+    A --timemin and --timemax range outside a model skips that model with a warning, thus a time or a range of
+    --timedays does the same. A text that is not a number gives True, because get_time_range gives its message.
     """
-    if timedays is None or parse_timedays_range(timedays) is not None:
+    if timedays is None:
         return True
-    try:
-        timedays_float = float(str(timedays).rstrip("d"))
-    except ValueError:
-        return True
+    dayrange = parse_timedays_range(timedays)
+    if dayrange is None:
+        try:
+            timedays_float = float(str(timedays).rstrip("d"))
+        except ValueError:
+            return True
+        dayrange = (timedays_float, timedays_float)
 
     tstart_first = get_timestep_times(modelpath, loc="start")[0]
     tend_last = get_timestep_times(modelpath, loc="end")[-1]
-    if tstart_first <= timedays_float <= tend_last:
+    rangelow, rangehigh = dayrange
+    if rangehigh >= tstart_first and rangelow <= tend_last:
         return True
 
     if not quiet:
+        rangetext = f"{rangelow:g} days" if rangelow == rangehigh else f"{rangelow:g} to {rangehigh:g} days"
         print_warning(
-            f"{get_model_logname(modelpath)}: no timestep covers {timedays_float:g} days, because the timesteps cover"
+            f"{get_model_logname(modelpath)}: no timestep covers {rangetext}, because the timesteps cover"
             f" {tstart_first:.2f} to {tend_last:.2f} days. The plot skips this model at this time"
         )
     return False

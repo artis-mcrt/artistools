@@ -181,7 +181,12 @@ def test_transitions_distribute_the_superlevel_population(temperature: float) ->
 
 def test_transition_superlevel_uses_only_the_kept_levels(tmp_path: Path) -> None:
     levels = pl.DataFrame({"levelindex": [0, 1, 2], "g": [1.0, 3.0, 5.0], "energy_ev": [0.0, 1.0, 2.0]})
-    atomicdata = pl.DataFrame({"Z": [26], "ion_stage": [2], "levels": pl.Series([levels], dtype=pl.Object)})
+    atomicdata = pl.DataFrame({
+        "Z": [26],
+        "ion_stage": [2],
+        "levels": pl.Series([levels], dtype=pl.Object),
+        "transitions": pl.Series([pl.LazyFrame()], dtype=pl.Object),
+    })
     with (
         mock.patch.object(at.lines.core, "get_levels", return_value=atomicdata),
         mock.patch.object(at.lines.core, "get_kept_level_counts", return_value={26: 2}),

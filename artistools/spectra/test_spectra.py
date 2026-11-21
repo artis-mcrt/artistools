@@ -1,6 +1,7 @@
 import argparse
 import functools
 import gzip
+import itertools
 import lzma
 import math
 import re
@@ -1418,13 +1419,17 @@ def test_spectra_gamma_emission_time_uses_decay(patch_scan_packets: Callable[[pl
     assert np.isclose(integrated_flux, expected_flux, rtol=1e-12, atol=0.0)
 
 
-# The escape time of a packet is the value in the file times the Lorentz factor of the escape surface.
+# The comoving escape time of a packet is sqrt(t_esc^2 - r^2 / c^2), with its escape radius r = beta c t_esc.
 # The second packet enters the window of 1 to 2 days at beta 0.6, where 2.2 d * sqrt(1 - 0.6^2) = 1.76 d.
-# The first packet leaves the window at beta 0.8, where 1.5 d * 0.6 = 0.9 d.
-@pytest.mark.parametrize(("beta", "expected_e_cmf_sum"), [(0.0, 10.0), (0.6, 30.0), (0.8, 20.0)])
+# The first packet leaves the window at beta 0.8, where 1.5 d * 0.6 = 0.9 d. A packet that escapes at a corner of
+# a Cartesian grid has a larger radius than a packet on a face. Thus the two packets can have different values.
+@pytest.mark.parametrize(
+    ("betas", "expected_e_cmf_sum"),
+    [((0.0, 0.0), 10.0), ((0.6, 0.6), 30.0), ((0.8, 0.8), 20.0), ((0.8, 0.6), 20.0), ((0.0, 0.8), 30.0)],
+)
 def test_spectra_contributions_use_escape_time(
     monkeypatch: pytest.MonkeyPatch,
-    beta: float,
+    betas: tuple[float, float],
     expected_e_cmf_sum: float,
     patch_scan_packets: Callable[[pl.DataFrame], None],
 ) -> None:
@@ -1438,17 +1443,18 @@ def test_spectra_contributions_use_escape_time(
         "pellet_nucindex": [0, 0],
         "nu_rf": [nu_rf, nu_rf],
     })
+    # the escape position has the radius beta c t_esc, on the axes in equal parts
+    radii_cm = np.array(betas) * at.constants.C_cm_per_s * dfpackets["escape_time"].to_numpy()
+    dfpackets = dfpackets.with_columns(**{
+        col: pl.Series(radii_cm / math.sqrt(3.0)) for col in ("posx", "posy", "posz")
+    })
     lambda_bin_edges = np.array([4000.0, 5000.0, 6000.0])
-
-    def get_escape_surface_gamma(_modelpath: Path | str) -> float:
-        return math.sqrt(1.0 - beta**2)
 
     def scan_nuclides(modelpath: Path | str) -> pl.LazyFrame:
         del modelpath
         return pl.LazyFrame({"pellet_nucindex": [0], "nucname": ["Ni56"]})
 
     patch_scan_packets(dfpackets)
-    monkeypatch.setattr(atspectra, "get_escape_surface_gamma", get_escape_surface_gamma)
     monkeypatch.setattr(atspectra, "scan_nuclides", scan_nuclides)
 
     dfspectrum = atspectra.scan_spectra_from_packets(
@@ -2484,6 +2490,23 @@ def test_spectra_residual_panel_refuses_a_plot_with_no_pair(tmp_path: Path) -> N
         )
 
 
+def test_timedayslist_skips_a_model_that_does_not_cover_a_range(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An epoch of -timedayslist that a model does not cover skips that model on its panel, also for a range.
+
+    A single time outside a model skipped the panel, but a range raised a ValueError from get_time_range.
+    """
+    outputfile = tmp_path / "list.pdf"
+    at.spectra.plot(
+        argsraw=[], specpath=[modelpath, modelpath_classic_3d], timedayslist=["295-305", "5"], outputfile=outputfile
+    )
+    stderr = capsys.readouterr().err
+    assert "no timestep covers 295 to 305 days" in stderr
+    assert "no timestep covers 5 days" in stderr
+    assert list(tmp_path.glob("*.pdf"))
+
+
 def get_saved_axes(**plotargs: t.Any) -> list[mplax.Axes]:
     """Return the axes of the figure that plotspectra saves, for a test that reads the axis properties."""
     savedaxes: list[mplax.Axes] = []
@@ -3410,7 +3433,9 @@ def test_codecomparison_spectrum_refuses_the_options_that_it_cannot_draw(capsys:
 
     The reader took the raw -timedays text, which failed for a range, and it drew angstroms on an axis of another unit.
     """
-    args = argparse.Namespace(timemin=290.0, timemax=320.0, xunit="nm", yvariable="flux", distmpc=1.0, normalised=False)
+    args = argparse.Namespace(
+        timemin=290.0, timemax=320.0, xunit="nm", yvariable="flux", distmpc=1.0, normalised=False, multispecplot=False
+    )
     with pytest.raises(SystemExit):
         plotspectra.check_codecomparison_args(args)
     assert "-xunit nm" in capsys.readouterr().err
@@ -3421,8 +3446,20 @@ def test_codecomparison_spectrum_refuses_the_options_that_it_cannot_draw(capsys:
     assert "no time range" in capsys.readouterr().err
 
     args = argparse.Namespace(
-        timemin=290.0, timemax=320.0, xunit="angstrom", yvariable="flux", distmpc=1.0, normalised=False
+        timemin=290.0,
+        timemax=320.0,
+        xunit="angstrom",
+        yvariable="flux",
+        distmpc=1.0,
+        normalised=False,
+        multispecplot=True,
     )
+    # the code comparison branch drew one spectrum on the first panel, at the middle of all the epochs
+    with pytest.raises(SystemExit):
+        plotspectra.check_codecomparison_args(args)
+    assert "--timedayslist gives a panel for each" in capsys.readouterr().err
+
+    args.multispecplot = False
     plotspectra.check_codecomparison_args(args)
 
 
@@ -3992,6 +4029,63 @@ def test_virtual_spectrum_uses_logarithmic_time_weights(
     ):
         averaged = atspectra.scan_vspecpol_spectrum(Path(), times[0], 0, timemin=times[0], timemax=times[-1]).collect()
     assert averaged["f_nu"].item() == pytest.approx(expected)
+
+
+def test_virtual_spectrum_takes_the_logarithmic_time_bin_that_holds_the_timestep() -> None:
+    """A timestep inside one logarithmic time bin of the virtual spectra gives the flux of that bin alone.
+
+    The file gives the arithmetic middle of each bin, which is above the geometric centre of the bin. For the
+    timestep 3.665 to 3.803 d, the nearest middle time of its start is that of the bin 3.0 to 3.65 d. Thus the mean
+    also took that bin, which does not overlap the timestep.
+    """
+    # the middle times of the default grid of vpkt.h, 5 bins from 3 to 8 d, as the file writes them
+    times = [3.32509, 4.04574, 4.92256, 5.98942, 7.2875]
+    fluxes = [100.0, 1.0, 2.0, 3.0, 4.0]
+    spectrum = pl.LazyFrame({"nu": [1e14], **{str(time): [flux] for time, flux in zip(times, fluxes, strict=True)}})
+    with (
+        mock.patch.object(atspectra, "scan_vspecpol_data", return_value={"I": spectrum}),
+        mock.patch.object(atspectra, "get_vpkt_config", return_value={"time_limits_enabled": False}),
+    ):
+        averaged = atspectra.scan_vspecpol_spectrum(Path(), 3.734, 0, timemin=3.665, timemax=3.803).collect()
+    assert averaged["f_nu"].item() == pytest.approx(1.0)
+
+
+def test_virtual_spectrum_leaves_out_the_time_bins_across_the_window_of_vpkt_txt(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A time range of a virtual spectrum takes only the time bins that lie fully inside the window of vpkt.txt.
+
+    ARTIS writes a virtual packet only inside the window, and it divides the flux of a bin by the full width of the
+    bin. Thus a bin across an edge of the window has too low a flux. The range 4 to 6 d took three bins, and two of
+    them were partly outside the window.
+    """
+    times = [3.32509, 4.04574, 4.92256, 5.98942, 7.2875]
+    fluxes = [100.0, 10.0, 2.0, 30.0, 400.0]
+    spectrum = pl.LazyFrame({"nu": [1e14], **{str(time): [flux] for time, flux in zip(times, fluxes, strict=True)}})
+    vpktconfig = {"time_limits_enabled": True, "initial_time": 4.0, "final_time": 6.0}
+    with (
+        mock.patch.object(atspectra, "scan_vspecpol_data", return_value={"I": spectrum}),
+        mock.patch.object(atspectra, "get_vpkt_config", return_value=vpktconfig),
+    ):
+        averaged = atspectra.scan_vspecpol_spectrum(Path(), 5.0, 0, timemin=4.0, timemax=6.0).collect()
+    assert averaged["f_nu"].item() == pytest.approx(2.0)
+    assert "leaves out 2 time bins" in capsys.readouterr().err
+
+
+def test_vpkt_window_tolerance_scales_with_each_window_edge() -> None:
+    """A bin edge must agree with a window edge to the precision of that edge, not to the precision of the window end.
+
+    The tolerance was 1e-4 of the window end at both edges. Thus a window of 4 to 1000 d kept a bin from 3.95 d.
+    """
+    edges = [3.95 * 1.1**index for index in range(6)]
+    # the file gives the arithmetic middle of each bin with 6 significant figures
+    timemids = [float(f"{(lower + upper) / 2.0:.6g}") for lower, upper in itertools.pairwise(edges)]
+    vpktconfig = {"time_limits_enabled": True, "initial_time": 4.0, "final_time": 1000.0}
+    assert atspectra.get_vspecpol_bins_inside_vpkt_window(timemids, vpktconfig) == [1, 2, 3, 4]
+    # a window edge on a bin edge keeps that bin, although the file rounds the middle times
+    vpktconfig["initial_time"] = edges[1]
+    vpktconfig["final_time"] = edges[4]
+    assert atspectra.get_vspecpol_bins_inside_vpkt_window(timemids, vpktconfig) == [1, 2, 3]
 
 
 @pytest.mark.parametrize("stokesparam", ["Q/I", "U/I"])

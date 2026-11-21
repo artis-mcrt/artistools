@@ -187,6 +187,23 @@ def get_emission_time_expr(position: t.Literal["em", "trueem"]) -> pl.Expr:
     return pl.when(has_emission_record_expr(position)).then(pl.col(f"{position}_time")).otherwise(math.nan)
 
 
+def get_escape_time_cmf_days_expr() -> pl.Expr:
+    """Return the comoving-frame escape time of each escaped packet [d], as ARTIS bins its comoving light curve.
+
+    ARTIS takes sqrt(t_esc^2 - |r|^2 / c^2), with the rest-frame escape time t_esc and the escape position r of each
+    packet (spectrum_lightcurve.cc, since a15329b6). A packet on a Cartesian or a cylindrical grid escapes at the
+    surface of the grid. That surface is up to sqrt(3) or sqrt(2) vmax t from the centre, thus one factor of vmax is
+    wrong for such a packet.
+    """
+    escapetime_s = pl.col("escape_time").cast(pl.Float64)
+    radiussquared_cm2 = (
+        pl.col("posx").cast(pl.Float64) ** 2
+        + pl.col("posy").cast(pl.Float64) ** 2
+        + pl.col("posz").cast(pl.Float64) ** 2
+    )
+    return (escapetime_s**2 - radiussquared_cm2 / CLIGHT**2).clip(lower_bound=0.0).sqrt() / day_to_s
+
+
 def get_emission_velocity_expr(position: t.Literal["em", "trueem"]) -> pl.Expr:
     """Return the radial velocity [cm/s] of the last interaction (em) or of the last thermal emission (trueem)."""
     return (

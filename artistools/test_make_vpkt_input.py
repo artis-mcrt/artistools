@@ -65,6 +65,8 @@ def test_make_vpkt_input_roundtrip() -> None:
             override_thickcell_tau=False,
             tau_max_vpkt=7.5,
             vspec_tmin_in_days=1.25,
+            # ARTIS stops for a velocity grid map outside the time window of the virtual spectra
+            tmin_vgrid_in_days=1.25,
         ),
     ):
         assert at.misc.parse_vpkt_input(at.make_vpkt_input.format_vpkt_input(config)) == config
@@ -211,6 +213,15 @@ def test_make_vpkt_input_interactive_clears_list() -> None:
         ({"vgrid_on": True, "tmin_vgrid_in_days": 2.0, "tmax_vgrid_in_days": 1.0}, "velocity grid map time range"),
         ({"vgrid_on": True, "vgrid_lambda_ranges": []}, "at least one wavelength range"),
         ({"vgrid_on": True, "vgrid_lambda_ranges": [(0.0, 6000.0)]}, "lambdamin > 0"),
+        # since ARTIS #667, sn3d stops for a velocity grid map outside the virtual spectra
+        (
+            {"vgrid_on": True, "override_tminmax": True, "vspec_tmin_in_days": 4.0, "vspec_tmax_in_days": 7.0},
+            "must be inside the time window",
+        ),
+        (
+            {"vgrid_on": True, "custom_lambda_ranges": [(3500.0, 6000.0)], "vgrid_lambda_ranges": [(6400.0, 6700.0)]},
+            "must be inside the wavelength ranges",
+        ),
     ],
 )
 def test_make_vpkt_input_refuses_each_fatal_setting_of_artis(changes: dict[str, t.Any], reason: str) -> None:
@@ -222,6 +233,20 @@ def test_make_vpkt_input_refuses_each_fatal_setting_of_artis(changes: dict[str, 
     assert reason in str(at.make_vpkt_input.fatal_config_error(config))
     with pytest.raises(ValueError, match=re.escape(reason)):
         at.make_vpkt_input.format_vpkt_input(config)
+
+    # two wavelength ranges that touch cover a velocity grid range across their common edge, as in vpkt.cc
+    touchingranges = [(3500.0, 5000.0), (5000.0, 7000.0)]
+    assert (
+        at.make_vpkt_input.fatal_config_error(
+            dc.replace(
+                at.misc.modelinfo.VpktConfig(),
+                vgrid_on=True,
+                custom_lambda_ranges=touchingranges,
+                vgrid_lambda_ranges=[(4000.0, 6500.0)],
+            )
+        )
+        is None
+    )
 
     # ARTIS reads the ranges of the velocity grid map only when the map is on
     assert (

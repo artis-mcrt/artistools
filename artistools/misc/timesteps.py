@@ -22,8 +22,8 @@ from artistools.misc.fileio import read_wsv
 from artistools.misc.general import parse_float_range
 from artistools.misc.general import parse_range_list
 from artistools.misc.modelinfo import get_escape_surface_max_radial_velocity_cmps
-from artistools.misc.modelinfo import get_grid_max_radial_velocity_cmps
 from artistools.misc.modelinfo import get_inputparams
+from artistools.misc.modelinfo import get_matter_max_radial_velocity_cmps
 from artistools.misc.modelinfo import get_model_logname
 from artistools.misc.modelpaths import clear_at_reload
 from artistools.misc.modelpaths import get_artis_model_folders
@@ -310,6 +310,14 @@ def get_single_timestep(timestep: str | int | None, modelpath: Path | str) -> in
     return timesteps[0]
 
 
+def model_overlaps_day_range(modelpath: Path, dayrange: tuple[float, float]) -> bool:
+    """Return True if the timesteps of the model cover a part of the range in days."""
+    return (
+        get_timestep_times(modelpath, loc="start")[0] <= dayrange[1]
+        and get_timestep_times(modelpath, loc="end")[-1] >= dayrange[0]
+    )
+
+
 def apply_time_range_args(
     args: argparse.Namespace, modelpaths: Sequence[Path | str], clamp_to_timesteps: bool = True
 ) -> None:
@@ -333,8 +341,12 @@ def apply_time_range_args(
             raise ValueError(msg)
         rangemin, rangemax = dayrange
     else:
+        # the plot skips a model that does not cover a range in days, thus the first model that covers it gives it
+        rangepath = artispaths[0]
+        if args.timestep is None and dayrange is not None:
+            rangepath = next((path for path in artispaths if model_overlaps_day_range(path, dayrange)), artispaths[0])
         _, _, rangemin, rangemax = get_time_range(
-            artispaths[0],
+            rangepath,
             timestep_range_str=args.timestep,
             timedays_range_str=args.timedays,
             clamp_to_timesteps=clamp_to_timesteps,
@@ -551,14 +563,11 @@ def get_escaped_arrivalrange(modelpath: Path) -> tuple[int, float | int | None, 
 
     # find the earliest possible escape time and add the largest possible travel time
 
-    # for a cylindrical model and a Cartesian model, the box corners are the maximum radius with (potentially)
-    # non-zero density. A spherical grid ends at vmax
-    cornervmax = get_grid_max_radial_velocity_cmps(modelmeta)
-
     # perfect initial conditions make t_arrive = tmin valid already. Light from the origin at tmin
     # escapes later, but the code subtracts that travel time, thus t_arrive stays tmin. The code
-    # still waits until light from the origin reaches the corners
-    validrange_start_days = get_timestep_times(modelpath, loc="start")[0] * (1 + cornervmax / C_cm_per_s)
+    # still waits until light from the origin reaches the matter with the largest radius
+    mattervmax = get_matter_max_radial_velocity_cmps(modelpath, modelmeta)
+    validrange_start_days = get_timestep_times(modelpath, loc="start")[0] * (1 + mattervmax / C_cm_per_s)
 
     t_end = get_timestep_times(modelpath, loc="end")
     # find the last escape time, then subtract the longest travel time from the origin. This is the

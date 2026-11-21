@@ -19,6 +19,7 @@ import numpy as np
 import numpy.typing as npt
 import polars as pl
 
+from artistools.constants import day_to_s
 from artistools.constants import h_ev_s
 from artistools.constants import km_to_cm
 from artistools.misc.console import add_help_note
@@ -27,6 +28,7 @@ from artistools.misc.console import print_warning
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import firstexisting_or_none
+from artistools.misc.fileio import get_decompress_errors
 from artistools.misc.fileio import get_text_compression
 from artistools.misc.fileio import natural_sort_key
 from artistools.misc.fileio import normalised_lines
@@ -93,9 +95,10 @@ def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[
 def read_grid_out(modelpath: Path) -> pl.DataFrame:
     """Return the propagation cells of grid.out in a local model folder, each with the index of its model cell.
 
-    sn3d writes only the propagation cells that have a model cell with matter.
+    sn3d writes only the propagation cells that have a model cell with matter. sn3d writes grid.out in the model
+    folder alone, and a grid.out in a subfolder is of a different model.
     """
-    filename = firstexisting("grid.out", tryzipped=True, folder=modelpath)
+    filename = firstexisting("grid.out", tryzipped=True, folder=modelpath, search_subfolders=False)
     with polars_source_open(filename) as source:
         return pl.read_csv(
             source,
@@ -450,6 +453,50 @@ def get_grid_max_radial_velocity_cmps(modelmeta: "Mapping[str, t.Any]") -> float
     return float(modelmeta["vmax_cmps"]) * cornerfactor.get(get_model_coordinates(modelmeta), 1.0)
 
 
+def grid_out_gives_direct_map(modelpath: Path) -> bool:
+    """Return True if grid.out of a local model folder gives each propagation cell its own model cell.
+
+    sn3d opens grid.out in each job before it writes the cells, thus a job that stops early can leave an empty or a
+    cut file. Such a file, and a file that the reader cannot read, give False, which is the safe value. sn3d writes
+    one line for each propagation cell with matter (grid.cc). Thus a full direct map has one line for each model
+    cell with rho > 0, and the first lines of a cut Cartesian map can look like a direct map. With
+    FORCE_SPHERICAL_ESCAPE_SURFACE, sn3d also removes the matter of each cell whose centre is outside vmax.
+    """
+    try:
+        dfgrid = read_grid_out(modelpath)
+    except FileNotFoundError:
+        return False
+    except (OSError, pl.exceptions.PolarsError, *get_decompress_errors()) as exc:
+        print_warning(f"The command cannot read the grid.out of {modelpath}, thus it takes a Cartesian grid: {exc}")
+        return False
+    isdirectmap = dfgrid.select((pl.col("cellindex") == pl.col("modelgridindex")).all(ignore_nulls=False)).item()
+    if dfgrid.height == 0 or isdirectmap is not True:
+        return False
+    from artistools.inputmodel import scan_modeldata
+
+    dfmodel, modelmeta = scan_modeldata(modelpath, printwarningsonly=True)
+    hasmatter = pl.col("rho") > 0.0
+    # each centre of a cell of a spherical grid is inside vmax, thus only a cylindrical grid loses cells
+    if (
+        get_model_coordinates(modelmeta) == "cylindrical2d"
+        and get_artis_option(modelpath, "FORCE_SPHERICAL_ESCAPE_SURFACE") == "true"
+    ):
+        rmax_cm = float(modelmeta["vmax_cmps"]) * float(modelmeta["t_model_init_days"]) * day_to_s
+        centreradius_cm = (
+            pl.col("pos_rcyl_mid").cast(pl.Float64) ** 2 + pl.col("pos_z_mid").cast(pl.Float64) ** 2
+        ).sqrt()
+        hasmatter &= centreradius_cm <= rmax_cm
+    nonemptycellcount = dfmodel.filter(hasmatter).select(pl.len()).collect().item()
+    if dfgrid.height != nonemptycellcount:
+        print_warning(
+            f"The grid.out of {modelpath} has {dfgrid.height} propagation cells, and the model has"
+            f" {nonemptycellcount} cells with matter. Thus grid.out is not complete, and the command takes a"
+            " Cartesian grid"
+        )
+        return False
+    return True
+
+
 def get_escape_surface_max_radial_velocity_cmps(modelpath: Path, modelmeta: "Mapping[str, t.Any]") -> float:
     """Return the largest radial velocity of the surface where the packets of a run escape [cm/s].
 
@@ -467,32 +514,84 @@ def get_escape_surface_max_radial_velocity_cmps(modelpath: Path, modelmeta: "Map
     """
     vmax_cmps = float(modelmeta["vmax_cmps"])
     coordinates = get_model_coordinates(modelmeta)
-    hasmodelgrid = coordinates == "cartesian3d"
-    if not hasmodelgrid:
-        with contextlib.suppress(FileNotFoundError):
-            hasmodelgrid = bool(
-                read_grid_out(modelpath).select((pl.col("cellindex") == pl.col("modelgridindex")).all()).item()
-            )
+    hasmodelgrid = coordinates == "cartesian3d" or grid_out_gives_direct_map(modelpath)
     gridmeta = modelmeta if hasmodelgrid else {"coordinates": "cartesian3d", "vmax_cmps": vmax_cmps}
     cornervmax_cmps = get_grid_max_radial_velocity_cmps(gridmeta)
-    gridcoordinates = get_model_coordinates(gridmeta)
-    if gridcoordinates not in {"cylindrical2d", "cartesian3d"}:
-        return cornervmax_cmps
     if get_artis_option(modelpath, "FORCE_SPHERICAL_ESCAPE_SURFACE") != "true":
         return cornervmax_cmps
+    celldiagonal_cmps = get_propagation_cell_diagonal_cmps(modelpath, modelmeta, hasmodelgrid=hasmodelgrid)
+    return cornervmax_cmps if celldiagonal_cmps is None else min(cornervmax_cmps, vmax_cmps + celldiagonal_cmps)
 
+
+def get_matter_max_radial_velocity_cmps(modelpath: Path, modelmeta: "Mapping[str, t.Any]") -> float:
+    """Return the largest radial velocity of the matter of a model [cm/s], which sets the start of the valid range.
+
+    modelpath is a local model folder. sn3d gives each propagation cell the matter of the model at the centre of the
+    cell (grid.cc). On the model grid, the matter thus ends at the corner of that grid. A model on a
+    Cartesian propagation grid has matter up to half a cell diagonal beyond the corner of the model grid. With
+    FORCE_SPHERICAL_ESCAPE_SURFACE, sn3d also removes the matter of each cell whose centre is outside vmax. Without
+    the counts of the propagation cells, the function takes the corner of the model grid.
+    """
+    vmax_cmps = float(modelmeta["vmax_cmps"])
+    modelcornervmax_cmps = get_grid_max_radial_velocity_cmps(modelmeta)
+    hasmodelgrid = get_model_coordinates(modelmeta) == "cartesian3d" or grid_out_gives_direct_map(modelpath)
+    celldiagonal_cmps = get_propagation_cell_diagonal_cmps(modelpath, modelmeta, hasmodelgrid=hasmodelgrid)
+    if celldiagonal_cmps is None:
+        if not hasmodelgrid:
+            print_warning(
+                f"artisoptions.h of {modelpath} gives no positive integer CUBOID_NCOORDGRID_X, _Y, and _Z. Thus the"
+                " start of the valid range takes the corner of the model grid. The matter of a Cartesian propagation"
+                " grid can extend half a cell diagonal beyond that corner (grid.cc)"
+            )
+        return modelcornervmax_cmps
+    mattervmax_cmps = modelcornervmax_cmps
+    if not hasmodelgrid:
+        cartesiancornervmax_cmps = get_grid_max_radial_velocity_cmps({
+            "coordinates": "cartesian3d",
+            "vmax_cmps": vmax_cmps,
+        })
+        mattervmax_cmps = min(cartesiancornervmax_cmps, modelcornervmax_cmps + celldiagonal_cmps / 2.0)
+    if get_artis_option(modelpath, "FORCE_SPHERICAL_ESCAPE_SURFACE") == "true":
+        mattervmax_cmps = min(mattervmax_cmps, vmax_cmps + celldiagonal_cmps / 2.0)
+    return mattervmax_cmps
+
+
+def get_propagation_cell_diagonal_cmps(
+    modelpath: Path, modelmeta: "Mapping[str, t.Any]", *, hasmodelgrid: bool
+) -> float | None:
+    """Return the diagonal of a cell of a Cartesian or a cylindrical propagation grid [cm/s], or None.
+
+    The model grid gives the counts of its cells. For a model on a different grid, a Cartesian propagation grid takes
+    them from CUBOID_NCOORDGRID_X, _Y, and _Z of artisoptions.h. A spherical grid, an absent count, and a
+    count that is not a positive integer give None.
+    """
+    gridcoordinates = get_model_coordinates(modelmeta) if hasmodelgrid else "cartesian3d"
     # the width of the propagation grid on each axis in units of vmax, and the count of its cells on that axis
     cellcounts: list[tuple[float, t.Any]]
     if gridcoordinates == "cylindrical2d":
-        cellcounts = [(1.0, modelmeta["ncoordgridrcyl"]), (2.0, modelmeta["ncoordgridz"])]
-    elif hasmodelgrid:
-        cellcounts = [(2.0, modelmeta[f"ncoordgrid{axisname}"]) for axisname in "xyz"]
-    else:
+        cellcounts = [(1.0, modelmeta.get("ncoordgridrcyl")), (2.0, modelmeta.get("ncoordgridz"))]
+    elif gridcoordinates == "cartesian3d" and hasmodelgrid:
+        cellcounts = [(2.0, modelmeta.get(f"ncoordgrid{axisname}")) for axisname in "xyz"]
+    elif gridcoordinates == "cartesian3d":
         cellcounts = [(2.0, get_artis_option(modelpath, f"CUBOID_NCOORDGRID_{axisname}")) for axisname in "XYZ"]
+    else:
+        return None
     if any(count is None for _, count in cellcounts):
-        return cornervmax_cmps
-    celldiagonal_cmps = vmax_cmps * math.sqrt(sum((gridwidth / int(count)) ** 2 for gridwidth, count in cellcounts))
-    return min(cornervmax_cmps, vmax_cmps + celldiagonal_cmps)
+        return None
+    try:
+        counts = [int(count) for _, count in cellcounts]
+    except ValueError:
+        # e.g. "2 * N" or the name of a different constant in artisoptions.h
+        print_warning(
+            f"The counts of the propagation cells {[count for _, count in cellcounts]} of {modelpath} are not integers,"
+            " thus the command cannot find the size of a propagation cell"
+        )
+        return None
+    if min(counts) <= 0:
+        return None
+    return float(modelmeta["vmax_cmps"]) * math.sqrt(
+        sum((gridwidth / count) ** 2 for (gridwidth, _), count in zip(cellcounts, counts, strict=True))
+    )
 
 
 def require_cartesian3d_model(modelmeta: "Mapping[str, t.Any]", requirement: str, helptext: str) -> None:

@@ -443,7 +443,13 @@ def find_option_action(parser: argparse.ArgumentParser, argstring: str) -> tuple
 
 def is_flag(argstring: str) -> bool:
     """Return True for a flag, and False for a value, e.g. a negative number or a text with a space."""
-    return argstring.startswith("-") and not re.match(r"-\.?\d", argstring) and " " not in argstring.partition("=")[0]
+    # argparse reads a lone "-" as a value, e.g. the solid line style of --linestyle
+    return (
+        argstring != "-"
+        and argstring.startswith("-")
+        and not re.match(r"-\.?\d", argstring)
+        and " " not in argstring.partition("=")[0]
+    )
 
 
 def split_argstrings(parser: "SuggestingArgumentParser", tokens: "Sequence[str]") -> list[str]:
@@ -595,8 +601,10 @@ def split_option_rows(parser: "SuggestingArgumentParser", tokens: "Sequence[str]
     """Return each option of the tokens with its values, and the tokens that are not part of an option.
 
     Each row gives the first flag of the option, thus an alias, e.g. --dx, becomes the full flag, e.g. --deltax.
+    An option that keeps only the values of its last flag, e.g. --label, gets one row (see merge_repeated_rows).
     """
     rows: list[tuple[str, tuple[str, ...]]] = []
+    rowactions: list[argparse.Action] = []
     othertokens: list[str] = []
     argstrings = split_argstrings(parser, tokens)
     index = 0
@@ -620,8 +628,42 @@ def split_option_rows(parser: "SuggestingArgumentParser", tokens: "Sequence[str]
             values.extend(argstrings[index : index + count_option_values(action, argstrings, index)])
             index += len(values)
         rows.append((action.option_strings[0], tuple(values)))
+        rowactions.append(action)
 
-    return tuple(rows), othertokens
+    return merge_repeated_rows(rows, rowactions), othertokens
+
+
+def option_accumulates(action: argparse.Action) -> bool:
+    """Return True for an option that keeps the values of each of its flags, e.g. of action="append".
+
+    argparse gives the classes of these actions no public names, thus the test reads the names of the classes. The
+    class of action="extend" is a subclass of the class of action="append".
+    """
+    accumulatingclassnames = {"_AppendAction", "_AppendConstAction", "_CountAction"}
+    return any(actionclass.__name__ in accumulatingclassnames for actionclass in type(action).__mro__)
+
+
+def merge_repeated_rows(
+    rows: "Sequence[tuple[str, tuple[str, ...]]]", rowactions: "Sequence[argparse.Action]"
+) -> OptionRows:
+    """Return the rows with one row for each option that keeps only the values of its last flag.
+
+    argparse keeps the values of the last flag of such an option, e.g. --label, thus the merged row takes them. It
+    takes the place of the first row. An edit of one series then cannot copy the values of a different row. An option
+    that accumulates its values, e.g. --obsspec, keeps each row.
+    """
+    lastrow_of_flag = {
+        flag: (flag, values)
+        for (flag, values), action in zip(rows, rowactions, strict=True)
+        if not option_accumulates(action)
+    }
+    mergedrows: list[tuple[str, tuple[str, ...]]] = []
+    for (flag, values), action in zip(rows, rowactions, strict=True):
+        if option_accumulates(action):
+            mergedrows.append((flag, values))
+        elif flag in lastrow_of_flag:
+            mergedrows.append(lastrow_of_flag.pop(flag))
+    return tuple(mergedrows)
 
 
 def get_option_tokens(flag: str, value: str) -> list[str]:

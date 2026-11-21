@@ -52,12 +52,13 @@ from artistools.misc import scan_timesteps
 from artistools.misc import split_multitable_dataframe
 from artistools.misc import warn_direction_bin_noise
 from artistools.misc import zopen
+from artistools.packets import get_escape_time_cmf_days_expr
 from artistools.packets import scan_packets
 from artistools.packets import scan_virtual_packets
 from artistools.packets import sum_packets_by_dirbin
 from artistools.packets import sum_virtual_packets_by_observer
 from artistools.paths import get_path
-from artistools.spectra import get_escape_surface_gamma
+from artistools.spectra import get_vspecpol_bins_inside_vpkt_window
 from artistools.spectra import scan_spectra
 from artistools.spectra import scan_spectrum_at_time
 from artistools.spectra import scan_vspecpol_data
@@ -285,15 +286,11 @@ def scan_lightcurve_from_packets(
         nprocs_read, dfpackets = scan_packets(
             modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type
         )
-        # the comoving frame needs the velocity of the model surface. A copy of a model folder can leave out a large
-        # model.txt, and the rest frame light curve needs no model.txt
-        try:
-            escapesurfacegamma = get_escape_surface_gamma(modelpath)
-        except FileNotFoundError:
-            print_warning(f"{modelpath} holds no model.txt, thus the light curve has no comoving frame luminosity")
-        else:
-            # the escape time divided by the Lorentz factor of the model surface gives the comoving-frame arrival time
-            dfpackets = dfpackets.with_columns(t_arrive_cmf_d=pl.col("escape_time") * escapesurfacegamma / day_to_s)
+        print(
+            "  The comoving-frame time of each packet is sqrt(t_esc^2 - r^2 / c^2) at its escape position r, as"
+            " ARTIS bins its comoving light curve (spectrum_lightcurve.cc)"
+        )
+        dfpackets = dfpackets.with_columns(t_arrive_cmf_d=get_escape_time_cmf_days_expr())
 
     if pellet_nucname is not None:
         atomic_number = get_atomic_number(pellet_nucname)
@@ -456,6 +453,25 @@ def generate_band_lightcurve_data(
         for timestep, time in enumerate(float(time) for time in timearray)
         if (timemin is None or timemin <= time) and (timemax is None or timemax >= time)
     ]
+    if isvpktobserver:
+        # a bin of the virtual packets outside the window of vpkt.txt has no flux. A bin across an edge has too low a
+        # flux. select_timesteps_inside_vpkt_window applies the same test to the timesteps of the packet files.
+        vpkt_config = get_vpkt_config(Path(modelpath))
+        insidebins = set(get_vspecpol_bins_inside_vpkt_window([float(time) for time in timearray], vpkt_config))
+        insidetimes = [(timestep, time) for timestep, time in selectedtimes if timestep in insidebins]
+        if not insidetimes:
+            msg = (
+                f"No selected time bin of the virtual packets lies fully inside the time window"
+                f" {vpkt_config['initial_time']} to {vpkt_config['final_time']} days of vpkt.txt"
+            )
+            raise ValueError(msg)
+        if len(insidetimes) < len(selectedtimes):
+            print_warning(
+                f"The light curve of the virtual packets leaves out {len(selectedtimes) - len(insidetimes)} time bins."
+                f" These bins are not fully inside the time window {vpkt_config['initial_time']} to"
+                f" {vpkt_config['final_time']} days of vpkt.txt"
+            )
+        selectedtimes = insidetimes
 
     # one collect_all call evaluates the spectra of all the times together, and every band reads them
     spectra = pl.collect_all([
