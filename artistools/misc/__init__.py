@@ -187,6 +187,8 @@ from artistools.misc.modelinfo import get_run_subfolders as get_run_subfolders
 from artistools.misc.modelinfo import get_runfolder_timesteps as get_runfolder_timesteps
 from artistools.misc.modelinfo import get_runfolders as get_runfolders
 from artistools.misc.modelinfo import get_vpkt_config as get_vpkt_config
+from artistools.misc.modelinfo import has_mirror_plane as has_mirror_plane
+from artistools.misc.modelinfo import MIRROR_COORDINATES as MIRROR_COORDINATES
 from artistools.misc.modelinfo import MODEL_EDGE_KEYS as MODEL_EDGE_KEYS
 from artistools.misc.modelinfo import parse_npts_line as parse_npts_line
 from artistools.misc.modelinfo import parse_vpkt_input as parse_vpkt_input

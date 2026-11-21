@@ -110,6 +110,7 @@ from artistools.misc import get_time_range
 from artistools.misc import get_time_range_text
 from artistools.misc import get_timestep_time
 from artistools.misc import get_timestep_times
+from artistools.misc import has_mirror_plane
 from artistools.misc import is_plain_value
 from artistools.misc import item_names_a_folder
 from artistools.misc import on_model_host
@@ -2507,8 +2508,14 @@ def get_image_values(
     if modelmeta["dimensions"] == 1:
         return get_shell_values_on_rz_grid(estimators, panels, vmax_cmps, timesteps), ("rcyl", "z")
 
+    # A mirrored model holds the cells with z >= 0, and each cell also fills its mirror cell. The image has the rows
+    # of both halves, and the rows with z < 0 copy the rows of their mirror cells
+    ismirrored = has_mirror_plane(modelmeta) and modelmeta["dimensions"] == 2
+
     def cellindex(axisname: str) -> pl.Expr:
         ncells = int(modelmeta[f"ncoordgrid{axisname}"])
+        if ismirrored and axisname == "z":
+            return ncells + (pl.col("vel_z_mid") / (vmax_cmps / ncells)).floor().cast(pl.Int32)
         return ((pl.col(f"vel_{axisname}_mid") + vmax_cmps) / (2.0 * vmax_cmps / ncells)).floor().cast(pl.Int32)
 
     if sliceaxis is None:
@@ -2535,10 +2542,13 @@ def get_image_values(
 
     grids = []
     for panelindex in range(len(panels)):
-        grid = np.full((int(modelmeta[f"ncoordgrid{plotaxis2}"]), ncells1), np.nan)
+        ncells2 = int(modelmeta[f"ncoordgrid{plotaxis2}"])
+        grid = np.full((2 * ncells2 if ismirrored else ncells2, ncells1), np.nan)
         grid[dfcells["cellindex2"].to_numpy(), dfcells["cellindex1"].to_numpy()] = (
             dfcells[f"panel{panelindex}"].cast(pl.Float64).fill_null(float("nan")).to_numpy()
         )
+        if ismirrored:
+            grid[:ncells2] = grid[ncells2:][::-1]
         grids.append(grid)
 
     return grids, (plotaxis1, plotaxis2)

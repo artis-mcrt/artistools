@@ -47,6 +47,7 @@ from artistools.misc import get_timestep_times
 from artistools.misc import get_viewingdirection_costhetabincount
 from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import get_viewingdirectionbincount
+from artistools.misc import has_mirror_plane
 from artistools.misc import make_cache_folder
 from artistools.misc import modelpath_cache
 from artistools.misc import natural_sort_key
@@ -368,6 +369,9 @@ def get_spherical_modelgridindex_expr(
     """
     ncoordgridr = len(modelmeta["vel_r_edges_kmps"]) - 1
     ncoordgridtheta = len(modelmeta["theta_edges_radians"]) - 1
+    # a velocity with z < 0 of a mirrored model is in the mirror cell of its mirror velocity
+    if has_mirror_plane(modelmeta):
+        vel_z = vel_z.abs()
 
     index_r = get_bin_index_expr(vel_r, [edge * km_to_cm for edge in modelmeta["vel_r_edges_kmps"]])
     index_r = pl.when(index_r.is_between(0, ncoordgridr - 1)).then(index_r)
@@ -417,7 +421,9 @@ def get_modelgridindex_expr(
         vwidthz = float(modelmeta["wid_init_z"]) / t_model_s
         ncoordgridrcyl = int(modelmeta["ncoordgridrcyl"])
         coordrcyl = axisindex((velocity("x").pow(2) + velocity("y").pow(2)).sqrt() / vwidthrcyl, ncoordgridrcyl)
-        coordz = axisindex((velocity("z") + vmax) / vwidthz, int(modelmeta["ncoordgridz"]))
+        # the z axis of a mirrored model starts at the plane z = 0, and a position with z < 0 takes its mirror cell
+        zfromlowestedge = velocity("z").abs() if has_mirror_plane(modelmeta) else velocity("z") + vmax
+        coordz = axisindex(zfromlowestedge / vwidthz, int(modelmeta["ncoordgridz"]))
         return coordz * ncoordgridrcyl + coordrcyl
 
     if coordinates != "cartesian3d":

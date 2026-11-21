@@ -42,6 +42,7 @@ from artistools.misc import get_model_coordinates
 from artistools.misc import get_model_format_version
 from artistools.misc import get_parquet_cache_name
 from artistools.misc import get_phibin_expr
+from artistools.misc import has_mirror_plane
 from artistools.misc import is_remote_path
 from artistools.misc import MODEL_EDGE_KEYS
 from artistools.misc import modelpath_cache
@@ -544,7 +545,9 @@ def scan_modelfile_text(
 
     elif modelmeta["dimensions"] == 2:
         wid_init_rcyl = modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridrcyl"]
-        wid_init_z = 2 * modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridz"]
+        # the z axis of a mirrored model is the half from 0 to vmax
+        zaxiswidth = 1 if has_mirror_plane(modelmeta) else 2
+        wid_init_z = zaxiswidth * modelmeta["vmax_cmps"] * t_model_init_seconds / modelmeta["ncoordgridz"]
         modelmeta["wid_init_rcyl"] = wid_init_rcyl
         modelmeta["wid_init_z"] = wid_init_z
 
@@ -552,7 +555,7 @@ def scan_modelfile_text(
         # loop, which cost a round trip through the interpreter for every cell of the grid
         n_r = (pl.col("inputcellid") - firstinputcellid) % modelmeta["ncoordgridrcyl"]
         n_z = (pl.col("inputcellid") - firstinputcellid) // modelmeta["ncoordgridrcyl"]
-        pos_z_min_grid = -modelmeta["vmax_cmps"] * t_model_init_seconds
+        pos_z_min_grid = 0.0 if has_mirror_plane(modelmeta) else -modelmeta["vmax_cmps"] * t_model_init_seconds
 
         maxoffby = (
             dfmodel
@@ -1329,7 +1332,12 @@ def add_spherical_derived_cols(dfmodel: pl.LazyFrame, modelmeta: dict[str, t.Any
         }
         azimuthal_width = pl.col("phi_max_radians") - pl.col("phi_min_radians")
 
-    solid_angle = (pl.col("theta_min_radians").cos() - pl.col("theta_max_radians").cos()) * azimuthal_width
+    # a cell of a mirrored model also fills its mirror cell
+    solid_angle = (
+        (pl.col("theta_min_radians").cos() - pl.col("theta_max_radians").cos())
+        * azimuthal_width
+        * (2.0 if has_mirror_plane(modelmeta) else 1.0)
+    )
     return dfmodel.with_columns(
         **midpointcols,
         volume=(pl.col("pos_r_max").pow(3) - pl.col("pos_r_min").pow(3)) / 3.0 * solid_angle,
@@ -1363,6 +1371,9 @@ def get_spherical_cell_index_of_velocities(
     ncoordgridr = len(vel_r_edges) - 1
     ncoordgridtheta = len(theta_edges) - 1
 
+    # a velocity with z < 0 of a mirrored model is in the mirror cell of its mirror velocity
+    if has_mirror_plane(modelmeta):
+        vel_z = np.abs(vel_z)
     vel_r = np.sqrt(vel_x**2 + vel_y**2 + vel_z**2)
     index_r = np.searchsorted(vel_r_edges, vel_r, side="right") - 1
     ismoving = vel_r > 0.0
@@ -1484,6 +1495,8 @@ def add_derived_cols_to_modeldata(dfmodel: pl.DataFrame | pl.LazyFrame, modelmet
 
         case "cylindrical2d":
             axes = ["rcyl", "z"]
+            # a cell of a mirrored model also fills its mirror cell
+            mirrorfactor = 2.0 if has_mirror_plane(modelmeta) else 1.0
 
             assert t_model_init_seconds is not None
             # pos_mid is defined in the input file
@@ -1506,6 +1519,7 @@ def add_derived_cols_to_modeldata(dfmodel: pl.DataFrame | pl.LazyFrame, modelmet
                     math.pi
                     * (pl.col("pos_rcyl_max").cast(pl.Float64).pow(2) - pl.col("pos_rcyl_min").cast(pl.Float64).pow(2))
                     * modelmeta["wid_init_z"]
+                    * mirrorfactor
                 ),
             ).with_columns(
                 # two components of kinetic energy: 1/2 m v^2 in cylindrical and z directions
@@ -1517,6 +1531,7 @@ def add_derived_cols_to_modeldata(dfmodel: pl.DataFrame | pl.LazyFrame, modelmet
                     * t_model_init_seconds**-2
                     * modelmeta["wid_init_z"]
                     * (pl.col("pos_rcyl_max").cast(pl.Float64).pow(4) - pl.col("pos_rcyl_min").cast(pl.Float64).pow(4))
+                    * mirrorfactor
                 ),
                 kinetic_en_erg_z=(
                     1
@@ -1526,6 +1541,7 @@ def add_derived_cols_to_modeldata(dfmodel: pl.DataFrame | pl.LazyFrame, modelmet
                     * (pl.col("pos_rcyl_max").cast(pl.Float64).pow(2) - pl.col("pos_rcyl_min").cast(pl.Float64).pow(2))
                     * t_model_init_seconds**-2
                     * (pl.col("pos_z_max").cast(pl.Float64).pow(3) - pl.col("pos_z_min").cast(pl.Float64).pow(3))
+                    * mirrorfactor
                 ),
             )
 
@@ -1927,8 +1943,10 @@ def get_edges_of_position_columns(dfmodel: pl.DataFrame, modelmeta: dict[str, t.
         gridshape = " x ".join(str(count) for count in cellcounts.values())
         msg = f"A {coordinates} grid of {gridshape} cells cannot hold {dfmodel.height} cells"
         raise ValueError(msg)
+    # the z axis of a mirrored model starts at the plane z = 0
+    firstedges = {"rcyl": 0.0, "z": 0.0 if has_mirror_plane(modelmeta) else -vmax_kmps}
     edges = {
-        f"vel_{axis}_edges_kmps": np.linspace(0.0 if axis == "rcyl" else -vmax_kmps, vmax_kmps, count + 1).tolist()
+        f"vel_{axis}_edges_kmps": np.linspace(firstedges.get(axis, -vmax_kmps), vmax_kmps, count + 1).tolist()
         for axis, count in cellcounts.items()
     }
 
@@ -1962,6 +1980,9 @@ def get_version2_headerlines(inputcellids: pl.Series, modelmeta: dict[str, t.Any
     has the shortest text that gives its float again, e.g. 0.7. A line has a comment only for information that
     its key does not give.
     """
+    if modelmeta.get("mirror_plane") not in {None, "z=0"}:
+        msg = f"mirror_plane must be 'z=0' or absent, not {modelmeta['mirror_plane']!r}"
+        raise ValueError(msg)
     # the reader of version 2 rejects a different model time, thus the writer must not write it
     tmodel_days = float(modelmeta["t_model_init_days"])
     if not math.isfinite(tmodel_days) or tmodel_days <= 0.0:
@@ -1970,7 +1991,10 @@ def get_version2_headerlines(inputcellids: pl.Series, modelmeta: dict[str, t.Any
     coordinates = modelmeta["coordinates"]
     edgekeys = MODEL_EDGE_KEYS[coordinates]
     edges = validate_model_edges(
-        coordinates, {key: modelmeta.get(key) for key in ALL_MODEL_EDGE_KEYS}, "save_modeldata"
+        coordinates,
+        {key: modelmeta.get(key) for key in ALL_MODEL_EDGE_KEYS},
+        "save_modeldata",
+        mirrored=has_mirror_plane(modelmeta),
     )
     vmax_cmps = edges[edgekeys[0]][-1] * km_to_cm
     if modelmeta.get("vmax_cmps") is not None and not math.isclose(modelmeta["vmax_cmps"], vmax_cmps, rel_tol=1e-6):
@@ -2005,6 +2029,7 @@ def get_version2_headerlines(inputcellids: pl.Series, modelmeta: dict[str, t.Any
     return [
         f"coordinates {coordinates}",
         f"cells_per_axis {' '.join(str(count) for count in cellcounts)}",
+        *(["mirror_plane z=0"] if has_mirror_plane(modelmeta) else []),
         f"t_model_init_days {modelmeta['t_model_init_days']}",
         *[f"{key} {' '.join(repr(edge) for edge in edges[key])}{edgecomments.get(key, '')}" for key in edgekeys],
     ]
@@ -2057,13 +2082,14 @@ def with_cell_ids_from_zero(
 def get_written_format_version(coordinates: str, modelmeta: dict[str, t.Any]) -> int:
     """Return the format version that save_modeldata writes: the key formatversion of the metadata, or its default.
 
-    The default is 1, which each version of sn3d reads. A model with spherical2d or spherical3d coordinates has
-    version 2 only.
+    The default is 1, which each version of sn3d reads. A model with spherical2d or spherical3d coordinates or with
+    mirror symmetry (the key mirror_plane) has version 2 only.
     """
     formatversion = modelmeta.get("formatversion")
-    if coordinates in SPHERICAL_EDGE_COORDINATES:
+    if coordinates in SPHERICAL_EDGE_COORDINATES or has_mirror_plane(modelmeta):
         if formatversion == 1:
-            msg = f"Format version 1 of model.txt has no {coordinates} coordinates. Use format version 2"
+            missing = f"{coordinates} coordinates" if coordinates in SPHERICAL_EDGE_COORDINATES else "mirror symmetry"
+            msg = f"Format version 1 of model.txt has no {missing}. Use format version 2"
             raise ValueError(msg)
         return 2
     if formatversion not in {None, 1, 2}:
@@ -2126,6 +2152,10 @@ def save_modeldata(
     - cells_per_axis: the count of the cells on each axis, in the sequence of the edge lists, e.g. 5 4 4 for
       n_r = 5, n_theta = 4, and n_phi = 4. The key is optional, and a reader stops if a count is different from the
       count that the edges give;
+    - mirror_plane z=0 (optional, from the key mirror_plane of modelmeta): mirror symmetry in the plane z = 0, for
+      cylindrical2d, spherical2d, and spherical3d. The file then holds the cells with z >= 0: the z edges start at 0,
+      and the polar edges end at pi / 2. Each cell also fills its mirror cell, thus its volume and its mass are two
+      times the values of the half cell. Format version 1 has no mirror symmetry;
     - t_model_init_days;
     - the cell edges of each axis: vel_r_edges_kmps (and theta_edges_radians, phi_edges_radians), or
       vel_rcyl_edges_kmps and vel_z_edges_kmps, or vel_x_edges_kmps, vel_y_edges_kmps, and vel_z_edges_kmps;
@@ -2701,6 +2731,8 @@ def dimension_reduce_model(
     modelmeta_out["dimensions"] = max(outputdimensions, 1)
     if outputdimensions < 2:
         modelmeta_out["coordinates"] = "spherical1d"
+        # the shells of a mirrored model hold the mass of both halves, and a 1D model has no mirror plane
+        modelmeta_out.pop("mirror_plane", None)
     elif hassphericaledges:
         modelmeta_out |= {
             "coordinates": "spherical2d",

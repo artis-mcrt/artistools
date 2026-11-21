@@ -407,6 +407,8 @@ MODEL_EDGE_KEYS: t.Final["Mapping[str, tuple[str, ...]]"] = MappingProxyType({
 MODEL_COORDINATES = tuple(MODEL_EDGE_KEYS)
 ALL_MODEL_EDGE_KEYS = tuple(dict.fromkeys(key for edgekeys in MODEL_EDGE_KEYS.values() for key in edgekeys))
 SPHERICAL_EDGE_COORDINATES = ("spherical2d", "spherical3d")
+# the coordinates that permit the key mirror_plane z=0 of a version 2 model.txt
+MIRROR_COORDINATES = ("cylindrical2d", "spherical2d", "spherical3d")
 # sn3d and artistools hold these grids with cells of equal width, from -vmax (0 for the cylindrical radius) to vmax
 UNIFORM_EDGE_COORDINATES = ("cylindrical2d", "cartesian3d")
 # the largest difference of an edge from its place on a grid with cells of equal width, as a fraction of vmax. sn3d
@@ -440,6 +442,36 @@ def get_model_coordinates(modelmeta: "Mapping[str, t.Any]") -> str:
     return coordinates
 
 
+def has_mirror_plane(modelmeta: "Mapping[str, t.Any]") -> bool:
+    """Return whether a model has mirror symmetry in the plane z = 0 (the key mirror_plane z=0 of model.txt).
+
+    The model then holds the cells with z >= 0, and each cell also fills its mirror cell with z <= 0. Thus the volume
+    and the mass of a cell are two times the values of the half cell. The z axis of a cylindrical2d model starts at 0,
+    and the polar axis of a spherical model ends at pi / 2.
+    """
+    return modelmeta.get("mirror_plane") == "z=0"
+
+
+def get_mirrored_modelgridindex_of_propcell(cellindex: pl.Expr, modelmeta: "Mapping[str, t.Any]") -> pl.Expr:
+    """Return the model grid index of a propagation cell of sn3d for a mirrored model on its own grid type.
+
+    The propagation grid has the cells of both halves, thus two times the cells of the model on the mirror axis: z of
+    a cylindrical model and theta of a spherical model. The index of the first axis changes fastest in both indices.
+    """
+    axisnames = ("rcyl", "z") if get_model_coordinates(modelmeta) == "cylindrical2d" else ("r", "theta")
+    count0, halfcount = (int(modelmeta[f"ncoordgrid{axisname}"]) for axisname in axisnames)
+    index0 = cellindex % count0
+    propindex1 = (cellindex // count0) % (2 * halfcount)
+    index2 = cellindex // (count0 * 2 * halfcount)
+    # a cylindrical model counts its z cells from the plane z = 0, and a spherical model its polar cells from +z
+    halfindex1 = (
+        pl.when(propindex1 >= halfcount).then(propindex1 - halfcount).otherwise(halfcount - 1 - propindex1)
+        if axisnames[1] == "z"
+        else pl.when(propindex1 < halfcount).then(propindex1).otherwise(2 * halfcount - 1 - propindex1)
+    )
+    return index0 + count0 * (halfindex1 + halfcount * index2)
+
+
 def get_grid_max_radial_velocity_cmps(modelmeta: "Mapping[str, t.Any]") -> float:
     """Return the largest radial velocity of the model grid [cm/s].
 
@@ -470,9 +502,13 @@ def get_escape_surface_max_radial_velocity_cmps(modelpath: Path, modelmeta: "Map
     hasmodelgrid = coordinates == "cartesian3d"
     if not hasmodelgrid:
         with contextlib.suppress(FileNotFoundError):
-            hasmodelgrid = bool(
-                read_grid_out(modelpath).select((pl.col("cellindex") == pl.col("modelgridindex")).all()).item()
+            # the two propagation cells of a mirror pair have the same model cell
+            ismodelgridcell = pl.col("modelgridindex") == (
+                get_mirrored_modelgridindex_of_propcell(pl.col("cellindex"), modelmeta)
+                if has_mirror_plane(modelmeta)
+                else pl.col("cellindex")
             )
+            hasmodelgrid = bool(read_grid_out(modelpath).select(ismodelgridcell.all()).item())
     gridmeta = modelmeta if hasmodelgrid else {"coordinates": "cartesian3d", "vmax_cmps": vmax_cmps}
     cornervmax_cmps = get_grid_max_radial_velocity_cmps(gridmeta)
     gridcoordinates = get_model_coordinates(gridmeta)
@@ -484,7 +520,9 @@ def get_escape_surface_max_radial_velocity_cmps(modelpath: Path, modelmeta: "Map
     # the width of the propagation grid on each axis in units of vmax, and the count of its cells on that axis
     cellcounts: list[tuple[float, t.Any]]
     if gridcoordinates == "cylindrical2d":
-        cellcounts = [(1.0, modelmeta["ncoordgridrcyl"]), (2.0, modelmeta["ncoordgridz"])]
+        # the z axis of a mirrored model is the half from 0 to vmax
+        zwidth = 1.0 if has_mirror_plane(modelmeta) else 2.0
+        cellcounts = [(1.0, modelmeta["ncoordgridrcyl"]), (zwidth, modelmeta["ncoordgridz"])]
     elif hasmodelgrid:
         cellcounts = [(2.0, modelmeta[f"ncoordgrid{axisname}"]) for axisname in "xyz"]
     else:
@@ -508,7 +546,7 @@ def require_cartesian3d_model(modelmeta: "Mapping[str, t.Any]", requirement: str
 
 
 def validate_model_edges(
-    coordinates: str, edgelists: "Mapping[str, Sequence[float] | None]", source: Path | str
+    coordinates: str, edgelists: "Mapping[str, Sequence[float] | None]", source: Path | str, mirrored: bool = False
 ) -> dict[str, list[float]]:
     """Return the cell edges of a version 2 file, with the last angles exactly pi and 2 pi.
 
@@ -520,9 +558,17 @@ def validate_model_edges(
       have different cosines, and each cell in theta and in phi must be wider than ANGLE_EDGE_ATOL_RADIANS.
     - A cylindrical2d or cartesian3d grid has cells of equal width. The lists of x, y, and z are from -vmax to
       vmax, and all the axes have the same vmax. A cartesian3d grid has the same count of cells on each axis.
+    - A mirrored model (mirrored = True) holds the cells with z >= 0. Its list of z starts at 0, and its last polar
+      angle is pi / 2.
 
     source is the file or the caller that the error names.
     """
+    if mirrored and coordinates not in MIRROR_COORDINATES:
+        msg = (
+            f"{source}: a {coordinates} model takes no key mirror_plane. The key applies to"
+            f" {', '.join(MIRROR_COORDINATES)} models"
+        )
+        raise ValueError(msg)
     edgekeys = MODEL_EDGE_KEYS[coordinates]
     missingkeys = [key for key in edgekeys if edgelists.get(key) is None]
     if missingkeys:
@@ -544,7 +590,8 @@ def validate_model_edges(
             for edge in edges["theta_edges_radians"]
         ]
 
-    lastangles = {"theta_edges_radians": math.pi, "phi_edges_radians": 2.0 * math.pi}
+    lastangles = {"theta_edges_radians": math.pi / 2.0 if mirrored else math.pi, "phi_edges_radians": 2.0 * math.pi}
+    lastanglenames = {"theta_edges_radians": "pi / 2" if mirrored else "pi", "phi_edges_radians": "2 pi"}
     keys_from_minus_vmax = {"vel_x_edges_kmps", "vel_y_edges_kmps", "vel_z_edges_kmps"}
     for key, values in edges.items():
         if len(values) < 2 or not all(math.isfinite(edge) for edge in values):
@@ -557,7 +604,7 @@ def validate_model_edges(
             if abs(values[-1] - lastangles[key]) > ANGLE_EDGE_ATOL_RADIANS:
                 msg = (
                     f"{source}: the last value of {key} must be {lastangles[key]!r}"
-                    f" ({'pi' if key == 'theta_edges_radians' else '2 pi'}), not {values[-1]!r}"
+                    f" ({lastanglenames[key]}), not {values[-1]!r}"
                 )
                 raise ValueError(msg)
             values[-1] = lastangles[key]
@@ -584,7 +631,9 @@ def validate_model_edges(
     if coordinates in UNIFORM_EDGE_COORDINATES:
         vmax_kmps = edges[edgekeys[0]][-1]
         for key, values in edges.items():
-            firstedge = -vmax_kmps if key in keys_from_minus_vmax else 0.0
+            firstedge = (
+                -vmax_kmps if key in keys_from_minus_vmax and not (mirrored and key == "vel_z_edges_kmps") else 0.0
+            )
             uniformedges = np.linspace(firstedge, vmax_kmps, len(values))
             if not np.allclose(values, uniformedges, rtol=0.0, atol=UNIFORM_EDGE_RTOL * vmax_kmps):
                 msg = (
@@ -653,6 +702,7 @@ def read_keyword_model_header(
     knownkeys = (
         "coordinates",
         "cells_per_axis",
+        "mirror_plane",
         "t_model_init_days",
         *ALL_MODEL_EDGE_KEYS,
         "cell_line_count",
@@ -677,6 +727,10 @@ def read_keyword_model_header(
         )
         raise ValueError(msg)
     coordinates = coordinatetokens[0]
+    mirrortokens = keyvalues.get("mirror_plane")
+    if mirrortokens is not None and mirrortokens != ["z=0"]:
+        msg = f"{modelfilepath}: the key mirror_plane must have the value z=0, not {' '.join(mirrortokens)!r}"
+        raise ValueError(msg)
 
     timevalues = get_floats("t_model_init_days")
     if len(timevalues) != 1 or not timevalues[0] > 0.0 or not math.isfinite(timevalues[0]):
@@ -684,7 +738,10 @@ def read_keyword_model_header(
         raise ValueError(msg)
 
     edges = validate_model_edges(
-        coordinates, {key: get_floats(key) for key in ALL_MODEL_EDGE_KEYS if key in keyvalues}, modelfilepath
+        coordinates,
+        {key: get_floats(key) for key in ALL_MODEL_EDGE_KEYS if key in keyvalues},
+        modelfilepath,
+        mirrored=mirrortokens is not None,
     )
 
     columns = keyvalues["columns"]
@@ -732,6 +789,8 @@ def read_keyword_model_header(
         "vmax_cmps": edges[MODEL_EDGE_KEYS[coordinates][0]][-1] * km_to_cm,
         "npts_model": npts_model,
     }
+    if mirrortokens is not None:
+        modelmeta["mirror_plane"] = "z=0"
     return modelmeta, columns, linecount, celllinecount
 
 

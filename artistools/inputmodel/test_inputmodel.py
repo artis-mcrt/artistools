@@ -4383,6 +4383,157 @@ def test_spherical_model_reader_takes_cell_ids_from_zero(tmp_path: Path, capsys:
     )
 
 
+def get_mirrored_model_and_twin(
+    coordinates: str,
+) -> tuple[pl.DataFrame, dict[str, t.Any], pl.DataFrame, dict[str, t.Any], np.ndarray[t.Any, np.dtype[np.int64]]]:
+    """Return a model with mirror symmetry in the plane z = 0, its full twin, and the half cell of each twin cell.
+
+    The twin has the cells of both halves, and each pair of mirror cells has the values of the cell of the mirrored
+    model. The cell index of each list is the model grid index, in which the first axis changes fastest.
+    """
+    rng = np.random.default_rng(seed=3)
+    # the position columns of a cylindrical model. A spherical model has none
+    mirrorpos: dict[str, np.ndarray[t.Any, np.dtype[np.floating]]]
+    twinpos: dict[str, np.ndarray[t.Any, np.dtype[np.floating]]]
+    if coordinates == "cylindrical2d":
+        n0, nhalf, n2 = 3, 2, 1
+        vmax_cmps = 3e9
+        tmodel_s = 0.5 * day_to_s
+        rcylwidth_cm = vmax_cmps * tmodel_s / n0
+        zwidth_cm = vmax_cmps * tmodel_s / nhalf
+        index0, index1 = np.arange(n0 * nhalf) % n0, np.arange(n0 * nhalf) // n0
+        common = {"coordinates": coordinates, "t_model_init_days": 0.5, "vmax_cmps": vmax_cmps, "ncoordgridrcyl": n0}
+        mirrormeta = common | {"ncoordgridz": nhalf, "mirror_plane": "z=0"}
+        twinmeta = common | {"ncoordgridz": 2 * nhalf}
+        mirrorpos = {"pos_rcyl_mid": (index0 + 0.5) * rcylwidth_cm, "pos_z_mid": (index1 + 0.5) * zwidth_cm}
+        twinindex0, twinindex1 = np.arange(n0 * 2 * nhalf) % n0, np.arange(n0 * 2 * nhalf) // n0
+        twinpos = {
+            "pos_rcyl_mid": (twinindex0 + 0.5) * rcylwidth_cm,
+            "pos_z_mid": (twinindex1 + 0.5) * zwidth_cm - vmax_cmps * tmodel_s,
+        }
+        # the z index of the half starts at the plane z = 0
+        halfindex1 = np.where(twinindex1 >= nhalf, twinindex1 - nhalf, nhalf - 1 - twinindex1)
+    else:
+        n0, nhalf, n2 = 4, 2, 3
+        halfthetaedges = [0.0, 0.6, math.pi / 2.0]
+        common = {
+            "coordinates": coordinates,
+            "t_model_init_days": 0.5,
+            "vel_r_edges_kmps": [0.0, 2000.0, 4500.0, 9000.0, 30000.0],
+            "phi_edges_radians": [0.0, 1.0, 4.5, 2.0 * math.pi],
+        }
+        mirrormeta = common | {"theta_edges_radians": halfthetaedges, "mirror_plane": "z=0"}
+        twinmeta = common | {"theta_edges_radians": [*halfthetaedges, math.pi - 0.6, math.pi]}
+        mirrorpos = dict[str, np.ndarray[t.Any, np.dtype[np.floating]]]()
+        twinpos = mirrorpos
+        twinindex0 = np.arange(n0 * 2 * nhalf * n2) % n0
+        twinindex1 = (np.arange(n0 * 2 * nhalf * n2) // n0) % (2 * nhalf)
+        halfindex1 = np.where(twinindex1 < nhalf, twinindex1, 2 * nhalf - 1 - twinindex1)
+    twinindex2 = np.arange(n0 * 2 * nhalf * n2) // (n0 * 2 * nhalf)
+    halfcell = twinindex0 + n0 * (halfindex1 + nhalf * twinindex2)
+    ncells = n0 * nhalf * n2
+    mirrorcells = pl.DataFrame({
+        "inputcellid": np.arange(ncells, dtype=np.int32),
+        **mirrorpos,
+        "rho": rng.random(ncells) * 1e-12,
+        "X_Ni56": rng.random(ncells),
+    })
+    twincells = pl.DataFrame({
+        "inputcellid": np.arange(2 * ncells, dtype=np.int32),
+        **twinpos,
+        "rho": mirrorcells["rho"].to_numpy()[halfcell],
+        "X_Ni56": mirrorcells["X_Ni56"].to_numpy()[halfcell],
+    })
+    return mirrorcells, mirrormeta, twincells, twinmeta, halfcell
+
+
+@pytest.mark.parametrize("coordinates", ["cylindrical2d", "spherical3d"])
+def test_mirrored_model_has_the_masses_and_the_cells_of_its_full_twin(tmp_path: Path, coordinates: str) -> None:
+    """A model with the key mirror_plane z=0 gives the masses and the cell search of the full model of both halves.
+
+    Each cell of the file also fills its mirror cell. Thus its volume and its mass are two times the values of the
+    half cell, and a velocity with z < 0 is in the cell of its mirror velocity.
+    """
+    mirrorcells, mirrormeta, twincells, twinmeta, halfcell = get_mirrored_model_and_twin(coordinates)
+    readmodels: dict[str, tuple[pl.DataFrame, dict[str, t.Any]]] = {}
+    for name, dfcells, meta in (("mirror", mirrorcells, mirrormeta), ("twin", twincells, twinmeta)):
+        at.inputmodel.save_modeldata(dfcells, outpath=tmp_path / name, modelmeta=meta | {"formatversion": 2})
+        lzmodel, modelmeta = at.inputmodel.scan_modeldata(tmp_path / name)
+        readmodels[name] = (at.inputmodel.add_derived_cols_to_modeldata(lzmodel, modelmeta).collect(), modelmeta)
+    dfmirror, metamirror = readmodels["mirror"]
+    dftwin, metatwin = readmodels["twin"]
+
+    with at.zopen(tmp_path / "mirror" / "model.txt.zst") as fmodel:
+        assert "mirror_plane z=0" in fmodel.read().splitlines()
+    assert at.misc.has_mirror_plane(metamirror)
+    assert not at.misc.has_mirror_plane(metatwin)
+    # the cells of a mirror pair together have the mass of their cell in the mirrored model
+    twinpairmass = np.bincount(halfcell, weights=dftwin.sort("modelgridindex")["mass_g"].to_numpy())
+    np.testing.assert_allclose(dfmirror.sort("modelgridindex")["mass_g"].to_numpy(), twinpairmass, rtol=1e-6)
+    assert math.isclose(dfmirror["volume"].sum(), dftwin["volume"].sum(), rel_tol=1e-6)
+
+    # a velocity with z < 0 is in the mirror cell, thus the twin cell of each velocity has the half cell of the file
+    rng = np.random.default_rng(seed=4)
+    velocities = rng.uniform(-2.9e9, 2.9e9, size=(3000, 3))
+    if coordinates == "cylindrical2d":
+        positions = {f"em_pos{axis}": velocities[:, i] * 1e5 for i, axis in enumerate("xyz")}
+        dfpackets = pl.DataFrame(positions | {"em_time": np.full(len(velocities), 1e5)})
+        cellsof = {
+            name: dfpackets
+            .select(at.packets.core.get_modelgridindex_expr("em", meta, pl.LazyFrame()).fill_null(-1))
+            .to_series()
+            .to_numpy()
+            for name, meta in (("mirror", metamirror), ("twin", metatwin))
+        }
+    else:
+        cellsof = {
+            name: at.inputmodel.get_spherical_cell_index_of_velocities(
+                velocities[:, 0], velocities[:, 1], velocities[:, 2], meta
+            )
+            for name, meta in (("mirror", metamirror), ("twin", metatwin))
+        }
+        dfvelocities = pl.DataFrame({"vel_x": velocities[:, 0], "vel_y": velocities[:, 1], "vel_z": velocities[:, 2]})
+        vel_r = (pl.col("vel_x") ** 2 + pl.col("vel_y") ** 2 + pl.col("vel_z") ** 2).sqrt()
+        packetcells = (
+            dfvelocities
+            .select(
+                at.packets.get_spherical_modelgridindex_expr(
+                    vel_r, pl.col("vel_x"), pl.col("vel_y"), pl.col("vel_z"), metamirror
+                ).fill_null(-1)
+            )
+            .to_series()
+            .to_numpy()
+        )
+        assert np.array_equal(packetcells, cellsof["mirror"])
+    isingrid = cellsof["twin"] >= 0
+    assert isingrid.sum() > 100
+    assert np.array_equal(cellsof["mirror"][isingrid], halfcell[cellsof["twin"][isingrid]])
+
+    if coordinates == "cylindrical2d":
+        # the image shows both halves, thus the full grid of the mirrored model has the cells of the twin
+        from artistools.inputmodel.plotinitialcomposition import get_full_grid_of_cylindrical_model
+
+        dffull, metafull = get_full_grid_of_cylindrical_model(dfmirror, metamirror)
+        assert metafull["ncoordgridz"] == metatwin["ncoordgridz"]
+        np.testing.assert_allclose(dffull["rho"].to_numpy(), dftwin.sort("modelgridindex")["rho"].to_numpy())
+        np.testing.assert_allclose(
+            dffull["pos_z_mid"].to_numpy(), dftwin.sort("modelgridindex")["pos_z_mid"].to_numpy()
+        )
+        # format version 1 has no mirror symmetry
+        with pytest.raises(ValueError, match="has no mirror symmetry"):
+            at.inputmodel.save_modeldata(
+                mirrorcells, outpath=tmp_path / "v1", modelmeta=mirrormeta | {"formatversion": 1}
+            )
+    else:
+        # a reduction to 2D keeps the mirror plane, and a reduction to 1D gives the shells of both halves
+        for outputdimensions, keepsmirror in ((2, True), (1, False)):
+            dfreduced, _, _, metareduced = at.inputmodel.dimension_reduce_model(
+                dfmirror.select(*mirrorcells.columns, "modelgridindex"), outputdimensions, modelmeta=dict(metamirror)
+            )
+            assert at.misc.has_mirror_plane(metareduced) == keepsmirror
+            assert math.isclose(dfreduced["mass_g"].sum(), dftwin["mass_g"].sum(), rel_tol=1e-6)
+
+
 def test_spherical_image_has_a_point_in_each_narrow_polar_cell() -> None:
     """The image of a model with many narrow polar cells has a point in each cell of the outer shell.
 
@@ -4478,6 +4629,17 @@ def test_plotinitialcomposition_of_a_spherical_model_gives_each_point_the_value_
         # a cell with no line is empty, thus only the count finds a file that lost its last line
         ("3 4e-12 1", (), "the key cell_line_count gives 4 cell lines, but the file has 3"),
         ("cell_line_count 4", ("cell_line_count 5",), "cell_line_count must have one integer from 1 to 4"),
+        # the polar axis of a mirrored model ends at pi / 2
+        (
+            "cell_line_count 4",
+            ("cell_line_count 4", "mirror_plane z=0"),
+            r"the last value of theta_edges_radians must be 1\.5707963267948966 \(pi / 2\)",
+        ),
+        (
+            "cell_line_count 4",
+            ("cell_line_count 4", "mirror_plane z=1"),
+            "the key mirror_plane must have the value z=0",
+        ),
         # the key cells_per_axis is optional, and a different count stops the reader
         (
             "cell_line_count 4",

@@ -1737,7 +1737,7 @@ def test_server_protocol_changes_with_the_readers(package_modules: list[Path]) -
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (20, "69e24cb9f926002e"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (21, "69e24cb9f926002e"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )
@@ -2239,10 +2239,19 @@ ESCAPE_SURFACE_MODELS: t.Final = {
     "spherical1d": ("vel_r_edges_kmps 0 1000 3000",),
     "cylindrical2d": ("vel_rcyl_edges_kmps 0 1500 3000", "vel_z_edges_kmps -3000 0 3000"),
     "spherical2d": ("vel_r_edges_kmps 0 1000 3000", f"theta_edges_radians 0 1.5 {math.pi!r}"),
+    # the two cells of a mirror pair have the same model cell
+    "cylindrical2d mirror": ("vel_rcyl_edges_kmps 0 1500 3000", "vel_z_edges_kmps 0 3000", "mirror_plane z=0"),
+    "spherical2d mirror": (
+        "vel_r_edges_kmps 0 1000 3000",
+        f"theta_edges_radians 0 {math.pi / 2!r}",
+        "mirror_plane z=0",
+    ),
 }
 DIRECT_GRID_OUT: t.Final = "0 0\n1 1\n"
 # a model cell with two propagation cells shows a Cartesian grid
 CARTESIAN_GRID_OUT: t.Final = "0 0\n1 0\n2 1\n"
+# the propagation grid of a mirrored model has the cells of both halves, and a mirror pair has one model cell
+MIRROR_GRID_OUT: t.Final = "0 0\n1 1\n2 0\n3 1\n"
 FORCE_SPHERICAL_OPTIONS: t.Final = (
     "constexpr bool FORCE_SPHERICAL_ESCAPE_SURFACE = true;\n"
     "constexpr int CUBOID_NCOORDGRID_X = 50;\nconstexpr int CUBOID_NCOORDGRID_Y = 50;\n"
@@ -2262,6 +2271,8 @@ FORCE_SPHERICAL_OPTIONS: t.Final = (
         ("spherical2d", None, None, math.sqrt(3.0)),
         ("spherical2d", DIRECT_GRID_OUT, None, 1.0),
         ("spherical2d", CARTESIAN_GRID_OUT, None, math.sqrt(3.0)),
+        ("cylindrical2d mirror", MIRROR_GRID_OUT, None, math.sqrt(2.0)),
+        ("spherical2d mirror", MIRROR_GRID_OUT, None, 1.0),
         # a packet escapes at vmax plus one cell diagonal or less: the cell width is 2 vmax / 50 on each axis
         ("spherical1d", CARTESIAN_GRID_OUT, FORCE_SPHERICAL_OPTIONS, 1.0 + math.sqrt(3.0) * 2.0 / 50.0),
         # the option does not apply to a spherical grid
@@ -2288,7 +2299,7 @@ def test_valid_range_ends_at_the_escape_surface_of_the_grid_of_the_run(
     edgelines = ESCAPE_SURFACE_MODELS[coordinates]
     modellines = [
         "format_version 2",
-        f"coordinates {coordinates}",
+        f"coordinates {coordinates.split(maxsplit=1)[0]}",
         "t_model_init_days 1.0",
         *edgelines,
         "columns inputcellid rho",

@@ -31,6 +31,7 @@ from artistools.misc import addarg_positional_items
 from artistools.misc import addarg_show
 from artistools.misc import addarg_sliceaxis
 from artistools.misc import get_model_coordinates
+from artistools.misc import has_mirror_plane
 from artistools.misc import import_optional
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
@@ -114,6 +115,25 @@ def get_point_slice_through_spherical_model(
     )
     pointmeta = modelmeta | {f"ncoordgrid{plotaxes[0]}": pointcount1, f"ncoordgrid{plotaxes[1]}": pointcount2}
     return dfpoints, pointmeta, plotaxes
+
+
+def get_full_grid_of_cylindrical_model(
+    dfmodel: pl.DataFrame, modelmeta: dict[str, t.Any]
+) -> tuple[pl.DataFrame, dict[str, t.Any]]:
+    """Return the cells and the metadata of the full grid of a 2D cylindrical model, from -vmax to vmax in z.
+
+    A mirrored model holds the cells with z >= 0. Each such cell also fills its mirror cell, thus the rows of the half
+    with z < 0 come first, in the sequence of the grid. The image then shows the full plane.
+    """
+    if not has_mirror_plane(modelmeta):
+        return dfmodel, modelmeta
+    ncoordgridrcyl = int(modelmeta["ncoordgridrcyl"])
+    dfupper = dfmodel.sort("modelgridindex")
+    mirrorcols = {"pos_z_min": "pos_z_max", "pos_z_max": "pos_z_min", "pos_z_mid": "pos_z_mid"}
+    dflower = dfupper.with_columns(
+        (-pl.col(othercol)).alias(col) for col, othercol in mirrorcols.items() if col in dfupper.columns
+    ).sort(pl.col("modelgridindex") // ncoordgridrcyl, descending=True, maintain_order=True)
+    return pl.concat([dflower, dfupper]), modelmeta | {"ncoordgridz": 2 * int(modelmeta["ncoordgridz"])}
 
 
 def plot_slice_modelcolumn(
@@ -338,7 +358,7 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
             positive_axis=args.positive_axis,
         )
     elif modelmeta["dimensions"] == 2:
-        df2dslice = dfmodel
+        df2dslice, modelmeta = get_full_grid_of_cylindrical_model(dfmodel, modelmeta)
         plotaxis1 = "rcyl"
         plotaxis2 = "z"
     else:

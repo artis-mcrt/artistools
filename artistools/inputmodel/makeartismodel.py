@@ -43,6 +43,7 @@ from artistools.misc import exit_with_error
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_file_copies
 from artistools.misc import get_model_coordinates
+from artistools.misc import has_mirror_plane
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
@@ -171,6 +172,11 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
         exit_with_error(
             f"Format version 1 of model.txt has no {coordinates} coordinates",
             "A 2D spherical or a 3D spherical model has format version 2 only",
+        )
+    if formatversion == 1 and has_mirror_plane(modelmeta):
+        exit_with_error(
+            "Format version 1 of model.txt has no mirror symmetry",
+            "A model with the key mirror_plane z=0 has format version 2 only",
         )
     print(
         f"The model.txt of {modelpath} has format version {modelmeta['formatversion']} and {coordinates} coordinates."

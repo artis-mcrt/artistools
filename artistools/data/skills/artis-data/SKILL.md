@@ -422,7 +422,11 @@ columns `X_Fegroup`, `X_Ni56`, `X_Co56`, `X_Fe52`, and `X_Cr48` are optional in 
 gives such a column with the value 0 if the file does not have it, because `sn3d` uses 0 for an absent column.
 
 A model with the coordinates `spherical2d` or `spherical3d` has version 2 only. Its parameters are
-`vel_r_edges_kmps`, `theta_edges_radians`, and, for `spherical3d`, `phi_edges_radians`. Each list holds the edges of
+`vel_r_edges_kmps`, `theta_edges_radians`, and, for `spherical3d`, `phi_edges_radians`. A `cylindrical2d`,
+`spherical2d`, or `spherical3d` model of version 2 can have the parameter `mirror_plane` with the value `z=0`. Its
+file then holds the cells with z >= 0, and each cell also fills its mirror cell with z <= 0. Thus `volume` and
+`mass_g` are two times the values of the half cell, and the cell of a position with z < 0 is the cell of its mirror
+position. Each list holds the edges of
 the cells on one axis. The polar angle theta is from the +z axis, and the azimuthal angle is phi = atan2(y, x). The index of a cell is
 `i_r + n_r * (i_theta + n_theta * i_phi)`. For such a model, `add_derived_cols_to_modeldata` gives these columns:
 
