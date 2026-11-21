@@ -1418,13 +1418,17 @@ def test_spectra_gamma_emission_time_uses_decay(patch_scan_packets: Callable[[pl
     assert np.isclose(integrated_flux, expected_flux, rtol=1e-12, atol=0.0)
 
 
-# The escape time of a packet is the value in the file times the Lorentz factor of the escape surface.
+# The comoving escape time of a packet is sqrt(t_esc^2 - r^2 / c^2), with its escape radius r = beta c t_esc.
 # The second packet enters the window of 1 to 2 days at beta 0.6, where 2.2 d * sqrt(1 - 0.6^2) = 1.76 d.
-# The first packet leaves the window at beta 0.8, where 1.5 d * 0.6 = 0.9 d.
-@pytest.mark.parametrize(("beta", "expected_e_cmf_sum"), [(0.0, 10.0), (0.6, 30.0), (0.8, 20.0)])
+# The first packet leaves the window at beta 0.8, where 1.5 d * 0.6 = 0.9 d. A packet that escapes at a corner of
+# a Cartesian grid has a larger radius than a packet on a face, thus the two packets can have different values.
+@pytest.mark.parametrize(
+    ("betas", "expected_e_cmf_sum"),
+    [((0.0, 0.0), 10.0), ((0.6, 0.6), 30.0), ((0.8, 0.8), 20.0), ((0.8, 0.6), 20.0), ((0.0, 0.8), 30.0)],
+)
 def test_spectra_contributions_use_escape_time(
     monkeypatch: pytest.MonkeyPatch,
-    beta: float,
+    betas: tuple[float, float],
     expected_e_cmf_sum: float,
     patch_scan_packets: Callable[[pl.DataFrame], None],
 ) -> None:
@@ -1438,17 +1442,18 @@ def test_spectra_contributions_use_escape_time(
         "pellet_nucindex": [0, 0],
         "nu_rf": [nu_rf, nu_rf],
     })
+    # the escape position has the radius beta c t_esc, on the axes in equal parts
+    radii_cm = np.array(betas) * at.constants.C_cm_per_s * dfpackets["escape_time"].to_numpy()
+    dfpackets = dfpackets.with_columns(**{
+        col: pl.Series(radii_cm / math.sqrt(3.0)) for col in ("posx", "posy", "posz")
+    })
     lambda_bin_edges = np.array([4000.0, 5000.0, 6000.0])
-
-    def get_escape_surface_gamma(_modelpath: Path | str) -> float:
-        return math.sqrt(1.0 - beta**2)
 
     def scan_nuclides(modelpath: Path | str) -> pl.LazyFrame:
         del modelpath
         return pl.LazyFrame({"pellet_nucindex": [0], "nucname": ["Ni56"]})
 
     patch_scan_packets(dfpackets)
-    monkeypatch.setattr(atspectra, "get_escape_surface_gamma", get_escape_surface_gamma)
     monkeypatch.setattr(atspectra, "scan_nuclides", scan_nuclides)
 
     dfspectrum = atspectra.scan_spectra_from_packets(

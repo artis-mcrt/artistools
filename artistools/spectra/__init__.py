@@ -6,7 +6,6 @@ __all__ = ("plot", "scan_spectra", "scan_spectra_from_packets")
 # the plot modules below import such modules, thus a name must exist before a cycle comes back here
 from artistools.spectra.core import convert_angstroms_to_unit as convert_angstroms_to_unit
 from artistools.spectra.core import convert_unit_to_angstroms as convert_unit_to_angstroms
-from artistools.spectra.core import get_escape_surface_gamma as get_escape_surface_gamma
 from artistools.spectra.core import get_flux_contributions as get_flux_contributions
 from artistools.spectra.core import get_flux_contributions_from_packets as get_flux_contributions_from_packets
 from artistools.spectra.core import get_from_packets as get_from_packets

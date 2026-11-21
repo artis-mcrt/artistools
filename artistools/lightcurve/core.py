@@ -52,12 +52,12 @@ from artistools.misc import scan_timesteps
 from artistools.misc import split_multitable_dataframe
 from artistools.misc import warn_direction_bin_noise
 from artistools.misc import zopen
+from artistools.packets import get_escape_time_cmf_days_expr
 from artistools.packets import scan_packets
 from artistools.packets import scan_virtual_packets
 from artistools.packets import sum_packets_by_dirbin
 from artistools.packets import sum_virtual_packets_by_observer
 from artistools.paths import get_path
-from artistools.spectra import get_escape_surface_gamma
 from artistools.spectra import scan_spectra
 from artistools.spectra import scan_spectrum_at_time
 from artistools.spectra import scan_vspecpol_data
@@ -285,15 +285,8 @@ def scan_lightcurve_from_packets(
         nprocs_read, dfpackets = scan_packets(
             modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type
         )
-        # the comoving frame needs the velocity of the model surface. A copy of a model folder can leave out a large
-        # model.txt, and the rest frame light curve needs no model.txt
-        try:
-            escapesurfacegamma = get_escape_surface_gamma(modelpath)
-        except FileNotFoundError:
-            print_warning(f"{modelpath} holds no model.txt, thus the light curve has no comoving frame luminosity")
-        else:
-            # the escape time divided by the Lorentz factor of the model surface gives the comoving-frame arrival time
-            dfpackets = dfpackets.with_columns(t_arrive_cmf_d=pl.col("escape_time") * escapesurfacegamma / day_to_s)
+        # the comoving-frame time of each packet comes from its escape time and position, as in ARTIS
+        dfpackets = dfpackets.with_columns(t_arrive_cmf_d=get_escape_time_cmf_days_expr())
 
     if pellet_nucname is not None:
         atomic_number = get_atomic_number(pellet_nucname)

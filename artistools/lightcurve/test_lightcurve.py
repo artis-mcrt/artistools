@@ -3473,9 +3473,10 @@ def test_plot_with_no_light_curve_stops_with_a_message(tmp_path: Path, capsys: p
 def test_packets_light_curve_of_a_model_with_no_model_file(
     mockplot: mock.MagicMock, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """The rest frame light curve of the packets needs no model.txt. Only the comoving frame needs it.
+    """The light curves of the packets need no model.txt, in the rest frame and in the comoving frame.
 
-    A copy of a model folder with no model.txt stopped with FileNotFoundError, also with no --plotcmf.
+    A copy of a model folder with no model.txt stopped with FileNotFoundError, also with no --plotcmf. The comoving
+    frame then took the velocity of the model surface from model.txt, and it now takes the position of each packet.
     """
     modelcopy = tmp_path / "nomodel"
     modelcopy.mkdir()
@@ -3487,9 +3488,8 @@ def test_packets_light_curve_of_a_model_with_no_model_file(
         argsraw=[], modelpath=[modelcopy], frompackets=True, plotcmf=True, outputfile=tmp_path / "lc.pdf"
     )
     stderr = capsys.readouterr().err
-    assert "holds no model.txt" in stderr
-    assert "--plotcmf draws no curve" in stderr
-    assert len(mockplot.call_args_list) == 1
+    assert "--plotcmf draws no curve" not in stderr
+    assert len(mockplot.call_args_list) == 2
     assert (tmp_path / "lc.pdf").is_file()
 
 

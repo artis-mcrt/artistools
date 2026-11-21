@@ -81,6 +81,7 @@ from artistools.misc import XUnit
 from artistools.packets import filter_packets_dirbin
 from artistools.packets import get_emission_velocity_expr
 from artistools.packets import get_emission_velocity_lineofsight_expr
+from artistools.packets import get_escape_time_cmf_days_expr
 from artistools.packets import get_modelgridindex_expr
 from artistools.packets import get_modelgridindex_from_velocity_expr
 from artistools.packets import get_packets_column_names
@@ -478,22 +479,8 @@ def select_dirbins(alldirbins: list[int], requested: Sequence[int] | None) -> li
     return list(requested)
 
 
-@modelpath_cache(maxsize=16)
-def get_escape_surface_gamma(modelpath: Path) -> float:
-    """Return sqrt(1 - beta^2) at the outer model boundary, which is the inverse of the Lorentz factor.
-
-    The cache takes the absolute path, thus a change of the working folder gives the new model.
-    """
-    from artistools.inputmodel import scan_modeldata
-
-    _, modelmeta = scan_modeldata(modelpath, printwarningsonly=True)
-    vmax_beta = float(modelmeta["vmax_cmps"]) / C_cm_per_s
-    return math.sqrt(1 - vmax_beta**2)
-
-
 def filter_packets_by_time(
     dfpackets: pl.LazyFrame,
-    modelpath: Path | str,
     timelowdays: float,
     timehighdays: float,
     use_time: t.Literal["arrival", "emission", "escape"],
@@ -504,10 +491,7 @@ def filter_packets_by_time(
         return dfpackets.filter(pl.col("t_arrive_d").is_between(timelowdays, timehighdays))
 
     if use_time == "escape":
-        escapesurfacegamma = get_escape_surface_gamma(modelpath)
-        return dfpackets.filter(
-            (pl.col("escape_time") * escapesurfacegamma / day_to_s).is_between(timelowdays, timehighdays)
-        )
+        return dfpackets.filter(get_escape_time_cmf_days_expr().is_between(timelowdays, timehighdays))
 
     col_emit_time = "tdecay" if gamma else "em_time"
     mean_correction = (pl.col(col_emit_time) - pl.col("t_arrive_d") * day_to_s).mean()
@@ -625,9 +609,9 @@ def scan_spectra_from_packets(
     else:
         alldirbins = [-1, *get_dirbins(average_over_phi=average_over_phi, average_over_theta=average_over_theta)]
         energy_column = "e_cmf" if use_time == "escape" else "e_rf"
-        dfpackets = filter_packets_by_time(
-            dfpackets, modelpath, timelowdays, timehighdays, use_time, gamma
-        ).with_columns(lambda_angstroms_rf=constants.c_ang_per_s / pl.col("nu_rf"))
+        dfpackets = filter_packets_by_time(dfpackets, timelowdays, timehighdays, use_time, gamma).with_columns(
+            lambda_angstroms_rf=constants.c_ang_per_s / pl.col("nu_rf")
+        )
 
         dirbinsums = sum_packets_by_dirbin(
             dfpackets,
@@ -2191,7 +2175,7 @@ def get_flux_contributions_from_packets(
                     lzdfpackets, modelpath, shellgrouping, usethermal=usethermal and getemission
                 )
 
-        lzdfpackets = filter_packets_by_time(lzdfpackets, modelpath, timelowdays, timehighdays, use_time, gamma)
+        lzdfpackets = filter_packets_by_time(lzdfpackets, timelowdays, timehighdays, use_time, gamma)
         if gamma and (groupby in SHELLCOLUMNS or velocityranges):
             check_gamma_emission_record(lzdfpackets)
 
