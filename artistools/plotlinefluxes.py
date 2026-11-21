@@ -312,11 +312,14 @@ def get_line_luminosities_from_pops(
         A_values = []
         delta_ergs_values = []
         for upperlevelindex, lowerlevelindex in zip(feature.upperlevelindices, feature.lowerlevelindices, strict=False):
-            A_values.append(
-                dftransitions_ion.filter((pl.col("upper") == upperlevelindex) & (pl.col("lower") == lowerlevelindex))[
-                    "A"
-                ].item(0)
-            )
+            pairA = dftransitions_ion.filter(
+                (pl.col("upper") == upperlevelindex) & (pl.col("lower") == lowerlevelindex)
+            )["A"]
+            if pairA.is_empty():
+                msg = f"transitiondata.txt holds no transition from level {upperlevelindex} to level {lowerlevelindex}"
+                raise IndexError(msg)
+            # ARTIS merges the rows of one pair of levels into one line with the sum of their A values
+            A_values.append(pairA.sum())
 
             delta_ergs_values.append(
                 (ion["levels"]["energy_ev"].item(upperlevelindex) - ion["levels"]["energy_ev"].item(lowerlevelindex))

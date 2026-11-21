@@ -412,7 +412,34 @@ def get_opacity_atomic_data(modelpath: Path | str, ionlist: tuple[tuple[int, int
         else get_kept_levels(dflevels, keptlevelcount_of_element.get(Z))
         for Z, ion_stage, dflevels in zip(adata["Z"], adata["ion_stage"], adata["levels"], strict=True)
     ]
-    return adata.with_columns(pl.Series("levels", keptlevels, dtype=pl.Object))
+    mergedtransitions = [merge_transitions_of_level_pairs(dftransitions) for dftransitions in adata["transitions"]]
+    return adata.with_columns(
+        pl.Series("levels", keptlevels, dtype=pl.Object), pl.Series("transitions", mergedtransitions, dtype=pl.Object)
+    )
+
+
+def merge_transitions_of_level_pairs(dftransitions: pl.DataFrame | pl.LazyFrame) -> pl.LazyFrame:
+    """Return the transitions of an ion with one row for each pair of a lower and an upper level, as ARTIS has them.
+
+    transitiondata.txt can hold more than one row for a pair of levels. ARTIS sums the A values of such rows, takes
+    their largest collision strength, and keeps the forbidden flag of the first row (input.cc). Thus a line has the
+    optical depth of the summed A, and the rows do not each add an escape probability.
+    """
+    lztransitions = dftransitions.lazy()
+    columns = lztransitions.collect_schema().names()
+    if not {"lower", "upper", "A"} <= set(columns):
+        return lztransitions
+    otherexprs = [
+        pl.col(col).max() if col == "collstr" else pl.col(col).first()
+        for col in columns
+        if col not in {"lower", "upper", "A"}
+    ]
+    return (
+        lztransitions
+        .group_by("lower", "upper", maintain_order=True)
+        .agg(pl.col("A").sum(), *otherexprs)
+        .select(columns)
+    )
 
 
 def get_cell_batches(dfestimators: pl.DataFrame, numbins: int) -> list[pl.DataFrame]:
