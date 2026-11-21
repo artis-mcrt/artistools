@@ -22,8 +22,8 @@ from artistools.misc.fileio import read_wsv
 from artistools.misc.general import parse_float_range
 from artistools.misc.general import parse_range_list
 from artistools.misc.modelinfo import get_escape_surface_max_radial_velocity_cmps
-from artistools.misc.modelinfo import get_grid_max_radial_velocity_cmps
 from artistools.misc.modelinfo import get_inputparams
+from artistools.misc.modelinfo import get_matter_max_radial_velocity_cmps
 from artistools.misc.modelinfo import get_model_logname
 from artistools.misc.modelpaths import clear_at_reload
 from artistools.misc.modelpaths import get_artis_model_folders
@@ -563,14 +563,11 @@ def get_escaped_arrivalrange(modelpath: Path) -> tuple[int, float | int | None, 
 
     # find the earliest possible escape time and add the largest possible travel time
 
-    # for a cylindrical model and a Cartesian model, the box corners are the maximum radius with (potentially)
-    # non-zero density. A spherical grid ends at vmax
-    cornervmax = get_grid_max_radial_velocity_cmps(modelmeta)
-
     # perfect initial conditions make t_arrive = tmin valid already. Light from the origin at tmin
     # escapes later, but the code subtracts that travel time, thus t_arrive stays tmin. The code
-    # still waits until light from the origin reaches the corners
-    validrange_start_days = get_timestep_times(modelpath, loc="start")[0] * (1 + cornervmax / C_cm_per_s)
+    # still waits until light from the origin reaches the matter with the largest radius
+    mattervmax = get_matter_max_radial_velocity_cmps(modelpath, modelmeta)
+    validrange_start_days = get_timestep_times(modelpath, loc="start")[0] * (1 + mattervmax / C_cm_per_s)
 
     t_end = get_timestep_times(modelpath, loc="end")
     # find the last escape time, then subtract the longest travel time from the origin. This is the

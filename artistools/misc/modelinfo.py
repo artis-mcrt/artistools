@@ -489,24 +489,75 @@ def get_escape_surface_max_radial_velocity_cmps(modelpath: Path, modelmeta: "Map
     hasmodelgrid = coordinates == "cartesian3d" or grid_out_gives_direct_map(modelpath)
     gridmeta = modelmeta if hasmodelgrid else {"coordinates": "cartesian3d", "vmax_cmps": vmax_cmps}
     cornervmax_cmps = get_grid_max_radial_velocity_cmps(gridmeta)
-    gridcoordinates = get_model_coordinates(gridmeta)
-    if gridcoordinates not in {"cylindrical2d", "cartesian3d"}:
-        return cornervmax_cmps
     if get_artis_option(modelpath, "FORCE_SPHERICAL_ESCAPE_SURFACE") != "true":
         return cornervmax_cmps
+    celldiagonal_cmps = get_propagation_cell_diagonal_cmps(modelpath, modelmeta, hasmodelgrid=hasmodelgrid)
+    return cornervmax_cmps if celldiagonal_cmps is None else min(cornervmax_cmps, vmax_cmps + celldiagonal_cmps)
 
+
+def get_matter_max_radial_velocity_cmps(modelpath: Path, modelmeta: "Mapping[str, t.Any]") -> float:
+    """Return the largest radial velocity of the matter of a run [cm/s], which sets the start of the valid range.
+
+    modelpath is a local model folder. sn3d gives each propagation cell the matter of the model at the centre of the
+    cell (grid.cc). On the grid of the model cells, the matter thus ends at the corner of that grid. A model on a
+    Cartesian propagation grid has matter up to half a cell diagonal beyond the corner of the model grid. With
+    FORCE_SPHERICAL_ESCAPE_SURFACE, sn3d also removes the matter of each cell whose centre is outside vmax. Without
+    the counts of the propagation cells, the function takes the corner of the model grid.
+    """
+    vmax_cmps = float(modelmeta["vmax_cmps"])
+    modelcornervmax_cmps = get_grid_max_radial_velocity_cmps(modelmeta)
+    hasmodelgrid = get_model_coordinates(modelmeta) == "cartesian3d" or grid_out_gives_direct_map(modelpath)
+    celldiagonal_cmps = get_propagation_cell_diagonal_cmps(modelpath, modelmeta, hasmodelgrid=hasmodelgrid)
+    if celldiagonal_cmps is None:
+        return modelcornervmax_cmps
+    mattervmax_cmps = modelcornervmax_cmps
+    if not hasmodelgrid:
+        cartesiancornervmax_cmps = get_grid_max_radial_velocity_cmps({
+            "coordinates": "cartesian3d",
+            "vmax_cmps": vmax_cmps,
+        })
+        mattervmax_cmps = min(cartesiancornervmax_cmps, modelcornervmax_cmps + celldiagonal_cmps / 2.0)
+    if get_artis_option(modelpath, "FORCE_SPHERICAL_ESCAPE_SURFACE") == "true":
+        mattervmax_cmps = min(mattervmax_cmps, vmax_cmps + celldiagonal_cmps / 2.0)
+    return mattervmax_cmps
+
+
+def get_propagation_cell_diagonal_cmps(
+    modelpath: Path, modelmeta: "Mapping[str, t.Any]", *, hasmodelgrid: bool
+) -> float | None:
+    """Return the diagonal of a cell of a Cartesian or a cylindrical propagation grid [cm/s], or None.
+
+    The grid of the model cells gives its counts of the cells. A Cartesian propagation grid of a different model
+    takes them from CUBOID_NCOORDGRID_X, _Y, and _Z of artisoptions.h. A spherical grid, an absent count, and a
+    count that is not a positive integer give None.
+    """
+    gridcoordinates = get_model_coordinates(modelmeta) if hasmodelgrid else "cartesian3d"
     # the width of the propagation grid on each axis in units of vmax, and the count of its cells on that axis
     cellcounts: list[tuple[float, t.Any]]
     if gridcoordinates == "cylindrical2d":
-        cellcounts = [(1.0, modelmeta["ncoordgridrcyl"]), (2.0, modelmeta["ncoordgridz"])]
-    elif hasmodelgrid:
-        cellcounts = [(2.0, modelmeta[f"ncoordgrid{axisname}"]) for axisname in "xyz"]
-    else:
+        cellcounts = [(1.0, modelmeta.get("ncoordgridrcyl")), (2.0, modelmeta.get("ncoordgridz"))]
+    elif gridcoordinates == "cartesian3d" and hasmodelgrid:
+        cellcounts = [(2.0, modelmeta.get(f"ncoordgrid{axisname}")) for axisname in "xyz"]
+    elif gridcoordinates == "cartesian3d":
         cellcounts = [(2.0, get_artis_option(modelpath, f"CUBOID_NCOORDGRID_{axisname}")) for axisname in "XYZ"]
+    else:
+        return None
     if any(count is None for _, count in cellcounts):
-        return cornervmax_cmps
-    celldiagonal_cmps = vmax_cmps * math.sqrt(sum((gridwidth / int(count)) ** 2 for gridwidth, count in cellcounts))
-    return min(cornervmax_cmps, vmax_cmps + celldiagonal_cmps)
+        return None
+    try:
+        counts = [int(count) for _, count in cellcounts]
+    except ValueError:
+        # e.g. "2 * N" or the name of a different constant in artisoptions.h
+        print_warning(
+            f"The counts of the propagation cells {[count for _, count in cellcounts]} of {modelpath} are not integers,"
+            " thus the valid time range takes the corner of the grid"
+        )
+        return None
+    if min(counts) <= 0:
+        return None
+    return float(modelmeta["vmax_cmps"]) * math.sqrt(
+        sum((gridwidth / count) ** 2 for (gridwidth, _), count in zip(cellcounts, counts, strict=True))
+    )
 
 
 def require_cartesian3d_model(modelmeta: "Mapping[str, t.Any]", requirement: str, helptext: str) -> None:

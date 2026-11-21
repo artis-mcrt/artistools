@@ -326,6 +326,20 @@ def get_model_output_folders(args: argparse.Namespace, modelpath_given: bool) ->
         outputfolders["dimensionreduce"] = [
             get_dimreduce_outputfolder(args.outputfile, modelpath, args.dimensionreduce) for modelpath in args.modelpath
         ]
+        # the name of a reduction folder holds only the last part of the model path. A file system of macOS ignores
+        # the letter case of a name, thus the test does too
+        foldernames = [str(folder.resolve()).casefold() for folder in outputfolders["dimensionreduce"]]
+        if len(set(foldernames)) < len(foldernames):
+            samefolderpaths = [
+                str(modelpath)
+                for modelpath, foldername in zip(args.modelpath, foldernames, strict=True)
+                if foldernames.count(foldername) > 1
+            ]
+            exit_with_error(
+                f"The model paths {', '.join(samefolderpaths)} give one output folder, thus the reduction of one"
+                " model would replace the reduction of the other",
+                "Run the command for one model at a time, with a different -o for each model",
+            )
     if args.makemodelfromgriddata:
         outputfolders["makemodelfromgriddata"] = [
             get_griddata_outputfolder(args.outputfile, args.modelpath, modelpath_given)
