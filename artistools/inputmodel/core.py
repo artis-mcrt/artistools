@@ -452,6 +452,18 @@ def scan_modelfile_text(
         # sn3d stops for such a line
         msg = f"{filename}: a cell line has fewer values than the key columns gives names"
         raise ValueError(msg)
+    if formatversion == 2:
+        # save_modeldata does not write such a density, and the mass and the energy of the cell would not be valid
+        dfinvaliddensity = (
+            dfmodel.filter(~(pl.col("rho").is_finite() & (pl.col("rho") >= 0.0))).select("inputcellid", "rho").collect()
+        )
+        if dfinvaliddensity.height:
+            msg = (
+                f"{filename}: {dfinvaliddensity.height} cells have a density that is not finite or is below 0, e.g."
+                f" the cell {dfinvaliddensity['inputcellid'].item(0)} with rho = {dfinvaliddensity['rho'].item(0)!r}."
+                " Each cell of format version 2 needs a finite density of 0 or more"
+            )
+            raise ValueError(msg)
     if cellcount > npts_model:
         msg = (
             f"{filename}: found more than {npts_model} cells, but the cell edges of the header give {npts_model} cells"

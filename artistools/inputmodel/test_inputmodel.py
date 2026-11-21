@@ -4451,6 +4451,10 @@ def test_plotinitialcomposition_of_a_spherical_model_gives_each_point_the_value_
         ("3 4e-12 1", ("4 4e-12 1",), "each inputcellid must be from 0 to 3"),
         ("3 4e-12 1", ("3 4e-12 1 0.5",), "a cell line has more values than the key columns"),
         ("3 4e-12 1", ("3 4e-12",), "a cell line has fewer values than the key columns"),
+        # the writer does not write such a density, thus the reader also stops for it
+        ("3 4e-12 1", ("3 nan 1",), "1 cells have a density that is not finite or is below 0"),
+        ("3 4e-12 1", ("3 inf 1",), "1 cells have a density that is not finite or is below 0"),
+        ("3 4e-12 1", ("3 -4e-12 1",), "1 cells have a density that is not finite or is below 0"),
         # a cell with no line is empty, thus only the count finds a file that lost its last line
         ("3 4e-12 1", (), "the key cell_line_count gives 4 cell lines, but the file has 3"),
         ("cell_line_count 4", ("cell_line_count 5",), "cell_line_count must have one integer from 1 to 4"),
