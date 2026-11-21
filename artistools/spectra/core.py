@@ -2813,26 +2813,31 @@ def get_spatial_scale_deltalogx(
 
 
 def model_covers_timedays(modelpath: Path | str, timedays: str | float | None, *, quiet: bool = False) -> bool:
-    """Return False if timedays names one time outside the timesteps of the model, and print a warning unless quiet.
+    """Return False if timedays names a time or a range outside the timesteps of the model, and warn unless quiet.
 
-    A --timemin and --timemax range outside a model skips that model with a warning, thus one time does the same. A
-    range of --timedays and a text that is no number give True, because get_time_range gives their messages.
+    A --timemin and --timemax range outside a model skips that model with a warning, thus a time or a range of
+    --timedays does the same. A text that is no number gives True, because get_time_range gives its message.
     """
-    if timedays is None or parse_timedays_range(timedays) is not None:
+    if timedays is None:
         return True
-    try:
-        timedays_float = float(str(timedays).rstrip("d"))
-    except ValueError:
-        return True
+    dayrange = parse_timedays_range(timedays)
+    if dayrange is None:
+        try:
+            timedays_float = float(str(timedays).rstrip("d"))
+        except ValueError:
+            return True
+        dayrange = (timedays_float, timedays_float)
 
     tstart_first = get_timestep_times(modelpath, loc="start")[0]
     tend_last = get_timestep_times(modelpath, loc="end")[-1]
-    if tstart_first <= timedays_float <= tend_last:
+    rangelow, rangehigh = dayrange
+    if rangehigh >= tstart_first and rangelow <= tend_last:
         return True
 
     if not quiet:
+        rangetext = f"{rangelow:g} days" if rangelow == rangehigh else f"{rangelow:g} to {rangehigh:g} days"
         print_warning(
-            f"{get_model_logname(modelpath)}: no timestep covers {timedays_float:g} days, because the timesteps cover"
+            f"{get_model_logname(modelpath)}: no timestep covers {rangetext}, because the timesteps cover"
             f" {tstart_first:.2f} to {tend_last:.2f} days. The plot skips this model at this time"
         )
     return False

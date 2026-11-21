@@ -2489,6 +2489,23 @@ def test_spectra_residual_panel_refuses_a_plot_with_no_pair(tmp_path: Path) -> N
         )
 
 
+def test_timedayslist_skips_a_model_that_does_not_cover_a_range(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An epoch of -timedayslist that a model does not cover skips that model on its panel, also for a range.
+
+    A single time outside a model skipped the panel, but a range raised a ValueError from get_time_range.
+    """
+    outputfile = tmp_path / "list.pdf"
+    at.spectra.plot(
+        argsraw=[], specpath=[modelpath, modelpath_classic_3d], timedayslist=["295-305", "5"], outputfile=outputfile
+    )
+    stderr = capsys.readouterr().err
+    assert "no timestep covers 295 to 305 days" in stderr
+    assert "no timestep covers 5 days" in stderr
+    assert list(tmp_path.glob("*.pdf"))
+
+
 def get_saved_axes(**plotargs: t.Any) -> list[mplax.Axes]:
     """Return the axes of the figure that plotspectra saves, for a test that reads the axis properties."""
     savedaxes: list[mplax.Axes] = []
@@ -3415,7 +3432,9 @@ def test_codecomparison_spectrum_refuses_the_options_that_it_cannot_draw(capsys:
 
     The reader took the raw -timedays text, which failed for a range, and it drew angstroms on an axis of another unit.
     """
-    args = argparse.Namespace(timemin=290.0, timemax=320.0, xunit="nm", yvariable="flux", distmpc=1.0, normalised=False)
+    args = argparse.Namespace(
+        timemin=290.0, timemax=320.0, xunit="nm", yvariable="flux", distmpc=1.0, normalised=False, multispecplot=False
+    )
     with pytest.raises(SystemExit):
         plotspectra.check_codecomparison_args(args)
     assert "-xunit nm" in capsys.readouterr().err
@@ -3426,8 +3445,20 @@ def test_codecomparison_spectrum_refuses_the_options_that_it_cannot_draw(capsys:
     assert "no time range" in capsys.readouterr().err
 
     args = argparse.Namespace(
-        timemin=290.0, timemax=320.0, xunit="angstrom", yvariable="flux", distmpc=1.0, normalised=False
+        timemin=290.0,
+        timemax=320.0,
+        xunit="angstrom",
+        yvariable="flux",
+        distmpc=1.0,
+        normalised=False,
+        multispecplot=True,
     )
+    # the code comparison branch drew one spectrum on the first panel, at the middle of all the epochs
+    with pytest.raises(SystemExit):
+        plotspectra.check_codecomparison_args(args)
+    assert "--timedayslist gives a panel for each" in capsys.readouterr().err
+
+    args.multispecplot = False
     plotspectra.check_codecomparison_args(args)
 
 

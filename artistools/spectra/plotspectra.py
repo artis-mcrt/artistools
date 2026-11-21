@@ -1167,6 +1167,12 @@ def check_codecomparison_args(args: argparse.Namespace) -> None:
             "A code comparison spectrum needs a time, and the command gives no time range",
             "Give --timedays (e.g. -t 300 or -t 290-320), or --timemin and --timemax",
         )
+    if args.multispecplot:
+        # the code comparison branch draws one spectrum on the first panel, at the middle of all the epochs
+        exit_with_error(
+            "A code comparison spectrum gives one time, and --timedayslist gives a panel for each of several times",
+            "Remove --timedayslist, or plot the code comparison spectrum in a separate command for each time",
+        )
     unsupported = [
         option
         for option, given in (
