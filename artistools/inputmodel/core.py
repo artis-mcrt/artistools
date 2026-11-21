@@ -3084,20 +3084,38 @@ def get_cell_selection(
 
 
 def resolve_cell_direction_range(
-    args: argparse.Namespace, modelpath: Path | str, quiet: bool = False, *, dimensions: int | None = None
+    args: argparse.Namespace,
+    modelpath: Path | str,
+    quiet: bool = False,
+    *,
+    dimensions: int | None = None,
+    mirrored: bool | None = None,
 ) -> CellDirectionRange | None:
     """Return the direction range of the options, as get_cell_direction_range does, for the cells of the model.
 
     A 2D model is symmetric around the z axis, thus the range of --dirbin then has no ϕ bin. The titles and the method
     lines then give the range of the selected cells. --average-over-theta-angle keeps only the ϕ bin, thus a 2D model
-    refuses it. With quiet, the function does not log the range. Code on the host of a remote model gives dimensions,
-    because args.modelpath there still names the host.
+    refuses it. With quiet, the function does not log the range. Code on the host of a remote model gives dimensions
+    and mirrored, because args.modelpath there still names the host.
+
+    Each cell of a model with mirror symmetry (the key mirror_plane) fills both halves z > 0 and z < 0. A range of
+    directions cannot select the half of a cell, thus the function stops for such a model.
     """
     directionrange = get_cell_direction_range(args, quiet=quiet)
-    if directionrange is None or directionrange.phibin is None:
+    if directionrange is None:
+        return None
+    if dimensions is None or mirrored is None:
+        modelmeta = scan_modeldata(modelpath, printwarningsonly=True)[1]
+        dimensions = modelmeta["dimensions"]
+        mirrored = has_mirror_plane(modelmeta)
+    if mirrored:
+        exit_with_error(
+            f"{modelpath} has mirror symmetry in the plane z = 0, and each cell fills both halves. Thus a range of"
+            " directions cannot select the part of a cell in that range",
+            "Remove --dirbin, --costhetamin, --costhetamax, and the options --average-over-...-angle",
+        )
+    if directionrange.phibin is None:
         return directionrange
-    if dimensions is None:
-        dimensions = scan_modeldata(modelpath, printwarningsonly=True)[1]["dimensions"]
     if dimensions != 2:
         return directionrange
     if directionrange.costhetabin is None:

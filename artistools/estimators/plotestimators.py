@@ -2614,7 +2614,9 @@ def get_image_figure_data(
     elif not isplane and modelmeta["dimensions"] == 3:
         strimage = "average around the z axis"
     figure_title = f"{get_model_name(modelpath)}\nTimestep {strtimestep} ({strtimedays}), {strimage}"
-    directionrange = resolve_cell_direction_range(args, modelpath, quiet=True, dimensions=modelmeta["dimensions"])
+    directionrange = resolve_cell_direction_range(
+        args, modelpath, quiet=True, dimensions=modelmeta["dimensions"], mirrored=has_mirror_plane(modelmeta)
+    )
     if directionrange is not None:
         figure_title += f", {format_cell_direction_range(directionrange)}"
     print("  Plotting " + figure_title.replace("\n", " "))
@@ -3625,7 +3627,9 @@ def add_plot_columns(
     if args.modelgridindex is None and args.dimensionreduce == 1:
         estimators = estimators.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
 
-    directionrange = resolve_cell_direction_range(args, args.modelpath, quiet=True, dimensions=modelmeta["dimensions"])
+    directionrange = resolve_cell_direction_range(
+        args, args.modelpath, quiet=True, dimensions=modelmeta["dimensions"], mirrored=has_mirror_plane(modelmeta)
+    )
     if directionrange is not None:
         columns = estimators.collect_schema().names()
         estimators = estimators.filter(get_cell_direction_selection(directionrange, columns))

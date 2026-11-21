@@ -4509,6 +4509,14 @@ def test_mirrored_model_has_the_masses_and_the_cells_of_its_full_twin(tmp_path: 
     assert isingrid.sum() > 100
     assert np.array_equal(cellsof["mirror"][isingrid], halfcell[cellsof["twin"][isingrid]])
 
+    # each cell fills both halves, thus a range of directions cannot select the part of a cell in the range
+    args = argparse.Namespace(
+        dirbin=0, costhetamin=None, costhetamax=None, average_over_phi_angle=True, average_over_theta_angle=False
+    )
+    assert at.inputmodel.resolve_cell_direction_range(args, tmp_path / "twin", quiet=True) is not None
+    with pytest.raises(SystemExit):
+        at.inputmodel.resolve_cell_direction_range(args, tmp_path / "mirror", quiet=True)
+
     if coordinates == "cylindrical2d":
         # the image shows both halves, thus the full grid of the mirrored model has the cells of the twin
         from artistools.inputmodel.plotinitialcomposition import get_full_grid_of_cylindrical_model
