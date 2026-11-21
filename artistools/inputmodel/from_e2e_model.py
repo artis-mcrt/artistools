@@ -5,6 +5,7 @@ Oliver Just wrote the original script, and Gerrit Leck changed it for the map of
 
 import argparse
 import itertools
+import math
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
@@ -851,9 +852,18 @@ def map_to_artis(
             .select(cs.by_name(lzdyn_model.collect_schema().names()) | cs.by_name("volume", "vel_r_mid_on_c"))
             .collect()
         )
-        if dyn_model.height != numb_cells:
+        # the merge takes the cell of each id, thus the two grids must have the same cells
+        dyngrid = (dyn_modelmeta_in.get("coordinates"), *(dyn_modelmeta_in.get(f"ncoordgrid{axis}") for axis in "xyz"))
+        thisgrid = ("cartesian3d", *(int(count) for count in grid_dims))
+        dynvmax_cmps = float(dyn_modelmeta_in["vmax_cmps"])
+        if (
+            dyn_model.height != numb_cells
+            or dyngrid != thisgrid
+            or not math.isclose(dynvmax_cmps, vmax_on_c * CLIGHT, rel_tol=1e-4)
+        ):
             exit_with_error(
-                f"The model of -replacedyn has {dyn_model.height} cells, but the grid of this model has {numb_cells}",
+                f"The model of -replacedyn has the grid {dyngrid} with vmax {dynvmax_cmps:.6e} cm/s, but this model has"
+                f" the grid {thisgrid} with vmax {vmax_on_c * CLIGHT:.6e} cm/s",
                 "Give a model of the dynamical ejecta on the grid of --ngridx, --ngridy, and --ngridz",
             )
         # the grid of this model has the cell ids 1 to N, and a model of format version 2 has 0 to N - 1. The joins

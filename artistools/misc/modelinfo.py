@@ -19,6 +19,7 @@ import numpy as np
 import numpy.typing as npt
 import polars as pl
 
+from artistools.constants import day_to_s
 from artistools.constants import h_ev_s
 from artistools.constants import km_to_cm
 from artistools.misc.console import add_help_note
@@ -458,7 +459,8 @@ def grid_out_gives_direct_map(modelpath: Path) -> bool:
     sn3d opens grid.out in each job before it writes the cells, thus a job that stops early can leave an empty or a
     cut file. Such a file, and a file that the reader cannot read, give False, which is the safe value. sn3d writes
     one line for each propagation cell with matter (grid.cc). Thus a full direct map has one line for each model
-    cell with rho > 0, and the first lines of a cut Cartesian map can look like a direct map.
+    cell with rho > 0, and the first lines of a cut Cartesian map can look like a direct map. With
+    FORCE_SPHERICAL_ESCAPE_SURFACE, sn3d also removes the matter of each cell whose centre is outside vmax.
     """
     try:
         dfgrid = read_grid_out(modelpath)
@@ -472,8 +474,19 @@ def grid_out_gives_direct_map(modelpath: Path) -> bool:
         return False
     from artistools.inputmodel import scan_modeldata
 
-    dfmodel, _ = scan_modeldata(modelpath, printwarningsonly=True)
-    nonemptycellcount = dfmodel.filter(pl.col("rho") > 0.0).select(pl.len()).collect().item()
+    dfmodel, modelmeta = scan_modeldata(modelpath, printwarningsonly=True)
+    hasmatter = pl.col("rho") > 0.0
+    # each centre of a cell of a spherical grid is inside vmax, thus only a cylindrical grid loses cells
+    if (
+        get_model_coordinates(modelmeta) == "cylindrical2d"
+        and get_artis_option(modelpath, "FORCE_SPHERICAL_ESCAPE_SURFACE") == "true"
+    ):
+        rmax_cm = float(modelmeta["vmax_cmps"]) * float(modelmeta["t_model_init_days"]) * day_to_s
+        centreradius_cm = (
+            pl.col("pos_rcyl_mid").cast(pl.Float64) ** 2 + pl.col("pos_z_mid").cast(pl.Float64) ** 2
+        ).sqrt()
+        hasmatter &= centreradius_cm <= rmax_cm
+    nonemptycellcount = dfmodel.filter(hasmatter).select(pl.len()).collect().item()
     if dfgrid.height != nonemptycellcount:
         print_warning(
             f"The grid.out of {modelpath} has {dfgrid.height} propagation cells, and the model has"

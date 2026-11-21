@@ -2308,6 +2308,35 @@ def test_valid_range_starts_when_light_from_the_matter_of_the_largest_radius_arr
     assert math.isclose(validrange_start_days, firststart_days * (1.0 + startfactor * vmax_on_c), rel_tol=1e-12)
 
 
+@pytest.mark.parametrize(("options", "isdirectmap"), [(FORCE_SPHERICAL_OPTIONS, True), (None, False)])
+def test_direct_map_of_a_cylindrical_grid_without_the_cells_outside_vmax(
+    tmp_path: Path, options: str | None, *, isdirectmap: bool
+) -> None:
+    """grid.out of a direct cylindrical map leaves out the cells that FORCE_SPHERICAL_ESCAPE_SURFACE makes empty.
+
+    The centres of cells 1 and 7 are at sqrt(2250^2 + 2250^2) km/s, which is above vmax. A direct map with that option
+    took the count of all the cells with rho > 0, thus it took the map as a cut Cartesian map.
+    """
+    from artistools.misc.modelinfo import grid_out_gives_direct_map
+
+    modelfolder = tmp_path / "model"
+    modelfolder.mkdir()
+    modellines = [
+        "format_version 2",
+        "coordinates cylindrical2d",
+        "t_model_init_days 1.0",
+        "vel_rcyl_edges_kmps 0 1500 3000",
+        "vel_z_edges_kmps -3000 -1500 0 1500 3000",
+        "columns inputcellid rho",
+        *(f"{cellid} 1e-12" for cellid in range(8)),
+    ]
+    (modelfolder / "model.txt").write_text("\n".join(modellines) + "\n", encoding="utf-8")
+    (modelfolder / "grid.out").write_text("".join(f"{cellid} {cellid}\n" for cellid in (0, 2, 3, 4, 5, 6)))
+    if options is not None:
+        (modelfolder / "artisoptions.h").write_text(options, encoding="utf-8")
+    assert grid_out_gives_direct_map(modelfolder) is isdirectmap
+
+
 @pytest.mark.parametrize(
     ("coordinates", "gridout", "options", "escapefactor"),
     [
