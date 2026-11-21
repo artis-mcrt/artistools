@@ -19,6 +19,7 @@ from artistools.constants import Msun_to_g as MSUN
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import dimension_reduce_model
 from artistools.inputmodel.core import get_written_format_version
+from artistools.inputmodel.core import IS_VALID_YE
 from artistools.inputmodel.core import MODEL_FILE_NAMES
 from artistools.inputmodel.core import save_empty_abundance_file
 from artistools.inputmodel.core import save_initelemabundances
@@ -207,12 +208,20 @@ def read_spherical_griddat_file(
     vel_r_edges_kmps, theta_edges_radians, phi_edges_radians = edges.values()
     vmax = vel_r_edges_kmps[-1] * km_to_cm
 
-    griddata = (
-        read_wsv(griddatfilepath, comment_prefix="#", skip_rows=len(headerkeys))
-        .rename({"gridindex": "inputcellid"})
-        .with_columns(cs.by_name("rho", "Ye", require_all=False).fill_null(0.0))
-        .with_columns(pl.col("rho") * geometric_density_to_g_per_cm3)
-    )
+    griddata = read_wsv(griddatfilepath, comment_prefix="#", skip_rows=len(headerkeys)).rename({
+        "gridindex": "inputcellid"
+    })
+    # maptogrid writes a number for each cell, also Ye = 0 for an empty cell. Thus a null or a NaN is damaged input
+    isvalidcell = (pl.col("rho").is_finite() & (pl.col("rho") >= 0.0) & IS_VALID_YE).fill_null(value=False)
+    dfinvalidcells = griddata.filter(~isvalidcell)
+    if dfinvalidcells.height:
+        exit_with_error(
+            f"{griddatfilepath}: {dfinvalidcells.height} cells have no valid rho or Ye, e.g. the cell"
+            f" {dfinvalidcells['inputcellid'].item(0)} with rho = {dfinvalidcells['rho'].item(0)!r} and Ye ="
+            f" {dfinvalidcells['Ye'].item(0)!r}",
+            "Each cell needs a finite density of 0 or more and an electron fraction from 0 to 1. Run maptogrid again",
+        )
+    griddata = griddata.with_columns(pl.col("rho") * geometric_density_to_g_per_cm3)
     gridshape = (len(vel_r_edges_kmps) - 1, len(theta_edges_radians) - 1, len(phi_edges_radians) - 1)
     if math.prod(gridshape) != griddata.height:
         exit_with_error(

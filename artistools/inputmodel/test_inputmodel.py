@@ -5431,7 +5431,9 @@ def test_spherical_map_gives_each_particle_the_cell_of_its_direction(tmp_path: P
     np.testing.assert_allclose(dfcells["mass_g"].to_numpy(), dfcells.item(0, "mass_g"), rtol=1e-6)
 
 
-def test_spherical_map_and_cartesian_map_give_the_same_shell_masses(tmp_path: Path) -> None:
+def test_spherical_map_and_cartesian_map_give_the_same_shell_masses(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """The two maps of one snapshot estimate the same density field, thus their radial shells hold equal masses.
 
     The kernel of each particle is inside both grids and wider than a cell. The kernel sum of the Cartesian map then
@@ -5508,6 +5510,20 @@ def test_spherical_map_and_cartesian_map_give_the_same_shell_masses(tmp_path: Pa
         assert math.isclose(shellmass_spherical.sum(), particlemass, rel_tol=mass_rtol), foldername
         cumulativedifference = np.cumsum(shellmass_spherical - shellmass_cartesian) / particlemass
         assert np.abs(cumulativedifference).max() < 0.05, foldername
+
+    # maptogrid writes a number for each cell, thus the reader stops for a damaged value and does not give it rho = 0
+    damagedfolder = tmp_path / "damaged"
+    shutil.copytree(tmp_path / "spherical", damagedfolder)
+    (damagedfolder / "test_info.dat").write_text("0 0 20000.0\n", encoding="utf-8")
+    (damagedfolder / "tmerger.txt").write_text("# time of merger in geom units\n0.0\n", encoding="utf-8")
+    gridlines = (tmp_path / "spherical" / "grid_spherical.dat").read_text(encoding="utf-8").splitlines()
+    gridindex, _, ye, tracercount = gridlines[-1].split()
+    gridlines[-1] = f"{gridindex} nan {ye} {tracercount}"
+    (damagedfolder / "grid_spherical.dat").write_text("\n".join(gridlines) + "\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        at.inputmodel.modelfromhydro.read_griddat_file(damagedfolder)
+    captured = capsys.readouterr()
+    assert "1 cells have no valid rho or Ye" in captured.out + captured.err
 
 
 @pytest.mark.parametrize("mapto3d", [False, True])
