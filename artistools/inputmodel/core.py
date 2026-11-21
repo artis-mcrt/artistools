@@ -915,6 +915,13 @@ def with_ye_of_yefile(dfmodel: pl.DataFrame, yefilepath: Path) -> pl.DataFrame:
     except ValueError:
         msg = f"{yefilepath}: each cell line must hold a cell id and an electron fraction"
         raise ValueError(msg) from None
+    dfinvalidye = dfye.filter(~(pl.col("Ye_file").is_finite() & pl.col("Ye_file").is_between(0.0, 1.0)))
+    if not dfinvalidye.is_empty():
+        msg = (
+            f"{yefilepath}: the cell {dfinvalidye['inputcellid'].item(0)} has the electron fraction"
+            f" {dfinvalidye['Ye_file'].item(0)!r}. Each electron fraction must be a finite number from 0 to 1"
+        )
+        raise ValueError(msg)
     unknownids = dfye.join(dfmodel.select("inputcellid"), on="inputcellid", how="anti")
     if not unknownids.is_empty():
         msg = (
@@ -1699,6 +1706,24 @@ def with_otherstable_columns(dfmodel: pl.DataFrame, dfelabundances: pl.DataFrame
             f"The element abundances have no row for {cellswithnoelements.height} cells with density, e.g. the cell"
             f" with inputcellid {cellswithnoelements['inputcellid'].min()}. A model.txt of format version 2 gets its"
             " element mass fractions from these rows, thus each cell with density needs one"
+        )
+        raise ValueError(msg)
+    # a null is a value that is not known, and the otherstable column of such an element would get 0
+    elementfraccols = [col for col in dfelabundances.columns if col != "inputcellid"]
+    cellswithnullelement = (
+        dfmodel
+        .filter(hasdensity)
+        .select("inputcellid")
+        .join(dfelabundances, on="inputcellid", how="inner")
+        .filter(pl.any_horizontal(pl.col(elementfraccols).is_null()))
+        if elementfraccols
+        else pl.DataFrame()
+    )
+    if not cellswithnullelement.is_empty():
+        msg = (
+            f"The element abundances have no value for {cellswithnullelement.height} cells with density, e.g. the cell"
+            f" with inputcellid {cellswithnullelement['inputcellid'].min()}. Each element mass fraction of such a cell"
+            " must be a number"
         )
         raise ValueError(msg)
     remainders = {}

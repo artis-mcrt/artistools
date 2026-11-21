@@ -4604,6 +4604,12 @@ def test_otherstable_columns_give_the_element_mass_fractions() -> None:
     for elcol in ("X_Fe", "X_Co", "X_Ni"):
         assert dfelements[elcol].to_list() == pytest.approx(dfelabundances[elcol].to_list(), rel=1e-6)
 
+    # a null mass fraction is not known, and the otherstable column would give it as 0
+    with pytest.raises(ValueError, match="The element abundances have no value for 1 cells with density"):
+        at.inputmodel.core.with_otherstable_columns(
+            dfmodel, dfelabundances.with_columns(X_Fe=pl.Series([0.125, None], dtype=pl.Float64))
+        )
+
     # sn3d stops if the nuclide columns of an element hold more than the element
     with pytest.raises(ValueError, match=r"The nuclide columns of Ni hold up to 0\.125 more"):
         at.inputmodel.core.with_otherstable_columns(dfmodel, dfelabundances.with_columns(X_Ni=pl.lit(0.375)))
@@ -4830,6 +4836,11 @@ def test_ye_merge_and_version_2_writer_follow_the_rules_of_sn3d(tmp_path: Path) 
         at.inputmodel.core.with_ye_of_yefile(dfmodel, yefile)
     yefile.write_text("1\n1 0.4\n2 0.45\n", encoding="utf-8")
     assert at.inputmodel.core.with_ye_of_yefile(dfmodel, yefile)["Ye"].to_list() == pytest.approx([0.4, 0.3])
+    # a conversion to version 2 gives these values to the column Ye
+    for invalidye in ("nan", "inf", "1.5", "-0.1"):
+        yefile.write_text(f"1\n1 {invalidye}\n", encoding="utf-8")
+        with pytest.raises(ValueError, match="Each electron fraction must be a finite number from 0 to 1"):
+            at.inputmodel.core.with_ye_of_yefile(dfmodel, yefile)
 
     at.inputmodel.save_modeldata(
         pl.DataFrame({"inputcellid": [0, 1], "rho": [1e-12, 1e-12], "X_Ni56": [0.5, float("nan")]}),
@@ -4952,6 +4963,14 @@ def test_reduction_and_downscale_take_the_elements_of_the_selected_model_file(tm
     assert math.isclose(get_hydrogen_mass(smallfolder), hydrogenmass, rel_tol=1e-5)
     # the model reader also takes the elements of the selected file
     assert math.isclose(get_hydrogen_mass(altfolder / "model_alt.txt.zst"), hydrogenmass, rel_tol=1e-6)
+
+    # a conversion in the folder writes model.txt, thus it replaced the model.txt of the folder with the selected file
+    modeltextbefore = (altfolder / "model.txt").read_bytes()
+    with pytest.raises(SystemExit):
+        at.inputmodel.makeartismodel.main(
+            argsraw=[], modelpath=[altfolder / "model_alt.txt.zst"], format_version=1, force=True
+        )
+    assert (altfolder / "model.txt").read_bytes() == modeltextbefore
 
     # sn3d reads the abundances.txt beside model.txt, and a file in a subfolder is of a different model
     version1folder = tmp_path / "version1"

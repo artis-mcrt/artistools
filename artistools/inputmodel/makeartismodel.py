@@ -48,6 +48,7 @@ from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
 from artistools.misc import SPHERICAL_EDGE_COORDINATES
+from artistools.misc import without_compressed_extension
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -188,6 +189,13 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
     dfmodel = lzmodel.collect()
     sourcefolder = get_model_input_folder(modelpath)
     hasotherfolder = outputfolder.resolve() != sourcefolder.resolve()
+    sourcefilename = "model.txt" if Path(modelpath).is_dir() else without_compressed_extension(Path(modelpath)).name
+    if not hasotherfolder and sourcefilename != "model.txt":
+        # the conversion writes model.txt, thus it would replace the model.txt of the folder and not the selected file
+        exit_with_error(
+            f"{modelpath} is not the model.txt of its folder, and a conversion writes model.txt",
+            "Give -o with a different folder",
+        )
     modelcopies = [path for path in get_file_copies(sourcefolder / "model.txt") if path.is_file()]
     if len(modelcopies) > 1:
         # a reader of each copy can take the parquet cache of the other copy, and abundances.txt is of one of them
