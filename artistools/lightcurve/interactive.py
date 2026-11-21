@@ -1044,9 +1044,10 @@ def open_window(
                 viewer.values.otheroptions, viewer.values.lightcurves, lightcurves, sourceindices
             ),
         )
-        # a new first model can have no data for a kind of viewing direction, e.g. the observers of the virtual packets
+        # a new first model can have no data for a kind of viewing direction, e.g. the observers of the virtual packets.
+        # set_direction also removes the --frompackets that the viewer gave to the observers
         if values.directionkind not in viewer.models.directionkinds:
-            values = dc.replace(values, directionkind="", directionbins=())
+            values = viewer.set_direction(values, DirectionChoice(kind="", bins=(), usedegrees=values.usedegrees))
         apply(values)
 
     show_series_rows = add_series_list(

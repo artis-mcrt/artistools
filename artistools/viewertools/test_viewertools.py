@@ -1075,12 +1075,27 @@ def test_range_slider_keeps_a_range_of_one_position_and_stays_inside_the_slider(
 def test_viewer_option_rows_split_a_group_of_switches() -> None:
     """Argparse reads -qv as -q and -v, and the option table must give each switch its own row.
 
-    The table read -qv as the flag -q with the value "v", and the command then held a stray positional argument.
+    The table read -qv as the flag -q with the value "v", and the command then held a stray positional argument. The
+    second -q gives no second row, because argparse keeps one value of a switch.
     """
     parser = viewercore.make_parser(at.estimators.addargs)
     rows, othertokens = viewercore.split_option_rows(parser, ["Te", "mymodel", "-qv", "-qt300", "--xmin", "5"])
-    assert rows == (("--quiet", ()), ("--verbose", ()), ("--quiet", ()), ("--timedays", ("300",)), ("--xmin", ("5",)))
+    assert rows == (("--quiet", ()), ("--verbose", ()), ("--timedays", ("300",)), ("--xmin", ("5",)))
     assert othertokens == ["Te", "mymodel"]
+
+
+def test_viewer_option_rows_follow_argparse_for_a_repeated_option_and_a_dash() -> None:
+    """A repeated option that keeps its last values gets one row with them, and a lone "-" is a value.
+
+    The series list read the first row of --label, but argparse keeps the last, and an edit then copied the first row
+    over the others. is_flag took "-" as a flag, thus "--linestyle - :" gave the series paths - and :.
+    """
+    parser = viewercore.make_parser(at.spectra.plotspectra.addargs)
+    rows, othertokens = viewercore.split_option_rows(
+        parser, ["m1", "m2", "--label", "A", "--xmin", "5", "--label", "B", "C", "--linestyle", "-", ":"]
+    )
+    assert rows == (("--label", ("B", "C")), ("--xmin", ("5",)), ("--linestyle", ("-", ":")))
+    assert othertokens == ["m1", "m2"]
 
 
 def test_viewer_removes_an_option_of_two_values_with_its_values_alone() -> None:
