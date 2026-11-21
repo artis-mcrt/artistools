@@ -416,6 +416,9 @@ UNIFORM_EDGE_COORDINATES = ("cylindrical2d", "cartesian3d")
 UNIFORM_EDGE_RTOL = 1e-9
 # sn3d accepts the same difference between the last angular edge and pi or 2 pi
 ANGLE_EDGE_ATOL_RADIANS = 1e-8
+# the cosine of a polar edge moves the cone of the edge by approximately 1.1e-16 / theta of the radius, and sn3d has a
+# position tolerance of 1e-12 of the radius at a cell boundary. sn3d has the same limit
+MIN_POLAR_EDGE_ANGLE_FROM_AXIS_RADIANS = 1e-4
 
 
 def get_model_coordinates(modelmeta: "Mapping[str, t.Any]") -> str:
@@ -554,8 +557,9 @@ def validate_model_edges(
 
     - Each list increases. A list of r, rcyl, theta, or phi starts at exactly 0.
     - The last polar angle is pi and the last azimuthal angle is 2 pi, to ANGLE_EDGE_ATOL_RADIANS. A polar angle
-      at pi / 2, to the same tolerance, becomes exactly pi / 2 before the check, as in sn3d. Two polar angles must
-      have different cosines, and each cell in theta and in phi must be wider than ANGLE_EDGE_ATOL_RADIANS.
+      at pi / 2, to the same tolerance, becomes exactly pi / 2 before the check, as in sn3d. Each polar angle other
+      than 0 and pi is at least MIN_POLAR_EDGE_ANGLE_FROM_AXIS_RADIANS from the z axis, and each cell in theta and in
+      phi must be wider than ANGLE_EDGE_ATOL_RADIANS.
     - A cylindrical2d or cartesian3d grid has cells of equal width. The lists of x, y, and z are from -vmax to
       vmax, and all the axes have the same vmax. A cartesian3d grid has the same count of cells on each axis.
     - A mirrored model (mirrored = True) holds the cells with z >= 0. Its list of z starts at 0, and its last polar
@@ -618,13 +622,14 @@ def validate_model_edges(
             msg = f"{source}: each cell of {key} must be wider than {ANGLE_EDGE_ATOL_RADIANS:g} rad"
             raise ValueError(msg)
 
-    if "theta_edges_radians" in edges:
-        # sn3d takes a polar edge as its cosine, and a polar edge very near the z axis has the cosine of the axis
-        cosines = [math.cos(edge) for edge in edges["theta_edges_radians"]]
-        if not all(lower > upper for lower, upper in itertools.pairwise(cosines)):
+    # sn3d takes a polar edge as a cone with the cosine of the edge, and near the z axis that cosine does not give the
+    # angle to the position tolerance of a cell boundary
+    for edge in edges.get("theta_edges_radians", []):
+        if 0.0 < edge < math.pi and min(edge, math.pi - edge) < MIN_POLAR_EDGE_ANGLE_FROM_AXIS_RADIANS:
             msg = (
-                f"{source}: two values of theta_edges_radians have the same cosine, thus the polar cell between them"
-                " is too thin for the precision of the numbers"
+                f"{source}: the polar edge {edge!r} rad is less than {MIN_POLAR_EDGE_ANGLE_FROM_AXIS_RADIANS:g} rad"
+                " from the z axis. sn3d takes a polar edge as a cone with the cosine of the edge, and the cosine of"
+                " such an edge does not give its angle to the position tolerance of a cell boundary"
             )
             raise ValueError(msg)
 

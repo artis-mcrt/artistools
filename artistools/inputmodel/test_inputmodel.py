@@ -4665,8 +4665,8 @@ def test_plotinitialcomposition_of_a_spherical_model_gives_each_point_the_value_
         ("vel_r_edges_kmps 0 1000 3000", ("vel_r_edges_kmps 0 3000 1000",), "must increase"),
         (
             f"theta_edges_radians 0 1.5 {math.pi!r}",
-            (f"theta_edges_radians 0 1.02e-8 1.5 {math.pi!r}",),
-            "two values of theta_edges_radians have the same cosine",
+            (f"theta_edges_radians 0 5e-5 1.5 {math.pi!r}",),
+            "the polar edge 5e-05 rad is less than 0.0001 rad from the z axis",
         ),
         (
             f"theta_edges_radians 0 1.5 {math.pi!r}",
