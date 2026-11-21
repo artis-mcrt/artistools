@@ -4256,6 +4256,10 @@ def test_spherical_model_round_trip(tmp_path: Path, coordinates: str) -> None:
         f"cell_line_count {dfmodel.height}",
         "columns inputcellid rho X_Fegroup X_Ni56 Ye tracercount",
     ]
+    # the key cells_per_axis gives the cell counts, thus the line of the coordinates has no comment
+    coordinatesindex = headerlines.index(f"coordinates {coordinates}")
+    gridcounts = " ".join(str(len(modelmeta[key]) - 1) for key in edgekeys)
+    assert headerlines[coordinatesindex + 1] == f"cells_per_axis {gridcounts}"
 
     # the writer gives 17 significant digits, thus each edge comes back with no change
     assert {key: modelmeta_read[key] for key in edgekeys} == edges_written
@@ -4450,6 +4454,12 @@ def test_plotinitialcomposition_of_a_spherical_model_gives_each_point_the_value_
         # a cell with no line is empty, thus only the count finds a file that lost its last line
         ("3 4e-12 1", (), "the key cell_line_count gives 4 cell lines, but the file has 3"),
         ("cell_line_count 4", ("cell_line_count 5",), "cell_line_count must have one integer from 1 to 4"),
+        # the key cells_per_axis is optional, and a different count stops the reader
+        (
+            "cell_line_count 4",
+            ("cell_line_count 4", "cells_per_axis 2 3"),
+            "cells_per_axis gives the cell counts '2 3', but the cell edges give '2 2'",
+        ),
         (
             "columns inputcellid rho X_Fegroup",
             ("phi_edges_radians 0 6.283185307179586", "columns inputcellid rho X_Fegroup"),
