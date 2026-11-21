@@ -5712,6 +5712,14 @@ def test_spherical_map_and_cartesian_map_give_the_same_shell_masses(
     captured = capsys.readouterr()
     assert "1 cells have no valid rho or Ye" in captured.out + captured.err
 
+    # a grid index that occurs two times and one that is absent give the same count of rows
+    gridlines[-1] = " ".join([gridlines[-2].split()[0], *gridlines[-1].split()[1:]]).replace("nan", "0.0")
+    (damagedfolder / "grid_spherical.dat").write_text("\n".join(gridlines) + "\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        at.inputmodel.modelfromhydro.read_griddat_file(damagedfolder)
+    captured = capsys.readouterr()
+    assert "the grid indices must be 0 to" in captured.out + captured.err
+
 
 @pytest.mark.parametrize("mapto3d", [False, True])
 def test_from_e2e_model_spherical_grid_holds_both_halves_of_a_symmetric_model(tmp_path: Path, mapto3d: bool) -> None:

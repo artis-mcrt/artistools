@@ -489,10 +489,12 @@ def get_escape_surface_max_radial_velocity_cmps(modelpath: Path, modelmeta: "Map
     """Return the largest radial velocity of the surface where the packets of a run escape [cm/s].
 
     modelpath is a local model folder. The packets escape at the outer edge of the propagation grid, which sn3d makes
-    from the cells of the model or as a Cartesian grid (GRID_TYPE_OVERRIDE). grid.out shows which: each propagation
-    cell of a grid of the model cells has the index of its model cell. A cartesian3d model has always its own grid.
-    Without grid.out, the function takes a Cartesian grid, which gives the largest velocity and is thus the safe
-    value.
+    from the cells of the model or as a Cartesian grid (GRID_TYPE_OVERRIDE). The option GRID_TYPE_OVERRIDE of the
+    artisoptions.h of the model folder shows which. Without the option, grid.out shows which: each propagation cell
+    of a grid of the model cells has the index of its model cell. grid.out lists only the cells with matter, thus a
+    few cells of a Cartesian grid can also have these indices, and the option is the more certain source. A
+    cartesian3d model has always its own grid. Without both sources, the function takes a Cartesian grid, which gives
+    the largest velocity and is thus the safe value.
 
     A spherical grid ends at vmax. A corner of a cylindrical grid is at sqrt(2) vmax, and a corner of a Cartesian
     grid is at sqrt(3) vmax. With FORCE_SPHERICAL_ESCAPE_SURFACE in the artisoptions.h of the model folder, a packet
@@ -503,7 +505,11 @@ def get_escape_surface_max_radial_velocity_cmps(modelpath: Path, modelmeta: "Map
     vmax_cmps = float(modelmeta["vmax_cmps"])
     coordinates = get_model_coordinates(modelmeta)
     hasmodelgrid = coordinates == "cartesian3d"
-    if not hasmodelgrid:
+    gridoverride = None if hasmodelgrid else get_artis_option(modelpath, "GRID_TYPE_OVERRIDE")
+    if gridoverride is not None:
+        # sn3d permits only a Cartesian grid in place of the grid of the model
+        hasmodelgrid = gridoverride != "GridType::CARTESIAN3D"
+    elif not hasmodelgrid:
         with contextlib.suppress(FileNotFoundError):
             # the two propagation cells of a mirror pair have the same model cell
             ismodelgridcell = pl.col("modelgridindex") == (

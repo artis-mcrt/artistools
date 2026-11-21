@@ -2252,6 +2252,7 @@ DIRECT_GRID_OUT: t.Final = "0 0\n1 1\n"
 CARTESIAN_GRID_OUT: t.Final = "0 0\n1 0\n2 1\n"
 # the propagation grid of a mirrored model has the cells of both halves, and a mirror pair has one model cell
 MIRROR_GRID_OUT: t.Final = "0 0\n1 1\n2 0\n3 1\n"
+CARTESIAN_OVERRIDE_OPTIONS: t.Final = "constexpr std::optional<GridType> GRID_TYPE_OVERRIDE = GridType::CARTESIAN3D;\n"
 FORCE_SPHERICAL_OPTIONS: t.Final = (
     "constexpr bool FORCE_SPHERICAL_ESCAPE_SURFACE = true;\n"
     "constexpr int CUBOID_NCOORDGRID_X = 50;\nconstexpr int CUBOID_NCOORDGRID_Y = 50;\n"
@@ -2272,6 +2273,9 @@ FORCE_SPHERICAL_OPTIONS: t.Final = (
         ("spherical2d", DIRECT_GRID_OUT, None, 1.0),
         ("spherical2d", CARTESIAN_GRID_OUT, None, math.sqrt(3.0)),
         ("cylindrical2d mirror", MIRROR_GRID_OUT, None, math.sqrt(2.0)),
+        # grid.out lists only the cells with matter, and GRID_TYPE_OVERRIDE gives the grid of the run
+        ("spherical2d", DIRECT_GRID_OUT, CARTESIAN_OVERRIDE_OPTIONS, math.sqrt(3.0)),
+        ("spherical2d", CARTESIAN_GRID_OUT, "constexpr std::optional<GridType> GRID_TYPE_OVERRIDE;\n", 1.0),
         ("spherical2d mirror", MIRROR_GRID_OUT, None, 1.0),
         # a packet escapes at vmax plus one cell diagonal or less: the cell width is 2 vmax / 50 on each axis
         ("spherical1d", CARTESIAN_GRID_OUT, FORCE_SPHERICAL_OPTIONS, 1.0 + math.sqrt(3.0) * 2.0 / 50.0),

@@ -223,6 +223,16 @@ def read_spherical_griddat_file(
         )
     griddata = griddata.with_columns(pl.col("rho") * geometric_density_to_g_per_cm3)
     gridshape = (len(vel_r_edges_kmps) - 1, len(theta_edges_radians) - 1, len(phi_edges_radians) - 1)
+    # a grid index that occurs two times and one that is absent give the same count of rows
+    if (
+        not griddata["inputcellid"]
+        .sort()
+        .equals(pl.Series(range(griddata.height)), check_dtypes=False, check_names=False)
+    ):
+        exit_with_error(
+            f"{SPHERICAL_GRID_FILE_NAME}: the grid indices must be 0 to {griddata.height - 1}, each one time",
+            "Run maptogrid again",
+        )
     if math.prod(gridshape) != griddata.height:
         exit_with_error(
             f"{SPHERICAL_GRID_FILE_NAME} holds {griddata.height} cells, but its cell edges give"
