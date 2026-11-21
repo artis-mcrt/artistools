@@ -851,8 +851,22 @@ def map_to_artis(
             .select(cs.by_name(lzdyn_model.collect_schema().names()) | cs.by_name("volume", "vel_r_mid_on_c"))
             .collect()
         )
-        dyn_model = dyn_model.with_columns(dfmodel["bin_state"].alias("bin_state"))
-        dyn_abunds = scan_initelemabundances(modelpath=Path(replacedyn))
+        if dyn_model.height != numb_cells:
+            exit_with_error(
+                f"The model of -replacedyn has {dyn_model.height} cells, but the grid of this model has {numb_cells}",
+                "Give a model of the dynamical ejecta on the grid of --ngridx, --ngridy, and --ngridz",
+            )
+        # the grid of this model has the cell ids 1 to N, and a model of format version 2 has 0 to N - 1. The joins
+        # and the filters below take the cell of an id, thus the ids of the dynamical ejecta must also start at 1
+        firstdynid = dyn_model["inputcellid"].min()
+        assert isinstance(firstdynid, int)
+        dyn_model = dyn_model.with_columns(
+            (pl.col("modelgridindex") + 1).cast(dyn_model.schema["inputcellid"]).alias("inputcellid"),
+            dfmodel["bin_state"].alias("bin_state"),
+        )
+        dyn_abunds = scan_initelemabundances(modelpath=Path(replacedyn)).with_columns(
+            pl.col("inputcellid") - firstdynid + 1
+        )
         # scan_modeldata adds tracercount only for a model.txt that holds it
         dyn_model = dyn_model.drop(["tracercount", "modelgridindex"], strict=False)
 

@@ -612,6 +612,39 @@ def test_make1dmodelfromcone(tmp_path: Path) -> None:
     assert (tmp_path / "abundances_1d.txt.zst").is_file()
 
 
+def test_make1dmodelfromcone_of_a_version_2_model_gives_the_mass_fractions_of_version_1(tmp_path: Path) -> None:
+    """A version 2 model holds each X_<el>_otherstable beside an element column that already includes it.
+
+    The sum of the normalisation counted the otherstable columns twice, thus each mass fraction was too low.
+    """
+    version2folder = tmp_path / "version2"
+    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[modelpath_3d], format_version=2, outputfile=version2folder)
+    massfractions = []
+    for sourcefolder in (modelpath_3d, version2folder):
+        conefolder = tmp_path / f"cone_{sourcefolder.name}"
+        conefolder.mkdir()
+        at.inputmodel.slice1dfromconein3dmodel.main(
+            argsraw=[],
+            modelpath=[sourcefolder],
+            outputpath=conefolder,
+            axis="-z",
+            coneshellspacingexponent=2.0,
+            nshells=4,
+            coneangle=60,
+        )
+        dfmodel, _ = at.inputmodel.scan_modeldata(conefolder / "model_1d.txt", printwarningsonly=True)
+        with at.zopen(conefolder / "abundances_1d.txt.zst") as abundfile:
+            elementfractions = np.loadtxt(abundfile)[:, 1:]
+        massfractions.append((dfmodel.select(cs.starts_with("X_")).collect(), elementfractions))
+
+    (nuclides_v1, elements_v1), (nuclides_v2, elements_v2) = massfractions
+    assert nuclides_v1.columns == nuclides_v2.columns
+    for colname in nuclides_v1.columns:
+        assert np.allclose(nuclides_v2[colname], nuclides_v1[colname], rtol=1e-6, atol=0.0), colname
+    assert np.allclose(elements_v2, elements_v1, rtol=1e-6, atol=0.0)
+    assert np.allclose(elements_v2.sum(axis=1), 1.0, rtol=1e-6, atol=0.0)
+
+
 def test_empty_shell_warning_goes_to_the_standard_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """--quiet hides the standard output alone, thus the warning for an empty shell takes the standard error.
 
@@ -3798,6 +3831,35 @@ def test_from_e2e_model_main(
     )
     lzreplaced, _ = at.inputmodel.scan_modeldata(tmp_path / "replaced", printwarningsonly=True)
     assert lzreplaced.select(pl.col("rho").is_finite().all()).collect().item()
+
+    # a model of format version 2 has the cell ids 0 to N - 1, and the joins then gave each cell the next cell
+    at.inputmodel.makeartismodel.main(
+        argsraw=[], modelpath=[tmp_path / "dyn3d"], format_version=2, outputfile=tmp_path / "dyn3d_v2"
+    )
+    for outfoldername, modeargs in (("replaced", ["--globaldynscale"]), ("interpolated", ["--interpolate"])):
+        at.inputmodel.from_e2e_model.main(
+            argsraw=[
+                *gridargs3d,
+                "-replacedyn",
+                str(tmp_path / "dyn3d_v2"),
+                *modeargs,
+                "-o",
+                str(tmp_path / f"{outfoldername}_v2"),
+            ]
+        )
+        for reader in (at.inputmodel.scan_modeldata, at.inputmodel.scan_initelemabundances):
+            dfresults = []
+            for folder in (tmp_path / outfoldername, tmp_path / f"{outfoldername}_v2"):
+                result = reader(folder, printwarningsonly=True)
+                lzresult = result[0] if isinstance(result, tuple) else result
+                dfresults.append(lzresult.select(cs.by_name("rho", require_all=False) | cs.starts_with("X_")).collect())
+            dfresult_v1, dfresult_v2 = dfresults
+            assert dfresult_v1.columns == dfresult_v2.columns
+            for colname in dfresult_v1.columns:
+                assert np.allclose(dfresult_v2[colname], dfresult_v1[colname], rtol=1e-5, atol=0.0), (
+                    outfoldername,
+                    colname,
+                )
 
     for filename in at.inputmodel.core.MODEL_FILE_NAMES:
         (tmp_path / "interpolated" / f"{filename}.zst").unlink(missing_ok=True)
