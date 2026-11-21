@@ -1,3 +1,4 @@
+import os
 import shutil
 import typing as t
 from collections.abc import Callable
@@ -158,6 +159,17 @@ def test_make_virtual_spectra_summed_file(tmp_path: Path) -> None:
         assert np.array_equal(total[0], source[0]), "the time header must not be summed"
         assert np.array_equal(total[1:, 0], source[1:, 0]), "the frequency column must not be summed"
         assert np.allclose(total[1:, 1:], 2 * source[1:, 1:], rtol=1e-12, atol=0.0)
+
+    # a continued run writes the rank files again, and a total that is older than a rank file then misses flux
+    totalfile = tmp_path / "vspecpol_total-0.out"
+    totaltime = totalfile.stat().st_mtime - 2000.0
+    os.utime(totalfile, (totaltime, totaltime))
+    for ranktime, expectsnewsum in ((totaltime - 1000.0, False), (totaltime + 1000.0, True)):
+        for mpirank in range(2):
+            os.utime(tmp_path / f"vspecpol_{mpirank:04d}.out", (ranktime, ranktime))
+        at.spectra.scan_vspecpol_data.cache_clear()
+        at.spectra.scan_vspecpol_data(tmp_path, 0)
+        assert (totalfile.stat().st_mtime > totaltime) == expectsnewsum, ranktime
 
 
 def test_vpkt_frompackets_spectrum_keeps_the_rows_inside_the_vpkt_ranges(

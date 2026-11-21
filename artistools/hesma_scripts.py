@@ -31,6 +31,7 @@ from artistools.misc import get_vpkt_config
 from artistools.misc import match_closest_time
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
+from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import require_action
 from artistools.misc import resolve_outputfile
@@ -38,6 +39,7 @@ from artistools.misc import split_multitable_dataframe
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
+from artistools.spectra import get_vspecpol_bins_inside_vpkt_window
 from artistools.spectra import scan_vspecpol_data
 
 
@@ -133,7 +135,15 @@ def make_hesma_vspecfiles(modelpath: Path, outpath: Path | None = None) -> None:
             print(angle_name)
             vspecdata = scan_vspecpol_data(vspecindex=vspecindex, modelpath=modelpath)["I"].collect()
 
-            timearray = vspecdata.columns[1:]
+            # a bin outside the window of vpkt.txt has no flux, and a bin across an edge has too low a flux
+            allbintimes = vspecdata.columns[1:]
+            insidebins = get_vspecpol_bins_inside_vpkt_window([float(time) for time in allbintimes], vpkt_config)
+            timearray = [allbintimes[index] for index in insidebins]
+            if len(timearray) < len(allbintimes):
+                print_warning(
+                    f"The file leaves out {len(allbintimes) - len(timearray)} time bins, because they are not fully"
+                    " inside the time window of vpkt.txt"
+                )
             vspecdata = (
                 vspecdata
                 .sort("nu", descending=True)

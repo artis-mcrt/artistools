@@ -58,6 +58,7 @@ from artistools.packets import scan_virtual_packets
 from artistools.packets import sum_packets_by_dirbin
 from artistools.packets import sum_virtual_packets_by_observer
 from artistools.paths import get_path
+from artistools.spectra import get_vspecpol_bins_inside_vpkt_window
 from artistools.spectra import scan_spectra
 from artistools.spectra import scan_spectrum_at_time
 from artistools.spectra import scan_vspecpol_data
@@ -452,6 +453,25 @@ def generate_band_lightcurve_data(
         for timestep, time in enumerate(float(time) for time in timearray)
         if (timemin is None or timemin <= time) and (timemax is None or timemax >= time)
     ]
+    if isvpktobserver:
+        # a bin of the virtual packets outside the window of vpkt.txt has no flux, and a bin across an edge has too low
+        # a flux, as the packets path finds with select_timesteps_inside_vpkt_window
+        vpkt_config = get_vpkt_config(Path(modelpath))
+        insidebins = set(get_vspecpol_bins_inside_vpkt_window([float(time) for time in timearray], vpkt_config))
+        insidetimes = [(timestep, time) for timestep, time in selectedtimes if timestep in insidebins]
+        if not insidetimes:
+            msg = (
+                f"No selected time bin of the virtual packets lies fully inside the time window"
+                f" {vpkt_config['initial_time']} to {vpkt_config['final_time']} days of vpkt.txt"
+            )
+            raise ValueError(msg)
+        if len(insidetimes) < len(selectedtimes):
+            print_warning(
+                f"The light curve of the virtual packets leaves out {len(selectedtimes) - len(insidetimes)} time bins,"
+                f" because they are not fully inside the time window {vpkt_config['initial_time']} to"
+                f" {vpkt_config['final_time']} days of vpkt.txt"
+            )
+        selectedtimes = insidetimes
 
     # one collect_all call evaluates the spectra of all the times together, and every band reads them
     spectra = pl.collect_all([

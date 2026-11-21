@@ -4018,6 +4018,28 @@ def test_virtual_spectrum_takes_the_logarithmic_time_bin_that_holds_the_timestep
     assert averaged["f_nu"].item() == pytest.approx(1.0)
 
 
+def test_virtual_spectrum_leaves_out_the_time_bins_across_the_window_of_vpkt_txt(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A time range of a virtual spectrum takes only the time bins that lie fully inside the window of vpkt.txt.
+
+    ARTIS writes a virtual packet only inside the window, and it divides the flux of a bin by the full width of the
+    bin. Thus a bin across an edge of the window has too low a flux. The range 4 to 6 d took three bins, and two of
+    them were partly outside the window.
+    """
+    times = [3.32509, 4.04574, 4.92256, 5.98942, 7.2875]
+    fluxes = [100.0, 10.0, 2.0, 30.0, 400.0]
+    spectrum = pl.LazyFrame({"nu": [1e14], **{str(time): [flux] for time, flux in zip(times, fluxes, strict=True)}})
+    vpktconfig = {"time_limits_enabled": True, "initial_time": 4.0, "final_time": 6.0}
+    with (
+        mock.patch.object(atspectra, "scan_vspecpol_data", return_value={"I": spectrum}),
+        mock.patch.object(atspectra, "get_vpkt_config", return_value=vpktconfig),
+    ):
+        averaged = atspectra.scan_vspecpol_spectrum(Path(), 5.0, 0, timemin=4.0, timemax=6.0).collect()
+    assert averaged["f_nu"].item() == pytest.approx(2.0)
+    assert "leaves out 2 time bins" in capsys.readouterr().err
+
+
 @pytest.mark.parametrize("stokesparam", ["Q/I", "U/I"])
 @pytest.mark.parametrize("binflux", [False, True])
 @pytest.mark.parametrize("filtermovingavg", [0, 3])

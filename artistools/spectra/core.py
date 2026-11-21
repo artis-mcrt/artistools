@@ -10,6 +10,7 @@ from collections.abc import Mapping
 from collections.abc import Sequence
 from contextlib import suppress
 from functools import lru_cache
+from functools import partial
 from pathlib import Path
 from types import MappingProxyType
 
@@ -49,6 +50,7 @@ from artistools.misc import get_average_group_dirbins
 from artistools.misc import get_bin_index_expr
 from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_dirbins
+from artistools.misc import get_file_copies
 from artistools.misc import get_file_state
 from artistools.misc import get_grid_max_radial_velocity_cmps
 from artistools.misc import get_metadata_path
@@ -61,6 +63,7 @@ from artistools.misc import get_timestep_times
 from artistools.misc import get_vpkt_config
 from artistools.misc import get_xunit
 from artistools.misc import modelpath_cache
+from artistools.misc import MTIME_TOLERANCE_S
 from artistools.misc import on_model_host
 from artistools.misc import parse_metadata_redshift
 from artistools.misc import parse_timedays_range
@@ -76,6 +79,7 @@ from artistools.misc import read_wsv
 from artistools.misc import resolve_modelpath
 from artistools.misc import split_multitable_dataframe
 from artistools.misc import warn_direction_bin_noise
+from artistools.misc import write_file_atomic
 from artistools.misc import XUnit
 from artistools.packets import filter_packets_dirbin
 from artistools.packets import get_emission_velocity_expr
@@ -942,10 +946,7 @@ def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
     # one running sum for each observer, thus the frames of every rank do not stay in memory together
     fluxsum_of_spec: dict[int, npt.NDArray[np.floating]] = {}
     firstrank_of_spec: dict[int, pl.DataFrame] = {}
-    for mpirank in range(nprocs):
-        vspecpolpath = firstexisting(
-            [f"vspecpol_{mpirank:04d}.out", f"vspecpol_{mpirank}-0.out"], folder=modelpath, tryzipped=True
-        )
+    for mpirank, vspecpolpath in enumerate(get_vspecpol_rank_files(modelpath)):
         print(f"Reading rank {mpirank} filename {vspecpolpath}")
 
         vspecpol_data_alldirs = drop_trailing_null_column(
@@ -971,8 +972,34 @@ def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
         dfvspecpol = pl.concat([dffirst[0], dfflux])
 
         outfile = Path(modelpath, f"vspecpol_total-{spec_index}.out")
-        dfvspecpol.write_csv(outfile, separator=" ", include_header=False)
+        # a write that stops early must not leave a short file, which a later read takes with no error
+        write_file_atomic(outfile, partial(dfvspecpol.write_csv, separator=" ", include_header=False))
+        for oldfile in get_file_copies(outfile):
+            if oldfile != outfile and oldfile.is_file():
+                oldfile.unlink()
         print_saved(outfile)
+
+
+def get_vspecpol_rank_files(modelpath: Path | str) -> list[Path]:
+    """Return the virtual packet spectrum file of each MPI rank, which make_virtual_spectra_summed_file sums."""
+    return [
+        firstexisting([f"vspecpol_{mpirank:04d}.out", f"vspecpol_{mpirank}-0.out"], folder=modelpath, tryzipped=True)
+        for mpirank in range(get_nprocs(Path(modelpath)))
+    ]
+
+
+def vspecpol_total_is_older_than_its_rank_files(modelpath: Path, totalfile: Path) -> bool:
+    """Return True if a rank file of the virtual packet spectra is newer than a vspecpol_total file.
+
+    A continued run, e.g. after an increase of timestep_finish, writes the rank files again, and the old sum then has
+    no flux after the first stop. A model folder with no rank files, e.g. a copy with the totals alone, keeps them.
+    """
+    try:
+        rankfiles = get_vspecpol_rank_files(modelpath)
+    except (FileNotFoundError, IndexError, ValueError):
+        return False
+    totalmtime = totalfile.stat().st_mtime
+    return any(rankfile.stat().st_mtime > totalmtime + MTIME_TOLERANCE_S for rankfile in rankfiles)
 
 
 def make_averaged_vspecfiles(modelpaths: Sequence[Path]) -> None:
@@ -1100,12 +1127,16 @@ def scan_vspecpol_data(modelpath: Path, vspecindex: int) -> dict[str, pl.LazyFra
     """
     # alternatively use f'vspecpol_averaged-{angle}.out' ?
 
-    try:
-        specfilename = firstexisting(f"vspecpol_total-{vspecindex}.out", folder=modelpath, tryzipped=True)
-    except FileNotFoundError:
-        print(f"vspecpol_total-{vspecindex}.out does not exist. Generating all-rank summed vspec files..")
+    # the totals are in the model folder. A subfolder can hold the totals of a different model
+    totalname = f"vspecpol_total-{vspecindex}.out"
+    specfilename = firstexisting_or_none(totalname, folder=modelpath, tryzipped=True, search_subfolders=False)
+    if specfilename is None:
+        print(f"{totalname} does not exist. Generating all-rank summed vspec files..")
         make_virtual_spectra_summed_file(modelpath=modelpath)
-        specfilename = firstexisting(f"vspecpol_total-{vspecindex}.out", folder=modelpath, tryzipped=True)
+    elif vspecpol_total_is_older_than_its_rank_files(Path(modelpath), specfilename):
+        print_warning(f"{specfilename} is older than a rank file of the virtual packets, thus the sum is made again")
+        make_virtual_spectra_summed_file(modelpath=modelpath)
+    specfilename = firstexisting(totalname, folder=modelpath, tryzipped=True, search_subfolders=False)
 
     print(f"Reading {specfilename}")
     specdata = pl.read_csv(polars_source(specfilename), separator=" ", has_header=True, glob=False)
@@ -1158,6 +1189,29 @@ def get_vspecpol_time_bin_index(timemids: Sequence[float], time_days: float, sid
     return int(np.clip(np.searchsorted(edges, time_days, side=side) - 1, 0, len(timemids) - 1))
 
 
+def get_vspecpol_bins_inside_vpkt_window(timemids: Sequence[float], vpkt_config: Mapping[str, t.Any]) -> list[int]:
+    """Return the indices of the time bins of the virtual packet spectra that lie fully inside the window of vpkt.txt.
+
+    ARTIS writes a virtual packet only for an arrival time inside the window, and it divides the flux of a bin by the
+    full width of the bin (vpkt.cc). Thus a bin outside the window has no flux, and a bin across an edge of the window
+    has a flux that is too low. With no time override, vpkt.txt takes the window of the constants of the ARTIS build,
+    and each bin stays.
+    """
+    if not vpkt_config["time_limits_enabled"]:
+        return list(range(len(timemids)))
+    windowstart, windowend = float(vpkt_config["initial_time"]), float(vpkt_config["final_time"])
+    edges = get_vspecpol_time_bin_edges(timemids)
+    if edges is None:
+        return [index for index, timemid in enumerate(timemids) if windowstart <= timemid <= windowend]
+    # the file gives the middle times with 6 significant figures, thus a window edge on a bin edge must keep that bin
+    tolerance = 1e-4 * windowend
+    return [
+        index
+        for index in range(len(timemids))
+        if edges[index] >= windowstart - tolerance and edges[index + 1] <= windowend + tolerance
+    ]
+
+
 def check_time_range_overlaps_time_bins(
     timemids: Sequence[float], timemin: float, timemax: float, filedescription: str
 ) -> None:
@@ -1188,6 +1242,33 @@ def check_time_range_overlaps_time_bins(
         )
 
 
+def get_vspecpol_bin_range_inside_vpkt_window(
+    modelpath: Path, timemids: Sequence[float], timestepmin: int, timestepmax: int
+) -> tuple[int, int]:
+    """Return the first and the last selected time bin of the virtual packet spectra inside the window of vpkt.txt.
+
+    The function leaves out a bin at an end of the range that is not fully inside the window, and it warns about it.
+    It raises a ValueError if no selected bin is fully inside the window.
+    """
+    vpkt_config = get_vpkt_config(modelpath)
+    insidebins = set(get_vspecpol_bins_inside_vpkt_window(timemids, vpkt_config))
+    selectedbins = [index for index in range(timestepmin, timestepmax + 1) if index in insidebins]
+    if not selectedbins:
+        msg = (
+            f"The time bins of the virtual packets from {timemids[timestepmin]} to {timemids[timestepmax]} days are"
+            f" outside the virtual packets, which cover {vpkt_config['initial_time']} to {vpkt_config['final_time']}"
+            " days. ARTIS writes a virtual packet only inside this window of vpkt.txt"
+        )
+        raise ValueError(msg)
+    if len(selectedbins) < timestepmax - timestepmin + 1:
+        print_warning(
+            f"The virtual spectrum leaves out {timestepmax - timestepmin + 1 - len(selectedbins)} time bins, because"
+            f" they are not fully inside the time window {vpkt_config['initial_time']} to"
+            f" {vpkt_config['final_time']} days of vpkt.txt"
+        )
+    return selectedbins[0], selectedbins[-1]
+
+
 def scan_vspecpol_spectrum(
     modelpath: Path | str,
     timeavg: float,
@@ -1212,9 +1293,6 @@ def scan_vspecpol_spectrum(
     check_time_range_overlaps_time_bins(
         arr_tmid, timerangelow, timerangehigh, f"vspecpol_total-{angle}.out of {modelpath}"
     )
-    # the vspecpol files hold only the arrival times inside the time window of vpkt.txt
-    check_time_range_inside_vpkt_window(get_vpkt_config(Path(modelpath)), timerangelow, timerangehigh)
-
     if timemin is not None and timemax is not None:
         timestepmin = get_vspecpol_time_bin_index(arr_tmid, timemin, side="right")
         # a range that ends on the lower edge of a bin does not hold that bin
@@ -1222,6 +1300,9 @@ def scan_vspecpol_spectrum(
     else:
         timestepmin = get_vspecpol_time_bin_index(arr_tmid, timeavg, side="right")
         timestepmax = timestepmin
+    timestepmin, timestepmax = get_vspecpol_bin_range_inside_vpkt_window(
+        Path(modelpath), arr_tmid, timestepmin, timestepmax
+    )
 
     timelower = arr_tmid[timestepmin]
     timeupper = arr_tmid[timestepmax]
