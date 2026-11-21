@@ -736,7 +736,14 @@ def read_keyword_model_header(
             msg = f"{modelfilepath}: each value of the key {key} must be a number, not {keyvalues[key]!r}"
             raise ValueError(msg) from None
 
-    knownkeys = ("coordinates", "t_model_init_days", *ALL_MODEL_EDGE_KEYS, "cell_line_count", "columns")
+    knownkeys = (
+        "coordinates",
+        "cells_per_axis",
+        "t_model_init_days",
+        *ALL_MODEL_EDGE_KEYS,
+        "cell_line_count",
+        "columns",
+    )
     for key in keyvalues:
         if key not in knownkeys:
             print_warning(
@@ -780,6 +787,14 @@ def read_keyword_model_header(
 
     cellcounts = [len(edges[key]) - 1 for key in MODEL_EDGE_KEYS[coordinates]]
     npts_model = math.prod(cellcounts)
+    # an edge list that lost a value or got one more value gives a different count of cells on its axis
+    cellsperaxis = keyvalues.get("cells_per_axis")
+    if cellsperaxis is not None and [int(token) if token.isdecimal() else None for token in cellsperaxis] != cellcounts:
+        msg = (
+            f"{modelfilepath}: the key cells_per_axis gives the cell counts {' '.join(cellsperaxis)!r}, but the cell"
+            f" edges give {' '.join(str(count) for count in cellcounts)!r}"
+        )
+        raise ValueError(msg)
     celllinecount = None
     if "cell_line_count" in keyvalues:
         # a file that lost lines at its end has fewer cell lines than this count, and a cell with no line is empty

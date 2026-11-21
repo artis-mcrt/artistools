@@ -452,6 +452,27 @@ def scan_modelfile_text(
         # sn3d stops for such a line
         msg = f"{filename}: a cell line has fewer values than the key columns gives names"
         raise ValueError(msg)
+    if formatversion == 2:
+        # save_modeldata does not write such a density, and the mass and the energy of the cell would not be valid
+        dfinvaliddensity = (
+            dfmodel.filter(~(pl.col("rho").is_finite() & (pl.col("rho") >= 0.0))).select("inputcellid", "rho").collect()
+        )
+        if dfinvaliddensity.height:
+            msg = (
+                f"{filename}: {dfinvaliddensity.height} cells have a density that is not finite or is below 0, e.g."
+                f" the cell {dfinvaliddensity['inputcellid'].item(0)} with rho = {dfinvaliddensity['rho'].item(0)!r}."
+                " Each cell of format version 2 needs a finite density of 0 or more"
+            )
+            raise ValueError(msg)
+        # save_modeldata writes a NaN mass fraction as 0, and sn3d stops for a value that is not finite
+        isnotfinite = dfmodel.select((~cs.starts_with("X_").is_finite()).any()).collect()
+        nonfinitecolumns = [col for col in isnotfinite.columns if isnotfinite[col].item()]
+        if nonfinitecolumns:
+            msg = (
+                f"{filename}: the columns {', '.join(nonfinitecolumns)} hold a value that is not finite, e.g. NaN."
+                " Each mass fraction of format version 2 must be a finite number"
+            )
+            raise ValueError(msg)
     if cellcount > npts_model:
         msg = (
             f"{filename}: found more than {npts_model} cells, but the cell edges of the header give {npts_model} cells"
@@ -1936,13 +1957,13 @@ def get_version2_headerlines(inputcellids: pl.Series, modelmeta: dict[str, t.Any
     modelmeta |= edges | get_cell_counts_of_edges(coordinates, edges)
     if coordinates in SPHERICAL_EDGE_COORDINATES:
         modelmeta |= {"vmax_cmps": vmax_cmps, "firstinputcellid": 0}
-    cellordercomment = f", the index of {firstaxis} changes fastest" if len(edgekeys) > 1 else ""
     edgecomments = {
         "theta_edges_radians": "  # the polar angle from the +z axis",
         "phi_edges_radians": "  # the azimuthal angle phi = atan2(y, x)",
     }
     return [
-        f"coordinates {coordinates}  # {gridshape} cells{cellordercomment}",
+        f"coordinates {coordinates}",
+        f"cells_per_axis {' '.join(str(count) for count in cellcounts)}",
         f"t_model_init_days {modelmeta['t_model_init_days']}",
         *[f"{key} {' '.join(repr(edge) for edge in edges[key])}{edgecomments.get(key, '')}" for key in edgekeys],
     ]
@@ -2075,6 +2096,9 @@ def save_modeldata(
     and the key columns ends the header:
 
     - coordinates: spherical1d, cylindrical2d, cartesian3d, spherical2d, or spherical3d;
+    - cells_per_axis: the count of the cells on each axis, in the sequence of the edge lists, e.g. 5 4 4 for
+      n_r = 5, n_theta = 4, and n_phi = 4. The key is optional, and a reader stops if a count is different from the
+      count that the edges give;
     - t_model_init_days;
     - the cell edges of each axis: vel_r_edges_kmps (and theta_edges_radians, phi_edges_radians), or
       vel_rcyl_edges_kmps and vel_z_edges_kmps, or vel_x_edges_kmps, vel_y_edges_kmps, and vel_z_edges_kmps;
@@ -2117,7 +2141,7 @@ def save_modeldata(
     - a comment line that gives the creation time;
     - a comment line that gives the column units;
     - in version 1, an inline comment after each header value, and a comment line that gives the column names;
-    - in version 2, an inline comment only for information that the key does not give, e.g. the grid shape.
+    - in version 2, an inline comment only for information that the key does not give, e.g. the direction of theta = 0.
 
     For a 1D model or a 2D model of version 1, sn3d reads these column names from v2024.04.
 

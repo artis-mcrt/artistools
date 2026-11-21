@@ -4323,6 +4323,10 @@ def test_spherical_model_round_trip(tmp_path: Path, coordinates: str) -> None:
         f"cell_line_count {dfmodel.height}",
         "columns inputcellid rho X_Fegroup X_Ni56 Ye tracercount",
     ]
+    # the key cells_per_axis gives the cell counts, thus the line of the coordinates has no comment
+    coordinatesindex = headerlines.index(f"coordinates {coordinates}")
+    gridcounts = " ".join(str(len(modelmeta[key]) - 1) for key in edgekeys)
+    assert headerlines[coordinatesindex + 1] == f"cells_per_axis {gridcounts}"
 
     # the writer gives 17 significant digits, thus each edge comes back with no change
     assert {key: modelmeta_read[key] for key in edgekeys} == edges_written
@@ -4515,9 +4519,21 @@ def test_plotinitialcomposition_of_a_spherical_model_gives_each_point_the_value_
         ("3 4e-12 1", ("4 4e-12 1",), "each inputcellid must be from 0 to 3"),
         ("3 4e-12 1", ("3 4e-12 1 0.5",), "a cell line has more values than the key columns"),
         ("3 4e-12 1", ("3 4e-12",), "a cell line has fewer values than the key columns"),
+        # the writer does not write such a density, thus the reader also stops for it
+        ("3 4e-12 1", ("3 nan 1",), "1 cells have a density that is not finite or is below 0"),
+        ("3 4e-12 1", ("3 inf 1",), "1 cells have a density that is not finite or is below 0"),
+        ("3 4e-12 1", ("3 -4e-12 1",), "1 cells have a density that is not finite or is below 0"),
+        ("3 4e-12 1", ("3 4e-12 nan",), "the columns X_Fegroup hold a value that is not finite"),
+        ("3 4e-12 1", ("3 4e-12 inf",), "the columns X_Fegroup hold a value that is not finite"),
         # a cell with no line is empty, thus only the count finds a file that lost its last line
         ("3 4e-12 1", (), "the key cell_line_count gives 4 cell lines, but the file has 3"),
         ("cell_line_count 4", ("cell_line_count 5",), "cell_line_count must have one integer from 1 to 4"),
+        # the key cells_per_axis is optional, and a different count stops the reader
+        (
+            "cell_line_count 4",
+            ("cell_line_count 4", "cells_per_axis 2 3"),
+            "cells_per_axis gives the cell counts '2 3', but the cell edges give '2 2'",
+        ),
         (
             "columns inputcellid rho X_Fegroup",
             ("phi_edges_radians 0 6.283185307179586", "columns inputcellid rho X_Fegroup"),
@@ -4929,6 +4945,22 @@ def test_version_2_writer_stops_for_a_value_that_the_reader_rejects(
     with pytest.raises(ValueError, match=match):
         at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta=modelmeta)
     assert not list(tmp_path.glob("model.txt*"))
+
+
+def test_version_2_file_with_a_different_name_keeps_the_files_of_model_txt(tmp_path: Path) -> None:
+    """A version 2 file with a different name keeps abundances.txt, Ye.txt, and opacity.txt beside model.txt.
+
+    sn3d reads these files beside model.txt. The writer of model_v2.txt deleted them, thus the model.txt of version 1
+    in the same folder had no abundances.txt.
+    """
+    oldfiles = dict.fromkeys(("abundances.txt", "Ye.txt", "opacity.txt"), "1\n1 0.5\n")
+    for name, text in oldfiles.items():
+        (tmp_path / name).write_text(text, encoding="utf-8")
+    dfmodel, modelmeta = get_random_spherical_model("spherical2d")
+    at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path / "model_v2.txt", modelmeta=modelmeta)
+
+    assert (tmp_path / "model_v2.txt.zst").is_file()
+    assert {name: (tmp_path / name).read_text(encoding="utf-8") for name in oldfiles} == oldfiles
 
 
 def test_reduction_and_downscale_take_the_elements_of_the_selected_model_file(tmp_path: Path) -> None:
