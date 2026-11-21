@@ -344,7 +344,13 @@ subcommandtree: CommandTree = {
         "from_e2e": CommandSpec(
             "inputmodel.from_e2e_model",
             helptext="Prepare data for an ARTIS kilonova calculation from end-to-end hydro models.",
-            examples=(("--npz model.npz -o artismodel", "an ARTIS model from the end-to-end model in model.npz"),),
+            examples=(
+                ("--npz model.npz -o artismodel", "an ARTIS model from the end-to-end model in model.npz"),
+                (
+                    "--npz model.npz --coordinates spherical --ngrid-r 25 --ngrid-theta 16 -o artismodel",
+                    "a 2D spherical model of 25 shells and 16 polar cells",
+                ),
+            ),
             # the test data has no npz file of an end-to-end model
             exampletestfolder=None,
         ),
@@ -369,7 +375,13 @@ subcommandtree: CommandTree = {
         "makeartismodel": CommandSpec(
             "inputmodel.makeartismodel",
             helptext="Tools to create an ARTIS input model.",
-            examples=(("--modelpath . --dimensionreduce 1", "a spherically symmetric 1D model from a 3D model"),),
+            examples=(
+                ("--modelpath . --dimensionreduce 1", "a spherically symmetric 1D model from a 3D model"),
+                (
+                    "--modelpath . --format-version 2 -o version2",
+                    "the model.txt of the model in format version 2, in the folder version2",
+                ),
+            ),
             exampletestfolder="test-classicmode_3d",
         ),
         "makeartismodel1dslicefromcone": CommandSpec(
@@ -385,7 +397,7 @@ subcommandtree: CommandTree = {
         ),
         "makeartismodelfromparticlegridmap": CommandSpec(
             "inputmodel.modelfromhydro",
-            helptext="Create an ARTIS format model from grid.dat.",
+            helptext="Create an ARTIS format model from grid.dat or grid_spherical.dat.",
             examples=(("-i . -d 1", "a 1D ARTIS model from the grid.dat in the working folder"),),
             exampletestfolder="kilonova",
         ),
@@ -410,8 +422,14 @@ subcommandtree: CommandTree = {
         ),
         "maptogrid": CommandSpec(
             "inputmodel.maptogrid",
-            helptext="Map tracer particle trajectories to a Cartesian grid.",
-            examples=(("-i . --ncoordgrid 50", "a grid of 50 cells on each axis from ejectasnapshot.dat"),),
+            helptext="Map tracer particle trajectories to a Cartesian grid or a spherical grid.",
+            examples=(
+                ("-i . --ncoordgrid 50", "a grid of 50 cells on each axis from ejectasnapshot.dat"),
+                (
+                    "-i . --coordinates spherical --ngrid-r 25 --ngrid-theta 16 --ngrid-phi 32",
+                    "a spherical grid of 25 shells, 16 polar cells, and 32 azimuthal cells",
+                ),
+            ),
             exampletestfolder="kilonova",
         ),
         "opacityfile": CommandSpec(

@@ -12,6 +12,7 @@ import polars as pl
 import polars.selectors as cs
 
 from artistools.constants import C_cm_per_s
+from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import scan_modeldata
@@ -25,12 +26,14 @@ from artistools.misc import addarg_output
 from artistools.misc import addarg_seriesstyle
 from artistools.misc import addarg_show
 from artistools.misc import exit_with_error
+from artistools.misc import get_model_coordinates
 from artistools.misc import get_model_name
 from artistools.misc import get_series_label
 from artistools.misc import is_in_range
 from artistools.misc import normalize_path_list
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
+from artistools.misc import SPHERICAL_EDGE_COORDINATES
 from artistools.plottools import make_frame_figure
 from artistools.plottools import resolve_series_styles
 from artistools.plottools import save_figure
@@ -177,7 +180,11 @@ def plot_density_profiles(
         # the bins cover the whole model, thus -xmax changes the axis only. A -xmax above the model
         # vmax gives bins to the edge of the axis, and a lower one leaves the outer cells in their bins
         vmax_cmps = max(modelmeta["vmax_cmps"], (args.xmax or 0.0) * C_cm_per_s)
-        vupperscoarse = get_coarse_velocity_bins(dfmodel, args.nbins, vmax_cmps)
+        if get_model_coordinates(modelmeta) in SPHERICAL_EDGE_COORDINATES and not args.nbins:
+            # each cell of a grid with spherical edges is in one shell, thus the shells are the bins
+            vupperscoarse = [edge_kmps * km_to_cm for edge_kmps in modelmeta["vel_r_edges_kmps"][1:]]
+        else:
+            vupperscoarse = get_coarse_velocity_bins(dfmodel, args.nbins, vmax_cmps)
         plotye = args.plotye and "Ye" in dfmodel.columns
         binned_xvals, binned_massvals, binned_yevals = get_binned_profile(dfmodel, vupperscoarse, plotye)
 

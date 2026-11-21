@@ -18,6 +18,7 @@ from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g as MSUN
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import dimension_reduce_model
+from artistools.inputmodel.core import get_written_format_version
 from artistools.inputmodel.core import MODEL_FILE_NAMES
 from artistools.inputmodel.core import save_empty_abundance_file
 from artistools.inputmodel.core import save_initelemabundances
@@ -34,9 +35,13 @@ from artistools.misc import addarg_timedays
 from artistools.misc import addarg_unsupported
 from artistools.misc import confirm_overwrite
 from artistools.misc import exit_with_error
+from artistools.misc import get_file_copies
+from artistools.misc import get_model_coordinates
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
 from artistools.misc import read_wsv
+from artistools.misc import SPHERICAL_EDGE_COORDINATES
+from artistools.misc import validate_model_edges
 from artistools.misc import zopen
 
 
@@ -139,14 +144,131 @@ def get_snapshot_time_geomunits(pathtogriddata: Path | str) -> tuple[float, floa
     return simulation_end_time_geomunits, mergertime_geomunits
 
 
+# The file of a spherical map. Its format is different from the grid.dat of a Cartesian map, thus it has a different
+# name. Both maps write gridcontributions.txt, thus one folder holds the files of one map
+SPHERICAL_GRID_FILE_NAME = "grid_spherical.dat"
+GRID_FILE_NAMES = ("grid.dat", SPHERICAL_GRID_FILE_NAME)
+
+
+def has_grid_file(gridfolderpath: Path | str, filename: str) -> bool:
+    """Return True if the folder holds the grid file of a map, or a compressed copy of it."""
+    return any(path.is_file() for path in get_file_copies(Path(gridfolderpath, filename)))
+
+
+# the keys of the edge lists in the grid_spherical.dat of a spherical map. The radial edges are in geometric units
+SPHERICAL_GRIDDAT_EDGE_KEYS = ("r_edges_geomunits", "theta_edges_radians", "phi_edges_radians")
+
+
+def read_spherical_griddat_file(
+    pathtogriddata: str | Path, targetmodeltime_days: float | None = None
+) -> tuple[pl.DataFrame, float, float, float, dict[str, t.Any]]:
+    """Read the grid_spherical.dat of a spherical map, and return the same values as read_griddat_file.
+
+    The header gives the key coordinates, the extra time, and the cell edges in r, theta, and phi. The cells have no
+    position column, and gridindex starts at 0, as the cell ids of format version 2 of model.txt do. A radial edge is
+    a velocity in the model, thus a different model time changes only the density.
+    """
+    griddatfilepath = Path(pathtogriddata) / SPHERICAL_GRID_FILE_NAME
+    simulation_end_time_geomunits, mergertime_geomunits = get_snapshot_time_geomunits(pathtogriddata)
+
+    headerkeys = ("coordinates", "dtextra_geomunits", *SPHERICAL_GRIDDAT_EDGE_KEYS)
+    headervalues: dict[str, list[str]] = {}
+    with zopen(griddatfilepath) as gridfile:
+        for key in headerkeys:
+            line = gridfile.readline()
+            tokens = line.split("#", 1)[0].split()
+            if tokens[:1] != [key]:
+                exit_with_error(
+                    f"{griddatfilepath}: expected the key {key}, not the line {line!r}",
+                    f"The header of {SPHERICAL_GRID_FILE_NAME} gives the keys {', '.join(headerkeys)}, in this order",
+                )
+            headervalues[key] = tokens[1:]
+    if headervalues["coordinates"] != ["spherical3d"]:
+        exit_with_error(
+            f"{griddatfilepath}: the coordinates {' '.join(headervalues['coordinates'])!r} are not known",
+            f"The key coordinates of {SPHERICAL_GRID_FILE_NAME} has the value spherical3d",
+        )
+
+    t_model_sec = (
+        (simulation_end_time_geomunits - mergertime_geomunits) + float(headervalues["dtextra_geomunits"][0])
+    ) * geometric_time_to_s
+    t_mergertime_s = mergertime_geomunits * geometric_time_to_s
+    edges = validate_model_edges(
+        "spherical3d",
+        {
+            "vel_r_edges_kmps": [
+                float(edge) * geometric_length_to_km / t_model_sec for edge in headervalues["r_edges_geomunits"]
+            ],
+            "theta_edges_radians": [float(edge) for edge in headervalues["theta_edges_radians"]],
+            "phi_edges_radians": [float(edge) for edge in headervalues["phi_edges_radians"]],
+        },
+        griddatfilepath,
+    )
+    vel_r_edges_kmps, theta_edges_radians, phi_edges_radians = edges.values()
+    vmax = vel_r_edges_kmps[-1] * km_to_cm
+
+    griddata = (
+        read_wsv(griddatfilepath, comment_prefix="#", skip_rows=len(headerkeys))
+        .rename({"gridindex": "inputcellid"})
+        .with_columns(cs.by_name("rho", "Ye", require_all=False).fill_null(0.0))
+        .with_columns(pl.col("rho") * geometric_density_to_g_per_cm3)
+    )
+    gridshape = (len(vel_r_edges_kmps) - 1, len(theta_edges_radians) - 1, len(phi_edges_radians) - 1)
+    if math.prod(gridshape) != griddata.height:
+        exit_with_error(
+            f"{SPHERICAL_GRID_FILE_NAME} holds {griddata.height} cells, but its cell edges give"
+            f" {' x '.join(str(count) for count in gridshape)} = {math.prod(gridshape)} cells"
+        )
+
+    t_model_days = t_model_sec / day_to_s
+    print(f"t_model in days {t_model_days} ({t_model_sec} s)")
+    print(f"vmax {vmax:.2e} cm/s ({vmax / CLIGHT:.2f} * c) is the outer radial velocity of the spherical grid")
+    if targetmodeltime_days is not None:
+        griddata = scale_model_to_time(
+            targetmodeltime_days=targetmodeltime_days, t_model_days=t_model_days, dfmodel=griddata
+        )
+        t_model_days = targetmodeltime_days
+
+    print(
+        f"Grid model is n_r x n_theta x n_phi = {' x '.join(str(count) for count in gridshape)}"
+        f" = {griddata.height} cells"
+    )
+    modelmeta = {
+        "coordinates": "spherical3d",
+        "dimensions": 3,
+        "t_model_init_days": t_model_days,
+        "vmax_cmps": vmax,
+        "vel_r_edges_kmps": vel_r_edges_kmps,
+        "theta_edges_radians": theta_edges_radians,
+        "phi_edges_radians": phi_edges_radians,
+        "firstinputcellid": 0,
+        "headercommentlines": [f"gridfolder: {Path(pathtogriddata).resolve().parts[-1]}"],
+    }
+    griddata = griddata.with_columns(
+        add_derived_cols_to_modeldata(griddata, modelmeta).select("mass_g").collect().to_series()
+    )
+    print(f"Max tracers in a cell {griddata['tracercount'].max()}")
+
+    return griddata, t_model_days, t_mergertime_s, vmax, modelmeta
+
+
 def read_griddat_file(
     pathtogriddata: str | Path, targetmodeltime_days: float | None = None
 ) -> tuple[pl.DataFrame, float, float, float, dict[str, t.Any]]:
-    """Read grid.dat and return the cell data, the model and merger times, vmax, and the model metadata.
+    """Read the grid file of a map, and return the cell data, the model and merger times, vmax, and the metadata.
 
-    When targetmodeltime_days is given, the grid is expanded homologously to that time.
+    When targetmodeltime_days is given, the grid is expanded homologously to that time. A Cartesian map has the file
+    grid.dat. A spherical map has the file grid_spherical.dat, and read_spherical_griddat_file reads it.
     """
     griddatfilepath = Path(pathtogriddata) / "grid.dat"
+    hassphericalmap = has_grid_file(pathtogriddata, SPHERICAL_GRID_FILE_NAME)
+    if hassphericalmap and has_grid_file(pathtogriddata, "grid.dat"):
+        exit_with_error(
+            f"{pathtogriddata} holds grid.dat and {SPHERICAL_GRID_FILE_NAME}",
+            "gridcontributions.txt holds the cells of one map. Delete the grid file of the other map",
+        )
+    if hassphericalmap:
+        return read_spherical_griddat_file(pathtogriddata, targetmodeltime_days)
 
     # Get simulation time for ejecta snapshot
     simulation_end_time_geomunits, mergertime_geomunits = get_snapshot_time_geomunits(pathtogriddata)
@@ -221,6 +343,7 @@ def read_griddat_file(
     print(f"Max tracers in a cell {max_tracercount}")
 
     modelmeta = {
+        "coordinates": "cartesian3d",
         "dimensions": 3,
         "t_model_init_days": t_model_days,
         "vmax_cmps": vmax,
@@ -272,7 +395,8 @@ def add_mass_to_center(griddata: pl.DataFrame, modelmeta: dict[str, t.Any]) -> p
         " Nagataki & Bauswein 2022, MNRAS, 509, 1377-1412, doi:10.1093/mnras/stab2861"
     )
 
-    showcols = ["inputcellid", "pos_x_min", "pos_y_min", "pos_z_min", "rho"]
+    # a spherical map has no position column
+    showcols = [col for col in ("inputcellid", "pos_x_min", "pos_y_min", "pos_z_min", "rho") if col in griddata.columns]
     print("Inner empty cells")
     print(griddata.filter(inhole).select(showcols))
 
@@ -286,9 +410,17 @@ def add_mass_to_center(griddata: pl.DataFrame, modelmeta: dict[str, t.Any]) -> p
     return griddata.drop("inhole")
 
 
-def get_griddata_output_file_names(getcellopacityfromYe: bool) -> tuple[str, ...]:
-    """Return the names of the files that makemodelfromgriddata writes."""
-    return (*MODEL_FILE_NAMES, "Ye.txt", *(("opacity.txt",) if getcellopacityfromYe else ()))
+def get_griddata_output_file_names(
+    getcellopacityfromYe: bool, gridfolderpath: Path | str, dimensions: int = 3
+) -> tuple[str, ...]:
+    """Return the names of the files that makemodelfromgriddata writes or deletes.
+
+    A spherical map with 2 or 3 dimensions gives a model of format version 2, which has no abundances.txt, no Ye.txt,
+    and no opacity.txt. The command deletes such a file. A model of format version 1 gets Ye.txt, and the command
+    does not change its opacity.txt without --getcellopacityfromYe.
+    """
+    writesversion2 = dimensions >= 2 and has_grid_file(gridfolderpath, SPHERICAL_GRID_FILE_NAME)
+    return (*MODEL_FILE_NAMES, "Ye.txt", *(("opacity.txt",) if getcellopacityfromYe or writesversion2 else ()))
 
 
 def makemodelfromgriddata(
@@ -302,10 +434,19 @@ def makemodelfromgriddata(
     fillcentralhole: bool = False,
     getcellopacityfromYe: bool = False,
 ) -> None:
-    """Write an ARTIS model from grid.dat, taking abundances from the trajectories under traj_root if given."""
+    """Write an ARTIS model from the grid file of a map, with abundances from the trajectories under traj_root.
+
+    The grid file is grid.dat (Cartesian) or grid_spherical.dat. Without traj_root, the model has no abundances.
+    """
     dfmodel, t_model_days, t_mergertime_s, _vmax, modelmeta = read_griddat_file(
         pathtogriddata=gridfolderpath, targetmodeltime_days=targetmodeltime_days
     )
+
+    if getcellopacityfromYe and dimensions >= 2 and get_model_coordinates(modelmeta) in SPHERICAL_EDGE_COORDINATES:
+        exit_with_error(
+            "--getcellopacityfromYe writes opacity.txt, and a model of format version 2 has no such file",
+            "Remove --getcellopacityfromYe. sn3d does not read opacity.txt",
+        )
 
     if fillcentralhole:
         dfmodel = add_mass_to_center(dfmodel, modelmeta)
@@ -336,6 +477,8 @@ def makemodelfromgriddata(
         for key in modelmeta:
             if key == "vmax_cmps" or key.startswith("wid_init_"):
                 modelmeta[key] *= scalevelocity
+        if "vel_r_edges_kmps" in modelmeta:
+            modelmeta["vel_r_edges_kmps"] = [edge * scalevelocity for edge in modelmeta["vel_r_edges_kmps"]]
         operationmsg = (
             f"velocities are scaled by a factor of {scalevelocity} (with density scaled by 1/f^3 to conserve mass)."
             f" vmax/c changed from {vmax_cmps_old / CLIGHT:.2f} to {modelmeta['vmax_cmps'] / CLIGHT:.2f}"
@@ -380,23 +523,37 @@ def makemodelfromgriddata(
         # the reduction changes the cells, thus opacity.txt must name the cells of the output model
         opacity_by_ye(outputpath, dfmodel)
 
-    if "Ye" in dfmodel:
+    # a version 2 model has no Ye.txt, because the column Ye of its model.txt gives the electron fraction
+    if "Ye" in dfmodel and get_written_format_version(get_model_coordinates(modelmeta), modelmeta) == 1:
         write_ye_file(outputpath, dfmodel)
 
     if dfgridcontributions is not None:
         save_gridparticlecontributions(dfgridcontributions, Path(outputpath, "gridcontributions.txt"))
 
-    if dfelabundances is not None:
+    # a spherical model has format version 2, which has no abundances.txt. Its model.txt gives the elements
+    hasabundancefile = get_model_coordinates(modelmeta) not in SPHERICAL_EDGE_COORDINATES
+    if dfelabundances is None and hasabundancefile:
+        save_empty_abundance_file(outputfilepath=outputpath, npts_model=len(dfmodel))
+    elif dfelabundances is not None and hasabundancefile:
         save_initelemabundances(
             dfelabundances=dfelabundances, outpath=outputpath, headercommentlines=modelmeta["headercommentlines"]
         )
-    else:
-        save_empty_abundance_file(outputfilepath=outputpath, npts_model=len(dfmodel))
 
     if "tracercount" in dfmodel:
         dfmodel = dfmodel.with_columns(pl.col("tracercount").cast(pl.Int32))
 
-    save_modeldata(outpath=outputpath, dfmodel=dfmodel, modelmeta=modelmeta)
+    if dfelabundances is None and not hasabundancefile:
+        # A model with no trajectories has no element mass fractions, thus the nuclide columns alone give each element.
+        # save_modeldata then deletes an abundances.txt of an earlier model in this folder after the write
+        dfelabundances = dfmodel.select("inputcellid")
+
+    # a version 2 model gets the element mass fractions as otherstable columns of model.txt
+    save_modeldata(
+        outpath=outputpath,
+        dfmodel=dfmodel,
+        modelmeta=modelmeta,
+        dfelabundances=None if hasabundancefile else dfelabundances,
+    )
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -405,7 +562,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-gridfolderpath",
         "-i",
         default=".",
-        help="The path to the folder containing grid.dat and gridcontributions.txt",
+        help="The folder that holds grid.dat or grid_spherical.dat, and gridcontributions.txt",
     )
     parser.add_argument(
         "-trajectoryroot",
@@ -419,8 +576,10 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         default=3,
         type=int,
         help=(
-            "The number of dimensions: 0 for one-zone spherical, 1 for spherically symmetric 1D,"
-            " 2 for 2D cylindrical, 3 for 3D Cartesian"
+            "The number of dimensions: 0 for one-zone spherical, 1 for spherically symmetric 1D, 2 for 2D, and 3 for"
+            " 3D. The grid.dat of a Cartesian map gives a 2D cylindrical model or a 3D Cartesian model. The"
+            " grid_spherical.dat of maptogrid --coordinates spherical gives a 2D spherical model or a 3D spherical"
+            " model"
         ),
     )
     # -t means -timedays on every command, thus the time of the snapshot takes that name
@@ -453,12 +612,18 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     gridfolderpath = args.gridfolderpath
-    if not Path(gridfolderpath, "grid.dat").is_file():
-        msg = "grid.dat is required. Run `artistools inputmodel maptogrid`"
+    if not any(has_grid_file(gridfolderpath, filename) for filename in GRID_FILE_NAMES):
+        msg = f"The folder needs grid.dat or {SPHERICAL_GRID_FILE_NAME}. Run `artistools inputmodel maptogrid`"
         raise FileNotFoundError(msg)
 
     outputpath = Path(f"artismodel_{args.dimensions}d") if args.outputfile is None else Path(args.outputfile)
-    confirm_overwrite([outputpath], get_griddata_output_file_names(getcellopacityfromYe=False), force=args.force)
+    confirm_overwrite(
+        [outputpath],
+        get_griddata_output_file_names(
+            getcellopacityfromYe=False, gridfolderpath=gridfolderpath, dimensions=args.dimensions
+        ),
+        force=args.force,
+    )
 
     outputpath.mkdir(parents=True, exist_ok=True)
 

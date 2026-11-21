@@ -18,8 +18,10 @@ from artistools.atomic import get_atomic_number
 from artistools.atomic import get_elsymbol
 from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
+from artistools.constants import km_to_cm
 from artistools.constants import Msun_to_g as msol
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
+from artistools.inputmodel.core import CELL_ID_FILE_NAMES
 from artistools.inputmodel.core import dimension_reduce_model
 from artistools.inputmodel.core import MODEL_FILE_NAMES
 from artistools.inputmodel.core import remap_gridcontributions
@@ -27,10 +29,15 @@ from artistools.inputmodel.core import save_initelemabundances
 from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.core import scan_initelemabundances
 from artistools.inputmodel.core import scan_modeldata
+from artistools.inputmodel.core import with_cell_ids_from_zero
+from artistools.inputmodel.maptogrid import get_spherical_cell_volumes
+from artistools.inputmodel.maptogrid import get_spherical_grid_edges
+from artistools.inputmodel.maptogrid import SPHERICAL_GRID_SHAPE_DEFAULT
 from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
 from artistools.misc import addarg_force
 from artistools.misc import addarg_output
 from artistools.misc import confirm_overwrite
+from artistools.misc import exit_with_error
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
 
@@ -113,11 +120,18 @@ def get_grid(
     nohmns: bool,
     notorus: bool,
     no_nu_trapping: bool,
+    sphericaledges_cm: tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]] | None = None,
 ) -> tuple[t.Any, ...]:
     """Interpolate the end-to-end tracer particles onto a grid, returning the density, composition, Ye, and heating.
 
     The ejecta components (dynamical, NS-torus, BH-torus, neutrino-trapped) can each be excluded with the
     corresponding no* flag.
+
+    sphericaledges_cm selects a spherical grid. It holds the cell edges of the radius [cm] at the time of the
+    model, of the polar angle [rad], and of the azimuthal angle [rad]. A model_dim of 2 then gives a grid of r and
+    theta with the method of the cylindrical grid. A model_dim of 3 gives a grid of r, theta, and phi with the
+    method of the Cartesian grid. The grid holds both halves of a model with equatorial symmetry, and the result
+    has no cell positions.
     """
     dat = np.load(dat_path)
     iso = np.load(iso_path)
@@ -262,7 +276,27 @@ def get_grid(
     vmax_cmps = vmax_on_c * CLIGHT  # maximum velocity in coordinate direction (!)
     rcyltraj = vtraj * np.sin(atraj) * CLIGHT * t_model_init_s
     zcyltraj = vtraj * np.cos(atraj) * CLIGHT * t_model_init_s
-    if model_dim == 2:
+    returnedgridpositions: tuple[npt.NDArray[np.floating], ...]
+    if sphericaledges_cm is not None:
+        # ... cylindrical coordinates of the mid-point of each cell of the spherical grid. The mid-point of a cell is
+        # the mean of its edges in r and in theta. The grids have the index [n_r, n_theta] or [n_r, n_theta, n_phi]
+        r_edges, theta_edges, phi_edges = sphericaledges_cm
+        r_mid = (r_edges[:-1] + r_edges[1:]) / 2.0
+        theta_mid = (theta_edges[:-1] + theta_edges[1:]) / 2.0
+        cellvolumes = get_spherical_cell_volumes(r_edges, theta_edges, phi_edges)
+        gridrcyl, gridz = op(r_mid, np.sin(theta_mid)), op(r_mid, np.cos(theta_mid))
+        if model_dim == 2:
+            # a cell of a 2D grid is a ring around the z axis, thus it takes the sum over phi
+            volgrid = cellvolumes.sum(axis=2)
+        else:
+            volgrid = cellvolumes
+            gridrcyl = np.broadcast_to(gridrcyl[:, :, np.newaxis], cellvolumes.shape)
+            gridz = np.broadcast_to(gridz[:, :, np.newaxis], cellvolumes.shape)
+        if eqsymfac == 2:
+            # the tracers of a model with equatorial symmetry are above the plane z = 0, and the grid holds both halves
+            gridz = abs(gridz)
+        returnedgridpositions = ()
+    elif model_dim == 2:
         # ... cylindrical coordinates of the grid onto which we want to map
         nvr = grid_dims[0]
         # equatorial symmetry maps the particles onto the upper half of the z range only
@@ -396,13 +430,15 @@ def get_grid(
     yeinterpol = np.sum(weinor * yetraj, axis=interpol_axis)
     bsinterpol = np.sum(weinor * bstraj, axis=interpol_axis)
 
-    # the 2D grid holds one half of an equatorially symmetric model, and the 3D grid holds both halves
-    gridsymfac = eqsymfac if model_dim == 2 else 1
+    # the 2D cylindrical grid holds one half of an equatorially symmetric model. The 3D grid and each spherical grid
+    # hold both halves
+    gridsymfac = eqsymfac if model_dim == 2 and sphericaledges_cm is None else 1
 
     # renormalise so that the interpolated mass equals the sum of the particle masses
     dmgrid = rhoint * volgrid  # either 2D or 3D
     print("Total mass after interpolation (but BEFORE renormalisation):", np.sum(dmgrid) / msol * gridsymfac)
-    rescfac = np.sum(mtraj) / np.sum(dmgrid)
+    # a grid that holds both halves of a model with equatorial symmetry holds two times the mass of the tracers
+    rescfac = (eqsymfac // gridsymfac) * np.sum(mtraj) / np.sum(dmgrid)
     if model_dim == 2:
         rhoint *= rescfac
     else:
@@ -461,7 +497,10 @@ def get_grid(
     with np.errstate(divide="ignore", invalid="ignore"):
         wloc /= np.sum(wloc, axis=-1, keepdims=True)
     cellhasmass = dmgrid > (1e-100 * mtot)
-    if model_dim == 2:
+    if sphericaledges_cm is not None:
+        # the radial index of a cell changes fastest, then the polar index, then the azimuthal index
+        cellids = (np.arange(dmgrid.size).reshape(dmgrid.shape, order="F") + 1)[..., np.newaxis]
+    elif model_dim == 2:
         nvr, nvz = gridrcyl.shape
         # the rows run over nz, then nr, then the particle id, thus put nz first
         wloc = wloc.transpose((1, 0, 2))
@@ -490,7 +529,7 @@ def get_grid(
     }).with_columns(frac_of_cellmass_includemissing=pl.col("frac_of_cellmass"))
 
     if model_dim == 2:
-        if eqsymfac == 2:
+        if eqsymfac == 2 and sphericaledges_cm is None:
             # the lower half of the full grid reflects the upper half, thus each particle also gives its fraction to
             # the mirror cell. For row iz of the half grid, the mirror is row nvz - 1 - iz of the full grid
             ncolsfull, nrowsfull = gridrcyl.shape[0], 2 * gridrcyl.shape[1]
@@ -559,6 +598,132 @@ def z_reflect(arr: npt.NDArray[np.floating], sign: int = 1) -> npt.NDArray[np.fl
 
 # the files that map_to_artis writes for a consistency check of the interpolation with the dynamical ejecta
 DYN_CHECK_FILE_NAMES = ("dyn_abunds.txt", "dyn_model_notrescaled.txt", "dyn_model_rescaled.txt")
+
+
+def get_nuclide_and_element_massfracs(
+    X_cells: npt.NDArray[np.floating], isot_table: npt.NDArray[t.Any], numb_cells: int, reflect_in_z: bool
+) -> tuple[dict[str, npt.NDArray[t.Any]], dict[str, npt.NDArray[t.Any]]]:
+    """Return the mass fraction columns of the nuclides for model.txt and of the elements for abundances.txt.
+
+    X_cells holds the mass fractions of each nuclide on the grid, and the first index of the grid changes fastest in
+    a column. reflect_in_z adds the lower half of a grid that holds one half of a model with equatorial symmetry.
+    The element columns start with the cell ids 1 to numb_cells.
+    """
+    dictabunds: dict[str, npt.NDArray[t.Any]] = {}
+    dictelabunds: dict[str, npt.NDArray[t.Any]] = {"inputcellid": np.array(range(1, numb_cells + 1))}
+    for tuple_idx, isot_tuple in enumerate(isot_table):
+        if reflect_in_z:
+            flat_isoabund = np.nan_to_num(z_reflect(X_cells[tuple_idx]).flatten(order="F"), nan=0.0)
+        else:
+            flat_isoabund = np.nan_to_num((X_cells[tuple_idx]).flatten(order="F"), nan=0.0)
+        if np.any(flat_isoabund):
+            elem_str = f"X_{get_elsymbol(isot_tuple[1])}"
+            isotope_str = f"{elem_str}{isot_tuple[0] + isot_tuple[1]}"
+            dictabunds[isotope_str] = flat_isoabund
+            dictelabunds[elem_str] = (
+                dictelabunds[elem_str] + flat_isoabund if elem_str in dictelabunds else flat_isoabund
+            )
+
+    print(f"Number of non-zero nuclides {len(dictabunds)}")
+    return dictabunds, dictelabunds
+
+
+def map_to_spherical_artis_model(
+    args: argparse.Namespace,
+) -> tuple[pl.DataFrame, pl.DataFrame, dict[str, t.Any], pl.DataFrame]:
+    """Map the tracers to a 2D spherical or a 3D spherical grid.
+
+    The function returns the model, the abundances, the metadata, and the contributions of the particles. The grid
+    is uniform in r to vmax, in cos(theta), and in phi. --mapto3D gives a grid of r, theta, and phi. The
+    tracers have rotational symmetry around the z axis, thus the cells of one r and theta then have equal values.
+    """
+    for flag, value in (
+        ("-replacedyn", args.replacedyn),
+        ("-perturb3Dmodel", args.perturb3Dmodel),
+        ("-mergecells", args.mergecells),
+    ):
+        if value:
+            exit_with_error(
+                f"{flag} reads the cells of a cylindrical grid or a Cartesian grid, and --coordinates is spherical",
+                f"Remove {flag}, or remove --coordinates spherical",
+            )
+    model_dim = 3 if args.mapto3D else 2
+    ngrid_r, ngrid_theta, ngrid_phi = (
+        default if count is None else int(count)
+        for count, default in zip(
+            (args.ngrid_r, args.ngrid_theta, args.ngrid_phi if args.mapto3D else 1),
+            SPHERICAL_GRID_SHAPE_DEFAULT,
+            strict=True,
+        )
+    )
+    if min(ngrid_r, ngrid_theta, ngrid_phi) < 1:
+        exit_with_error("--ngrid-r, --ngrid-theta, and --ngrid-phi must each be 1 or more")
+    if not args.mapto3D and args.ngrid_phi is not None:
+        exit_with_error("--ngrid-phi applies to a 3D spherical grid only", "Give --mapto3D, or remove --ngrid-phi")
+
+    vmax_cmps = float(args.vmax_on_c) * CLIGHT
+    r_edges_cm, theta_edges, phi_edges = get_spherical_grid_edges(
+        vmax_cmps * t_model_init_s, ngrid_r, ngrid_theta, ngrid_phi
+    )
+    gridshape = (ngrid_r, ngrid_theta, ngrid_phi)[:model_dim]
+    print(
+        f"Coordinates: spherical{model_dim}d, with n_r x n_theta{' x n_phi' if model_dim == 3 else ''} ="
+        f" {' x '.join(str(count) for count in gridshape)} cells. The radial edges are uniform from 0 to vmax ="
+        f" {args.vmax_on_c}c. The polar edges are uniform in cos(theta). theta is the polar angle from the +z axis"
+    )
+    print(
+        "Map method: the kernel sum at the mid-point of each cell, with the same steps and the same normalisation to"
+        f" the tracer masses as the {'Cartesian' if model_dim == 3 else 'cylindrical'} grid. The mid-point of a cell"
+        " is the mean of its edges in r and in theta"
+    )
+
+    *griddata, eqsymfac, dfgridcontributions = get_grid(
+        args.npz,
+        args.iso,
+        float(args.vmax_on_c),
+        model_dim,
+        np.array(gridshape),
+        args.nodyn,
+        args.nohmns,
+        args.notorus,
+        no_nu_trapping=args.nonutrapping,
+        sphericaledges_cm=(r_edges_cm, theta_edges, phi_edges),
+    )
+    # the 3D result also holds the binary state, which only --replacedyn reads
+    rho_interpol, X_cells, isot_table, q_ergperg, ye_interpol = griddata[:5]
+    if eqsymfac == 2:
+        print(
+            "The tracers are above the plane z = 0, thus the model has equatorial symmetry. The grid holds both halves"
+        )
+
+    numb_cells = int(np.prod(gridshape))
+    dictabunds, dictelabunds = get_nuclide_and_element_massfracs(X_cells, isot_table, numb_cells, reflect_in_z=False)
+    dfmodel = pl.DataFrame({
+        "inputcellid": range(1, numb_cells + 1),
+        "rho": rho_interpol.flatten(order="F"),
+        "q": q_ergperg.flatten(order="F"),
+        "Ye": ye_interpol.flatten(order="F"),
+        "X_Fegroup": 1.0,
+    }).with_columns(list(itertools.starmap(pl.Series, dictabunds.items())))
+
+    modelmeta: dict[str, t.Any] = {
+        "coordinates": f"spherical{model_dim}d",
+        "dimensions": model_dim,
+        "t_model_init_days": t_model_init_s / day_to_s,
+        "vmax_cmps": vmax_cmps,
+        "vel_r_edges_kmps": (r_edges_cm / t_model_init_s / km_to_cm).tolist(),
+        "theta_edges_radians": theta_edges.tolist(),
+        "firstinputcellid": 0,
+    }
+    if model_dim == 3:
+        modelmeta["phi_edges_radians"] = phi_edges.tolist()
+    # format version 2 of model.txt has cell ids from 0, and the other files of the model need the same ids
+    dfmodel, dfelabundances, dfgridcontributions = with_cell_ids_from_zero(
+        dfmodel, pl.DataFrame(dictelabunds), dfgridcontributions
+    )
+    assert dfelabundances is not None
+    assert dfgridcontributions is not None
+    return dfmodel, dfelabundances, modelmeta, dfgridcontributions
 
 
 # function added by Luke and Gerrit
@@ -645,23 +810,10 @@ def map_to_artis(
     # add mass fraction columns
     dfmodel = dfmodel.with_columns(pl.lit(1.0).alias("X_Fegroup"))
 
-    dictabunds = {}
-    dictelabunds = {"inputcellid": np.array(range(1, numb_cells + 1))}
-    for tuple_idx, isot_tuple in enumerate(isot_table):
-        # only the 2D grid holds one half of an equatorially symmetric model. The 3D grid holds both halves
-        if eqsymfac == 1 or model_dim == 3:
-            flat_isoabund = np.nan_to_num((X_cells[tuple_idx]).flatten(order="F"), nan=0.0)
-        else:
-            flat_isoabund = np.nan_to_num(z_reflect(X_cells[tuple_idx]).flatten(order="F"), nan=0.0)
-        if np.any(flat_isoabund):
-            elem_str = f"X_{get_elsymbol(isot_tuple[1])}"
-            isotope_str = f"{elem_str}{isot_tuple[0] + isot_tuple[1]}"
-            dictabunds[isotope_str] = flat_isoabund
-            dictelabunds[elem_str] = (
-                dictelabunds[elem_str] + flat_isoabund if elem_str in dictelabunds else flat_isoabund
-            )
-
-    print(f"Number of non-zero nuclides {len(dictabunds)}")
+    # only the 2D grid holds one half of an equatorially symmetric model. The 3D grid holds both halves
+    dictabunds, dictelabunds = get_nuclide_and_element_massfracs(
+        X_cells, isot_table, numb_cells, reflect_in_z=not (eqsymfac == 1 or model_dim == 3)
+    )
     dfmodel = dfmodel.with_columns(list(itertools.starmap(pl.Series, dictabunds.items())))
 
     dfelabundances = pl.DataFrame(dictelabunds)
@@ -1216,27 +1368,55 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "-ngridrcyl", type=int, default=25, help="The number of cells in radial direction the ARTIS model shall have"
+        "-ngridrcyl",
+        type=int,
+        default=None,
+        help="The number of cells in radial direction the ARTIS model shall have (default 25)",
     )
 
     parser.add_argument(
-        "-ngridz", type=int, default=50, help="The number of cells in z direction the ARTIS model shall have"
+        "-ngridz",
+        type=int,
+        default=None,
+        help="The number of cells in z direction the ARTIS model shall have (default 50)",
     )
 
     parser.add_argument("--mapto3D", action="store_true", help="Final grid will be 3D. Requires --ngridx and --ngridy")
 
     parser.add_argument(
+        "--coordinates",
+        default=None,
+        choices=["cylindrical", "cartesian", "spherical"],
+        help="The coordinates of the grid. The default is cylindrical for a 2D model, and cartesian with --mapto3D."
+        " spherical gives a 2D spherical model of the radius r and the polar angle theta from the +z axis. With"
+        " --mapto3D, it gives a 3D spherical model with the azimuthal angle phi. A spherical grid is uniform in r to"
+        " vmax, in cos(theta), and in phi, and its map has the method of the cylindrical grid (2D) or of the"
+        " Cartesian grid (3D)",
+    )
+    for (axis, description), default in zip(
+        (("r", "radial shells"), ("theta", "cells along the polar angle"), ("phi", "cells along the azimuthal angle")),
+        SPHERICAL_GRID_SHAPE_DEFAULT,
+        strict=True,
+    ):
+        parser.add_argument(
+            f"--ngrid-{axis}",
+            type=int,
+            default=None,
+            help=f"The number of {description} of a spherical grid (default: {default})",
+        )
+
+    parser.add_argument(
         "-ngridx",
         type=int,
-        default=50,
-        help="The number of cells in x direction the ARTIS model shall have (from -vmax to +vmax)",
+        default=None,
+        help="The number of cells in x direction the ARTIS model shall have (from -vmax to +vmax, default 50)",
     )
 
     parser.add_argument(
         "-ngridy",
         type=int,
-        default=50,
-        help="The number of cells in y direction the ARTIS model shall have (from -vmax to +vmax)",
+        default=None,
+        help="The number of cells in y direction the ARTIS model shall have (from -vmax to +vmax, default 50)",
     )
 
     parser.add_argument("--nonutrapping", action="store_true", help="Exclude neutrino energy from the snapshot energy")
@@ -1324,13 +1504,49 @@ def get_output_file_names(args: argparse.Namespace) -> tuple[str, ...]:
     """Return the names of the files that the command writes to the -o folder.
 
     With --replacedyn and --interpolate, map_to_artis of a 3D model also writes the files of a consistency check.
+    A spherical model with 2 or 3 dimensions has format version 2, and save_modeldata deletes a Ye.txt and an
+    opacity.txt beside such a model. -dimensions 0 or 1 gives a model of format version 1, and the command does not
+    change these two files beside such a model.
     """
+    if args.coordinates == "spherical":
+        writesversion2 = args.dimensions is None or args.dimensions >= 2
+        return (*MODEL_FILE_NAMES, *CELL_ID_FILE_NAMES) if writesversion2 else MODEL_FILE_NAMES
     writesdynfiles = args.mapto3D and args.replacedyn and args.interpolate
     return (*MODEL_FILE_NAMES, *DYN_CHECK_FILE_NAMES) if writesdynfiles else MODEL_FILE_NAMES
 
 
 def validate_grid_dimensions(args: argparse.Namespace) -> None:
-    """Stop at unequal dimensions of a model that stays 3D, because the model writer needs a cubic grid."""
+    """Stop at grid arguments that do not agree, before the command does its work.
+
+    --coordinates must agree with --mapto3D, and a flag of a spherical grid needs --coordinates spherical. A
+    spherical grid takes no cell count of a cylindrical or a Cartesian grid. A Cartesian model that stays 3D needs
+    equal dimensions, because the model writer needs a cubic grid. The function also gives each cell count that
+    the user did not give its default value.
+    """
+    defaultcoordinates = "cartesian" if args.mapto3D else "cylindrical"
+    if args.coordinates not in {None, "spherical", defaultcoordinates}:
+        exit_with_error(
+            f"--coordinates {args.coordinates} does not agree with {'--mapto3D' if args.mapto3D else 'a 2D model'}",
+            "A 2D model is cylindrical or spherical, and a model with --mapto3D is cartesian or spherical",
+        )
+    # a flag with no value gets its default here, thus the check knows the flags that the user gave
+    griddefaults = {"ngridrcyl": 25, "ngridz": 50, "ngridx": 50, "ngridy": 50}
+    givenflags = [f"--{name}" for name in griddefaults if getattr(args, name) is not None]
+    for name, defaultcount in griddefaults.items():
+        if getattr(args, name) is None:
+            setattr(args, name, defaultcount)
+    if args.coordinates == "spherical":
+        if givenflags:
+            exit_with_error(
+                f"{', '.join(givenflags)} {'applies' if len(givenflags) == 1 else 'apply'} to a cylindrical or a"
+                " Cartesian grid, and --coordinates spherical makes a spherical grid",
+                "Give --ngrid-r, --ngrid-theta, and --ngrid-phi for a spherical grid",
+            )
+        return
+    if any(count is not None for count in (args.ngrid_r, args.ngrid_theta, args.ngrid_phi)):
+        exit_with_error(
+            "--ngrid-r, --ngrid-theta, and --ngrid-phi apply to a spherical grid only", "Give --coordinates spherical"
+        )
     if args.mapto3D and args.dimensions is None and not (args.ngridx == args.ngridy == args.ngridz):
         msg = (
             "A 3D model needs equal --ngridx, --ngridy, and --ngridz values,"
@@ -1355,6 +1571,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             modelname += "_3d"
         else:
             modelname += "_2d"
+        if args.coordinates == "spherical":
+            modelname += "_spherical"
         args.outputfile = Path(args.npz).parent / "artis_inputmodels" / modelname
         print(args.outputfile)
     confirm_overwrite([args.outputfile], get_output_file_names(args), force=args.force)
@@ -1363,7 +1581,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     # model_dim = 1 not covered in this script
     model_dim = 3 if args.mapto3D else 2
 
-    if model_dim == 2:
+    if args.coordinates == "spherical":
+        dfmodel, dfelabundances, modelmeta, dfgridcontributions = map_to_spherical_artis_model(args)
+    elif model_dim == 2:
         if args.perturb3Dmodel:
             print_warning("Density perturbations only work on 3D models. Skip.")
         if args.replacedyn:
@@ -1481,7 +1701,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             dfgridcontributions=dfgridcontributions,
         )
 
-    save_initelemabundances(dfelabundances=dfelabundances, outpath=args.outputfile)
-    save_modeldata(dfmodel=dfmodel, modelmeta=modelmeta, outpath=args.outputfile)
+    # a version 1 model also gets abundances.txt, and a version 2 model gets otherstable columns in model.txt
+    save_modeldata(dfmodel=dfmodel, modelmeta=modelmeta, outpath=args.outputfile, dfelabundances=dfelabundances)
     if dfgridcontributions is not None:
         save_gridparticlecontributions(dfgridcontributions, args.outputfile)

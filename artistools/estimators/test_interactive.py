@@ -1097,7 +1097,9 @@ def test_interactive_geometry_modes_draw(make_viewer: Callable[[str, list[str]],
         values = interactive.set_geometry_mode(viewer, viewer.values, mode)
         rows = (("--slice", (slicetext,)),) if slicetext is not None else values.otheroptions
         values = dc.replace(values, otheroptions=viewercore.set_row_values(rows, {"--axis": ("-y",)}))
-        modelmeta = viewer.modelmeta | {"dimensions": dimensions}
+        # the dimensions alone give the coordinates of the model, as for metadata that a caller makes
+        modelmeta = {key: value for key, value in viewer.modelmeta.items() if key != "coordinates"}
+        modelmeta["dimensions"] = dimensions
         return interactive.get_geometry_description(viewer.get_plot_tokens(values), modelmeta)
 
     assert describe("alongaxis") == (
@@ -1155,7 +1157,9 @@ def test_interactive_geometry_modes_draw(make_viewer: Callable[[str, list[str]],
         assert apply_values(viewer, interactive.set_geometry_mode(viewer, rhovalues, mode)) is None, mode
 
     # a 1D model has the average around the z axis, and the selector of the window did not offer it
-    assert interactive.get_geometry_choices(1) == ["all", "cells", "average"]
+    assert interactive.get_geometry_choices("spherical1d") == ["all", "cells", "average"]
+    # a 3D spherical model has planes, and no lines along an axis or projections
+    assert interactive.get_geometry_choices("spherical3d") == ["all", "cells", "plane", "average"]
     viewer1d = make_viewer("estimators", ["Te", str(modelpath), "--timestep", "50", "--interactive"])
     assert apply_values(viewer1d, interactive.set_geometry_mode(viewer1d, viewer1d.values, "average")) is None
 
@@ -1172,7 +1176,7 @@ def test_interactive_geometry_modes_draw(make_viewer: Callable[[str, list[str]],
     onedprojection = dc.replace(viewer1d.values, otheroptions=(("--projection", ("z",)),))
     message = apply_values(viewer1d, onedprojection)
     assert message is not None
-    assert "needs a 3D model" in message
+    assert "needs a model with 3D Cartesian coordinates" in message
 
 
 def test_interactive_smoothing_and_section_rows(

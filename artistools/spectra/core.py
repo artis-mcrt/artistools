@@ -50,7 +50,9 @@ from artistools.misc import get_bin_index_expr
 from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_dirbins
 from artistools.misc import get_file_state
+from artistools.misc import get_grid_max_radial_velocity_cmps
 from artistools.misc import get_metadata_path
+from artistools.misc import get_model_coordinates
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_nprocs
@@ -1796,8 +1798,10 @@ def get_default_radialvelocity_shells(
     _, modelmeta = scan_modeldata(modelpath, printwarningsonly=True)
     vmax_kmps = modelmeta["vmax_cmps"] / km_to_cm
     edges = [vmax_kmps * i / nshells for i in range(nshells + 1)]
-    if modelmeta["dimensions"] > 1:
-        edges.append(vmax_kmps * math.sqrt(modelmeta["dimensions"]))
+    # a grid with spherical edges ends at vmax, thus it gets no shell to a corner
+    cornervelocity_kmps = get_grid_max_radial_velocity_cmps(modelmeta) / km_to_cm
+    if cornervelocity_kmps > vmax_kmps:
+        edges.append(cornervelocity_kmps)
 
     return edges, get_auto_velocity_unit(modelmeta["vmax_cmps"])
 
@@ -1967,7 +1971,7 @@ def add_ye_columns(
     )
     for column, position in positions:
         if position == "trueem" and thermalfromvelocity:
-            if modelmeta["dimensions"] != 1:
+            if get_model_coordinates(modelmeta) != "spherical1d":
                 msg = "The packets hold no thermal emission position, thus the Ye shells need a 1D model"
                 raise ValueError(msg)
             indexexpr = get_modelgridindex_from_velocity_expr(pl.col("true_emission_velocity"), dfmodel)

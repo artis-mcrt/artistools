@@ -21,6 +21,7 @@ from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import get_middle_layer_lower_edge
+from artistools.inputmodel.core import get_spherical_image_cell_indices
 from artistools.inputmodel.core import scan_modeldata
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
@@ -29,13 +30,16 @@ from artistools.misc import addarg_output
 from artistools.misc import addarg_positional_items
 from artistools.misc import addarg_show
 from artistools.misc import addarg_sliceaxis
+from artistools.misc import get_model_coordinates
 from artistools.misc import import_optional
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import read_wsv
+from artistools.misc import require_cartesian3d_model
 from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_positional_modelpath
 from artistools.misc import resolve_slice_axis
+from artistools.misc import SPHERICAL_EDGE_COORDINATES
 from artistools.plottools import save_figure
 
 type AxisType = t.Literal["x", "y", "z", "r", "rcyl"]
@@ -63,6 +67,55 @@ def get_2d_slice_through_3d_model(
     return slicedf
 
 
+def get_point_slice_through_spherical_model(
+    dfmodel: pl.DataFrame, modelmeta: dict[str, t.Any], sliceaxis: str | None, positive_axis: bool
+) -> tuple[pl.DataFrame, dict[str, t.Any], tuple[AxisType, AxisType]]:
+    """Return the points of an image of a spherical2d or spherical3d model, their metadata, and the two plot axes.
+
+    Such a model has no cell with straight edges on the axes of an image. Thus the image is a grid of points with
+    equal steps (see get_spherical_image_cell_indices), and each point has the values of the cell that holds it. A
+    point outside the grid has null values. The metadata gives the counts of the points as the ncoordgrid values of
+    the two plot axes. The pos_ columns give the edges of the points, as for the cells of a slice.
+
+    A spherical2d model gives the plane of the cylindrical radius and z, and sliceaxis is then None. A spherical3d
+    model gives the plane normal to sliceaxis through the centre. The plane lies at 1e-6 vmax on the positive side or
+    on the negative side of that axis. Thus a cell edge in the plane gives the cells of that side.
+    """
+    vmax_cmps = float(modelmeta["vmax_cmps"])
+    slicevelocity_cmps = (1.0 if positive_axis else -1.0) * 1.0e-6 * vmax_cmps
+    cellindices = get_spherical_image_cell_indices(modelmeta, sliceaxis, slicevelocity_cmps)
+    pointcount2, pointcount1 = cellindices.shape
+    plotaxes: tuple[AxisType, AxisType] = ("rcyl", "z")
+    if sliceaxis is not None:
+        axeschars: list[AxisType] = ["x", "y", "z"]
+        first, second = (axisname for axisname in axeschars if axisname != sliceaxis)
+        plotaxes = (first, second)
+    print(
+        f"The image has {pointcount1} x {pointcount2} points with equal steps in {plotaxes[0]} and {plotaxes[1]}. Each"
+        " point takes the value of the cell that holds it."
+    )
+
+    xmax_tmodel = vmax_cmps * modelmeta["t_model_init_days"] * day_to_s
+    lowest1 = 0.0 if sliceaxis is None else -xmax_tmodel
+    pointwidth = xmax_tmodel / (pointcount2 // 2)
+    index1 = np.tile(np.arange(pointcount1), pointcount2)
+    index2 = np.repeat(np.arange(pointcount2), pointcount1)
+    isingrid = pl.Series(cellindices.ravel() >= 0)
+    dfpoints = (
+        dfmodel
+        .sort("modelgridindex")[np.maximum(cellindices.ravel(), 0)]
+        .with_columns(pl.when(isingrid).then(pl.all()))
+        .with_columns(
+            pl.Series(f"pos_{plotaxes[0]}_min", lowest1 + index1 * pointwidth),
+            pl.Series(f"pos_{plotaxes[0]}_max", lowest1 + (index1 + 1) * pointwidth),
+            pl.Series(f"pos_{plotaxes[1]}_min", -xmax_tmodel + index2 * pointwidth),
+            pl.Series(f"pos_{plotaxes[1]}_max", -xmax_tmodel + (index2 + 1) * pointwidth),
+        )
+    )
+    pointmeta = modelmeta | {f"ncoordgrid{plotaxes[0]}": pointcount1, f"ncoordgrid{plotaxes[1]}": pointcount2}
+    return dfpoints, pointmeta, plotaxes
+
+
 def plot_slice_modelcolumn(
     ax: mplax.Axes,
     dfmodelslice: pl.DataFrame,
@@ -78,6 +131,11 @@ def plot_slice_modelcolumn(
     colorscale = (
         (dfmodelslice[colname] * dfmodelslice["rho"]) if colname.startswith("X_") else dfmodelslice[colname]
     ).to_numpy()
+
+    if dfmodelslice["rho"].null_count() > 0:
+        # a point of an image of a spherical model that is outside the grid has no cell. The floor of a log scale
+        # must not give it a colour
+        colorscale = np.ma.masked_where(dfmodelslice["rho"].is_null().to_numpy(), colorscale)
 
     if args.hideemptycells:
         # Don't plot empty cells:
@@ -156,12 +214,19 @@ def plot_slice_modelcolumn(
     return im
 
 
-def add_ye_from_yefile(lzdfmodel: pl.LazyFrame, modelpath: Path | str) -> pl.LazyFrame:
+def add_ye_from_yefile(lzdfmodel: pl.LazyFrame, modelpath: Path | str, modelmeta: dict[str, t.Any]) -> pl.LazyFrame:
     """Add the Ye column of Ye.txt to a model whose model.txt holds no Ye column.
 
     Ye.txt gives the number of lines first, and then the cell id and Ye of each cell. The ids are the ids of
-    model.txt, thus a join on the id is correct also for a file that holds only some of the cells.
+    model.txt, thus a join on the id is correct also for a file that holds only some of the cells. A model of
+    format version 2 has no Ye.txt, thus the function stops for such a model.
     """
+    if modelmeta.get("formatversion", 1) == 2:
+        msg = (
+            f"The model.txt of {modelpath} has format version 2 and no column Ye. sn3d reads no Ye.txt for format"
+            " version 2"
+        )
+        raise ValueError(msg)
     dfye = read_wsv(Path(modelpath) / "Ye.txt", has_header=False, skip_rows=1, new_columns=["inputcellid", "Ye"])
     return lzdfmodel.join(
         dfye.lazy().select(pl.col("inputcellid").cast(pl.Int32), pl.col("Ye").cast(pl.Float32)),
@@ -233,7 +298,7 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
 
     if "Ye" in args.plotvars and "Ye" not in lzdfmodel.collect_schema().names():
         # the model file can hold no Ye column, and then Ye.txt gives it, as for the 3D plot
-        lzdfmodel = add_ye_from_yefile(lzdfmodel, modelpath)
+        lzdfmodel = add_ye_from_yefile(lzdfmodel, modelpath, modelmeta)
 
     modelcolumns = lzdfmodel.collect_schema().names()
     colnames = [plotvar if plotvar in modelcolumns else f"X_{plotvar.title()}" for plotvar in args.plotvars]
@@ -249,12 +314,19 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
         .collect()
     )
 
-    if modelmeta["dimensions"] == 3:
+    coordinates = get_model_coordinates(modelmeta)
+    if coordinates in SPHERICAL_EDGE_COORDINATES:
+        if coordinates == "spherical3d":
+            print(f"The image shows the plane {args.sliceaxis} = 0")
+        df2dslice, modelmeta, (plotaxis1, plotaxis2) = get_point_slice_through_spherical_model(
+            dfmodel, modelmeta, args.sliceaxis if coordinates == "spherical3d" else None, args.positive_axis
+        )
+    elif modelmeta["dimensions"] == 3:
         sliceaxis: AxisType = args.sliceaxis
 
         axeschars: list[AxisType] = ["x", "y", "z"]
-        plotaxis1: AxisType = next(ax for ax in axeschars if ax != sliceaxis)
-        plotaxis2: AxisType = next(ax for ax in axeschars if ax not in {sliceaxis, plotaxis1})
+        plotaxis1 = next(ax for ax in axeschars if ax != sliceaxis)
+        plotaxis2 = next(ax for ax in axeschars if ax not in {sliceaxis, plotaxis1})
         print(f"Plotting slice through {sliceaxis}=0, plotting {plotaxis1} vs {plotaxis2}")
 
         df2dslice = get_2d_slice_through_3d_model(
@@ -355,13 +427,15 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     plotvar = "rho" if "rho" in args.plotvars else "Ye" if "Ye" in args.plotvars else args.plotvars[0]
     # an element such as Sr needs the element abundances, and an isotope such as Sr92 is a column of the model
     plmodel, modelmeta = scan_modeldata(modelpath, get_elemabundances=plotvar[-1] not in string.digits)
+    # the plot puts the cells on a cube of x, y, and z
+    require_cartesian3d_model(modelmeta, "--plot3d needs", "Remove --plot3d to plot a slice of the model")
     # a column such as tracercount keeps its name, and an element or an isotope names its mass fraction, as in 2D
     coloursurfaceby = plotvar if plotvar in {*plmodel.collect_schema().names(), "Ye"} else f"X_{plotvar.title()}"
     print(f"Colours set by {coloursurfaceby}")
     vmax = modelmeta["vmax_cmps"]
     if "Ye" in args.plotvars and "Ye" not in plmodel.collect_schema().names():
         # the model file can hold no Ye column, and then Ye.txt gives it
-        plmodel = add_ye_from_yefile(plmodel, modelpath)
+        plmodel = add_ye_from_yefile(plmodel, modelpath, modelmeta)
     model = plmodel.select(cs.by_name({"rho", coloursurfaceby}, require_all=False)).collect()
 
     # generate grid from data

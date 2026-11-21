@@ -11,6 +11,8 @@ from artistools.inputmodel.core import get_mgi_of_velocity_kms as get_mgi_of_vel
 from artistools.inputmodel.core import get_modeldata as get_modeldata
 from artistools.inputmodel.core import get_modelmeta as get_modelmeta
 from artistools.inputmodel.core import get_spatial_scales as get_spatial_scales
+from artistools.inputmodel.core import get_spherical_cell_index_of_velocities as get_spherical_cell_index_of_velocities
+from artistools.inputmodel.core import get_spherical_image_cell_indices as get_spherical_image_cell_indices
 from artistools.inputmodel.core import resolve_cell_direction_range as resolve_cell_direction_range
 from artistools.inputmodel.core import save_empty_abundance_file as save_empty_abundance_file
 from artistools.inputmodel.core import save_initelemabundances as save_initelemabundances
@@ -18,6 +20,7 @@ from artistools.inputmodel.core import save_modeldata as save_modeldata
 from artistools.inputmodel.core import scale_model_to_time as scale_model_to_time
 from artistools.inputmodel.core import scan_initelemabundances as scan_initelemabundances
 from artistools.inputmodel.core import scan_modeldata as scan_modeldata
+from artistools.inputmodel.core import with_cell_ids_from_zero as with_cell_ids_from_zero
 
 # isort: split
 from artistools.inputmodel import core as core
