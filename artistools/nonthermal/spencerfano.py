@@ -415,15 +415,25 @@ def solve_step(
             sf.set_temperature(conditions.T_e)
             sf.set_atomic_data(adata_polars=adata)
 
+        heldions: set[tuple[int, int]] = set()
         for Z, ion_stage in ions:
             nnion = ionpopdict[Z, ion_stage]
             if nnion == 0.0:
                 print(f"   Skipping Z={Z} ion_stage {ion_stage} due to nnion={nnion:.1e}")
                 continue
+            if ion_stage > Z:
+                # a bare nucleus has no bound electron to ionise or to excite, and ARTIS skips it (nonthermal.cc)
+                print(f"   Skipping Z={Z} ion_stage {ion_stage}, a bare nucleus with no bound electron")
+                continue
 
             sf.add_ionisation(Z, ion_stage, nnion)
             if not args.noexcitation:
                 sf.add_ion_excitation(Z, ion_stage, nnion)
+            heldions.add((Z, ion_stage))
+
+        # the solver sums n_e from the charges of the ions that it holds, and a skipped ion also has free electrons
+        print("  The free electron density is x_e n_tot, which is the nne of a model cell, as ARTIS uses")
+        sf.override_n_e(conditions.x_e * conditions.nntot)
 
         sf.solve(deposition_ev_per_s_per_cm3=conditions.deposition_density_ev)
 
@@ -455,9 +465,7 @@ def solve_step(
             "frac_heating": sf.get_frac_heating(),
         } | {
             f"frac_ionization_{get_ion_column_name(atomic_number, ion_stage)}": (
-                sf.get_frac_ionisation_ion(atomic_number, ion_stage)
-                if ionpopdict[atomic_number, ion_stage] > 0.0
-                else 0.0
+                sf.get_frac_ionisation_ion(atomic_number, ion_stage) if (atomic_number, ion_stage) in heldions else 0.0
             )
             for atomic_number, ion_stage in ions
         }

@@ -10,6 +10,8 @@ import polars as pl
 import polars.selectors as cs
 
 from artistools.constants import c_ang_per_s
+from artistools.lightcurve.core import get_filename_part
+from artistools.lightcurve.viewingangleanalysis import get_viewing_angle_data_filename
 from artistools.lightcurve.writebollightcurvedata import get_bol_lc_from_lightcurveout
 from artistools.misc import addarg_action
 from artistools.misc import addarg_darkmode
@@ -171,6 +173,11 @@ def make_hesma_bol_lightcurve(modelpath: Path, outpath: Path, timemin: float, ti
     lightcurvedataframe.write_csv(outpath / outfilename, separator=" ", include_header=False)
 
 
+def get_width_luminosity_filename(modelname: str) -> str:
+    """Return the name of the width-luminosity file of a model, with each / of the name replaced."""
+    return f"{get_filename_part(modelname)}_width-luminosity.dat"
+
+
 def make_hesma_peakmag_dm15_dm40(
     band: str, pathtofiles: Path, modelname: str, outpath: Path, dm40: bool = False
 ) -> None:
@@ -180,7 +187,8 @@ def make_hesma_peakmag_dm15_dm40(
     peak_mag_polyfit, risetime_polyfit, and deltam15_polyfit. --include-delta-m40 adds the column
     deltam40_polyfit to that same file.
     """
-    viewinganglefilename = f"{band}band_{modelname}_viewing_angle_data.txt"
+    # plotlightcurves writes the file under this name, which replaces each / of the band and the model name
+    viewinganglefilename = get_viewing_angle_data_filename(band, modelname)
     dfviewingangle = read_wsv(pathtofiles / viewinganglefilename, comment_prefix="#")
     columns = dfviewingangle.columns
 
@@ -211,7 +219,7 @@ def make_hesma_peakmag_dm15_dm40(
         outdata["dm40"] = dfviewingangle["deltam40_polyfit"]
 
     outdataframe = pl.DataFrame(outdata).with_columns(cs.float().round(4))
-    outdataframe.write_csv(outpath / f"{modelname}_width-luminosity.dat", separator=" ")
+    outdataframe.write_csv(outpath / get_width_luminosity_filename(modelname), separator=" ")
 
 
 def plot_hesma_peakmag_dm15_dm40(pathtofiles: Path | str, args: argparse.Namespace, outputfile: Path | str) -> None:
@@ -330,7 +338,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     elif args.action == "widthluminosity":
         modelname = require(args.modelname, "-modelname", args.action)
-        confirm_overwrite([outputpath], (f"{modelname}_width-luminosity.dat",), force=args.force)
+        confirm_overwrite([outputpath], (get_width_luminosity_filename(modelname),), force=args.force)
         make_hesma_peakmag_dm15_dm40(
             args.band, require(args.pathtofiles, "-pathtofiles", args.action), modelname, outputpath, dm40=args.dm40
         )

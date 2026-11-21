@@ -55,16 +55,26 @@ def test_hesma_plots_take_the_times_and_the_tables_of_each_file(
     assert [callargs.kwargs["label"] for callargs in mockplot.call_args_list] == ["HESMA a_spec", "HESMA b_spec"]
 
 
-def test_hesma_width_luminosity_roundtrip(tmp_path: Path) -> None:
-    """The widthluminosity action must build a file that plotwidthluminosity can read back."""
-    (tmp_path / "Bband_testmodel_viewing_angle_data.txt").write_text(
+@pytest.mark.parametrize("band", ["B", "NOT/B"])
+def test_hesma_width_luminosity_roundtrip(tmp_path: Path, band: str) -> None:
+    """The widthluminosity action must build a file that plotwidthluminosity can read back.
+
+    plotlightcurves writes the viewing angle file of a band such as NOT/B with a _ for each /, thus NOT_Bband_.
+    The reader kept the /, and it looked for the file in a subfolder NOT.
+    """
+    (tmp_path / f"{band.replace('/', '_')}band_testmodel_viewing_angle_data.txt").write_text(
         "dirbin peak_mag_polyfit risetime_polyfit deltam15_polyfit\n"
         + "".join(f"{i} {-19 + i / 100:.4f} {17.0:.4f} {1.0 + i / 100:.4f}\n" for i in range(100)),
         encoding="utf-8",
     )
 
     at.hesma_scripts.main(
-        argsraw=[], action="widthluminosity", band="B", modelname="testmodel", pathtofiles=tmp_path, outputpath=tmp_path
+        argsraw=[],
+        action="widthluminosity",
+        band=band,
+        modelname="testmodel",
+        pathtofiles=tmp_path,
+        outputpath=tmp_path,
     )
 
     widthlumfile = tmp_path / "testmodel_width-luminosity.dat"

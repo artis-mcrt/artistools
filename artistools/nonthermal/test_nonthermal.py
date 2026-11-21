@@ -157,6 +157,20 @@ def test_spencerfano_solves_an_ion_stage_above_xx(tmp_path: Path) -> None:
     assert at.nonthermal.spencerfano.get_ion_column_name(26, 27) == "FeXXVII"
 
 
+def test_spencerfano_skips_a_bare_nucleus(tmp_path: Path) -> None:
+    """A bare nucleus has no bound electron, thus the solver holds no ionisation of it, as in ARTIS.
+
+    pynonthermal raises a ValueError for a bare nucleus, thus -composition He with x_e above 1 stopped.
+    """
+    ostatfile = tmp_path / "ntstats.txt"
+    at.nonthermal.spencerfano.main(
+        argsraw=[], composition="He", x_e=1.5, npts=50, noexcitation=True, ostat=str(ostatfile)
+    )
+    dfstats = read_ntstats(ostatfile)
+    assert dfstats["frac_ionization_HeIII"].item() == pytest.approx(0.0)
+    assert dfstats["frac_ionization_HeII"].item() > 0.0
+
+
 def test_ntlepton_deposition_rate_density_follows_artis() -> None:
     """ARTIS normalises the solution with the deposition of the gamma rays, the positrons, and the electrons.
 
