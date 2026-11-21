@@ -10,7 +10,7 @@ import polars as pl
 import polars.selectors as cs
 
 from artistools.constants import c_ang_per_s
-from artistools.lightcurve.core import get_filename_part
+from artistools.lightcurve import get_filename_part
 from artistools.lightcurve.viewingangleanalysis import get_viewing_angle_data_filename
 from artistools.lightcurve.writebollightcurvedata import get_bol_lc_from_lightcurveout
 from artistools.misc import addarg_action
@@ -141,6 +141,12 @@ def make_hesma_vspecfiles(modelpath: Path, outpath: Path | None = None) -> None:
             allbintimes = vspecdata.columns[1:]
             insidebins = get_vspecpol_bins_inside_vpkt_window([float(time) for time in allbintimes], vpkt_config)
             timearray = [allbintimes[index] for index in insidebins]
+            if not timearray:
+                exit_with_error(
+                    f"No time bin of the virtual packets of {angle_name} lies fully inside the time window"
+                    f" {vpkt_config['initial_time']} to {vpkt_config['final_time']} days of vpkt.txt",
+                    "Make the time window of vpkt.txt wider than one time bin",
+                )
             if len(timearray) < len(allbintimes):
                 print_warning(
                     f"The file leaves out {len(allbintimes) - len(timearray)} time bins, because they are not fully"

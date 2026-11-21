@@ -63,7 +63,6 @@ from artistools.misc import get_timestep_times
 from artistools.misc import get_vpkt_config
 from artistools.misc import get_xunit
 from artistools.misc import modelpath_cache
-from artistools.misc import MTIME_TOLERANCE_S
 from artistools.misc import on_model_host
 from artistools.misc import parse_metadata_redshift
 from artistools.misc import parse_timedays_range
@@ -999,7 +998,7 @@ def vspecpol_total_is_older_than_its_rank_files(modelpath: Path, totalfile: Path
     except (FileNotFoundError, IndexError, ValueError):
         return False
     totalmtime = totalfile.stat().st_mtime
-    return any(rankfile.stat().st_mtime > totalmtime + MTIME_TOLERANCE_S for rankfile in rankfiles)
+    return any(rankfile.stat().st_mtime > totalmtime for rankfile in rankfiles)
 
 
 def make_averaged_vspecfiles(modelpaths: Sequence[Path]) -> None:
@@ -1207,11 +1206,12 @@ def get_vspecpol_bins_inside_vpkt_window(timemids: Sequence[float], vpkt_config:
     if edges is None:
         return [index for index, timemid in enumerate(timemids) if windowstart <= timemid <= windowend]
     # the file gives the middle times with 6 significant figures, thus a window edge on a bin edge must keep that bin
-    tolerance = 1e-4 * windowend
+    relativetolerance = 1e-4
     return [
         index
         for index in range(len(timemids))
-        if edges[index] >= windowstart - tolerance and edges[index + 1] <= windowend + tolerance
+        if edges[index] >= windowstart * (1.0 - relativetolerance)
+        and edges[index + 1] <= windowend * (1.0 + relativetolerance)
     ]
 
 

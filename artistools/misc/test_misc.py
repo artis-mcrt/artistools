@@ -2317,6 +2317,8 @@ def test_valid_range_starts_when_light_from_the_matter_of_the_largest_radius_arr
         ("spherical1d", CARTESIAN_GRID_OUT, None, math.sqrt(3.0)),
         # a job that stops early can leave an empty or a cut grid.out, which shows no map
         ("spherical1d", "", None, math.sqrt(3.0)),
+        # the first line of a cut Cartesian map looks like a direct map, but the model has two cells with matter
+        ("spherical1d", "0 0\n", None, math.sqrt(3.0)),
         ("cylindrical2d", DIRECT_GRID_OUT, None, math.sqrt(2.0)),
         ("cylindrical2d", CARTESIAN_GRID_OUT, None, math.sqrt(3.0)),
         ("spherical2d", None, None, math.sqrt(3.0)),

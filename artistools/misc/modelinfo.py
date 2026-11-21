@@ -456,7 +456,9 @@ def grid_out_gives_direct_map(modelpath: Path) -> bool:
     """Return True if grid.out of a local model folder gives each propagation cell its own model cell.
 
     sn3d opens grid.out in each job before it writes the cells, thus a job that stops early can leave an empty or a
-    cut file. Such a file, and a file that the reader cannot read, give False, which is the safe value.
+    cut file. Such a file, and a file that the reader cannot read, give False, which is the safe value. sn3d writes
+    one line for each propagation cell with matter (grid.cc). Thus a full direct map has one line for each model
+    cell with rho > 0, and the first lines of a cut Cartesian map can look like a direct map.
     """
     try:
         dfgrid = read_grid_out(modelpath)
@@ -466,7 +468,20 @@ def grid_out_gives_direct_map(modelpath: Path) -> bool:
         print_warning(f"The command cannot read the grid.out of {modelpath}, thus it takes a Cartesian grid: {exc}")
         return False
     isdirectmap = dfgrid.select((pl.col("cellindex") == pl.col("modelgridindex")).all(ignore_nulls=False)).item()
-    return dfgrid.height > 0 and isdirectmap is True
+    if dfgrid.height == 0 or isdirectmap is not True:
+        return False
+    from artistools.inputmodel import scan_modeldata
+
+    dfmodel, _ = scan_modeldata(modelpath, printwarningsonly=True)
+    nonemptycellcount = dfmodel.filter(pl.col("rho") > 0.0).select(pl.len()).collect().item()
+    if dfgrid.height != nonemptycellcount:
+        print_warning(
+            f"The grid.out of {modelpath} has {dfgrid.height} propagation cells, and the model has"
+            f" {nonemptycellcount} cells with matter. Thus grid.out is not complete, and the command takes a"
+            " Cartesian grid"
+        )
+        return False
+    return True
 
 
 def get_escape_surface_max_radial_velocity_cmps(modelpath: Path, modelmeta: "Mapping[str, t.Any]") -> float:
@@ -509,6 +524,12 @@ def get_matter_max_radial_velocity_cmps(modelpath: Path, modelmeta: "Mapping[str
     hasmodelgrid = get_model_coordinates(modelmeta) == "cartesian3d" or grid_out_gives_direct_map(modelpath)
     celldiagonal_cmps = get_propagation_cell_diagonal_cmps(modelpath, modelmeta, hasmodelgrid=hasmodelgrid)
     if celldiagonal_cmps is None:
+        if not hasmodelgrid:
+            print_warning(
+                f"artisoptions.h of {modelpath} gives no positive integer CUBOID_NCOORDGRID_X, _Y, and _Z. Thus the"
+                " start of the valid range takes the corner of the model grid. The matter of a Cartesian propagation"
+                " grid can extend half a cell diagonal beyond that corner (grid.cc)"
+            )
         return modelcornervmax_cmps
     mattervmax_cmps = modelcornervmax_cmps
     if not hasmodelgrid:
@@ -550,7 +571,7 @@ def get_propagation_cell_diagonal_cmps(
         # e.g. "2 * N" or the name of a different constant in artisoptions.h
         print_warning(
             f"The counts of the propagation cells {[count for _, count in cellcounts]} of {modelpath} are not integers,"
-            " thus the start of the valid range takes the corner of the model grid"
+            " thus the command cannot find the size of a propagation cell"
         )
         return None
     if min(counts) <= 0:

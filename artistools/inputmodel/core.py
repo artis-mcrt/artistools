@@ -1345,9 +1345,11 @@ def get_spherical_slice_velocity_cmps(slicevelocity_cmps: float, vmax_cmps: floa
 
     Each point of the image lies on the plane, and a cell holds its lower edge. Thus a plane on a cell edge took the
     cells of a different side in each half of the image. The plane above takes the cells on the positive side. A
-    slice of a Cartesian model also takes the layer above a plane between two layers.
+    slice of a Cartesian model also takes the layer above a plane between two layers. A plane less than 1e-6 vmax
+    below vmax stays, because the plane above is outside the model.
     """
-    return slicevelocity_cmps + 1.0e-6 * vmax_cmps
+    planeabove_cmps = slicevelocity_cmps + 1.0e-6 * vmax_cmps
+    return planeabove_cmps if planeabove_cmps < vmax_cmps else slicevelocity_cmps
 
 
 def get_spherical_image_cell_indices(

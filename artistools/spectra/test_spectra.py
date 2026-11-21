@@ -1,6 +1,7 @@
 import argparse
 import functools
 import gzip
+import itertools
 import lzma
 import math
 import re
@@ -4069,6 +4070,22 @@ def test_virtual_spectrum_leaves_out_the_time_bins_across_the_window_of_vpkt_txt
         averaged = atspectra.scan_vspecpol_spectrum(Path(), 5.0, 0, timemin=4.0, timemax=6.0).collect()
     assert averaged["f_nu"].item() == pytest.approx(2.0)
     assert "leaves out 2 time bins" in capsys.readouterr().err
+
+
+def test_vpkt_window_tolerance_scales_with_each_window_edge() -> None:
+    """A bin edge must agree with a window edge to the precision of that edge, not to the precision of the window end.
+
+    The tolerance was 1e-4 of the window end at both edges. Thus a window of 4 to 1000 d kept a bin from 3.95 d.
+    """
+    edges = [3.95 * 1.1**index for index in range(6)]
+    # the file gives the arithmetic middle of each bin with 6 significant figures
+    timemids = [float(f"{(lower + upper) / 2.0:.6g}") for lower, upper in itertools.pairwise(edges)]
+    vpktconfig = {"time_limits_enabled": True, "initial_time": 4.0, "final_time": 1000.0}
+    assert atspectra.get_vspecpol_bins_inside_vpkt_window(timemids, vpktconfig) == [1, 2, 3, 4]
+    # a window edge on a bin edge keeps that bin, although the file rounds the middle times
+    vpktconfig["initial_time"] = edges[1]
+    vpktconfig["final_time"] = edges[4]
+    assert atspectra.get_vspecpol_bins_inside_vpkt_window(timemids, vpktconfig) == [1, 2, 3]
 
 
 @pytest.mark.parametrize("stokesparam", ["Q/I", "U/I"])
