@@ -1340,6 +1340,16 @@ def get_spherical_cell_index_of_velocities(
     return np.where(index_r < ncoordgridr, cellindex, -1).astype(np.int64)
 
 
+def get_spherical_slice_velocity_cmps(slicevelocity_cmps: float, vmax_cmps: float) -> float:
+    """Return the position of the plane of a slice of a spherical model, 1e-6 vmax above the given plane [cm/s].
+
+    Each point of the image lies on the plane, and a cell holds its lower edge. Thus a plane on a cell edge took the
+    cells of a different side in each half of the image. The plane above takes the cells on the positive side, as a
+    slice of a Cartesian model takes the layer above a plane between two layers.
+    """
+    return slicevelocity_cmps + 1.0e-6 * vmax_cmps
+
+
 def get_spherical_image_cell_indices(
     modelmeta: "Mapping[str, t.Any]", sliceaxis: str | None, slicevelocity_cmps: float = 0.0
 ) -> "npt.NDArray[np.int64]":

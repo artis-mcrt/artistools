@@ -41,6 +41,7 @@ from artistools.constants import C_cm_per_s
 from artistools.constants import km_to_cm
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_spherical_image_cell_indices
+from artistools.inputmodel import get_spherical_slice_velocity_cmps
 from artistools.inputmodel import scan_modeldata
 from artistools.inputmodel.slice1dfromconein3dmodel import get_profile_along_axis
 from artistools.inputmodel.slice1dfromconein3dmodel import make_cone
@@ -2005,7 +2006,9 @@ def get_cells_of_slice(modelpath: Path, conditions: Sequence[tuple[str, float, s
         if abs(velocity_cmps) >= vmax_cmps:
             msg = f"{label} lies outside the model, which ends at {vmax_cmps / C_cm_per_s:.3g}c"
             raise add_help_note(ValueError(msg), "Give a velocity inside the model")
-        cellindices = np.unique(get_spherical_image_cell_indices(modelmeta, axisname, velocity_cmps))
+        # the image of plotestimators moves the plane in the same way, thus it reads only these cells
+        planevelocity_cmps = get_spherical_slice_velocity_cmps(velocity_cmps, vmax_cmps)
+        cellindices = np.unique(get_spherical_image_cell_indices(modelmeta, axisname, planevelocity_cmps))
         return [int(cellindex) for cellindex in cellindices if cellindex >= 0]
 
     require_cartesian3d_model(

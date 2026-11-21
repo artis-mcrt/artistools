@@ -14,6 +14,7 @@ from artistools.inputmodel.core import get_modelmeta as get_modelmeta
 from artistools.inputmodel.core import get_spatial_scales as get_spatial_scales
 from artistools.inputmodel.core import get_spherical_cell_index_of_velocities as get_spherical_cell_index_of_velocities
 from artistools.inputmodel.core import get_spherical_image_cell_indices as get_spherical_image_cell_indices
+from artistools.inputmodel.core import get_spherical_slice_velocity_cmps as get_spherical_slice_velocity_cmps
 from artistools.inputmodel.core import resolve_cell_direction_range as resolve_cell_direction_range
 from artistools.inputmodel.core import save_empty_abundance_file as save_empty_abundance_file
 from artistools.inputmodel.core import save_initelemabundances as save_initelemabundances

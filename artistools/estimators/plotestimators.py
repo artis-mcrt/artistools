@@ -73,6 +73,7 @@ from artistools.estimators.plotitems import split_plotitem_styles
 from artistools.estimators.plotitems import VARIABLE_ALIASES
 from artistools.inputmodel import get_cell_direction_selection
 from artistools.inputmodel import get_spherical_image_cell_indices
+from artistools.inputmodel import get_spherical_slice_velocity_cmps
 from artistools.inputmodel import resolve_cell_direction_range
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_celldirectionrange
@@ -442,6 +443,17 @@ def get_histogram_steps(dflinepoints: pl.DataFrame) -> pl.DataFrame:
     gapafterbin = np.flatnonzero(~np.isclose(lower[1:], upper[:-1], rtol=0.0, atol=edgetolerance))
     insertindices = 2 * gapafterbin + 2
     return pl.DataFrame({name: np.insert(values, insertindices, np.nan) for name, values in columns.items()})
+
+
+def xvalues_lie_on_grid(xvaluelist: Sequence[float], xdeltamax: float, logscalex: bool) -> bool:
+    """Return True if the sorted distinct x values lie on a grid whose interval is the largest interval of the values.
+
+    n values on a grid of the interval d cover (n - 1) d. With --logscalex, the interval is in ln(x).
+    """
+    if len(xvaluelist) < 2:
+        return False
+    xspan = math.log(xvaluelist[-1]) - math.log(xvaluelist[0]) if logscalex else xvaluelist[-1] - xvaluelist[0]
+    return len(xvaluelist) <= round(xspan / xdeltamax) + 1
 
 
 def get_line_ends(figuredata: "LineFigureData", args: argparse.Namespace) -> tuple[bool, float | None]:
@@ -1254,12 +1266,12 @@ def get_multi_ion_series_plans(
         if ispopulation and poptype == "cumulative":
             # multiply each cell's number density by its volume before the sum, so the result is a particle count
             # the sum is over the cells of one timestep, thus it must restart at each timestep
+            # the cells at one x value get different partial sums, and the line takes the mean at each x. Thus each
+            # cell takes the largest partial sum at its x value, which counts each cell up to and at that x
             dfion = estimators.join(
-                fullrangeestimators.select(
-                    "timestep",
-                    "modelgridindex",
-                    cumulativecount=(expr_yvals * pl.col("volume")).cum_sum().over("timestep"),
-                ),
+                fullrangeestimators.with_columns(
+                    cumulativecount=(expr_yvals * pl.col("volume")).cum_sum().over("timestep")
+                ).select("timestep", "modelgridindex", pl.col("cumulativecount").max().over("timestep", "xvalue")),
                 on=["timestep", "modelgridindex"],
                 how="left",
                 maintain_order="left",
@@ -1537,6 +1549,15 @@ def get_xlist(
             # a single row gives None, and a column that holds one x value gives 0.0
             print(f"The x values give no interval to bin by ({xdeltamax}). Setting xbins to 25")
             args.xbins = 25
+        elif xvalues_lie_on_grid(stats["xvalue"], xdeltamax, logscalex):
+            # e.g. the radial shells of a spherical model. Bins of this width have their edges on the x values, thus
+            # a bin merged two shells and moved the others by up to half a shell
+            print(
+                f"The {len(stats['xvalue'])} x values lie on a grid with the interval {xdeltamax}, thus each x value"
+                " gets one point, with the mean of its cells"
+            )
+            args.xbins = None
+            args.colorbyion = True
         else:
             args.xbins = int((math.log(xmax) - math.log(xmin) if logscalex else xmax - xmin) / xdeltamax)
             print(
@@ -2447,6 +2468,9 @@ def get_spherical_image_values(
     is a ring around the z axis. For a spherical3d model, the value of a ring of r and theta is then the mean over
     its cells in phi. get_panel_means gives the weight.
     """
+    if sliceaxis is not None:
+        # get_cells_of_slice moves the plane in the same way, thus each point has a cell that the reader read
+        slicevelocity_cmps = get_spherical_slice_velocity_cmps(slicevelocity_cmps, float(modelmeta["vmax_cmps"]))
     cellindices = get_spherical_image_cell_indices(modelmeta, sliceaxis, slicevelocity_cmps)
     ringcount = (len(modelmeta["vel_r_edges_kmps"]) - 1) * (len(modelmeta["theta_edges_radians"]) - 1)
     # the points of an image with no sliceaxis are in the first cell of phi, thus their cell index is a ring index

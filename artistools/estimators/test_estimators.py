@@ -4886,7 +4886,54 @@ def test_image_of_a_spherical_model_gives_each_point_the_value_of_its_cell(tmp_p
     assert planecells == sorted(index_r + 2 * (1 + 3 * index_phi) for index_r in range(2) for index_phi in range(4))
 
 
-def test_image_of_a_mass_fraction_takes_the_mass_weight_of_the_line_plot() -> None:
+def test_slice_of_a_spherical_model_on_cell_edges_takes_the_cells_on_the_positive_side(tmp_path: Path) -> None:
+    """A slice plane on a cell edge gives the cells on its positive side, in both halves of the image.
+
+    Each point of the image lies on the plane, and a cell holds its lower edge. Thus on x = 0 the half with y > 0
+    showed the cells at -x and the half with y < 0 showed the cells at +x, and z = 0 showed the cells below the plane.
+    """
+    vmax_cmps = 2.0e9
+    modelmeta: dict[str, t.Any] = {
+        "coordinates": "spherical3d",
+        "dimensions": 3,
+        "t_model_init_days": 1.0,
+        "vel_r_edges_kmps": [0.0, 1.0e4, 2.0e4],
+        "theta_edges_radians": [0.0, math.pi / 2, math.pi],
+        "phi_edges_radians": np.linspace(0.0, 2.0 * math.pi, 5).tolist(),
+        "vmax_cmps": vmax_cmps,
+        "npts_model": 16,
+    }
+    panels = [plotestimators.ImagePanel(pl.col("Te"), plotestimators.PanelStyle("Te", None, None, None))]
+    estimators = pl.LazyFrame({
+        "timestep": [5] * 16,
+        "modelgridindex": list(range(16)),
+        "deltavol_deltat": [1.0] * 16,
+        "Te": [1000.0 + cellindex for cellindex in range(16)],
+    })
+
+    def get_te_of_cell(index_theta: int, index_phi: int) -> float:
+        # each of the points below is in the outer shell (index_r = 1)
+        return 1000.0 + 1 + 2 * (index_theta + 2 * index_phi)
+
+    def get_point_index(velocity_cmps: float) -> int:
+        return int((velocity_cmps + vmax_cmps) / (2.0 * vmax_cmps / 400))
+
+    # on x = 0, the +x side is phi in [0, pi / 2) for y > 0 and phi in [3 pi / 2, 2 pi) for y < 0
+    (gridyz,), _ = plotestimators.get_image_values(estimators, panels, modelmeta, "x", [5], 0.0)
+    for y_cmps, index_phi in ((1.5e9, 0), (-1.5e9, 3)):
+        te = gridyz[get_point_index(1.0e7), get_point_index(y_cmps)]
+        assert np.isclose(te, get_te_of_cell(0, index_phi), rtol=1e-12, atol=0.0), y_cmps
+    # on z = 0, the +z side is the polar cell 0
+    (gridxy,), _ = plotestimators.get_image_values(estimators, panels, modelmeta, "z", [5], 0.0)
+    assert np.isclose(
+        gridxy[get_point_index(1.0e7), get_point_index(1.5e9)], get_te_of_cell(0, 0), rtol=1e-12, atol=0.0
+    )
+
+    # --slice reads the cells of the same points
+    dfmodel = pl.DataFrame({"inputcellid": pl.int_range(16, eager=True, dtype=pl.Int32), "rho": 1.0e-12})
+    at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta=dict(modelmeta))
+    planecells = at.estimators.get_cells_of_slice(tmp_path, [("x", 0.0, "x = 0")])
+    assert {(cellindex // 2) // 2 for cellindex in planecells} == {0, 3}
     """A pixel of a mass fraction or Ye is a mean with the cell masses as weights, as the line plot gives.
 
     The pixel took the volume alone, thus an image and a line of the same cells gave different means.
@@ -5544,6 +5591,48 @@ def test_cumulative_population_does_not_change_with_the_x_range() -> None:
 
     assert np.allclose(get_values(None), [1.0, 3.0, 7.0], rtol=1e-12, atol=0.0)
     assert np.allclose(get_values(1500.0), [3.0, 7.0], rtol=1e-12, atol=0.0)
+
+
+def test_cumulative_population_of_shells_with_several_cells_counts_each_cell_at_the_x() -> None:
+    """Each shell of a spherical model holds several cells at one velocity, and its point counts all of them.
+
+    The cells at one x value got different partial sums, and the line took their mean, thus two shells of three
+    cells gave 2 and 5 in place of 3 and 6. Automatic bins with edges on the shell velocities also put both shells
+    of this model into the points of far bins, and they merged the inner two shells of a larger model.
+    """
+    from artistools.estimators.plotestimators import get_line_points
+    from artistools.estimators.plotestimators import get_multi_ion_series_plans
+    from artistools.estimators.plotestimators import get_xlist
+
+    shellvelocities_kmps = [1000.0, 2000.0]
+    estimators = pl.LazyFrame({
+        "timestep": [0] * 6,
+        "modelgridindex": list(range(6)),
+        "vel_r_mid": np.repeat(shellvelocities_kmps, 3) * at.constants.km_to_cm,
+        "volume": [1.0] * 6,
+        "deltavol_deltat": [1.0] * 6,
+        "tmid_days": [1.0] * 6,
+        "nnion_Fe_II": [1.0] * 6,
+        "nnelement_Fe": [1.0] * 6,
+    })
+    args = argparse.Namespace(
+        xmin=None,
+        xmax=None,
+        xbins=None,
+        markers=False,
+        colorbyion=False,
+        modelgridindex=None,
+        histogram=False,
+        classicartis=True,
+        x="velocity",
+    )
+    _, _, _, dfinrange, dffullrange, _ = get_xlist("velocity", estimators, None, args)
+    (plan,) = get_multi_ion_series_plans(
+        {}, "populations", ["Fe II"], dfinrange, dffullrange, modelpath, "cumulative", args
+    )
+    dflinepoints = get_line_points(plan.dfseries, args).collect()
+    assert np.allclose(dflinepoints["xvalue_binned"], shellvelocities_kmps, rtol=1e-12, atol=0.0)
+    assert np.allclose(dflinepoints["yvalue_binned"], [3.0, 6.0], rtol=1e-12, atol=0.0)
 
 
 def test_units_of_a_column_of_tellurium_are_not_kelvin() -> None:
