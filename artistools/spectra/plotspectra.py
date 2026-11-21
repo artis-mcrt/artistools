@@ -130,6 +130,7 @@ from artistools.spectra.core import get_no_sampled_emission_reason
 from artistools.spectra.core import get_reference_spectrum
 from artistools.spectra.core import get_shell_labels
 from artistools.spectra.core import get_spatial_scale_deltalogx
+from artistools.spectra.core import get_vspecpol_time_bin_index
 from artistools.spectra.core import get_x_quantity_label
 from artistools.spectra.core import get_xy_spectrum
 from artistools.spectra.core import has_gamma_spec_file
@@ -332,20 +333,22 @@ def plot_polarisation(args: argparse.Namespace) -> None:
     assert timemax is not None
 
     timeavg_float = (timemin + timemax) / 2.0
-    if args.plotvspecpol:
-        # the time bins of the virtual packets differ from the timesteps, thus get_time_range does not test them
-        check_time_range_overlaps_time_bins(
-            [float(timestr) for timestr in timearray],
-            timeavg_float,
-            timeavg_float,
-            f"vspecpol_total-{angle}.out of {modelpath}",
-        )
 
     def timedistance(timestr: str) -> float:
         return abs(float(timestr) - timeavg_float)
 
     # select the column by the exact header string, because the file writes the times in its own format
-    timecolname = min(timearray, key=timedistance)
+    if args.plotvspecpol:
+        vspecpoltimemids = [float(timestr) for timestr in timearray]
+        # the time bins of the virtual packets differ from the timesteps, thus get_time_range does not test them
+        check_time_range_overlaps_time_bins(
+            vspecpoltimemids, timeavg_float, timeavg_float, f"vspecpol_total-{angle}.out of {modelpath}"
+        )
+        # the time bins are logarithmic, thus the nearest middle time is not always the bin that holds the time
+        timecolname = timearray[get_vspecpol_time_bin_index(vspecpoltimemids, timeavg_float, side="right")]
+    else:
+        # specpol.out gives the middle time of each timestep, and timeavg is such a middle time
+        timecolname = min(timearray, key=timedistance)
     timeavg = f"{float(timecolname):.4f}"
 
     dfdrawn = get_polarisation_spectrum(stokes_params, timecolname, args)

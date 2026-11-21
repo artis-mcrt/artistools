@@ -60,7 +60,6 @@ from artistools.misc import get_nu_grid
 from artistools.misc import get_timestep_times
 from artistools.misc import get_vpkt_config
 from artistools.misc import get_xunit
-from artistools.misc import match_closest_time
 from artistools.misc import modelpath_cache
 from artistools.misc import on_model_host
 from artistools.misc import parse_metadata_redshift
@@ -1127,21 +1126,49 @@ def split_dataframe_stokesparams(specdata: pl.DataFrame | pl.LazyFrame) -> dict[
     }
 
 
+def get_vspecpol_time_bin_edges(timemids: Sequence[float]) -> npt.NDArray[np.float64] | None:
+    """Return the edges of the time bins of the virtual packet spectra [d], from the middle times of the bins.
+
+    ARTIS gives the virtual spectra logarithmic time bins, and the file gives the arithmetic middle of each bin
+    (vpkt.cc). A bin from t to r t has the middle t (1 + r) / 2, which is above its geometric centre. Thus the
+    nearest middle time does not always give the bin that holds a time. One middle time gives no ratio r, and the
+    function then gives None.
+    """
+    if len(timemids) < 2:
+        return None
+    middletimes = np.asarray(timemids, dtype=np.float64)
+    ratio = (middletimes[-1] / middletimes[0]) ** (1.0 / (len(middletimes) - 1))
+    loweredges = 2.0 * middletimes / (1.0 + ratio)
+    return np.append(loweredges, loweredges[-1] * ratio)
+
+
+def get_vspecpol_time_bin_index(timemids: Sequence[float], time_days: float, side: t.Literal["left", "right"]) -> int:
+    """Return the index of the time bin of the virtual packet spectra that holds time_days.
+
+    side="right" gives a time on an edge to the later bin, and side="left" gives it to the earlier bin, e.g. for the
+    end of a range. A time outside the bins gives the first or the last bin.
+    """
+    edges = get_vspecpol_time_bin_edges(timemids)
+    if edges is None:
+        return 0
+    return int(np.clip(np.searchsorted(edges, time_days, side=side) - 1, 0, len(timemids) - 1))
+
+
 def check_time_range_overlaps_time_bins(
     timemids: Sequence[float], timemin: float, timemax: float, filedescription: str
 ) -> None:
     """Stop if no time bin of a spectrum file overlaps the time range. Warn if the time range goes past the bins.
 
-    The file gives the middle time of each bin. The first bin and the last bin reach half the distance to the next
-    middle time beyond their own middle time. A caller takes the bin with the nearest middle time, thus a time outside
-    every bin gave the spectrum of the first or the last bin, and the label gave the requested time.
+    The file gives the middle time of each bin, and get_vspecpol_time_bin_edges gives the edges. A caller takes the
+    bin that holds a time, thus a time outside every bin gave the spectrum of the first or the last bin, and the
+    label gave the requested time.
     """
-    if len(timemids) < 2:
+    edges = get_vspecpol_time_bin_edges(timemids)
+    if edges is None:
         # one middle time gives no width of the bin
         return
 
-    firstbinstart = timemids[0] - (timemids[1] - timemids[0]) / 2.0
-    lastbinend = timemids[-1] + (timemids[-1] - timemids[-2]) / 2.0
+    firstbinstart, lastbinend = float(edges[0]), float(edges[-1])
     rangetext = f"{timemin:.2f} days" if timemin == timemax else f"{timemin:.2f} to {timemax:.2f} days"
     if timemax < firstbinstart or timemin > lastbinend:
         msg = (
@@ -1185,10 +1212,11 @@ def scan_vspecpol_spectrum(
     check_time_range_inside_vpkt_window(get_vpkt_config(Path(modelpath)), timerangelow, timerangehigh)
 
     if timemin is not None and timemax is not None:
-        timestepmin = arr_tmid.index(match_closest_time(timemin, arr_tmid))
-        timestepmax = arr_tmid.index(match_closest_time(timemax, arr_tmid))
+        timestepmin = get_vspecpol_time_bin_index(arr_tmid, timemin, side="right")
+        # a range that ends on the lower edge of a bin does not hold that bin
+        timestepmax = max(timestepmin, get_vspecpol_time_bin_index(arr_tmid, timemax, side="left"))
     else:
-        timestepmin = arr_tmid.index(match_closest_time(timeavg, arr_tmid))
+        timestepmin = get_vspecpol_time_bin_index(arr_tmid, timeavg, side="right")
         timestepmax = timestepmin
 
     timelower = arr_tmid[timestepmin]

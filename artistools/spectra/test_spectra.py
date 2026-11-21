@@ -3999,6 +3999,25 @@ def test_virtual_spectrum_uses_logarithmic_time_weights(
     assert averaged["f_nu"].item() == pytest.approx(expected)
 
 
+def test_virtual_spectrum_takes_the_logarithmic_time_bin_that_holds_the_timestep() -> None:
+    """A timestep inside one logarithmic time bin of the virtual spectra gives the flux of that bin alone.
+
+    The file gives the arithmetic middle of each bin, which is above the geometric centre of the bin. The nearest
+    middle time of the start of the timestep 3.665 to 3.803 d is that of the bin 3.0 to 3.65 d, thus the mean also
+    took that bin, which does not overlap the timestep.
+    """
+    # the middle times of the default grid of vpkt.h, 5 bins from 3 to 8 d, as the file writes them
+    times = [3.32509, 4.04574, 4.92256, 5.98942, 7.2875]
+    fluxes = [100.0, 1.0, 2.0, 3.0, 4.0]
+    spectrum = pl.LazyFrame({"nu": [1e14], **{str(time): [flux] for time, flux in zip(times, fluxes, strict=True)}})
+    with (
+        mock.patch.object(atspectra, "scan_vspecpol_data", return_value={"I": spectrum}),
+        mock.patch.object(atspectra, "get_vpkt_config", return_value={"time_limits_enabled": False}),
+    ):
+        averaged = atspectra.scan_vspecpol_spectrum(Path(), 3.734, 0, timemin=3.665, timemax=3.803).collect()
+    assert averaged["f_nu"].item() == pytest.approx(1.0)
+
+
 @pytest.mark.parametrize("stokesparam", ["Q/I", "U/I"])
 @pytest.mark.parametrize("binflux", [False, True])
 @pytest.mark.parametrize("filtermovingavg", [0, 3])
