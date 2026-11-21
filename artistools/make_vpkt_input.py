@@ -174,16 +174,16 @@ def fatal_config_error(config: VpktConfig) -> str | None:
             and config.tmax_vgrid_in_days <= config.vspec_tmax_in_days
         ):
             return (
-                f"The velocity grid map time range [{fmtnum(config.tmin_vgrid_in_days)},"
-                f" {fmtnum(config.tmax_vgrid_in_days)}] d must be inside the time window"
+                f"The time range [{fmtnum(config.tmin_vgrid_in_days)}, {fmtnum(config.tmax_vgrid_in_days)}] d of the"
+                " velocity grid map must be inside the time window"
                 f" [{fmtnum(config.vspec_tmin_in_days)}, {fmtnum(config.vspec_tmax_in_days)}] d of the virtual spectra"
             )
         if config.custom_lambda_ranges:
             for gridrange in config.vgrid_lambda_ranges:
                 if not lambda_range_is_covered(gridrange, config.custom_lambda_ranges):
                     return (
-                        f"The velocity grid map wavelength range [{fmtnum(gridrange[0])}, {fmtnum(gridrange[1])}] A"
-                        " must be inside the wavelength ranges of the virtual spectra"
+                        f"The wavelength range [{fmtnum(gridrange[0])}, {fmtnum(gridrange[1])}] A of the velocity"
+                        " grid map must be inside the wavelength ranges of the virtual spectra"
                     )
 
     return None
@@ -236,16 +236,16 @@ def check_config(config: VpktConfig) -> list[str]:
         )
     ):
         warnings.append(
-            f"velocity grid map time range [{fmtnum(config.tmin_vgrid_in_days)}, {fmtnum(config.tmax_vgrid_in_days)}]"
-            f" d falls outside the default time window [{fmtnum(ARTIS_VSPEC_TIMEMIN_DAYS)},"
+            f"time range [{fmtnum(config.tmin_vgrid_in_days)}, {fmtnum(config.tmax_vgrid_in_days)}] d of the velocity"
+            f" grid map is outside the default time window [{fmtnum(ARTIS_VSPEC_TIMEMIN_DAYS)},"
             f" {fmtnum(ARTIS_VSPEC_TIMEMAX_DAYS)}] d of vpkt.h, and sn3d of such a build stops for it"
         )
     if config.vgrid_on and not config.custom_lambda_ranges:
         for lambdamin, lambdamax in config.vgrid_lambda_ranges:
             if not ARTIS_VSPEC_LAMBDAMIN_ANGSTROMS <= lambdamin < lambdamax <= ARTIS_VSPEC_LAMBDAMAX_ANGSTROMS:
                 warnings.append(
-                    f"velocity grid map wavelength range [{fmtnum(lambdamin)}, {fmtnum(lambdamax)}] A falls outside"
-                    f" the default [{fmtnum(ARTIS_VSPEC_LAMBDAMIN_ANGSTROMS)},"
+                    f"wavelength range [{fmtnum(lambdamin)}, {fmtnum(lambdamax)}] A of the velocity grid map is"
+                    f" outside the default wavelength range [{fmtnum(ARTIS_VSPEC_LAMBDAMIN_ANGSTROMS)},"
                     f" {fmtnum(ARTIS_VSPEC_LAMBDAMAX_ANGSTROMS)}] A of vpkt.h, and sn3d of such a build stops for it"
                 )
 

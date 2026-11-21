@@ -454,8 +454,8 @@ def generate_band_lightcurve_data(
         if (timemin is None or timemin <= time) and (timemax is None or timemax >= time)
     ]
     if isvpktobserver:
-        # a bin of the virtual packets outside the window of vpkt.txt has no flux, and a bin across an edge has too low
-        # a flux, as the packets path finds with select_timesteps_inside_vpkt_window
+        # a bin of the virtual packets outside the window of vpkt.txt has no flux. A bin across an edge has too low a
+        # flux. select_timesteps_inside_vpkt_window applies the same test to the timesteps of the packet files.
         vpkt_config = get_vpkt_config(Path(modelpath))
         insidebins = set(get_vspecpol_bins_inside_vpkt_window([float(time) for time in timearray], vpkt_config))
         insidetimes = [(timestep, time) for timestep, time in selectedtimes if timestep in insidebins]
@@ -467,8 +467,8 @@ def generate_band_lightcurve_data(
             raise ValueError(msg)
         if len(insidetimes) < len(selectedtimes):
             print_warning(
-                f"The light curve of the virtual packets leaves out {len(selectedtimes) - len(insidetimes)} time bins,"
-                f" because they are not fully inside the time window {vpkt_config['initial_time']} to"
+                f"The light curve of the virtual packets leaves out {len(selectedtimes) - len(insidetimes)} time bins."
+                f" These bins are not fully inside the time window {vpkt_config['initial_time']} to"
                 f" {vpkt_config['final_time']} days of vpkt.txt"
             )
         selectedtimes = insidetimes

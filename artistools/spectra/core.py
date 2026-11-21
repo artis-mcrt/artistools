@@ -981,7 +981,7 @@ def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
 
 
 def get_vspecpol_rank_files(modelpath: Path | str) -> list[Path]:
-    """Return the virtual packet spectrum file of each MPI rank, which make_virtual_spectra_summed_file sums."""
+    """Return the file of the virtual packet spectra of each MPI rank, which make_virtual_spectra_summed_file sums."""
     return [
         firstexisting([f"vspecpol_{mpirank:04d}.out", f"vspecpol_{mpirank}-0.out"], folder=modelpath, tryzipped=True)
         for mpirank in range(get_nprocs(Path(modelpath)))
@@ -991,8 +991,8 @@ def get_vspecpol_rank_files(modelpath: Path | str) -> list[Path]:
 def vspecpol_total_is_older_than_its_rank_files(modelpath: Path, totalfile: Path) -> bool:
     """Return True if a rank file of the virtual packet spectra is newer than a vspecpol_total file.
 
-    A continued run, e.g. after an increase of timestep_finish, writes the rank files again, and the old sum then has
-    no flux after the first stop. A model folder with no rank files, e.g. a copy with the totals alone, keeps them.
+    A continued run, e.g. after an increase of timestep_finish, writes the rank files again. The old sum then has no
+    flux after the first stop. A model folder with no rank files, e.g. a copy with the totals alone, keeps them.
     """
     try:
         rankfiles = get_vspecpol_rank_files(modelpath)
@@ -1134,7 +1134,10 @@ def scan_vspecpol_data(modelpath: Path, vspecindex: int) -> dict[str, pl.LazyFra
         print(f"{totalname} does not exist. Generating all-rank summed vspec files..")
         make_virtual_spectra_summed_file(modelpath=modelpath)
     elif vspecpol_total_is_older_than_its_rank_files(Path(modelpath), specfilename):
-        print_warning(f"{specfilename} is older than a rank file of the virtual packets, thus the sum is made again")
+        print_warning(
+            f"{specfilename} is older than a rank file of the virtual packets,"
+            " thus the command sums the rank files again"
+        )
         make_virtual_spectra_summed_file(modelpath=modelpath)
     specfilename = firstexisting(totalname, folder=modelpath, tryzipped=True, search_subfolders=False)
 
@@ -1192,8 +1195,8 @@ def get_vspecpol_time_bin_index(timemids: Sequence[float], time_days: float, sid
 def get_vspecpol_bins_inside_vpkt_window(timemids: Sequence[float], vpkt_config: Mapping[str, t.Any]) -> list[int]:
     """Return the indices of the time bins of the virtual packet spectra that lie fully inside the window of vpkt.txt.
 
-    ARTIS writes a virtual packet only for an arrival time inside the window, and it divides the flux of a bin by the
-    full width of the bin (vpkt.cc). Thus a bin outside the window has no flux, and a bin across an edge of the window
+    ARTIS writes a virtual packet only for an arrival time inside the window (vpkt.cc). It divides the flux of a bin by
+    the full width of the bin. Thus a bin outside the window has no flux, and a bin across an edge of the window
     has a flux that is too low. With no time override, vpkt.txt takes the window of the constants of the ARTIS build,
     and each bin stays.
     """
@@ -1255,9 +1258,9 @@ def get_vspecpol_bin_range_inside_vpkt_window(
     selectedbins = [index for index in range(timestepmin, timestepmax + 1) if index in insidebins]
     if not selectedbins:
         msg = (
-            f"The time bins of the virtual packets from {timemids[timestepmin]} to {timemids[timestepmax]} days are"
+            f"The time bins from {timemids[timestepmin]} to {timemids[timestepmax]} days are"
             f" outside the virtual packets, which cover {vpkt_config['initial_time']} to {vpkt_config['final_time']}"
-            " days. ARTIS writes a virtual packet only inside this window of vpkt.txt"
+            " days. ARTIS writes a virtual packet only inside the time window of vpkt.txt"
         )
         raise ValueError(msg)
     if len(selectedbins) < timestepmax - timestepmin + 1:
@@ -2816,7 +2819,7 @@ def model_covers_timedays(modelpath: Path | str, timedays: str | float | None, *
     """Return False if timedays names a time or a range outside the timesteps of the model, and warn unless quiet.
 
     A --timemin and --timemax range outside a model skips that model with a warning, thus a time or a range of
-    --timedays does the same. A text that is no number gives True, because get_time_range gives its message.
+    --timedays does the same. A text that is not a number gives True, because get_time_range gives its message.
     """
     if timedays is None:
         return True

@@ -356,7 +356,10 @@ def addarg_output(
 
 
 def output_path_from_text(text: str) -> Path:
-    """Return the Path of -o, with ~ expanded, because a shell does not expand ~ after =, e.g. in --outputfile=~/x."""
+    """Return the Path of -o, and expand ~ in it.
+
+    A shell does not expand ~ after =, e.g. in --outputfile=~/x.
+    """
     return Path(text).expanduser()
 
 

@@ -337,7 +337,7 @@ def get_model_output_folders(args: argparse.Namespace, modelpath_given: bool) ->
             ]
             exit_with_error(
                 f"The model paths {', '.join(samefolderpaths)} give one output folder, thus the reduction of one"
-                " model would replace the reduction of the other",
+                " model replaces the reduction of the other",
                 "Run the command for one model at a time, with a different -o for each model",
             )
     if args.makemodelfromgriddata:

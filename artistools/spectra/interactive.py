@@ -825,8 +825,8 @@ class SpectrumViewer:
         """Read the ARTIS models of the spectra again, and clear the results of the tests of the choices.
 
         The files of the model folders give the results of the tests of the choices, e.g. a new gamma_spec.out
-        after Reload Data. Thus each read of the model folders clears those results. plotinvalidpart is None for the
-        --plotinvalidpart of the option table of the current values.
+        after Reload Data. Thus each read of the model folders clears those results. If plotinvalidpart is None, the
+        function takes --plotinvalidpart from the option table of the current values.
         """
         self.rejections.clear()
         self.autoreasons.clear()

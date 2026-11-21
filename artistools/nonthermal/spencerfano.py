@@ -423,7 +423,9 @@ def solve_step(
                 continue
             if ion_stage > Z:
                 # a bare nucleus has no bound electron to ionise or to excite, and ARTIS skips it (nonthermal.cc)
-                print(f"   Skipping Z={Z} ion_stage {ion_stage}, a bare nucleus with no bound electron")
+                print(
+                    f"   Z={Z} ion_stage {ion_stage} is a bare nucleus with no bound electron, thus the solver skips it"
+                )
                 continue
 
             sf.add_ionisation(Z, ion_stage, nnion)
@@ -432,7 +434,7 @@ def solve_step(
             heldions.add((Z, ion_stage))
 
         # the solver sums n_e from the charges of the ions that it holds, and a skipped ion also has free electrons
-        print("  The free electron density is x_e n_tot, which is the nne of a model cell, as ARTIS uses")
+        print("  The free electron density is x_e n_tot. ARTIS uses this value as the nne of a model cell")
         sf.override_n_e(conditions.x_e * conditions.nntot)
 
         sf.solve(deposition_ev_per_s_per_cm3=conditions.deposition_density_ev)

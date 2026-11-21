@@ -496,10 +496,10 @@ def get_escape_surface_max_radial_velocity_cmps(modelpath: Path, modelmeta: "Map
 
 
 def get_matter_max_radial_velocity_cmps(modelpath: Path, modelmeta: "Mapping[str, t.Any]") -> float:
-    """Return the largest radial velocity of the matter of a run [cm/s], which sets the start of the valid range.
+    """Return the largest radial velocity of the matter of a model [cm/s], which sets the start of the valid range.
 
     modelpath is a local model folder. sn3d gives each propagation cell the matter of the model at the centre of the
-    cell (grid.cc). On the grid of the model cells, the matter thus ends at the corner of that grid. A model on a
+    cell (grid.cc). On the model grid, the matter thus ends at the corner of that grid. A model on a
     Cartesian propagation grid has matter up to half a cell diagonal beyond the corner of the model grid. With
     FORCE_SPHERICAL_ESCAPE_SURFACE, sn3d also removes the matter of each cell whose centre is outside vmax. Without
     the counts of the propagation cells, the function takes the corner of the model grid.
@@ -527,8 +527,8 @@ def get_propagation_cell_diagonal_cmps(
 ) -> float | None:
     """Return the diagonal of a cell of a Cartesian or a cylindrical propagation grid [cm/s], or None.
 
-    The grid of the model cells gives its counts of the cells. A Cartesian propagation grid of a different model
-    takes them from CUBOID_NCOORDGRID_X, _Y, and _Z of artisoptions.h. A spherical grid, an absent count, and a
+    The model grid gives the counts of its cells. For a model on a different grid, a Cartesian propagation grid takes
+    them from CUBOID_NCOORDGRID_X, _Y, and _Z of artisoptions.h. A spherical grid, an absent count, and a
     count that is not a positive integer give None.
     """
     gridcoordinates = get_model_coordinates(modelmeta) if hasmodelgrid else "cartesian3d"
@@ -550,7 +550,7 @@ def get_propagation_cell_diagonal_cmps(
         # e.g. "2 * N" or the name of a different constant in artisoptions.h
         print_warning(
             f"The counts of the propagation cells {[count for _, count in cellcounts]} of {modelpath} are not integers,"
-            " thus the valid time range takes the corner of the grid"
+            " thus the start of the valid range takes the corner of the model grid"
         )
         return None
     if min(counts) <= 0:

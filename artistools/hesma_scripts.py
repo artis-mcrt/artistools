@@ -174,7 +174,7 @@ def make_hesma_bol_lightcurve(modelpath: Path, outpath: Path, timemin: float, ti
 
 
 def get_width_luminosity_filename(modelname: str) -> str:
-    """Return the name of the width-luminosity file of a model, with each / of the name replaced."""
+    """Return the name of the width-luminosity file of a model, with a _ in place of each / of the model name."""
     return f"{get_filename_part(modelname)}_width-luminosity.dat"
 
 
@@ -187,7 +187,7 @@ def make_hesma_peakmag_dm15_dm40(
     peak_mag_polyfit, risetime_polyfit, and deltam15_polyfit. --include-delta-m40 adds the column
     deltam40_polyfit to that same file.
     """
-    # plotlightcurves writes the file under this name, which replaces each / of the band and the model name
+    # plotlightcurves writes the file under this name, with a _ in place of each / of the band and of the model name
     viewinganglefilename = get_viewing_angle_data_filename(band, modelname)
     dfviewingangle = read_wsv(pathtofiles / viewinganglefilename, comment_prefix="#")
     columns = dfviewingangle.columns

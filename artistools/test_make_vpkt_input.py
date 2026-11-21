@@ -213,7 +213,7 @@ def test_make_vpkt_input_interactive_clears_list() -> None:
         ({"vgrid_on": True, "tmin_vgrid_in_days": 2.0, "tmax_vgrid_in_days": 1.0}, "velocity grid map time range"),
         ({"vgrid_on": True, "vgrid_lambda_ranges": []}, "at least one wavelength range"),
         ({"vgrid_on": True, "vgrid_lambda_ranges": [(0.0, 6000.0)]}, "lambdamin > 0"),
-        # ARTIS #667 stops for a velocity grid map outside the virtual spectra
+        # since ARTIS #667, sn3d stops for a velocity grid map outside the virtual spectra
         (
             {"vgrid_on": True, "override_tminmax": True, "vspec_tmin_in_days": 4.0, "vspec_tmax_in_days": 7.0},
             "must be inside the time window",
