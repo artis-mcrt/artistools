@@ -27,6 +27,7 @@ from artistools.misc.console import print_warning
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import firstexisting_or_none
+from artistools.misc.fileio import get_decompress_errors
 from artistools.misc.fileio import get_text_compression
 from artistools.misc.fileio import natural_sort_key
 from artistools.misc.fileio import normalised_lines
@@ -93,9 +94,10 @@ def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[
 def read_grid_out(modelpath: Path) -> pl.DataFrame:
     """Return the propagation cells of grid.out in a local model folder, each with the index of its model cell.
 
-    sn3d writes only the propagation cells that have a model cell with matter.
+    sn3d writes only the propagation cells that have a model cell with matter. sn3d writes grid.out in the model
+    folder alone, and a grid.out in a subfolder is of a different run.
     """
-    filename = firstexisting("grid.out", tryzipped=True, folder=modelpath)
+    filename = firstexisting("grid.out", tryzipped=True, folder=modelpath, search_subfolders=False)
     with polars_source_open(filename) as source:
         return pl.read_csv(
             source,
@@ -450,6 +452,23 @@ def get_grid_max_radial_velocity_cmps(modelmeta: "Mapping[str, t.Any]") -> float
     return float(modelmeta["vmax_cmps"]) * cornerfactor.get(get_model_coordinates(modelmeta), 1.0)
 
 
+def grid_out_gives_direct_map(modelpath: Path) -> bool:
+    """Return True if grid.out of a local model folder gives each propagation cell its own model cell.
+
+    sn3d opens grid.out in each job before it writes the cells, thus a job that stops early can leave an empty or a
+    cut file. Such a file, and a file that the reader cannot read, give False, which is the safe value.
+    """
+    try:
+        dfgrid = read_grid_out(modelpath)
+    except FileNotFoundError:
+        return False
+    except (OSError, pl.exceptions.PolarsError, *get_decompress_errors()) as exc:
+        print_warning(f"The command cannot read the grid.out of {modelpath}, thus it takes a Cartesian grid: {exc}")
+        return False
+    isdirectmap = dfgrid.select((pl.col("cellindex") == pl.col("modelgridindex")).all(ignore_nulls=False)).item()
+    return dfgrid.height > 0 and isdirectmap is True
+
+
 def get_escape_surface_max_radial_velocity_cmps(modelpath: Path, modelmeta: "Mapping[str, t.Any]") -> float:
     """Return the largest radial velocity of the surface where the packets of a run escape [cm/s].
 
@@ -467,12 +486,7 @@ def get_escape_surface_max_radial_velocity_cmps(modelpath: Path, modelmeta: "Map
     """
     vmax_cmps = float(modelmeta["vmax_cmps"])
     coordinates = get_model_coordinates(modelmeta)
-    hasmodelgrid = coordinates == "cartesian3d"
-    if not hasmodelgrid:
-        with contextlib.suppress(FileNotFoundError):
-            hasmodelgrid = bool(
-                read_grid_out(modelpath).select((pl.col("cellindex") == pl.col("modelgridindex")).all()).item()
-            )
+    hasmodelgrid = coordinates == "cartesian3d" or grid_out_gives_direct_map(modelpath)
     gridmeta = modelmeta if hasmodelgrid else {"coordinates": "cartesian3d", "vmax_cmps": vmax_cmps}
     cornervmax_cmps = get_grid_max_radial_velocity_cmps(gridmeta)
     gridcoordinates = get_model_coordinates(gridmeta)

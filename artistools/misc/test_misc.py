@@ -1737,7 +1737,7 @@ def test_server_protocol_changes_with_the_readers(package_modules: list[Path]) -
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (20, "69e24cb9f926002e"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (21, "69e24cb9f926002e"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )
@@ -2257,6 +2257,8 @@ FORCE_SPHERICAL_OPTIONS: t.Final = (
         ("spherical1d", None, None, math.sqrt(3.0)),
         ("spherical1d", DIRECT_GRID_OUT, None, 1.0),
         ("spherical1d", CARTESIAN_GRID_OUT, None, math.sqrt(3.0)),
+        # a job that stops early can leave an empty or a cut grid.out, which shows no map
+        ("spherical1d", "", None, math.sqrt(3.0)),
         ("cylindrical2d", DIRECT_GRID_OUT, None, math.sqrt(2.0)),
         ("cylindrical2d", CARTESIAN_GRID_OUT, None, math.sqrt(3.0)),
         ("spherical2d", None, None, math.sqrt(3.0)),

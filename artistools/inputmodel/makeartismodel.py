@@ -32,7 +32,7 @@ from artistools.inputmodel.energyinputfiles import ENERGY_FILE_NAMES
 from artistools.inputmodel.energyinputfiles import make_energy_files
 from artistools.inputmodel.modelfromhydro import get_griddata_output_file_names
 from artistools.inputmodel.modelfromhydro import makemodelfromgriddata
-from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions
+from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions_or_none
 from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_force
@@ -147,18 +147,6 @@ def get_dimreduce_outputfolder(outputfile: Path | None, modelpath: Path, ndim_ou
     )
 
 
-def get_contributions_beside_model(sourcefolder: Path) -> pl.DataFrame | None:
-    """Return the particle contributions of the gridcontributions.txt in the folder of model.txt, or None.
-
-    An output folder can be a subfolder of the source folder, and its gridcontributions.txt is of a different model.
-    Thus the function does not search the subfolders.
-    """
-    contributionsfile = firstexisting_or_none(
-        "gridcontributions.txt", folder=sourcefolder, tryzipped=True, search_subfolders=False
-    )
-    return None if contributionsfile is None else get_gridparticlecontributions(sourcefolder)
-
-
 def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int) -> None:
     """Convert the model.txt of a model to the format version formatversion, and write it into outputfolder.
 
@@ -248,7 +236,7 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
         # subfolder of the source folder, thus the contributions come from the source folder alone
         print("  Version 2 has cell ids from 0, thus gridcontributions.txt gets the same ids.")
         dfmodel, dfelabundances, dfgridcontributions = with_cell_ids_from_zero(
-            dfmodel, dfelabundances, get_contributions_beside_model(sourcefolder)
+            dfmodel, dfelabundances, get_gridparticlecontributions_or_none(sourcefolder)
         )
 
     if formatversion == 2:
@@ -459,7 +447,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
             sourcefolder = get_model_input_folder(modelpath)
             dfelabundances = scan_initelemabundances(modelpath)
-            dfgridcontributions = get_contributions_beside_model(sourcefolder)
+            dfgridcontributions = get_gridparticlecontributions_or_none(sourcefolder)
             outputformatversion = get_output_format_version(args, modelpath)
             yefilepath = find_sn3d_input_file("Ye.txt", sourcefolder, datafolders=(".",))
             if yefilepath is not None and outputformatversion == 2:

@@ -671,17 +671,26 @@ def get_gridparticlecontributions_or_none(gridcontribpath: Path | str) -> pl.Dat
     """Return the particle contributions, or None when the grid folder holds no contributions file.
 
     A caller that tested for the plain file itself could not see a compressed one, and so skipped the
-    loader that would have found it.
+    loader that would have found it. The function does not search the subfolders (see get_gridparticlecontributions).
     """
-    contribfile = firstexisting_or_none("gridcontributions.txt", folder=gridcontribpath, tryzipped=True)
+    contribfile = firstexisting_or_none(
+        "gridcontributions.txt", folder=gridcontribpath, tryzipped=True, search_subfolders=False
+    )
 
     return None if contribfile is None else get_gridparticlecontributions(gridcontribpath)
 
 
 def get_gridparticlecontributions(gridcontribpath: Path | str) -> pl.DataFrame:
-    """Return the mass fraction that each trajectory particle contributes to each grid cell."""
+    """Return the mass fraction that each trajectory particle contributes to each grid cell.
+
+    The file is in the folder of the grid or the model. A subfolder can hold the gridcontributions.txt of a different
+    map, e.g. of a spherical map or of a reduction, thus the function does not search the subfolders.
+    """
+    contribfile = firstexisting(
+        "gridcontributions.txt", folder=gridcontribpath, tryzipped=True, search_subfolders=False
+    )
     return pl.read_csv(
-        polars_source(firstexisting("gridcontributions.txt", folder=gridcontribpath, tryzipped=True)),
+        polars_source(contribfile),
         has_header=True,
         separator=" ",
         schema_overrides={
