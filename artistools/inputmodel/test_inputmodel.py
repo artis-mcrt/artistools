@@ -4305,9 +4305,14 @@ def test_spherical_model_round_trip(tmp_path: Path, coordinates: str) -> None:
     edgekeys = [key for key in ("vel_r_edges_kmps", "theta_edges_radians", "phi_edges_radians") if key in modelmeta]
     edges_written = {key: list(modelmeta[key]) for key in edgekeys}
 
-    # a version 2 model has no opacity.txt, thus the file of an earlier model in the folder goes
+    # a version 2 model has no opacity.txt. The file can hold the only copy of its values, thus the writer deletes it
+    # only when the caller agrees
     (tmp_path / "opacity.txt").write_text("1\n1 0.5\n", encoding="utf-8")
-    at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta=modelmeta)
+    with pytest.raises(ValueError, match=r"opacity\.txt gives values of the cells"):
+        at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta=dict(modelmeta))
+    assert (tmp_path / "opacity.txt").is_file()
+    assert not list(tmp_path.glob("model.txt*"))
+    at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta=modelmeta, deletecellidfiles=True)
     assert not (tmp_path / "opacity.txt").exists()
     lzmodel_read, modelmeta_read = at.inputmodel.scan_modeldata(tmp_path)
 
@@ -4406,6 +4411,7 @@ def test_spherical_model_reader_takes_cell_ids_from_zero(tmp_path: Path, capsys:
         lzmodel.with_columns(rho=pl.lit(0.0, dtype=pl.Float32)).collect(),
         outpath=emptyfolder,
         modelmeta=dict(modelmeta),
+        deletecellidfiles=True,
     )
     assert not (emptyfolder / "Ye.txt").exists()
     # the count of the cell lines is 1, and the file has no composition column that is zero in each cell with density
@@ -4886,6 +4892,7 @@ def test_ye_merge_and_version_2_writer_follow_the_rules_of_sn3d(tmp_path: Path) 
             "vel_r_edges_kmps": [0.0, 1000.0, 2000.0],
             "theta_edges_radians": [0.0, math.pi],
         },
+        deletecellidfiles=True,
     )
     dfwritten = at.inputmodel.scan_modeldata(tmp_path)[0].collect()
     assert dfwritten["X_Ni56"].to_list() == [0.5, 0.0]

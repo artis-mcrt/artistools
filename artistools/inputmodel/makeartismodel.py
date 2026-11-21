@@ -14,6 +14,7 @@ from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import CELL_ID_FILE_NAMES
 from artistools.inputmodel.core import dimension_reduce_model
 from artistools.inputmodel.core import get_elemabundances_of_model_columns
+from artistools.inputmodel.core import get_model_file_path
 from artistools.inputmodel.core import get_model_input_folder
 from artistools.inputmodel.core import get_modelmeta
 from artistools.inputmodel.core import MODEL_FILE_NAMES
@@ -40,6 +41,7 @@ from artistools.misc import addarg_output
 from artistools.misc import addarg_show
 from artistools.misc import confirm_overwrite
 from artistools.misc import exit_with_error
+from artistools.misc import find_sn3d_input_file
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_file_copies
 from artistools.misc import get_model_coordinates
@@ -48,6 +50,7 @@ from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
 from artistools.misc import SPHERICAL_EDGE_COORDINATES
+from artistools.misc import without_compressed_extension
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -195,8 +198,8 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
             f"{sourcefolder} holds {' and '.join(path.name for path in modelcopies)}",
             "sn3d reads model.txt, and the other copy can hold different values. Delete one copy",
         )
-    # sn3d also reads a compressed copy of Ye.txt
-    yefilepath = firstexisting_or_none("Ye.txt", folder=sourcefolder, tryzipped=True, search_subfolders=False)
+    # sn3d reads Ye.txt or Ye.txt.zst, and no copy that gzip or xz compressed
+    yefilepath = find_sn3d_input_file("Ye.txt", sourcefolder, datafolders=(".",))
     if yefilepath is not None and modelmeta["formatversion"] == 2:
         exit_with_error(
             f"{sourcefolder} holds Ye.txt, but its model.txt has format version 2",
@@ -341,6 +344,12 @@ def get_model_output_folders(args: argparse.Namespace, modelpath_given: bool) ->
         ]
     if args.makeenergyinputfiles:
         outputfolders["makeenergyinputfiles"] = [Path(args.outputfile or Path())]
+    if args.format_version is not None and (args.makemodelfromgriddata or args.makeenergyinputfiles):
+        exit_with_error(
+            "--format-version applies to a conversion, to --dimensionreduce, and to --downscale3dgrid, but not to"
+            " --makemodelfromgriddata or --makeenergyinputfiles",
+            "Run the conversion with --format-version as a separate command",
+        )
     if args.format_version is not None and args.dimensionreduce is None:
         if args.outputfile is not None and len(args.modelpath) > 1:
             exit_with_error(
@@ -351,7 +360,28 @@ def get_model_output_folders(args: argparse.Namespace, modelpath_given: bool) ->
             Path(args.outputfile) if args.outputfile is not None else get_model_input_folder(modelpath)
             for modelpath in args.modelpath
         ]
+        for modelpath, outputfolder in zip(args.modelpath, outputfolders["convertformat"], strict=True):
+            require_model_txt_in_source_folder(modelpath, outputfolder)
     return outputfolders
+
+
+def require_model_txt_in_source_folder(modelpath: Path, outputfolder: Path) -> None:
+    """Stop for a conversion of a model file with a different name into the folder of that file.
+
+    The conversion writes model.txt, and the model.txt of that folder, with its abundances.txt and Ye.txt, is a
+    different model.
+    """
+    modelfile = get_model_file_path(modelpath)
+    if (
+        modelfile is not None
+        and without_compressed_extension(modelfile).name != "model.txt"
+        and outputfolder.resolve() == modelfile.parent.resolve()
+    ):
+        exit_with_error(
+            f"The conversion of {modelfile} writes model.txt in its folder, and that folder can hold a different"
+            " model with the files model.txt, abundances.txt, and Ye.txt",
+            "Give -o with a different folder",
+        )
 
 
 def get_output_format_version(args: argparse.Namespace, modelpath: Path) -> int:
@@ -431,7 +461,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             dfelabundances = scan_initelemabundances(modelpath)
             dfgridcontributions = get_contributions_beside_model(sourcefolder)
             outputformatversion = get_output_format_version(args, modelpath)
-            yefilepath = firstexisting_or_none("Ye.txt", folder=sourcefolder, tryzipped=True, search_subfolders=False)
+            yefilepath = find_sn3d_input_file("Ye.txt", sourcefolder, datafolders=(".",))
             if yefilepath is not None and outputformatversion == 2:
                 # sn3d takes the electron fractions of Ye.txt for the source model, and the reduced model of version 2
                 # gets them in its column Ye. A reduced model of version 1 gets the values of the column Ye of the
@@ -467,8 +497,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                     dfgridcontributions_out = dfgridcontributions_zero
             assert dfelabundances_out is not None
             # a version 1 model also gets abundances.txt, and a version 2 model gets otherstable columns
+            # the overwrite prompt names the Ye.txt and the opacity.txt of an earlier model in the output folder
             save_modeldata(
-                dfmodel=dfmodel_out, modelmeta=modelmeta_out, outpath=outdir, dfelabundances=dfelabundances_out
+                dfmodel=dfmodel_out,
+                modelmeta=modelmeta_out,
+                outpath=outdir,
+                dfelabundances=dfelabundances_out,
+                deletecellidfiles=True,
             )
             # the function gives an empty frame for a model with no contributions, thus test the input
             if dfgridcontributions is not None:

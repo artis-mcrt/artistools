@@ -1716,6 +1716,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
 
     # a version 1 model also gets abundances.txt, and a version 2 model gets otherstable columns in model.txt
-    save_modeldata(dfmodel=dfmodel, modelmeta=modelmeta, outpath=args.outputfile, dfelabundances=dfelabundances)
+    # the overwrite prompt names the Ye.txt and the opacity.txt of an earlier model in the output folder
+    save_modeldata(
+        dfmodel=dfmodel,
+        modelmeta=modelmeta,
+        outpath=args.outputfile,
+        dfelabundances=dfelabundances,
+        deletecellidfiles=True,
+    )
     if dfgridcontributions is not None:
         save_gridparticlecontributions(dfgridcontributions, args.outputfile)

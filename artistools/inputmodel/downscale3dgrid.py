@@ -18,7 +18,7 @@ from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.core import scan_initelemabundances
 from artistools.inputmodel.core import scan_modeldata
 from artistools.inputmodel.core import with_ye_of_yefile
-from artistools.misc import firstexisting_or_none
+from artistools.misc import find_sn3d_input_file
 from artistools.misc import require_cartesian3d_model
 from artistools.plottools import save_figure
 from artistools.plottools import set_mpl_style
@@ -92,7 +92,8 @@ def make_downscaled_3d_grid(
     if formatversion == 1:
         require_no_ye_file_of_earlier_model(outputfolder, modelpath)
     sourcefolder = get_model_input_folder(modelpath)
-    yefilepath = firstexisting_or_none("Ye.txt", folder=sourcefolder, tryzipped=True, search_subfolders=False)
+    # sn3d reads Ye.txt or Ye.txt.zst, and no copy that gzip or xz compressed
+    yefilepath = find_sn3d_input_file("Ye.txt", sourcefolder, datafolders=(".",))
     if yefilepath is not None and formatversion == 2:
         print("  Version 2 has no Ye.txt.")
         pldfmodel = with_ye_of_yefile(pldfmodel.collect(), yefilepath).lazy()
@@ -164,7 +165,14 @@ def make_downscaled_3d_grid(
 
     # a version 1 model also gets abundances.txt, and a version 2 model gets otherstable columns in model.txt
     print("Writing model file")
-    save_modeldata(dfmodel_small, outpath=smallmodelfile, modelmeta=modelmeta_small, dfelabundances=dfelemabund_small)
+    # the values of the Ye.txt of the source are in the Ye column, and the prompt names the files of an earlier model
+    save_modeldata(
+        dfmodel_small,
+        outpath=smallmodelfile,
+        modelmeta=modelmeta_small,
+        dfelabundances=dfelemabund_small,
+        deletecellidfiles=True,
+    )
 
     if plot:
         print("Making diagnostic plot")
