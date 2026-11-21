@@ -464,6 +464,15 @@ def scan_modelfile_text(
                 " Each cell of format version 2 needs a finite density of 0 or more"
             )
             raise ValueError(msg)
+        # save_modeldata writes a NaN mass fraction as 0, and sn3d stops for a value that is not finite
+        isnotfinite = dfmodel.select((~cs.starts_with("X_").is_finite()).any()).collect()
+        nonfinitecolumns = [col for col in isnotfinite.columns if isnotfinite[col].item()]
+        if nonfinitecolumns:
+            msg = (
+                f"{filename}: the columns {', '.join(nonfinitecolumns)} hold a value that is not finite, e.g. NaN."
+                " Each mass fraction of format version 2 must be a finite number"
+            )
+            raise ValueError(msg)
     if cellcount > npts_model:
         msg = (
             f"{filename}: found more than {npts_model} cells, but the cell edges of the header give {npts_model} cells"
@@ -2148,7 +2157,12 @@ def save_modeldata(
         colnames = [*colnames, "inputcellid"]
 
     outputfolder = resolve_outputfile(outpath, "model.txt").parent
-    oldabundancefiles = [path for path in get_file_copies(outputfolder / "abundances.txt") if path.is_file()]
+    # sn3d reads the files beside model.txt. A file with a different name, e.g. model_v2.txt, keeps them for the
+    # model.txt of its folder
+    writesmodelfile = without_compressed_extension(resolve_outputfile(outpath, "model.txt")).name == "model.txt"
+    oldabundancefiles = [
+        path for path in get_file_copies(outputfolder / "abundances.txt") if writesmodelfile and path.is_file()
+    ]
     if formatversion == 2:
         if dfelabundances is not None:
             dfmodel = with_otherstable_columns(dfmodel.lazy().collect(), dfelabundances.lazy().collect())
@@ -2347,7 +2361,7 @@ def save_modeldata(
             oldabundancefile.unlink()
             remove_parquet_cache(oldabundancefile)
             print(f"Deleted {oldabundancefile}, because the model.txt of format version 2 gives the element masses")
-    if formatversion == 2:
+    if formatversion == 2 and writesmodelfile:
         for filename in CELL_ID_FILE_NAMES:
             for oldcellfile in get_file_copies(outputfolder / filename):
                 if oldcellfile.is_file():
