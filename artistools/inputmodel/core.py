@@ -473,6 +473,14 @@ def scan_modelfile_text(
                 " Each mass fraction of format version 2 must be a finite number"
             )
             raise ValueError(msg)
+        if "Ye" in dfmodel.collect_schema().names():
+            dfinvalidye = dfmodel.filter(~IS_VALID_YE).select("inputcellid", "Ye").collect()
+            if dfinvalidye.height:
+                msg = (
+                    f"{filename}: the cell {dfinvalidye['inputcellid'].item(0)} has the electron fraction"
+                    f" {dfinvalidye['Ye'].item(0)!r}. Each value of the column Ye must be a finite number from 0 to 1"
+                )
+                raise ValueError(msg)
     if cellcount > npts_model:
         msg = (
             f"{filename}: found more than {npts_model} cells, but the cell edges of the header give {npts_model} cells"
@@ -700,6 +708,9 @@ def scan_modelfile_text(
 # incorrect, e.g. a new column or a different data type in either one. Version 2 checks the cell count and the
 # cell ids of model.txt, and it puts the second line of a cell beside the first line in the order of the file.
 # Version 3 gives the key coordinates in the metadata of each model. Version 4 gives the key formatversion.
+# the electron fraction is the number of electrons for each nucleon, thus it is from 0 to 1
+IS_VALID_YE = pl.col("Ye").is_finite() & pl.col("Ye").is_between(0.0, 1.0)
+
 CACHEVERSION = 4
 
 
@@ -1368,6 +1379,10 @@ def get_spherical_cell_index_of_velocities(
     return np.where(index_r < ncoordgridr, cellindex, -1).astype(np.int64)
 
 
+# an image of 2000 x 2000 points takes approximately 130 MB for the cell search
+MAX_ANGULAR_IMAGE_POINTS = 1000
+
+
 def get_spherical_image_cell_indices(
     modelmeta: "Mapping[str, t.Any]", sliceaxis: str | None, slicevelocity_cmps: float = 0.0
 ) -> "npt.NDArray[np.int64]":
@@ -1375,7 +1390,9 @@ def get_spherical_image_cell_indices(
 
     A plot of such a model has no cell with straight edges on the axes of an image. Thus the image is a grid of
     points with equal steps, as the image of a 1D model is. Each point takes the value of the cell that holds it.
-    The count of the points from 0 to vmax is 200, or 2 n_r for a model with more than 100 radial shells.
+    The count of the points from 0 to vmax is 200, or 2 n_r for a model with more than 100 radial shells. It is also
+    large enough to give two points across the narrowest angular cell at vmax, to a maximum of
+    MAX_ANGULAR_IMAGE_POINTS. A narrower cell can then have no point, and the function gives a warning.
 
     Without a sliceaxis, the image has the cylindrical radius from 0 to vmax and z from -vmax to vmax as its axes.
     The points are in the half-plane y = 0 with x > 0. With a sliceaxis, the points are in the plane normal to that
@@ -1383,7 +1400,18 @@ def get_spherical_image_cell_indices(
     array has one row for each point of the second axis.
     """
     vmax_cmps = float(modelmeta["vmax_cmps"])
-    pointcount = max(200, 2 * (len(modelmeta["vel_r_edges_kmps"]) - 1))
+    angularedgekeys = ("theta_edges_radians", "phi_edges_radians")
+    minangularwidth = min(float(np.diff(modelmeta[key]).min()) for key in angularedgekeys if key in modelmeta)
+    # an angular cell at vmax has the width vmax * minangularwidth, and the step of the points is vmax / pointcount
+    angularpointcount = math.ceil(2.0 / minangularwidth)
+    if angularpointcount > MAX_ANGULAR_IMAGE_POINTS:
+        print_warning(
+            f"The narrowest angular cell is {minangularwidth:.3g} rad wide. The image has {MAX_ANGULAR_IMAGE_POINTS}"
+            " points from 0 to vmax, thus a cell this narrow can have no point in the image"
+        )
+    pointcount = max(
+        200, 2 * (len(modelmeta["vel_r_edges_kmps"]) - 1), min(angularpointcount, MAX_ANGULAR_IMAGE_POINTS)
+    )
     pointwidth = vmax_cmps / pointcount
     positive_points = np.asarray((np.arange(pointcount) + 0.5) * pointwidth, dtype=np.float64)
     all_points = np.asarray((np.arange(2 * pointcount) + 0.5) * pointwidth - vmax_cmps, dtype=np.float64)
@@ -1708,22 +1736,22 @@ def with_otherstable_columns(dfmodel: pl.DataFrame, dfelabundances: pl.DataFrame
             " element mass fractions from these rows, thus each cell with density needs one"
         )
         raise ValueError(msg)
-    # a null is a value that is not known, and the otherstable column of such an element would get 0
+    # a null or a NaN is a value that is not known, and the otherstable column of such an element would get 0
     elementfraccols = [col for col in dfelabundances.columns if col != "inputcellid"]
     cellswithnullelement = (
         dfmodel
         .filter(hasdensity)
         .select("inputcellid")
         .join(dfelabundances, on="inputcellid", how="inner")
-        .filter(pl.any_horizontal(pl.col(elementfraccols).is_null()))
+        .filter(pl.any_horizontal(~pl.col(elementfraccols).is_finite().fill_null(value=False)))
         if elementfraccols
         else pl.DataFrame()
     )
     if not cellswithnullelement.is_empty():
         msg = (
-            f"The element abundances have no value for {cellswithnullelement.height} cells with density, e.g. the cell"
-            f" with inputcellid {cellswithnullelement['inputcellid'].min()}. Each element mass fraction of such a cell"
-            " must be a number"
+            f"The element abundances have no finite value for {cellswithnullelement.height} cells with density, e.g."
+            f" the cell with inputcellid {cellswithnullelement['inputcellid'].min()}. Each element mass fraction of"
+            " such a cell must be a finite number"
         )
         raise ValueError(msg)
     remainders = {}
@@ -2251,6 +2279,14 @@ def save_modeldata(
                 " fraction of format version 2 must be a finite number"
             )
             raise ValueError(msg)
+        if "Ye" in dfmodel.columns:
+            dfinvalidye = dfmodel.filter(hasdensity & ~IS_VALID_YE)
+            if dfinvalidye.height:
+                msg = (
+                    f"The cell {dfinvalidye['inputcellid'].item(0)} has density and the electron fraction"
+                    f" {dfinvalidye['Ye'].item(0)!r}. Each value of the column Ye must be a finite number from 0 to 1"
+                )
+                raise ValueError(msg)
         # an absent composition column holds zero in version 2. The writer gives a null and a NaN as zero
         compositioncols = [col for col in inputcols if col.startswith("X_")]
         isnonzero = dfmodel.select(

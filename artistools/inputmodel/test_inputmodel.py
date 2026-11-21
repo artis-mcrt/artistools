@@ -4383,6 +4383,24 @@ def test_spherical_model_reader_takes_cell_ids_from_zero(tmp_path: Path, capsys:
     )
 
 
+def test_spherical_image_has_a_point_in_each_narrow_polar_cell() -> None:
+    """The image of a model with many narrow polar cells has a point in each cell of the outer shell.
+
+    The image had 200 points from 0 to vmax for each model with 100 radial shells or fewer. A polar cell narrower than
+    the step of the points then had no point, and its value was not in the image.
+    """
+    modelmeta = {
+        "coordinates": "spherical2d",
+        "vmax_cmps": 1e9,
+        "vel_r_edges_kmps": [0.0, 5000.0, 10000.0],
+        "theta_edges_radians": np.linspace(0.0, math.pi, 1001).tolist(),
+    }
+    cellindices = at.inputmodel.get_spherical_image_cell_indices(modelmeta, sliceaxis=None)
+    # the model grid index of a cell in the outer shell is 1 + 2 * i_theta
+    outercells = {int(cellindex) for cellindex in cellindices.ravel() if cellindex >= 0 and cellindex % 2 == 1}
+    assert outercells == set(range(1, 2 * 1000, 2))
+
+
 def test_spherical_cell_search_of_an_image_agrees_with_the_cell_search_of_the_packets() -> None:
     """The cell of a velocity vector is the same for the points of an image and for the packets.
 
@@ -4604,11 +4622,12 @@ def test_otherstable_columns_give_the_element_mass_fractions() -> None:
     for elcol in ("X_Fe", "X_Co", "X_Ni"):
         assert dfelements[elcol].to_list() == pytest.approx(dfelabundances[elcol].to_list(), rel=1e-6)
 
-    # a null mass fraction is not known, and the otherstable column would give it as 0
-    with pytest.raises(ValueError, match="The element abundances have no value for 1 cells with density"):
-        at.inputmodel.core.with_otherstable_columns(
-            dfmodel, dfelabundances.with_columns(X_Fe=pl.Series([0.125, None], dtype=pl.Float64))
-        )
+    # a null or a NaN mass fraction is not known, and the otherstable column would give it as 0
+    for unknownvalue in (None, float("nan")):
+        with pytest.raises(ValueError, match="The element abundances have no finite value for 1 cells with density"):
+            at.inputmodel.core.with_otherstable_columns(
+                dfmodel, dfelabundances.with_columns(X_Fe=pl.Series([0.125, unknownvalue], dtype=pl.Float64))
+            )
 
     # sn3d stops if the nuclide columns of an element hold more than the element
     with pytest.raises(ValueError, match=r"The nuclide columns of Ni hold up to 0\.125 more"):
@@ -4854,6 +4873,36 @@ def test_ye_merge_and_version_2_writer_follow_the_rules_of_sn3d(tmp_path: Path) 
     )
     dfwritten = at.inputmodel.scan_modeldata(tmp_path)[0].collect()
     assert dfwritten["X_Ni56"].to_list() == [0.5, 0.0]
+
+    # the column Ye of a version 2 file holds an electron fraction from 0 to 1, as Ye.txt does
+    yemeta = {
+        "coordinates": "spherical2d",
+        "t_model_init_days": 1.0,
+        "vel_r_edges_kmps": [0.0, 1000.0, 2000.0],
+        "theta_edges_radians": [0.0, math.pi],
+    }
+    yefolder = tmp_path / "ye"
+    yetext = "\n".join([
+        "format_version 2",
+        "coordinates spherical2d",
+        "t_model_init_days 1.0",
+        "vel_r_edges_kmps 0 1000 2000",
+        f"theta_edges_radians 0 {math.pi!r}",
+        "columns inputcellid rho Ye",
+        "0 1e-12 0.4",
+        "1 1e-12 {}",
+    ])
+    yefolder.mkdir()
+    for invalidye in (float("nan"), float("inf"), 1.5, -0.1):
+        with pytest.raises(ValueError, match="Each value of the column Ye must be a finite number from 0 to 1"):
+            at.inputmodel.save_modeldata(
+                pl.DataFrame({"inputcellid": [0, 1], "rho": [1e-12, 1e-12], "Ye": [0.4, invalidye]}),
+                outpath=yefolder,
+                modelmeta=dict(yemeta),
+            )
+        (yefolder / "model.txt").write_text(yetext.format(invalidye) + "\n", encoding="utf-8")
+        with pytest.raises(ValueError, match="Each value of the column Ye must be a finite number from 0 to 1"):
+            at.inputmodel.scan_modeldata(yefolder)
 
 
 @pytest.mark.parametrize(
