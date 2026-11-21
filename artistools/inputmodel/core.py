@@ -1344,8 +1344,8 @@ def get_spherical_slice_velocity_cmps(slicevelocity_cmps: float, vmax_cmps: floa
     """Return the position of the plane of a slice of a spherical model, 1e-6 vmax above the given plane [cm/s].
 
     Each point of the image lies on the plane, and a cell holds its lower edge. Thus a plane on a cell edge took the
-    cells of a different side in each half of the image. The plane above takes the cells on the positive side, as a
-    slice of a Cartesian model takes the layer above a plane between two layers.
+    cells of a different side in each half of the image. The plane above takes the cells on the positive side. A
+    slice of a Cartesian model also takes the layer above a plane between two layers.
     """
     return slicevelocity_cmps + 1.0e-6 * vmax_cmps
 
@@ -1961,7 +1961,7 @@ def with_rho_of_1d_model(dfmodel: pl.DataFrame) -> pl.DataFrame:
 
 
 def require_agreement_of_rho_and_logrho(dfmodel: pl.DataFrame) -> None:
-    """Stop if the cells of a 1D model hold the columns rho and logrho, and the two columns do not agree.
+    """Stop if the dataframe of a 1D model holds rho and logrho, and the two columns do not agree.
 
     A dataframe can hold both columns, e.g. from a version 2 file. A writer reads one of them, and it cannot know
     which column a caller changed. An empty cell agrees if rho is 0 and logrho is -98 or less.
@@ -2098,11 +2098,12 @@ def save_modeldata(
 
     A version 2 model has no Ye.txt, because the column Ye of model.txt gives the electron fraction. It also has no
     opacity.txt, which sn3d does not read. When the function writes a version 2 file named model.txt, it stops for a
-    Ye.txt or an opacity.txt of the output folder, because the file can hold the only copy of these values. Give
-    deletecellidfiles=True to delete the files: after a merge of Ye.txt (see with_ye_of_yefile), or for the files
-    of an earlier model that the user agreed to replace. The function does not change these two files when it
-    writes a version 1 file, or a file with a different name (e.g. model_alt.txt), which is not the model of the
-    folder.
+    Ye.txt or an opacity.txt of the output folder. Such a file can hold the only copy of its values.
+
+    Give deletecellidfiles=True to delete these files. Give it after a merge of Ye.txt (see with_ye_of_yefile). Also
+    give it when the user agreed to replace the files of an earlier model. The function does not change these two
+    files when it writes a version 1 file. It also does not change them when it writes a file with a different name
+    (e.g. model_alt.txt), which is not the model of the folder.
 
     A version 2 model has no abundances.txt. sn3d takes the mass fraction of an element as the sum of its nuclide
     columns and of its column X_<element>_otherstable, e.g. X_Ni56 + X_Ni58 + X_Ni_otherstable. Give dfelabundances
@@ -2176,7 +2177,8 @@ def save_modeldata(
     if oldcellidfiles and not deletecellidfiles:
         msg = (
             f"{oldcellidfiles[0]} gives values of the cells, and a model of format version 2 has no such file. Merge"
-            " the values of Ye.txt with with_ye_of_yefile and give deletecellidfiles=True, or delete the file"
+            " the values of Ye.txt with with_ye_of_yefile. Then give deletecellidfiles=True. As an alternative, delete"
+            " the file"
         )
         raise ValueError(msg)
     if formatversion == 2:
@@ -2218,7 +2220,7 @@ def save_modeldata(
     version2keylines: list[str] = []
     hasdensity = pl.col("rho") > 0
     if coordinates == "spherical1d" and formatversion == 1:
-        # the writer of version 1 reads logrho alone, thus a changed rho must not stay out of the file
+        # the writer of version 1 reads logrho alone, thus logrho must agree with a changed rho
         require_agreement_of_rho_and_logrho(dfmodel)
     if formatversion == 2:
         dfmodel = dfmodel.sort("inputcellid")

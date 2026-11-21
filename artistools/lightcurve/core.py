@@ -285,7 +285,10 @@ def scan_lightcurve_from_packets(
         nprocs_read, dfpackets = scan_packets(
             modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type
         )
-        # the comoving-frame time of each packet comes from its escape time and position, as in ARTIS
+        print(
+            "  The comoving-frame time of each packet is sqrt(t_esc^2 - r^2 / c^2) at its escape position r, as"
+            " ARTIS bins its comoving light curve (spectrum_lightcurve.cc)"
+        )
         dfpackets = dfpackets.with_columns(t_arrive_cmf_d=get_escape_time_cmf_days_expr())
 
     if pellet_nucname is not None:

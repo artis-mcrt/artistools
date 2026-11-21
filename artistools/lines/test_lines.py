@@ -1533,7 +1533,7 @@ def test_opacity_lines_name_an_ion_with_no_transition_table() -> None:
 def test_line_with_two_rows_in_transitiondata_has_the_opacity_of_one_line(monkeypatch: pytest.MonkeyPatch) -> None:
     """ARTIS merges the rows of one pair of levels into one line with the sum of their A values.
 
-    Each row was a line of its own with a part of the optical depth, thus the expansion opacity of an optically
+    Each row was a line of its own with a part of the optical depth. Thus the expansion opacity of an optically
     thick line was up to n times too large for n rows. Here each line has two rows with half of its A value.
     """
     timestep = 40

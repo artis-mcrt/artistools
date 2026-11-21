@@ -95,7 +95,7 @@ def read_grid_out(modelpath: Path) -> pl.DataFrame:
     """Return the propagation cells of grid.out in a local model folder, each with the index of its model cell.
 
     sn3d writes only the propagation cells that have a model cell with matter. sn3d writes grid.out in the model
-    folder alone, and a grid.out in a subfolder is of a different run.
+    folder alone, and a grid.out in a subfolder is of a different model.
     """
     filename = firstexisting("grid.out", tryzipped=True, folder=modelpath, search_subfolders=False)
     with polars_source_open(filename) as source:

@@ -4889,8 +4889,9 @@ def test_image_of_a_spherical_model_gives_each_point_the_value_of_its_cell(tmp_p
 def test_slice_of_a_spherical_model_on_cell_edges_takes_the_cells_on_the_positive_side(tmp_path: Path) -> None:
     """A slice plane on a cell edge gives the cells on its positive side, in both halves of the image.
 
-    Each point of the image lies on the plane, and a cell holds its lower edge. Thus on x = 0 the half with y > 0
-    showed the cells at -x and the half with y < 0 showed the cells at +x, and z = 0 showed the cells below the plane.
+    Each point of the image lies on the plane, and a cell holds its lower edge. Thus on x = 0, the half with y > 0
+    showed the cells at -x. The half with y < 0 showed the cells at +x. On z = 0, the image showed the cells below
+    the plane.
     """
     vmax_cmps = 2.0e9
     modelmeta: dict[str, t.Any] = {
@@ -5596,9 +5597,9 @@ def test_cumulative_population_does_not_change_with_the_x_range() -> None:
 def test_cumulative_population_of_shells_with_several_cells_counts_each_cell_at_the_x() -> None:
     """Each shell of a spherical model holds several cells at one velocity, and its point counts all of them.
 
-    The cells at one x value got different partial sums, and the line took their mean, thus two shells of three
+    The cells at one x value got different partial sums, and the line took their mean. Thus two shells of three
     cells gave 2 and 5 in place of 3 and 6. Automatic bins with edges on the shell velocities also put both shells
-    of this model into the points of far bins, and they merged the inner two shells of a larger model.
+    of this model into the points of far bins. In a larger model, these bins merged the inner two shells.
     """
     from artistools.estimators.plotestimators import get_line_points
     from artistools.estimators.plotestimators import get_multi_ion_series_plans

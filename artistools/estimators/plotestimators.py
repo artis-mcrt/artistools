@@ -446,7 +446,7 @@ def get_histogram_steps(dflinepoints: pl.DataFrame) -> pl.DataFrame:
 
 
 def xvalues_lie_on_grid(xvaluelist: Sequence[float], xdeltamax: float, logscalex: bool) -> bool:
-    """Return True if the sorted distinct x values lie on a grid whose interval is the largest interval of the values.
+    """Return True if the sorted distinct x values lie on a grid of their largest interval.
 
     n values on a grid of the interval d cover (n - 1) d. With --logscalex, the interval is in ln(x).
     """
@@ -1550,8 +1550,8 @@ def get_xlist(
             print(f"The x values give no interval to bin by ({xdeltamax}). Setting xbins to 25")
             args.xbins = 25
         elif xvalues_lie_on_grid(stats["xvalue"], xdeltamax, logscalex):
-            # e.g. the radial shells of a spherical model. Bins of this width have their edges on the x values, thus
-            # a bin merged two shells and moved the others by up to half a shell
+            # e.g. the radial shells of a spherical model. Bins of this width have their edges on the x values. Thus
+            # such a bin merges two shells and moves the others by up to half a shell
             print(
                 f"The {len(stats['xvalue'])} x values lie on a grid with the interval {xdeltamax}, thus each x value"
                 " gets one point, with the mean of its cells"

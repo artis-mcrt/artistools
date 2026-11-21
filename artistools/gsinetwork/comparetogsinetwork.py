@@ -656,7 +656,8 @@ def get_dfcontribsparticledata(
     arr_time_gsi_s_incpremerger = np.array(arr_time_gsi_days) * day_to_s + t_mergertime_s
 
     # the cell ids of gridcontributions.txt are those of model.txt, which start at 1, or at 0 in format version 2. The
-    # file is beside the model.txt that scan_modeldata reads, which can be in a subfolder of the model path
+    # file is beside the model.txt that scan_modeldata reads, which can be in a subfolder of the folder of the model
+    # path
     dfgridcontributions = get_gridparticlecontributions(get_model_input_folder(modelpath))
     dfpartcontrib = (dfgridcontributions.lazy().filter(pl.col("frac_of_cellmass") > 0)).join(
         lzdfmodel.select(["inputcellid", "modelgridindex", "cellmass_on_mtot"]),

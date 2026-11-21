@@ -413,13 +413,24 @@ def get_opacity_atomic_data(modelpath: Path | str, ionlist: tuple[tuple[int, int
         for Z, ion_stage, dflevels in zip(adata["Z"], adata["ion_stage"], adata["levels"], strict=True)
     ]
     mergedtransitions = [merge_transitions_of_level_pairs(dftransitions) for dftransitions in adata["transitions"]]
+    repeatedrowcounts = pl.collect_all([
+        dftransitions.lazy().select(pl.struct("lower", "upper").is_duplicated().sum())
+        for dftransitions in adata["transitions"]
+        if {"lower", "upper"} <= set(dftransitions.lazy().collect_schema().names())
+    ])
+    repeatedrowcount = sum(dfcount.item() for dfcount in repeatedrowcounts)
+    if repeatedrowcount:
+        print(
+            f"  {repeatedrowcount} rows of transitiondata.txt share a pair of levels with a different row. Each such"
+            " group is one line with the sum of the A values, as in ARTIS (input.cc)"
+        )
     return adata.with_columns(
         pl.Series("levels", keptlevels, dtype=pl.Object), pl.Series("transitions", mergedtransitions, dtype=pl.Object)
     )
 
 
 def merge_transitions_of_level_pairs(dftransitions: pl.DataFrame | pl.LazyFrame) -> pl.LazyFrame:
-    """Return the transitions of an ion with one row for each pair of a lower and an upper level, as ARTIS has them.
+    """Return the transitions of an ion with one row for each pair of levels, as ARTIS has them.
 
     transitiondata.txt can hold more than one row for a pair of levels. ARTIS sums the A values of such rows, takes
     their largest collision strength, and keeps the forbidden flag of the first row (input.cc). Thus a line has the

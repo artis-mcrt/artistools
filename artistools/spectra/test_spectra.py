@@ -1421,7 +1421,7 @@ def test_spectra_gamma_emission_time_uses_decay(patch_scan_packets: Callable[[pl
 # The comoving escape time of a packet is sqrt(t_esc^2 - r^2 / c^2), with its escape radius r = beta c t_esc.
 # The second packet enters the window of 1 to 2 days at beta 0.6, where 2.2 d * sqrt(1 - 0.6^2) = 1.76 d.
 # The first packet leaves the window at beta 0.8, where 1.5 d * 0.6 = 0.9 d. A packet that escapes at a corner of
-# a Cartesian grid has a larger radius than a packet on a face, thus the two packets can have different values.
+# a Cartesian grid has a larger radius than a packet on a face. Thus the two packets can have different values.
 @pytest.mark.parametrize(
     ("betas", "expected_e_cmf_sum"),
     [((0.0, 0.0), 10.0), ((0.6, 0.6), 30.0), ((0.8, 0.8), 20.0), ((0.8, 0.6), 20.0), ((0.0, 0.8), 30.0)],
@@ -4002,9 +4002,9 @@ def test_virtual_spectrum_uses_logarithmic_time_weights(
 def test_virtual_spectrum_takes_the_logarithmic_time_bin_that_holds_the_timestep() -> None:
     """A timestep inside one logarithmic time bin of the virtual spectra gives the flux of that bin alone.
 
-    The file gives the arithmetic middle of each bin, which is above the geometric centre of the bin. The nearest
-    middle time of the start of the timestep 3.665 to 3.803 d is that of the bin 3.0 to 3.65 d, thus the mean also
-    took that bin, which does not overlap the timestep.
+    The file gives the arithmetic middle of each bin, which is above the geometric centre of the bin. For the
+    timestep 3.665 to 3.803 d, the nearest middle time of its start is that of the bin 3.0 to 3.65 d. Thus the mean
+    also took that bin, which does not overlap the timestep.
     """
     # the middle times of the default grid of vpkt.h, 5 bins from 3 to 8 d, as the file writes them
     times = [3.32509, 4.04574, 4.92256, 5.98942, 7.2875]

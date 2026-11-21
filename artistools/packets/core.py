@@ -190,9 +190,10 @@ def get_emission_time_expr(position: t.Literal["em", "trueem"]) -> pl.Expr:
 def get_escape_time_cmf_days_expr() -> pl.Expr:
     """Return the comoving-frame escape time of each escaped packet [d], as ARTIS bins its comoving light curve.
 
-    ARTIS takes sqrt(t_esc^2 - |r|^2 / c^2), with the lab-frame escape time t_esc and the escape position r of each
+    ARTIS takes sqrt(t_esc^2 - |r|^2 / c^2), with the rest-frame escape time t_esc and the escape position r of each
     packet (spectrum_lightcurve.cc, since a15329b6). A packet on a Cartesian or a cylindrical grid escapes at the
-    surface of the grid, up to sqrt(3) or sqrt(2) vmax t from the centre, thus one factor of vmax is wrong for it.
+    surface of the grid. That surface is up to sqrt(3) or sqrt(2) vmax t from the centre, thus one factor of vmax is
+    wrong for such a packet.
     """
     escapetime_s = pl.col("escape_time").cast(pl.Float64)
     radiussquared_cm2 = (

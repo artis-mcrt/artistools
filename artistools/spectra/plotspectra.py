@@ -344,7 +344,7 @@ def plot_polarisation(args: argparse.Namespace) -> None:
         check_time_range_overlaps_time_bins(
             vspecpoltimemids, timeavg_float, timeavg_float, f"vspecpol_total-{angle}.out of {modelpath}"
         )
-        # the time bins are logarithmic, thus the nearest middle time is not always the bin that holds the time
+        # the time bins are logarithmic, thus the nearest middle time does not always give the bin that holds the time
         timecolname = timearray[get_vspecpol_time_bin_index(vspecpoltimemids, timeavg_float, side="right")]
     else:
         # specpol.out gives the middle time of each timestep, and timeavg is such a middle time

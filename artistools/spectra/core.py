@@ -490,6 +490,10 @@ def filter_packets_by_time(
         return dfpackets.filter(pl.col("t_arrive_d").is_between(timelowdays, timehighdays))
 
     if use_time == "escape":
+        print(
+            "  The escape time of each packet is its comoving-frame time sqrt(t_esc^2 - r^2 / c^2) at its escape"
+            " position r, as ARTIS bins its comoving light curve (spectrum_lightcurve.cc)"
+        )
         return dfpackets.filter(get_escape_time_cmf_days_expr().is_between(timelowdays, timehighdays))
 
     col_emit_time = "tdecay" if gamma else "em_time"
@@ -1129,7 +1133,7 @@ def split_dataframe_stokesparams(specdata: pl.DataFrame | pl.LazyFrame) -> dict[
 def get_vspecpol_time_bin_edges(timemids: Sequence[float]) -> npt.NDArray[np.float64] | None:
     """Return the edges of the time bins of the virtual packet spectra [d], from the middle times of the bins.
 
-    ARTIS gives the virtual spectra logarithmic time bins, and the file gives the arithmetic middle of each bin
+    ARTIS gives the virtual packet spectra logarithmic time bins, and the file gives the arithmetic middle of each bin
     (vpkt.cc). A bin from t to r t has the middle t (1 + r) / 2, which is above its geometric centre. Thus the
     nearest middle time does not always give the bin that holds a time. One middle time gives no ratio r, and the
     function then gives None.
@@ -1145,8 +1149,8 @@ def get_vspecpol_time_bin_edges(timemids: Sequence[float]) -> npt.NDArray[np.flo
 def get_vspecpol_time_bin_index(timemids: Sequence[float], time_days: float, side: t.Literal["left", "right"]) -> int:
     """Return the index of the time bin of the virtual packet spectra that holds time_days.
 
-    side="right" gives a time on an edge to the later bin, and side="left" gives it to the earlier bin, e.g. for the
-    end of a range. A time outside the bins gives the first or the last bin.
+    side="right" gives a time on an edge to the later bin. side="left" gives it to the earlier bin, e.g. for the end
+    of a range. A time outside the bins gives the first or the last bin.
     """
     edges = get_vspecpol_time_bin_edges(timemids)
     if edges is None:
@@ -1160,8 +1164,8 @@ def check_time_range_overlaps_time_bins(
     """Stop if no time bin of a spectrum file overlaps the time range. Warn if the time range goes past the bins.
 
     The file gives the middle time of each bin, and get_vspecpol_time_bin_edges gives the edges. A caller takes the
-    bin that holds a time, thus a time outside every bin gave the spectrum of the first or the last bin, and the
-    label gave the requested time.
+    bin that holds a time, or the first or the last bin for a time outside every bin. Thus such a time gave the
+    spectrum of that bin, and the label gave the requested time.
     """
     edges = get_vspecpol_time_bin_edges(timemids)
     if edges is None:
