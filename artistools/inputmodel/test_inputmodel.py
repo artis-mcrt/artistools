@@ -4542,11 +4542,12 @@ def test_mirrored_model_has_the_masses_and_the_cells_of_its_full_twin(tmp_path: 
             assert math.isclose(dfreduced["mass_g"].sum(), dftwin["mass_g"].sum(), rel_tol=1e-6)
 
 
-def test_spherical_image_has_a_point_in_each_narrow_polar_cell() -> None:
+def test_spherical_image_has_a_point_in_each_narrow_polar_cell(capsys: pytest.CaptureFixture[str]) -> None:
     """The image of a model with many narrow polar cells has a point in each cell of the outer shell.
 
     The image had 200 points from 0 to vmax for each model with 100 radial shells or fewer. A polar cell narrower than
-    the step of the points then had no point, and its value was not in the image.
+    the step of the points then had no point, and its value was not in the image. A cell of an inner shell is
+    narrower, thus the image gives a warning with the radius inside which such a cell can have no point.
     """
     modelmeta = {
         "coordinates": "spherical2d",
@@ -4558,6 +4559,22 @@ def test_spherical_image_has_a_point_in_each_narrow_polar_cell() -> None:
     # the model grid index of a cell in the outer shell is 1 + 2 * i_theta
     outercells = {int(cellindex) for cellindex in cellindices.ravel() if cellindex >= 0 and cellindex % 2 == 1}
     assert outercells == set(range(1, 2 * 1000, 2))
+    # the inner shell ends at 0.5 vmax, and two points across each of its polar cells need more than 1000 points
+    captured = capsys.readouterr()
+    assert "Inside 0.637 vmax, a cell of this width has less than two points across it" in captured.out + captured.err
+
+    # each polar cell of a usual grid, uniform in cos(theta), has a point in each shell
+    usualcells = at.inputmodel.get_spherical_image_cell_indices(
+        modelmeta
+        | {
+            "vel_r_edges_kmps": np.linspace(0.0, 10000.0, 26).tolist(),
+            "theta_edges_radians": np.arccos(np.linspace(1.0, -1.0, 17)).tolist(),
+        },
+        sliceaxis=None,
+    )
+    captured = capsys.readouterr()
+    assert "less than two points across it" not in captured.out + captured.err
+    assert set(usualcells.ravel().tolist()) == {-1, *range(25 * 16)}
 
 
 def test_spherical_cell_search_of_an_image_agrees_with_the_cell_search_of_the_packets() -> None:

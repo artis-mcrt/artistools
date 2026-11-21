@@ -1031,11 +1031,17 @@ def get_spatial_scales(modelpath: Path) -> tuple[float, float, str]:
             rcylwidth = float(modelmeta["wid_init_rcyl"]) / t_model_init_s
             zwidth = float(modelmeta["wid_init_z"]) / t_model_init_s
             smallest, largest = min(rcylwidth, zwidth), math.hypot(rcylwidth, zwidth)
+            # a mirrored model holds the cells with z >= 0, and each cell also fills its mirror cell
+            zrangetext, zwidthtext = (
+                ("from 0 to vmax, with a mirror cell at -z", "vmax / n_z")
+                if has_mirror_plane(modelmeta)
+                else ("from -vmax to vmax", "2 vmax / n_z")
+            )
             gridtext = (
                 f"The 2D model has a grid of n_rcyl x n_z = {ncoordgridrcyl} x {ncoordgridz} cells, with {vmaxtext}."
-                " The cylindrical radius rcyl is from 0 to vmax, and z is from -vmax to vmax. The cell widths are"
+                f" The cylindrical radius rcyl is from 0 to vmax, and z is {zrangetext}. The cell widths are"
                 f" width_rcyl = vmax / n_rcyl = {rcylwidth / km_to_cm:.0f} km/s and"
-                f" width_z = 2 vmax / n_z = {zwidth / km_to_cm:.0f} km/s"
+                f" width_z = {zwidthtext} = {zwidth / km_to_cm:.0f} km/s"
             )
             scaletext = (
                 f"The smallest spatial scale is the smaller cell width, {smallest / km_to_cm:.0f} km/s. The largest"
@@ -1402,8 +1408,10 @@ def get_spherical_image_cell_indices(
     A plot of such a model has no cell with straight edges on the axes of an image. Thus the image is a grid of
     points with equal steps, as the image of a 1D model is. Each point takes the value of the cell that holds it.
     The count of the points from 0 to vmax is 200, or 2 n_r for a model with more than 100 radial shells. It is also
-    large enough to give two points across the narrowest angular cell at vmax, to a maximum of
-    MAX_ANGULAR_IMAGE_POINTS. A narrower cell can then have no point, and the function gives a warning.
+    large enough to give two points across the narrowest angular cell at the outer edge of the innermost shell, to a
+    maximum of MAX_ANGULAR_IMAGE_POINTS. The outer edge of each shell is at that radius or further out, thus each
+    cell then has two points across it. Above the maximum, the function gives a warning with the radius inside which
+    a cell of the narrowest angular width has less than two points across it.
 
     Without a sliceaxis, the image has the cylindrical radius from 0 to vmax and z from -vmax to vmax as its axes.
     The points are in the half-plane y = 0 with x > 0. With a sliceaxis, the points are in the plane normal to that
@@ -1413,16 +1421,20 @@ def get_spherical_image_cell_indices(
     vmax_cmps = float(modelmeta["vmax_cmps"])
     angularedgekeys = ("theta_edges_radians", "phi_edges_radians")
     minangularwidth = min(float(np.diff(modelmeta[key]).min()) for key in angularedgekeys if key in modelmeta)
-    # an angular cell at vmax has the width vmax * minangularwidth, and the step of the points is vmax / pointcount
-    angularpointcount = math.ceil(2.0 / minangularwidth)
-    if angularpointcount > MAX_ANGULAR_IMAGE_POINTS:
-        print_warning(
-            f"The narrowest angular cell is {minangularwidth:.3g} rad wide. The image has {MAX_ANGULAR_IMAGE_POINTS}"
-            " points from 0 to vmax, thus a cell this narrow can have no point in the image"
-        )
+    # At the radius r, a cell of the narrowest angular width has r * minangularwidth / (vmax / pointcount) points
+    # across it. The outer edge of the innermost shell is the smallest outer radius of a cell
+    innershellouter_on_vmax = modelmeta["vel_r_edges_kmps"][1] / modelmeta["vel_r_edges_kmps"][-1]
+    angularpointcount = math.ceil(2.0 / (minangularwidth * innershellouter_on_vmax))
     pointcount = max(
         200, 2 * (len(modelmeta["vel_r_edges_kmps"]) - 1), min(angularpointcount, MAX_ANGULAR_IMAGE_POINTS)
     )
+    resolvedradius_on_vmax = 2.0 / (minangularwidth * pointcount)
+    if angularpointcount > pointcount:
+        print_warning(
+            f"The image has {pointcount} points from 0 to vmax, and the narrowest angular cell is"
+            f" {minangularwidth:.3g} rad wide. Inside {min(resolvedradius_on_vmax, 1.0):.3g} vmax, a cell of this"
+            " width has less than two points across it, thus such a cell can have no point in the image"
+        )
     pointwidth = vmax_cmps / pointcount
     positive_points = np.asarray((np.arange(pointcount) + 0.5) * pointwidth, dtype=np.float64)
     all_points = np.asarray((np.arange(2 * pointcount) + 0.5) * pointwidth - vmax_cmps, dtype=np.float64)
