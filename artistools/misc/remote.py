@@ -173,6 +173,9 @@ def model_path_from_text(text: str) -> Path:
     local path with a colon before its first slash becomes absolute. argparse uses this function as the type of a
     model path.
     """
+    # a shell does not expand ~ after =, e.g. in --modelpath=~/m
+    if text.startswith("~"):
+        return Path(text).expanduser()
     path = Path(text)
     return path.absolute() if text.startswith("./") and is_remote_path(path) else path
 

@@ -347,12 +347,17 @@ def addarg_output(
     kwargs: dict[str, t.Any] = {
         "dest": "outputfile",
         "default": default,
-        "type": Path,
+        "type": output_path_from_text,
         "help": f"{helptext or defaulthelptext}. {rule}",
     }
 
     arggroup(parser, "Output").add_argument("-outputfile", "-outputpath", "-o", **kwargs)
     parser.set_defaults(outputkind=kind, outputdefaultname=defaultname)
+
+
+def output_path_from_text(text: str) -> Path:
+    """Return the Path of -o, with ~ expanded, because a shell does not expand ~ after =, e.g. in --outputfile=~/x."""
+    return Path(text).expanduser()
 
 
 def resolve_output_argument(args: argparse.Namespace) -> None:
