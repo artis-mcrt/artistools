@@ -230,11 +230,6 @@ def unitsof(key: str) -> str:
     return VARIABLES[key].units if key in VARIABLES else ""
 
 
-def get_variablelongunits(key: str) -> str | None:
-    """Return the whole axis label of an estimator variable, or None when the name and units serve."""
-    return get_variable(key).longlabel or None
-
-
 def parse_species(suffix: str) -> str | None:
     """Return the species that the suffix names, or None when it names no element, ion, or isotope."""
     elsymbol, sep, rest = suffix.partition("_")
@@ -1024,11 +1019,6 @@ def get_estimators_parquetfile(
     identity of the file that the caller saw, because only that file can take the place of a new cache.
     conversionlabel follows the path in the log line of a conversion, e.g. " (2 of 5)".
     """
-
-    def printornot(msg: str) -> None:
-        if verbose:
-            print(msg)
-
     parquetfilepath = state.parquetfile
     stalereason = state.stalereason
 
@@ -1089,11 +1079,9 @@ def get_estimators_parquetfile(
             batchcache.unlink(missing_ok=True)
             print(f"  Removed the batch cache {batchcache.relative_to(modelpath.parent)}")
 
-    filesize = parquetfilepath.stat().st_size / 1024 / 1024
-    try:
-        printornot(f"  scanning {parquetfilepath.relative_to(modelpath.parent)} ({filesize:.2f} MiB)")
-    except ValueError:
-        printornot(f"  scanning {parquetfilepath} ({filesize:.2f} MiB)")
+    if verbose:
+        filesize = parquetfilepath.stat().st_size / 1024 / 1024
+        print(f"  scanning {parquetfilepath.relative_to(modelpath.parent)} ({filesize:.2f} MiB)")
 
     return parquetfilepath
 
@@ -1230,7 +1218,6 @@ def join_cell_modeldata(
     estimators: pl.LazyFrame, modelpath: Path | str, verbose: bool = False
 ) -> tuple[pl.LazyFrame, dict[str, t.Any]]:
     """Join the estimator data with data from model.txt and derived quantities, e.g. density, volume, etc."""
-    assert estimators is not None
     estimators = estimators.join(
         scan_timesteps(Path(modelpath))
         .select("timestep", "tstart_days", "tmid_days", "twidth_days")
@@ -1416,6 +1403,13 @@ def drop_restart_duplicates(
     )
 
 
+def as_tuple_or_none(values: int | Sequence[int] | None) -> tuple[int, ...] | None:
+    """Return one value or a sequence of values as a tuple, or None for None."""
+    if values is None:
+        return None
+    return (values,) if isinstance(values, int) else tuple(values)
+
+
 def scan_estimators(
     modelpath: Path | str = ".",
     modelgridindex: int | Sequence[int] | None = None,
@@ -1451,21 +1445,8 @@ def scan_estimators(
     converts no file. classicartis reads the estimators of the classic version of ARTIS. docs/data.md gives each column.
     """
     modelpath = Path(modelpath)
-    match_modelgridindex: Sequence[int] | None
-    if modelgridindex is None:
-        match_modelgridindex = None
-    elif isinstance(modelgridindex, int):
-        match_modelgridindex = (modelgridindex,)
-    else:
-        match_modelgridindex = tuple(modelgridindex)
-
-    match_timestep: Sequence[int] | None
-    if timestep is None:
-        match_timestep = None
-    elif isinstance(timestep, int):
-        match_timestep = (timestep,)
-    else:
-        match_timestep = tuple(timestep)
+    match_modelgridindex = as_tuple_or_none(modelgridindex)
+    match_timestep = as_tuple_or_none(timestep)
 
     # estimators_classic imports this module
     from artistools.estimators.estimators_classic import has_classic_estimator_format
