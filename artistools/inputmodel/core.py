@@ -694,7 +694,8 @@ def scan_modelfile_text(
 # cell ids of model.txt, and it puts the second line of a cell beside the first line in the order of the file.
 # Version 3 gives the key coordinates in the metadata of each model. Version 4 gives the key formatversion.
 # the electron fraction is the number of electrons for each nucleon, thus it is from 0 to 1
-IS_VALID_YE = pl.col("Ye").is_finite() & pl.col("Ye").is_between(0.0, 1.0)
+# a null Ye is a value that is not known, and the writer gives a null as 0
+IS_VALID_YE = (pl.col("Ye").is_finite() & pl.col("Ye").is_between(0.0, 1.0)).fill_null(value=False)
 
 CACHEVERSION = 4
 
@@ -1478,8 +1479,13 @@ def get_spherical_image_cell_indices(
     points with equal steps, as the image of a 1D model is. Each point takes the value of the cell that holds it.
     The count of the points from 0 to vmax is 200, or 2 n_r for a model with more than 100 radial shells. The plane of
     the image cuts the outer edge of the innermost shell that it cuts in a circle, and each other circle is larger. To
-    a maximum of MAX_REFINED_IMAGE_POINTS, the count also gives two points across the radius of that circle and
-    across the narrowest angular cell on it. Above the maximum, the function gives a warning.
+    a maximum of MAX_REFINED_IMAGE_POINTS, the count also gives two points across these widths:
+
+    - the radius of that circle;
+    - the narrowest angular cell on that circle;
+    - the narrowest shell that the plane cuts.
+
+    The function gives a warning for a narrow angular cell above the maximum, and for each cut shell with no point.
 
     Without a sliceaxis, the image has the cylindrical radius from 0 to vmax and z from -vmax to vmax as its axes.
     The points are in the half-plane y = 0 with x > 0. With a sliceaxis, the points are in the plane normal to that
@@ -1500,7 +1506,16 @@ def get_spherical_image_cell_indices(
     # points is vmax / pointcount. The width 1 rad gives an arc equal to the radius
     narrowerwidth = min(minangularwidth, 1.0)
     innerpointcount = math.ceil(2.0 / (narrowerwidth * innercircle_on_vmax)) if innercircle_on_vmax > 0 else 0
-    pointcount = max(200, 2 * (len(r_edges_on_vmax) - 1), min(innerpointcount, MAX_REFINED_IMAGE_POINTS))
+    # the width of a shell in the plane is its radial width or more
+    iscutshell = r_edges_on_vmax[1:] > planedistance_on_vmax
+    cutshellwidths_on_vmax = np.diff(r_edges_on_vmax)[iscutshell]
+    radialpointcount = math.ceil(2.0 / float(cutshellwidths_on_vmax.min())) if cutshellwidths_on_vmax.size else 0
+    pointcount = max(
+        200,
+        2 * (len(r_edges_on_vmax) - 1),
+        min(innerpointcount, MAX_REFINED_IMAGE_POINTS),
+        min(radialpointcount, MAX_REFINED_IMAGE_POINTS),
+    )
     if innerpointcount > pointcount:
         resolvedradius_on_vmax = 2.0 / (narrowerwidth * pointcount)
         print_warning(
@@ -1523,7 +1538,20 @@ def get_spherical_image_cell_indices(
             sliceaxis: np.full((1, 1), slicevelocity_cmps),
         }
     vel_x, vel_y, vel_z = np.broadcast_arrays(velocities["x"], velocities["y"], velocities["z"])
-    return get_spherical_cell_index_of_velocities(vel_x, vel_y, vel_z, modelmeta)
+    cellindices = get_spherical_cell_index_of_velocities(vel_x, vel_y, vel_z, modelmeta)
+
+    # the points of a lattice have a discrete set of radii, thus a narrow shell can lie between two of them
+    ncoordgridr = len(r_edges_on_vmax) - 1
+    shellswithpoint = np.unique(cellindices[cellindices >= 0] % ncoordgridr)
+    emptycutshells = np.setdiff1d(np.flatnonzero(iscutshell), shellswithpoint)
+    if emptycutshells.size:
+        firstemptyshell = int(emptycutshells[0])
+        print_warning(
+            f"{emptycutshells.size} radial shells that the plane cuts have no point in the image of {pointcount}"
+            f" points from 0 to vmax, e.g. the shell from {r_edges_on_vmax[firstemptyshell]:.6g} to"
+            f" {r_edges_on_vmax[firstemptyshell + 1]:.6g} vmax. The image does not show such a shell"
+        )
+    return cellindices
 
 
 def add_derived_cols_to_modeldata(dfmodel: pl.DataFrame | pl.LazyFrame, modelmeta: dict[str, t.Any]) -> pl.LazyFrame:
@@ -2105,7 +2133,9 @@ def get_version2_headerlines(inputcellids: pl.Series, modelmeta: dict[str, t.Any
     print(f" {coordinates} grid size: {inputcellids.len()} ({gridshape})")
 
     firstaxis = edgekeys[0].split("_")[1]
-    if inputcellids.len() != npts_model or not (inputcellids == pl.int_range(npts_model, eager=True)).all():
+    # the writer gives a null cell id as 0.0, and .all() takes no account of a null
+    idsagree = (inputcellids == pl.int_range(npts_model, eager=True)).fill_null(value=False).all()
+    if inputcellids.len() != npts_model or not idsagree:
         msg = (
             f"The cell edges give {gridshape} = {npts_model} cells, but the model has {inputcellids.len()} cells with"
             f" the first cell id {inputcellids.item(0) if inputcellids.len() else None}. In format version 2, the cell"

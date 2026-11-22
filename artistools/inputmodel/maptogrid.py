@@ -130,6 +130,12 @@ def get_spherical_grid_edges(
     The radial edges and the azimuthal edges are uniform. The polar edges are uniform in cos(theta), thus the
     cells of one shell have equal volumes.
     """
+    if not (math.isfinite(r_outer) and r_outer > 0.0):
+        msg = (
+            f"The outer radius of the spherical grid is {r_outer!r}, but it must be a finite number above 0. The radius"
+            " is -setgrid_fractionrmax times the largest radius of the particles"
+        )
+        raise ValueError(msg)
     theta_edges = np.arccos(np.linspace(1.0, -1.0, ngridtheta + 1))
     phi_edges = np.linspace(0.0, 2.0 * math.pi, ngridphi + 1)
     # arccos(-1) and the last value of linspace can differ from pi and 2 pi in the last bit

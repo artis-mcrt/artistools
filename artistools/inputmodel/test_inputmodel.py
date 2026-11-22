@@ -4524,6 +4524,27 @@ def test_spherical_image_has_a_point_in_a_small_inner_shell_and_in_each_phi_cell
     assert {int(cellindex) // 8 for cellindex in cellindices.ravel() if cellindex >= 0} == set(range(nphi))
 
 
+def test_spherical_image_has_a_point_in_a_narrow_shell_or_gives_a_warning(capsys: pytest.CaptureFixture[str]) -> None:
+    """The image has a point in a narrow shell, or it gives a warning for a cut shell with no point.
+
+    The points of the image are a lattice, which has a discrete set of radii. A shell from 0.4546 to 0.4548 vmax lay
+    between two radii of the 200 points, and the image did not show it with no warning. A shell from 0.30238 to
+    0.30239 vmax lies between two radii of the maximum of 1000 points.
+    """
+    for shelledges_kmps, haspoint in (([4546.0, 4548.0], True), ([3023.8, 3023.9], False)):
+        modelmeta = {
+            "coordinates": "spherical2d",
+            "vmax_cmps": 1e9,
+            "vel_r_edges_kmps": [0.0, *shelledges_kmps, 10000.0],
+            "theta_edges_radians": [0.0, math.pi],
+        }
+        cellindices = at.inputmodel.get_spherical_image_cell_indices(modelmeta, sliceaxis=None)
+        assert (1 in cellindices) == haspoint
+        captured = capsys.readouterr()
+        haswarning = "1 radial shells that the plane cuts have no point" in captured.out + captured.err
+        assert haswarning == (not haspoint)
+
+
 def test_spherical_cell_search_of_an_image_agrees_with_the_cell_search_of_the_packets() -> None:
     """The cell of a velocity vector is the same for the points of an image and for the packets.
 
@@ -5044,6 +5065,20 @@ def test_ye_merge_and_version_2_writer_follow_the_rules_of_sn3d(tmp_path: Path) 
         (yefolder / "model.txt").write_text(yetext.format(invalidye) + "\n", encoding="utf-8")
         with pytest.raises(ValueError, match="Each value of the column Ye must be a finite number from 0 to 1"):
             at.inputmodel.scan_modeldata(yefolder)
+    # a null Ye is not known, and the writer gave it as 0.0
+    with pytest.raises(ValueError, match="Each value of the column Ye must be a finite number from 0 to 1"):
+        at.inputmodel.save_modeldata(
+            pl.DataFrame({
+                "inputcellid": [0, 1],
+                "rho": [1e-12, 1e-12],
+                "Ye": pl.Series([0.4, None], dtype=pl.Float64),
+            }),
+            outpath=yefolder,
+            modelmeta=dict(yemeta),
+        )
+    # .all() takes no account of a null, and the writer gave a null cell id as 0.0
+    with pytest.raises(ValueError, match="the cell ids are 0 to 1"):
+        at.inputmodel.core.get_version2_headerlines(pl.Series([None, 1], dtype=pl.Int64), dict(yemeta))
 
 
 def test_ye_file_to_merge_follows_the_search_of_sn3d(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -5476,6 +5511,9 @@ def test_spherical_deposit_agrees_with_a_sum_over_all_cells(normalisekernelweigh
     from artistools.inputmodel.maptogrid import get_wij
     from artistools.inputmodel.maptogrid import kernelvals2
 
+    # -setgrid_fractionrmax 0 gave edges that do not increase, and cells with no volume
+    with pytest.raises(ValueError, match="must be a finite number above 0"):
+        get_spherical_grid_edges(0.0, 6, 5, 8)
     r_outer = 1000.0
     edges = get_spherical_grid_edges(r_outer, 6, 5, 8)
     rng = np.random.default_rng(seed=3)
