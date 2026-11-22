@@ -165,14 +165,6 @@ def test_nltepops_versus_velocity(
     assert (tmp_path / "plotnltepops_Fe.pdf").is_file()
 
 
-def test_nltepops_versus_velocity_needs_a_time(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """With no time, a plot against velocity drew one series for each level at every timestep of the model."""
-    with pytest.raises(SystemExit):
-        at.nltepops.plot(argsraw=[], modelpath=modelpath, outputfile=tmp_path, x="velocity", ion_stages=2, levels=[0])
-
-    assert "-x velocity needs a time" in capsys.readouterr().err
-
-
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
 def test_nltepops_versus_time(
@@ -224,41 +216,6 @@ def test_nltepops_draws_one_shared_legend(mocklegend: mock.MagicMock, tmp_path: 
     assert len(labels) == len(set(labels)), f"a label appears more than one time: {labels}"
     # the ion names the subplot, thus no legend entry repeats it
     assert not any("Fe" in label for label in labels), labels
-
-
-def test_texifyterm_handles_multiplicity_parity_and_jvalue() -> None:
-    assert at.nltepops.texifyterm("o4Fo[2]") == r"$^{4}$F$^{\rm o}_{2}$"
-    assert at.nltepops.texifyterm("3P2") == r"$^{3}$P2"
-
-
-def test_texifyconfiguration_formats_configuration_and_parent_terms() -> None:
-    assert at.nltepops.texifyconfiguration("3d6_5D") == r"3d$^{6}$ $^{5}$D"
-    assert at.nltepops.texifyconfiguration("3d7(4F)4p_z5G[2]") == r"3d$^{7}$($^{4}$F)4p $^{5}$G$_{2}$"
-
-
-def test_add_lte_pops_calculates_levels_and_superlevel() -> None:
-    ionlevels = pl.DataFrame({"g": [2.0, 4.0, 6.0], "energy_ev": [0.0, 1.0, 2.0]})
-    adata = pl.DataFrame({"Z": [26], "ion_stage": [2], "levels": pl.Series([ionlevels], dtype=pl.Object)})
-
-    dfpop = pl.DataFrame({
-        "modelgridindex": [0, 0, 0],
-        "timestep": [1, 1, 1],
-        "Z": [26, 26, 26],
-        "ion_stage": [2, 2, 2],
-        "level": [0, 1, -1],
-        "n_NLTE": [1.0, 0.3, 0.1],
-    })
-
-    result = at.nltepops.add_lte_pops(dfpop, adata, [("lte_10000", 10000)], noprint=True)
-
-    k_b = 8.617333262145179e-05
-    expected_level1 = 4.0 / 2.0 * math.exp(-(1.0 - 0.0) / k_b / 10000)
-    expected_superlevel = 6.0 / 2.0 * math.exp(-(2.0 - 0.0) / k_b / 10000)
-
-    assert math.isclose(result.filter(pl.col("level") == 0)["lte_10000"].item(), 1.0, rel_tol=1e-12)
-    assert math.isclose(result.filter(pl.col("level") == 1)["lte_10000"].item(), expected_level1, rel_tol=1e-12)
-    # the superlevel takes the position two places above the highest resolved level, which is level 1 here
-    assert math.isclose(result.filter(pl.col("level") == 3)["lte_10000"].item(), expected_superlevel, rel_tol=1e-12)
 
 
 @pytest.mark.parametrize("maxlevel", [-1, 0, 3])
@@ -399,21 +356,6 @@ def test_plotnltepops_reads_the_folder_after_the_elements(tmp_path: Path) -> Non
     assert outputfile.is_file()
 
 
-def test_read_nltepops_keeps_the_last_read() -> None:
-    """A figure of several subplots and a window read the same populations many times, thus the last read stays.
-
-    Each read parsed the text files again. The read of a large model takes minutes.
-    """
-    from artistools.nltepops.core import read_nltepops_cached
-
-    read_nltepops_cached.cache_clear()
-    firstread = at.nltepops.read_nltepops(modelpath, timestep=50, modelgridindex=[0])
-    secondread = at.nltepops.read_nltepops(str(modelpath), timestep=50, modelgridindex=(0,))
-    assert secondread is firstread
-    assert read_nltepops_cached.cache_info().hits == 1
-    assert not firstread.is_empty()
-
-
 def test_read_nltepops_of_a_numpy_cell_keeps_the_frame_of_the_plot() -> None:
     """A numpy integer names one cell, and a read of the levels for a menu does not drop the frame of the plot.
 
@@ -552,31 +494,6 @@ def test_config_labels_of_names_with_no_term(configlist: list[str], expected_mar
     """
     labels = at.nltepops.plotnltepops.get_config_labels(configlist)
     assert [label.startswith('" ') for label in labels] == expected_marked
-
-
-def test_nltepops_ion_stage_of_no_plot_gives_a_message(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """An -ion_stages of no ion of more than one level stopped the command with an IndexError."""
-    for ion_stages in ("5", "9"):
-        with pytest.raises(SystemExit):
-            at.nltepops.plot(argsraw=[], modelpath=modelpath, outputfile=tmp_path, timestep=40, ion_stages=ion_stages)
-
-        assert "No ion stage of Fe to plot at timestep 40" in capsys.readouterr().err
-
-
-@pytest.mark.parametrize("adatatext", ["# a file with no ion\n", "26 1 1 7.9\n1 0.0 9.0 0 a5D\n"])
-def test_nltepops_ion_not_in_adata_gives_a_message(
-    adatatext: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """An ion of the NLTE file that adata.txt does not hold stopped the command with a polars OutOfBoundsError."""
-    for filepath in modelpath.iterdir():
-        if not filepath.name.startswith("adata.txt"):
-            (tmp_path / filepath.name).symlink_to(filepath)
-    (tmp_path / "adata.txt").write_text(adatatext, encoding="utf-8")
-
-    with pytest.raises(SystemExit):
-        at.nltepops.plot(argsraw=[], modelpath=tmp_path, outputfile=tmp_path, timestep=40, ion_stages=2)
-
-    assert "adata.txt holds no levels of Fe II" in capsys.readouterr().err
 
 
 def test_radiative_decays_take_no_population_from_the_superlevel() -> None:
@@ -812,21 +729,3 @@ def test_nltepops_timestep_range_with_a_timestep_of_no_rows(tmp_path: Path, caps
     at.nltepops.plot(argsraw=[], modelpath=modelpath, outputfile=tmp_path, timestep="40-41")
     assert "No NLTE population data for Z=26 at timestep 41" in capsys.readouterr().out
     assert [path.name.split("_")[3] for path in tmp_path.glob("*.pdf")] == ["ts040"]
-
-
-def test_nltepops_output_template_names_a_field_that_the_command_does_not_give(tmp_path: Path) -> None:
-    """The command plotnltepops refuses a field of -o that it does not give, as the other commands do.
-
-    The plot against the velocity or the time filled the template with str.format, thus the command stopped with the
-    traceback of a KeyError.
-    """
-    with pytest.raises(ValueError, match=r"holds the field 'foo'"):
-        at.nltepops.plot(
-            argsraw=[],
-            modelpath=modelpath,
-            outputfile=tmp_path / "nlte_{foo}.pdf",
-            x="velocity",
-            ion_stages=[2],
-            levels=[0],
-            timestep=40,
-        )

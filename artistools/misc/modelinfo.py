@@ -89,8 +89,11 @@ def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[
 
 @on_model_host
 def read_grid_mapping(modelpath: Path) -> tuple[dict[int, list[int]], dict[int, int], bool]:
-    """Return the result of get_grid_mapping for a model path. The read runs on the host of a remote model."""
-    filename = firstexisting("grid.out", tryzipped=True, folder=modelpath)
+    """Return the result of get_grid_mapping for a model path. The read runs on the host of a remote model.
+
+    sn3d writes grid.out in the model folder alone, and a grid.out in a subfolder is of a different model.
+    """
+    filename = firstexisting("grid.out", tryzipped=True, folder=modelpath, search_subfolders=False)
     with polars_source_open(filename) as source:
         dfgrid = pl.read_csv(
             source,
@@ -553,19 +556,12 @@ def get_mpiranklist(
     if modelgridindex is None:
         return all_ranks()
 
-    if isinstance(modelgridindex, Iterable):
-        # a comparison of a numpy array with an empty list raises, thus the size of the array decides
-        cells = np.fromiter(modelgridindex, dtype=np.int64)
-        if cells.size == 0 or (cells < 0).any():
-            return all_ranks()
+    # a comparison of a numpy array with an empty list raises, thus the size of the array decides
+    cells = np.fromiter(modelgridindex if isinstance(modelgridindex, Iterable) else [modelgridindex], dtype=np.int64)
+    if cells.size == 0 or (cells < 0).any():
+        return all_ranks()
 
-        return sorted(set(get_mpiranks_of_cells(modelpath, cells).tolist()))
-
-    # in case modelgridindex is a single number rather than an iterable
-    if modelgridindex < 0:
-        return range(min(get_nprocs(modelpath), get_npts_model(modelpath)))
-
-    return [get_mpirankofcell(modelgridindex, modelpath=modelpath)]
+    return sorted(set(get_mpiranks_of_cells(modelpath, cells).tolist()))
 
 
 def get_rank_outputfiles(folderpath: Path, filenameformat: str) -> dict[int, Path]:
@@ -1057,10 +1053,7 @@ def get_nonempty_cellcounts(modelpath: Path) -> "Mapping[int, int] | None":
     cells alone, thus it writes no output file, and the absence of that file is not a fault.
     """
     dfranks = get_rankassignments(modelpath)
-    if dfranks is None:
-        return None
-
-    if "ndo_nonempty" not in dfranks.columns:
+    if dfranks is None or "ndo_nonempty" not in dfranks.columns:
         return None
 
     return MappingProxyType(dict(zip(dfranks["rank"], dfranks["ndo_nonempty"], strict=True)))

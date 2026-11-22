@@ -1,6 +1,7 @@
 """Shared helpers for command-line argument parsing and list/path argument normalisation."""
 
 import argparse
+import contextlib
 import copy
 import itertools
 import math
@@ -347,12 +348,22 @@ def addarg_output(
     kwargs: dict[str, t.Any] = {
         "dest": "outputfile",
         "default": default,
-        "type": Path,
+        "type": output_path_from_text,
         "help": f"{helptext or defaulthelptext}. {rule}",
     }
 
     arggroup(parser, "Output").add_argument("-outputfile", "-outputpath", "-o", **kwargs)
     parser.set_defaults(outputkind=kind, outputdefaultname=defaultname)
+
+
+def output_path_from_text(text: str) -> Path:
+    """Return the Path of -o, and expand ~ in it.
+
+    A shell does not expand ~ after =, e.g. in --outputfile=~/x. A user with no home folder keeps the text.
+    """
+    with contextlib.suppress(RuntimeError):
+        return Path(text).expanduser()
+    return Path(text)
 
 
 def resolve_output_argument(args: argparse.Namespace) -> None:

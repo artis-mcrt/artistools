@@ -665,8 +665,7 @@ def make_plot_populations_with_time_or_velocity(
     # a range of times puts the series of each time on one axes, thus a series also names its time
     showtime = args.x == "velocity" and not args.subplots and len(timedayslist) > 1
 
-    cols = 1
-    fig, axesgrid = make_frame_figure(args, rows=rows, cols=cols, aspect=0.847, sharey=True)
+    fig, axesgrid = make_frame_figure(args, rows=rows, aspect=0.847, sharey=True)
     ax = axesgrid.flatten() if args.subplots else axesgrid[0][0]
 
     tablesofaxis: list[tuple[mplax.Axes, list[pl.DataFrame]]] = []
@@ -680,12 +679,9 @@ def make_plot_populations_with_time_or_velocity(
             ),
         ))
 
-    # the axis label size comes from the artistools matplotlibrc
-    labelfontsize = None
     xlabel = "Time Since Explosion [days]" if args.x == "time" else r"Cell mid-point velocity [km s$^{-1}$]"
-    ylabel = r"Level population [cm$^{-3}$]"
-
-    set_axis_labels(fig, ax, xlabel, ylabel, labelfontsize, args)
+    # the axis label size comes from the artistools matplotlibrc
+    set_axis_labels(fig, ax, xlabel, r"Level population [cm$^{-3}$]", None, args)
     if args.subplots:
         for plotnumber, axis in enumerate(ax):
             axis.set_yscale("log")

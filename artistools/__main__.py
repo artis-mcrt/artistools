@@ -176,7 +176,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 "artistools and not in your arguments. Set ARTISTOOLS_TRACEBACK=1 to get the full traceback"
             )
         raise SystemExit(1) from exc
-    except get_polars_panic() as exc:
+    # a panic of polars is a BaseException, and not an Exception
+    except pl.exceptions.PanicException as exc:
         if not is_truncated_file_panic(exc) or os.environ.get("ARTISTOOLS_TRACEBACK"):
             raise
         from artistools.misc import print_error
@@ -215,11 +216,6 @@ def get_error_help(exc: BaseException) -> str:
 
     istruncated = isinstance(exc, EOFError) or (isinstance(exc, OSError) and "unexpected end of file" in str(exc))
     return "\n".join([*get_help_notes(exc), *([TRUNCATED_FILE_HELP] if istruncated else [])])
-
-
-def get_polars_panic() -> type[BaseException]:
-    """Return the class of a panic of polars, which is a BaseException, and not an Exception."""
-    return pl.exceptions.PanicException
 
 
 def is_truncated_file_panic(exc: BaseException) -> bool:

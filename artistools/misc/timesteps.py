@@ -308,6 +308,13 @@ def get_single_timestep(timestep: str | int | None, modelpath: Path | str) -> in
     return timesteps[0]
 
 
+def get_day_range_overlap_days(modelpath: Path, dayrange: tuple[float, float]) -> float:
+    """Return the length of the part of the range in days that the timesteps of the model cover, below 0 for none."""
+    return min(dayrange[1], get_timestep_times(modelpath, loc="end")[-1]) - max(
+        dayrange[0], get_timestep_times(modelpath, loc="start")[0]
+    )
+
+
 def apply_time_range_args(
     args: argparse.Namespace, modelpaths: Sequence[Path | str], clamp_to_timesteps: bool = True
 ) -> None:
@@ -331,12 +338,31 @@ def apply_time_range_args(
             raise ValueError(msg)
         rangemin, rangemax = dayrange
     else:
-        _, _, rangemin, rangemax = get_time_range(
-            artispaths[0],
-            timestep_range_str=args.timestep,
-            timedays_range_str=args.timedays,
-            clamp_to_timesteps=clamp_to_timesteps,
-        )
+        # the plot skips a model that does not cover a range in days. Each other model clamps the range to its own
+        # timesteps, and the axis spans the clamped ranges of all these models
+        validranges = []
+        if args.timestep is None and dayrange is not None:
+            for path in artispaths:
+                if get_day_range_overlap_days(path, dayrange) < 0.0:
+                    continue
+                try:
+                    _, _, pathmin, pathmax = get_time_range(
+                        path, timedays_range_str=args.timedays, clamp_to_timesteps=clamp_to_timesteps
+                    )
+                except ValueError:
+                    continue
+                validranges.append((pathmin, pathmax))
+        if validranges:
+            rangemin = min(pathmin for pathmin, _ in validranges)
+            rangemax = max(pathmax for _, pathmax in validranges)
+        else:
+            # no model gives the range, thus the error of the first model tells the user why
+            _, _, rangemin, rangemax = get_time_range(
+                artispaths[0],
+                timestep_range_str=args.timestep,
+                timedays_range_str=args.timedays,
+                clamp_to_timesteps=clamp_to_timesteps,
+            )
 
         # the plot holds one time axis, thus one range in days must serve every model. A timestep
         # names different days on a different timestep grid. The days of the first model would
@@ -483,7 +509,6 @@ def get_time_range(
 
         if timemax is None:
             timemax = tends[-1]
-        assert timemax is not None
 
         for timestep, tmid in enumerate(tmids):
             if tmid <= float(timemax):
@@ -516,17 +541,10 @@ def get_time_range(
     # when the range was given as timesteps there is no requested time in days, so the timestep bounds are the only
     # times available even if the caller asked not to clamp
     if time_days_lower is None:
-        assert timestepmin is not None
         time_days_lower = tstarts[timestepmin] if (clamp_to_timesteps or user_timemin is None) else float(user_timemin)
 
     if time_days_upper is None:
-        assert timestepmax is not None
         time_days_upper = tends[timestepmax] if (clamp_to_timesteps or user_timemax is None) else float(user_timemax)
-
-    assert timestepmin is not None
-    assert timestepmax is not None
-    assert time_days_lower is not None
-    assert time_days_upper is not None
 
     return timestepmin, timestepmax, time_days_lower, time_days_upper
 
