@@ -1466,7 +1466,7 @@ def get_spherical_slice_velocity_cmps(slicevelocity_cmps: float, vmax_cmps: floa
 
 
 # an image of 2000 x 2000 points takes approximately 130 MB for the cell search
-MAX_ANGULAR_IMAGE_POINTS = 1000
+MAX_REFINED_IMAGE_POINTS = 1000
 
 
 def get_spherical_image_cell_indices(
@@ -1476,11 +1476,10 @@ def get_spherical_image_cell_indices(
 
     A plot of such a model has no cell with straight edges on the axes of an image. Thus the image is a grid of
     points with equal steps, as the image of a 1D model is. Each point takes the value of the cell that holds it.
-    The count of the points from 0 to vmax is 200, or 2 n_r for a model with more than 100 radial shells. It is also
-    large enough to give two points across the narrowest angular cell at the outer edge of the innermost shell, to a
-    maximum of MAX_ANGULAR_IMAGE_POINTS. The outer edge of each shell is at that radius or further out, thus each
-    cell then has two points across it. Above the maximum, the function gives a warning with the radius inside which
-    a cell of the narrowest angular width has less than two points across it.
+    The count of the points from 0 to vmax is 200, or 2 n_r for a model with more than 100 radial shells. The plane of
+    the image cuts the outer edge of the innermost shell that it cuts in a circle, and each other circle is larger. To
+    a maximum of MAX_REFINED_IMAGE_POINTS, the count also gives two points across the radius of that circle and
+    across the narrowest angular cell on it. Above the maximum, the function gives a warning.
 
     Without a sliceaxis, the image has the cylindrical radius from 0 to vmax and z from -vmax to vmax as its axes.
     The points are in the half-plane y = 0 with x > 0. With a sliceaxis, the points are in the plane normal to that
@@ -1488,21 +1487,27 @@ def get_spherical_image_cell_indices(
     array has one row for each point of the second axis.
     """
     vmax_cmps = float(modelmeta["vmax_cmps"])
+    r_edges_on_vmax = np.asarray(modelmeta["vel_r_edges_kmps"], dtype=np.float64) / modelmeta["vel_r_edges_kmps"][-1]
+    planedistance_on_vmax = abs(slicevelocity_cmps) / vmax_cmps if sliceaxis is not None else 0.0
+    cutouteredges_on_vmax = r_edges_on_vmax[1:][r_edges_on_vmax[1:] > planedistance_on_vmax]
+    # a plane outside the grid cuts no shell
+    cutouteredge_on_vmax = float(cutouteredges_on_vmax[0]) if cutouteredges_on_vmax.size else planedistance_on_vmax
+    innercircle_on_vmax = math.sqrt(max(cutouteredge_on_vmax**2 - planedistance_on_vmax**2, 0.0))
+
     angularedgekeys = ("theta_edges_radians", "phi_edges_radians")
     minangularwidth = min(float(np.diff(modelmeta[key]).min()) for key in angularedgekeys if key in modelmeta)
-    # At the radius r, a cell of the narrowest angular width has r * minangularwidth / (vmax / pointcount) points
-    # across it. The outer edge of the innermost shell is the smallest outer radius of a cell
-    innershellouter_on_vmax = modelmeta["vel_r_edges_kmps"][1] / modelmeta["vel_r_edges_kmps"][-1]
-    angularpointcount = math.ceil(2.0 / (minangularwidth * innershellouter_on_vmax))
-    pointcount = max(
-        200, 2 * (len(modelmeta["vel_r_edges_kmps"]) - 1), min(angularpointcount, MAX_ANGULAR_IMAGE_POINTS)
-    )
-    resolvedradius_on_vmax = 2.0 / (minangularwidth * pointcount)
-    if angularpointcount > pointcount:
+    # At the radius r in the plane, the arc of the narrowest angular cell is r * minangularwidth, and the step of the
+    # points is vmax / pointcount. The width 1 rad gives an arc equal to the radius
+    narrowerwidth = min(minangularwidth, 1.0)
+    innerpointcount = math.ceil(2.0 / (narrowerwidth * innercircle_on_vmax)) if innercircle_on_vmax > 0 else 0
+    pointcount = max(200, 2 * (len(r_edges_on_vmax) - 1), min(innerpointcount, MAX_REFINED_IMAGE_POINTS))
+    if innerpointcount > pointcount:
+        resolvedradius_on_vmax = 2.0 / (narrowerwidth * pointcount)
         print_warning(
             f"The image has {pointcount} points from 0 to vmax, and the narrowest angular cell is"
-            f" {minangularwidth:.3g} rad wide. Inside {min(resolvedradius_on_vmax, 1.0):.3g} vmax, a cell of this"
-            " width has less than two points across it, thus such a cell can have no point in the image"
+            f" {minangularwidth:.3g} rad wide. Inside {min(resolvedradius_on_vmax, 1.0):.3g} vmax of the centre of"
+            " the plane, a cell can have less than two points across it, thus such a cell can have no point in the"
+            " image"
         )
     pointwidth = vmax_cmps / pointcount
     positive_points = np.asarray((np.arange(pointcount) + 0.5) * pointwidth, dtype=np.float64)

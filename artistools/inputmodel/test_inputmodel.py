@@ -4476,7 +4476,10 @@ def test_spherical_image_has_a_point_in_each_narrow_polar_cell(capsys: pytest.Ca
     assert outercells == set(range(1, 2 * 1000, 2))
     # the inner shell ends at 0.5 vmax, and two points across each of its polar cells need more than 1000 points
     captured = capsys.readouterr()
-    assert "Inside 0.637 vmax, a cell of this width has less than two points across it" in captured.out + captured.err
+    assert (
+        "Inside 0.637 vmax of the centre of the plane, a cell can have less than two points across it"
+        in captured.out + captured.err
+    )
 
     # each polar cell of a usual grid, uniform in cos(theta), has a point in each shell
     usualcells = at.inputmodel.get_spherical_image_cell_indices(
@@ -4490,6 +4493,35 @@ def test_spherical_image_has_a_point_in_each_narrow_polar_cell(capsys: pytest.Ca
     captured = capsys.readouterr()
     assert "less than two points across it" not in captured.out + captured.err
     assert set(usualcells.ravel().tolist()) == {-1, *range(25 * 16)}
+
+
+def test_spherical_image_has_a_point_in_a_small_inner_shell_and_in_each_phi_cell_of_a_far_slice() -> None:
+    """The image has a point in a small inner shell with one polar cell, and in each phi cell of a slice near vmax.
+
+    The count of the points came from the narrowest angular cell at the outer edge of the innermost shell. A wide
+    polar cell then gave too few points for the radius of that shell. A slice near vmax cuts the shells in a small
+    circle, and its phi cells were narrower than the step of the points.
+    """
+    innershellmeta = {
+        "coordinates": "spherical2d",
+        "vmax_cmps": 1e9,
+        "vel_r_edges_kmps": [0.0, 30.0, 10000.0],
+        "theta_edges_radians": [0.0, math.pi],
+    }
+    cellindices = at.inputmodel.get_spherical_image_cell_indices(innershellmeta, sliceaxis=None)
+    assert 0 in cellindices
+
+    nphi = 360
+    farslicemeta = {
+        "coordinates": "spherical3d",
+        "vmax_cmps": 1e9,
+        "vel_r_edges_kmps": [0.0, 5000.0, 10000.0],
+        "theta_edges_radians": np.arccos(np.linspace(1.0, -1.0, 5)).tolist(),
+        "phi_edges_radians": np.linspace(0.0, 2.0 * math.pi, nphi + 1).tolist(),
+    }
+    cellindices = at.inputmodel.get_spherical_image_cell_indices(farslicemeta, "z", 0.99e9)
+    # the model grid index is i_r + 2 * (i_theta + 4 * i_phi)
+    assert {int(cellindex) // 8 for cellindex in cellindices.ravel() if cellindex >= 0} == set(range(nphi))
 
 
 def test_spherical_cell_search_of_an_image_agrees_with_the_cell_search_of_the_packets() -> None:
