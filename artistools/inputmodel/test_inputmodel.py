@@ -4756,6 +4756,12 @@ def test_otherstable_columns_give_the_element_mass_fractions() -> None:
     for elcol in ("X_Fe", "X_Co", "X_Ni"):
         assert dfelements[elcol].to_list() == pytest.approx(dfelabundances[elcol].to_list(), rel=1e-6)
 
+    # sn3d reads a small negative nuclide mass fraction as 0, thus the otherstable value must not take it
+    dfnegative = at.inputmodel.core.with_otherstable_columns(
+        dfmodel.with_columns(X_Ni57=pl.Series([-5e-7, 0.25])), dfelabundances
+    )
+    assert dfnegative["X_Ni_otherstable"].to_list() == [0.125, 0.0]
+
     # a null or a NaN mass fraction is not known, and the otherstable column would give it as 0
     for unknownvalue in (None, float("nan")):
         with pytest.raises(ValueError, match="The element abundances have no finite value for 1 cells with density"):

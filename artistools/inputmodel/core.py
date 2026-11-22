@@ -1808,6 +1808,15 @@ def get_elemabundances_of_model_columns(dfmodel: pl.LazyFrame) -> pl.LazyFrame:
     )
 
 
+def clamped_nuclide_massfrac(col: str) -> pl.Expr:
+    """Return the mass fraction of a nuclide column, with 0 for a negative value, as sn3d reads it.
+
+    sn3d stops for a value below -1e-6 and reads a value from -1e-6 to 0 as 0. Thus the sum of the nuclide columns
+    of an element must also take 0, or the otherstable value of the element gets the negative part.
+    """
+    return pl.col(col).cast(pl.Float64).clip(lower_bound=0.0)
+
+
 def with_otherstable_columns(dfmodel: pl.DataFrame, dfelabundances: pl.DataFrame) -> pl.DataFrame:
     """Return the cells of a model with the columns X_<element>_otherstable that give the element mass fractions.
 
@@ -1866,7 +1875,7 @@ def with_otherstable_columns(dfmodel: pl.DataFrame, dfelabundances: pl.DataFrame
         nuclidecols = elementcols.get(atomic_number, [])
         elmassfrac = pl.col(elcol).fill_null(0.0).cast(pl.Float64)
         remainder = elmassfrac - (
-            pl.sum_horizontal([pl.col(col).cast(pl.Float64) for col in nuclidecols]) if nuclidecols else pl.lit(0.0)
+            pl.sum_horizontal([clamped_nuclide_massfrac(col) for col in nuclidecols]) if nuclidecols else pl.lit(0.0)
         )
         remainders[f"{elcol}{OTHERSTABLE_SUFFIX}"] = (
             pl
@@ -1888,7 +1897,7 @@ def with_otherstable_columns(dfmodel: pl.DataFrame, dfelabundances: pl.DataFrame
         .select(
             "inputcellid",
             hasdensity.alias("hasdensity"),
-            pl.sum_horizontal([pl.col(col).cast(pl.Float64) for col in nuclidecolsofmodel] or [pl.lit(0.0)]).alias(
+            pl.sum_horizontal([clamped_nuclide_massfrac(col) for col in nuclidecolsofmodel] or [pl.lit(0.0)]).alias(
                 "nuclidesum"
             ),
         )
