@@ -785,6 +785,7 @@ def scan_local_modeldata(
     modelpath: Path, get_elemabundances: bool = False, printwarningsonly: bool = False
 ) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
     """Read model.txt, and abundances.txt with get_elemabundances, for a local path that scan_modeldata resolved."""
+    modelfolder = modelpath
     if modelpath.is_dir():
         textfilepath = firstexisting("model.txt", folder=modelpath, tryzipped=True)
     elif (
@@ -792,6 +793,7 @@ def scan_local_modeldata(
         namedfile := firstexisting_or_none(modelpath.name, folder=modelpath.parent, search_subfolders=False)
     ) is not None:
         textfilepath = namedfile
+        modelfolder = modelpath.parent
     elif path_is_codecomparison(modelpath):
         textfilepath = Path(get_model_text_folder(modelpath), "model.txt")
     else:
@@ -821,7 +823,7 @@ def scan_local_modeldata(
     firstinputcellid = dfmodel.select(pl.col("inputcellid").first()).collect().item()
 
     if get_elemabundances:
-        abundancedata = scan_initelemabundances(modelpath, printwarningsonly=printwarningsonly)
+        abundancedata = scan_initelemabundances(modelfolder, printwarningsonly=printwarningsonly)
         # an inner join drops a cell that abundances.txt does not give, and each mass then leaves that cell out
         missingcellcount = dfmodel.join(abundancedata, how="anti", on="inputcellid").select(pl.len()).collect().item()
         if missingcellcount:

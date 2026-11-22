@@ -951,30 +951,37 @@ def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
 def get_vspecpol_rank_files(modelpath: Path | str) -> list[Path]:
     """Return the file of the virtual packet spectra of each MPI rank, which make_virtual_spectra_summed_file sums.
 
-    The search covers the model folder and then its run folders. A subfolder with an input.txt is a different model,
-    thus the search skips it.
+    A restarted run reads the sums of the run before it, thus the newest run folder with a file for each rank holds
+    the complete sums. The search covers the model folder, then the run folders from the newest. It also covers the
+    folder vspecpol in each of them, where ARTIS writes the files since 2026-09-27. A subfolder with an input.txt is
+    a different model.
     """
     modelfolder = Path(modelpath)
-    searchfolders = [
-        modelfolder,
-        *(folder for folder in get_run_subfolders(modelfolder)[:-1] if not folder_is_artis_model(folder)),
+    subfolders_newest_first = [
+        folder for folder in reversed(get_run_subfolders(modelfolder)[:-1]) if not folder_is_artis_model(folder)
     ]
-    rankfiles = []
-    for mpirank in range(get_nprocs(modelfolder)):
-        filenames = [f"vspecpol_{mpirank:04d}.out", f"vspecpol_{mpirank}-0.out"]
-        rankfile = next(
-            (
-                path
-                for folder in searchfolders
-                if (path := firstexisting_or_none(filenames, folder=folder, search_subfolders=False)) is not None
-            ),
-            None,
-        )
-        if rankfile is None:
-            msg = f"{modelfolder} and its run folders hold no {filenames[0]} and no {filenames[1]}"
-            raise FileNotFoundError(msg)
-        rankfiles.append(rankfile)
-    return rankfiles
+    # a dict keeps the first place of the folder vspecpol of the model folder, which is also a subfolder
+    searchfolders = dict.fromkeys(
+        searchfolder
+        for folder in (modelfolder, *subfolders_newest_first)
+        for searchfolder in (folder, folder / "vspecpol")
+    )
+    nprocs = get_nprocs(modelfolder)
+    for folder in searchfolders:
+        rankfiles = [
+            rankfile
+            for mpirank in range(nprocs)
+            if (
+                rankfile := firstexisting_or_none(
+                    [f"vspecpol_{mpirank:04d}.out", f"vspecpol_{mpirank}-0.out"], folder=folder, search_subfolders=False
+                )
+            )
+            is not None
+        ]
+        if len(rankfiles) == nprocs:
+            return rankfiles
+    msg = f"No run folder of {modelfolder} holds a vspecpol_NNNN.out file for each of the {nprocs} MPI ranks"
+    raise FileNotFoundError(msg)
 
 
 def vspecpol_total_is_older_than_its_rank_files(modelpath: Path, totalfile: Path) -> bool:

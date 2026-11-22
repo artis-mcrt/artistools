@@ -4013,3 +4013,15 @@ def test_from_e2e_model_rejects_unequal_3d_dimensions_before_a_write(tmp_path: P
     at.inputmodel.from_e2e_model.main(argsraw=[*gridargs, "-dimensions", "1", "-o", str(tmp_path / "model1d")])
     _, modelmeta1d = at.inputmodel.scan_modeldata(tmp_path / "model1d", printwarningsonly=True)
     assert modelmeta1d["dimensions"] == 1
+
+
+def test_scan_modeldata_of_a_model_file_reads_the_abundances_beside_it() -> None:
+    """The path of a model file, e.g. model.txt, takes the abundances.txt of its folder.
+
+    The reader searched the path of the file as a folder, thus it found no abundances.txt.
+    """
+    dffromfolder, _ = at.inputmodel.scan_modeldata(modelpath, get_elemabundances=True, printwarningsonly=True)
+    dffromfile, _ = at.inputmodel.scan_modeldata(
+        modelpath / "model.txt", get_elemabundances=True, printwarningsonly=True
+    )
+    pltest.assert_frame_equal(dffromfile.collect(), dffromfolder.collect())
