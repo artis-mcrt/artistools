@@ -11,7 +11,6 @@ from artistools.misc import addarg_output
 from artistools.misc import parse_cli_args
 from artistools.misc import parse_vpkt_input
 from artistools.misc import print_saved
-from artistools.misc import print_warning
 from artistools.misc import resolve_outputfile
 from artistools.misc import VpktConfig
 
@@ -21,12 +20,6 @@ OPACITY_CHOICE_HELP = (
     "0 full opacity, -1 no lines, -2 no bound-free, -3 no free-free, -4 no electron scattering,"
     " or a positive atomic number to exclude that element's bound-bound opacity"
 )
-
-# defaults of the vpkt.h constants that read_vpktparameterfile() asserts against, so only warn
-ARTIS_VSPEC_TIMEMIN_DAYS = 3.0
-ARTIS_VSPEC_TIMEMAX_DAYS = 8.0
-ARTIS_VSPEC_LAMBDAMIN_ANGSTROMS = 3500.0
-ARTIS_VSPEC_LAMBDAMAX_ANGSTROMS = 10000.0
 
 
 def fmtnum(value: float) -> str:
@@ -127,7 +120,7 @@ def fatal_config_error(config: VpktConfig) -> str | None:
     """Return the reason ARTIS would abort on this config, or None if it would accept it.
 
     The tests follow read_vpktparameterfile() in vpkt.cc. They leave out the limits of the constants that vpkt.h
-    compiles in, because a build can have other constants. check_config() gives a warning for those.
+    compiles in, because a build can have other constants, and sn3d stops with its own message for them.
     """
     if config.opacityexclusions and config.opacityexclusions[0] != 0:
         return first_opacity_choice_error(config.opacityexclusions[0])
@@ -168,34 +161,37 @@ def fatal_config_error(config: VpktConfig) -> str | None:
             )
         if not config.vgrid_lambda_ranges:
             return "The velocity grid map needs at least one wavelength range"
+        # read_vpktparameterfile() stops for a velocity grid map outside the virtual spectra (ARTIS #667)
+        if config.override_tminmax and not (
+            config.vspec_tmin_in_days <= config.tmin_vgrid_in_days
+            and config.tmax_vgrid_in_days <= config.vspec_tmax_in_days
+        ):
+            return (
+                f"The time range [{fmtnum(config.tmin_vgrid_in_days)}, {fmtnum(config.tmax_vgrid_in_days)}] d of the"
+                " velocity grid map must be inside the time window"
+                f" [{fmtnum(config.vspec_tmin_in_days)}, {fmtnum(config.vspec_tmax_in_days)}] d of the virtual spectra"
+            )
+        if config.custom_lambda_ranges:
+            for gridrange in config.vgrid_lambda_ranges:
+                if not lambda_range_is_covered(gridrange, config.custom_lambda_ranges):
+                    return (
+                        f"The wavelength range [{fmtnum(gridrange[0])}, {fmtnum(gridrange[1])}] A of the velocity"
+                        " grid map must be inside the wavelength ranges of the virtual spectra"
+                    )
 
     return None
 
 
-def check_config(config: VpktConfig) -> list[str]:
-    """Return warnings for settings outside the limits vpkt.h was compiled with.
+def lambda_range_is_covered(lambdarange: tuple[float, float], coveringranges: list[tuple[float, float]]) -> bool:
+    """Return True if the union of coveringranges holds lambdarange, as nu_interval_is_in_spectrum_ranges of vpkt.cc.
 
-    These only warn because a build may legitimately have been made with different constants.
+    Two ranges that touch cover their common edge.
     """
-    warnings = []
-    if config.override_tminmax and not (
-        ARTIS_VSPEC_TIMEMIN_DAYS <= config.vspec_tmin_in_days <= config.vspec_tmax_in_days <= ARTIS_VSPEC_TIMEMAX_DAYS
-    ):
-        warnings.append(
-            f"time window [{fmtnum(config.vspec_tmin_in_days)}, {fmtnum(config.vspec_tmax_in_days)}] d falls outside"
-            f" the default VSPEC_TIMEMIN/VSPEC_TIMEMAX of [{fmtnum(ARTIS_VSPEC_TIMEMIN_DAYS)},"
-            f" {fmtnum(ARTIS_VSPEC_TIMEMAX_DAYS)}] d in vpkt.h"
-        )
-
-    for lambdamin, lambdamax in config.custom_lambda_ranges:
-        if not ARTIS_VSPEC_LAMBDAMIN_ANGSTROMS <= lambdamin < lambdamax <= ARTIS_VSPEC_LAMBDAMAX_ANGSTROMS:
-            warnings.append(
-                f"wavelength range [{fmtnum(lambdamin)}, {fmtnum(lambdamax)}] A falls outside the default"
-                f" [{fmtnum(ARTIS_VSPEC_LAMBDAMIN_ANGSTROMS)}, {fmtnum(ARTIS_VSPEC_LAMBDAMAX_ANGSTROMS)}] A"
-                " set by VSPEC_NUMIN/VSPEC_NUMAX in vpkt.h"
-            )
-
-    return warnings
+    coveredupto, lambdamax = lambdarange
+    for rangemin, rangemax in sorted(coveringranges):
+        if rangemin <= coveredupto:
+            coveredupto = max(coveredupto, rangemax)
+    return coveredupto >= lambdamax
 
 
 def format_vpkt_input(config: VpktConfig) -> str:
@@ -438,9 +434,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             config = edit_config_interactively(config)
         else:
             print("stdin is not a terminal, so keeping the settings above without prompting")
-
-    for warning in check_config(config):
-        print_warning(f"{warning}. ARTIS will abort unless it was built with matching constants.")
 
     outputfile.write_text(format_vpkt_input(config), encoding="utf-8")
     print_saved(outputfile)

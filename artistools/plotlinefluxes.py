@@ -312,11 +312,14 @@ def get_line_luminosities_from_pops(
         A_values = []
         delta_ergs_values = []
         for upperlevelindex, lowerlevelindex in zip(feature.upperlevelindices, feature.lowerlevelindices, strict=False):
-            A_values.append(
-                dftransitions_ion.filter((pl.col("upper") == upperlevelindex) & (pl.col("lower") == lowerlevelindex))[
-                    "A"
-                ].item(0)
-            )
+            pairA = dftransitions_ion.filter(
+                (pl.col("upper") == upperlevelindex) & (pl.col("lower") == lowerlevelindex)
+            )["A"]
+            if pairA.is_empty():
+                msg = f"transitiondata.txt holds no transition from level {upperlevelindex} to level {lowerlevelindex}"
+                raise IndexError(msg)
+            # ARTIS merges the rows of one pair of levels into one line with the sum of their A values
+            A_values.append(pairA.sum())
 
             delta_ergs_values.append(
                 (ion["levels"]["energy_ev"].item(upperlevelindex) - ion["levels"]["energy_ev"].item(lowerlevelindex))
@@ -492,10 +495,8 @@ def get_closelines(
     The wavelength range includes its two bounds. A wavelength bound of zero or less, or a level index below zero,
     applies no limit.
     """
-    lzdflinelistclosematches = (
-        scan_linelist(modelpath)
-        .with_columns(upper_level=pl.col("upperlevelindex") + 1, lower_level=pl.col("lowerlevelindex") + 1)
-        .filter(pl.col("atomic_number") == atomic_number, pl.col("ion_stage") == ion_stage)
+    lzdflinelistclosematches = scan_linelist(modelpath).filter(
+        pl.col("atomic_number") == atomic_number, pl.col("ion_stage") == ion_stage
     )
 
     if lambdamin is not None and lambdamin > 0:
@@ -659,12 +660,8 @@ def get_comparison_table(series: str, time_days: Sequence[float], fratios: Seque
 
 def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
     """Plot the luminosity ratio of pairs of spectral features against time, and save the figure."""
-    nrows = 1
-    fig, axesgrid = make_frame_figure(args, rows=nrows, sharey=False)
+    fig, axesgrid = make_frame_figure(args, rows=1, sharey=False)
     axes = axesgrid[:, 0]
-
-    assert isinstance(axes, np.ndarray)
-
     axis = axes[0]
     axis.set_yscale("log")
 
@@ -753,8 +750,7 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
         tmax = max(tmax, dflcdata.select(pl.col("time").max()).item())
 
     if args.emfeaturesearch[0][:3] == (26, 2, 7155) and args.emfeaturesearch[1][:3] == (26, 2, 12570):
-        axis.set_ylim(ymin=0.05)
-        axis.set_ylim(ymax=7)
+        axis.set_ylim(0.05, 7)
         arr_tdays = np.linspace(tmin, tmax, 3)
         arr_floersfit = [10 ** (0.0043 * timedays - 1.65) for timedays in arr_tdays]
         for ax in axes:
@@ -764,9 +760,7 @@ def make_luminosity_ratio_plot(args: argparse.Namespace) -> None:
         if args.floersmodelratiofile:
             dfcomparisons.append(plot_floers_model_ratios(axis, Path(args.floersmodelratiofile), args))
     m18_tdays = np.array([206, 229, 303, 339])
-    m18_pew = {}
-    m18_pew[26, 2, 7155] = np.array([618, 417, 406, 474])
-    m18_pew[28, 2, 7378] = np.array([157, 256, 236, 309])
+    m18_pew = {(26, 2, 7155): np.array([618, 417, 406, 474]), (28, 2, 7378): np.array([157, 256, 236, 309])}
     if args.emfeaturesearch[1][:3] in m18_pew and args.emfeaturesearch[0][:3] in m18_pew:
         axis.set_ylim(ymax=12)
         arr_fratio = m18_pew[args.emfeaturesearch[1][:3]] / m18_pew[args.emfeaturesearch[0][:3]]
@@ -825,15 +819,9 @@ def plot_nne_te_points(
         zip(np.asarray(em_log10nne, dtype=float).tolist(), np.asarray(em_Te, dtype=float).tolist(), strict=True)
     )
 
-    arr_log10nne: list[float] = []
-    arr_te: list[float] = []
-    if hitcount:
-        log10nne_te_pairs = list(hitcount.keys())
-        arr_log10nne = [x[0] for x in log10nne_te_pairs]
-        arr_te = [x[1] for x in log10nne_te_pairs]
-    arr_weight = np.array([hitcount[x, y] for x, y in zip(arr_log10nne, arr_te, strict=False)])
-    arr_weight = (arr_weight / normtotalpackets) * 500
-    arr_size = np.sqrt(arr_weight) * 10
+    arr_log10nne = [log10nne for log10nne, _ in hitcount]
+    arr_te = [te for _, te in hitcount]
+    arr_size = np.sqrt(np.array(list(hitcount.values())) / normtotalpackets * 500) * 10
 
     alpha = 0.8
     axis.scatter(arr_log10nne, arr_te, s=arr_size, marker=marker, color=color_adj, lw=0, alpha=alpha)

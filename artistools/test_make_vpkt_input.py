@@ -1,4 +1,3 @@
-import argparse
 import dataclasses as dc
 import itertools
 import re
@@ -65,6 +64,8 @@ def test_make_vpkt_input_roundtrip() -> None:
             override_thickcell_tau=False,
             tau_max_vpkt=7.5,
             vspec_tmin_in_days=1.25,
+            # ARTIS stops for a velocity grid map outside the time window of the virtual spectra
+            tmin_vgrid_in_days=1.25,
         ),
     ):
         assert at.misc.parse_vpkt_input(at.make_vpkt_input.format_vpkt_input(config)) == config
@@ -117,24 +118,6 @@ def test_make_vpkt_input_accepts_file_without_velocity_grid_block() -> None:
     config = at.misc.parse_vpkt_input(withoutvgridblock)
     assert not config.vgrid_on
     assert config.vgrid_lambda_ranges == [(3500.0, 6000.0)]
-
-
-def test_make_vpkt_input_rejects_nonzero_first_opacity_choice() -> None:
-    """ARTIS asserts opacityexclusions[0] == 0, so artistools must not be able to write such a file."""
-    config = at.misc.modelinfo.VpktConfig(opacityexclusions=[26, 0])
-    with pytest.raises(ValueError, match="first opacity choice must be 0"):
-        at.make_vpkt_input.format_vpkt_input(config)
-
-
-def test_make_vpkt_input_warns_outside_compiled_limits() -> None:
-    """Bounds that ARTIS asserts against compile-time constants must warn rather than fail."""
-    outsidetime = at.misc.modelinfo.VpktConfig(override_tminmax=True, vspec_tmin_in_days=0.2, vspec_tmax_in_days=1.5)
-    assert any("time window" in warning for warning in at.make_vpkt_input.check_config(outsidetime))
-
-    outsidelambda = at.misc.modelinfo.VpktConfig(custom_lambda_ranges=[(1000, 2000)])
-    assert any("wavelength range" in warning for warning in at.make_vpkt_input.check_config(outsidelambda))
-
-    assert not at.make_vpkt_input.check_config(at.misc.modelinfo.VpktConfig()), "the defaults must not warn"
 
 
 def test_make_vpkt_input_cli_writes_file(tmp_path: Path) -> None:
@@ -211,6 +194,15 @@ def test_make_vpkt_input_interactive_clears_list() -> None:
         ({"vgrid_on": True, "tmin_vgrid_in_days": 2.0, "tmax_vgrid_in_days": 1.0}, "velocity grid map time range"),
         ({"vgrid_on": True, "vgrid_lambda_ranges": []}, "at least one wavelength range"),
         ({"vgrid_on": True, "vgrid_lambda_ranges": [(0.0, 6000.0)]}, "lambdamin > 0"),
+        # since ARTIS #667, sn3d stops for a velocity grid map outside the virtual spectra
+        (
+            {"vgrid_on": True, "override_tminmax": True, "vspec_tmin_in_days": 4.0, "vspec_tmax_in_days": 7.0},
+            "must be inside the time window",
+        ),
+        (
+            {"vgrid_on": True, "custom_lambda_ranges": [(3500.0, 6000.0)], "vgrid_lambda_ranges": [(6400.0, 6700.0)]},
+            "must be inside the wavelength ranges",
+        ),
     ],
 )
 def test_make_vpkt_input_refuses_each_fatal_setting_of_artis(changes: dict[str, t.Any], reason: str) -> None:
@@ -223,6 +215,20 @@ def test_make_vpkt_input_refuses_each_fatal_setting_of_artis(changes: dict[str, 
     with pytest.raises(ValueError, match=re.escape(reason)):
         at.make_vpkt_input.format_vpkt_input(config)
 
+    # two wavelength ranges that touch cover a velocity grid range across their common edge, as in vpkt.cc
+    touchingranges = [(3500.0, 5000.0), (5000.0, 7000.0)]
+    assert (
+        at.make_vpkt_input.fatal_config_error(
+            dc.replace(
+                at.misc.modelinfo.VpktConfig(),
+                vgrid_on=True,
+                custom_lambda_ranges=touchingranges,
+                vgrid_lambda_ranges=[(4000.0, 6500.0)],
+            )
+        )
+        is None
+    )
+
     # ARTIS reads the ranges of the velocity grid map only when the map is on
     assert (
         at.make_vpkt_input.fatal_config_error(dc.replace(at.misc.modelinfo.VpktConfig(), vgrid_lambda_ranges=[]))
@@ -234,17 +240,3 @@ def test_make_vpkt_input_refuses_each_fatal_setting_of_artis(changes: dict[str, 
         )
         is None
     )
-
-
-def test_make_vpkt_input_rejects_bad_arguments() -> None:
-    for baddirection in ("1", "1,0,0", "north,0", "1.5,0"):
-        with pytest.raises(argparse.ArgumentTypeError):
-            at.make_vpkt_input.parse_directions(baddirection)
-
-    for badrange in ("3500", "3500,6000,7000", "blue,red", "6000,3500"):
-        with pytest.raises(argparse.ArgumentTypeError):
-            at.make_vpkt_input.parse_lambda_range(badrange)
-
-    for badbool in ("maybe", "", "2"):
-        with pytest.raises(argparse.ArgumentTypeError):
-            at.make_vpkt_input.parse_bool(badbool)

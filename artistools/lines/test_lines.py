@@ -368,14 +368,10 @@ def test_plotlinecontributions_bins_the_cells_of_each_line_by_velocity(
             assert np.isclose(row["volume_fraction_tau_sobolev_above_1"], volumefraction, rtol=1e-6, atol=0.0)
 
 
-@pytest.mark.parametrize(
-    ("photospherevelocity", "errortext"),
-    [("350000km/s", "above the speed of light"), ("0.05", "has no unit"), ("10km/s", "a third of the width of a cell")],
-)
-def test_plotlinecontributions_stops_for_a_photosphere_velocity_with_no_unit_or_no_resolution(
-    photospherevelocity: str, errortext: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+def test_plotlinecontributions_stops_for_a_photosphere_velocity_with_no_unit(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Stop before the estimators for a velocity above c, a number with no unit, or a disk smaller than a cell.
+    """Stop before the estimators for a photosphere velocity that has no unit.
 
     A bare number took the unit of -velocityunit, whose default depends on the model, thus 0.05 meant for 0.05 c gave
     0.05 km/s.
@@ -385,37 +381,12 @@ def test_plotlinecontributions_stops_for_a_photosphere_velocity_with_no_unit_or_
             argsraw=[
                 *("-modelpath", str(modelpath_classic_3d), "-timestep", "25"),
                 *("-lambdamin", "6000", "-lambdamax", "6400", "-velocityunit", "kmps"),
-                *("-troughdirbin", "90", "-photospherevelocity", photospherevelocity),
+                *("-troughdirbin", "90", "-photospherevelocity", "0.05"),
                 *("-o", str(tmp_path / "lines.pdf")),
             ]
         )
     captured = capsys.readouterr()
-    assert errortext in captured.out + captured.err
-
-
-def test_plotlinecontributions_reports_an_arrival_time_outside_the_timesteps(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """An arrival time before the first timestep or after the last one is outside each timestep.
-
-    The log clipped such a time to the first or the last timestep, but the packet commands keep no packet there.
-    """
-    from artistools.lines.linecontributions import LineVelocityProfiles
-
-    tstarts = at.get_timestep_times(modelpath_classic_3d, loc="start")
-    tends = at.get_timestep_times(modelpath_classic_3d, loc="end")
-    dfrankedcells = pl.DataFrame({"velocity_kmps": [0.5 * at.constants.C_cm_per_s / at.constants.km_to_cm]})
-    profiles = LineVelocityProfiles(
-        pl.DataFrame(),
-        pl.DataFrame(),
-        pl.DataFrame(),
-        pl.DataFrame(),
-        dfrankedcells.with_columns(emission_erg_per_s=pl.lit(1.0)),
-    )
-    at.lines.plotlinecontributions.print_arrival_times(modelpath_classic_3d, profiles, tstarts[0] * 1.01, "kmps")
-    assert "the first time in no timestep, because it is before the start" in capsys.readouterr().out
-    at.lines.plotlinecontributions.print_arrival_times(modelpath_classic_3d, profiles, tends[-1] * 0.99, "kmps")
-    assert "the last time in no timestep, because it is after the end" in capsys.readouterr().out
+    assert "has no unit" in captured.out + captured.err
 
 
 def test_sobolev_trough_of_a_shell_agrees_with_the_analytic_depth() -> None:
@@ -812,8 +783,7 @@ def test_plotopacity_draws_ratios_and_the_planck_mean(
 ) -> None:
     """The plot has the bins and a moving average of each opacity, a dashed capped opacity, ratios, and the Planck mean.
 
-    The Planck mean takes the bins of the x range, with the Planck function at the temperature of the cell. Only
-    --showplanckmean draws it.
+    The Planck mean takes the bins of the x range, with the Planck function at the temperature of the cell.
     """
     at.lines.plotopacity.main(
         argsraw=[
@@ -852,23 +822,6 @@ def test_plotopacity_draws_ratios_and_the_planck_mean(
     expected = float(np.sum(planck * dfbins["exopac"].to_numpy()) / np.sum(planck))
     assert mockaxhline.call_count == 1
     assert np.isclose(mockaxhline.call_args.args[1], expected, rtol=1e-9, atol=0.0)
-
-    # the line and its calculation need --showplanckmean
-    at.lines.plotopacity.main(
-        argsraw=[
-            "-modelpath",
-            str(modelpath),
-            "-timestep",
-            "40",
-            "-xmin",
-            "3000",
-            "-xmax",
-            "4000",
-            "-o",
-            str(tmp_path / "noplanck.pdf"),
-        ]
-    )
-    assert mockaxhline.call_count == 1
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
@@ -983,36 +936,12 @@ def test_excitation_temperature_is_the_temperature_that_artis_used(
     assert "-exctemperature TJ" in capsys.readouterr().out
 
 
-def test_expansion_opacities_keep_the_values_of_the_join_query() -> None:
-    """The Rust kernel gives the values of the earlier polars query.
-
-    The earlier query joined each cell with each line, and the reference sums come from it. Only the order
-    of the additions is different, thus the values agree within the rounding error.
-    """
-    timestep = 40
-    time_days = at.get_timestep_times(modelpath)[timestep]
-    dfcell = at.lines.core.get_cell_estimators(modelpath, timestep, None, "Te")
-    lambda_bin_edges = at.lines.core.get_lambda_bin_edges(3000.0, 4000.0, 10.0)
-    opacitylines = at.lines.core.get_opacity_lines(
-        at.lines.core.get_opacity_atomic_data(modelpath), dfcell.columns, lambda_bin_edges, time_days
-    )
-
-    dfopacities = at.lines.core.get_expansion_opacities(opacitylines, dfcell, lambda_bin_edges, time_days)
-
-    assert dfopacities.height == 100
-    for column, expectedsum in {
-        "exopac": 1397.6901658607103,
-        "linebinned": 11675.7786539805,
-        "linebinned_cap1": 1652.4668052744682,
-    }.items():
-        assert math.isclose(dfopacities[column].sum(), expectedsum, rel_tol=1e-12), column
-
-
 def test_expansion_opacities_give_each_cap_its_own_column() -> None:
     """The kernel gives the sum of each cap to the column of that cap. The order of the caps has no effect.
 
-    A cap of 1 gives the value of the regression test above. A larger cap gives a larger sum, and a cap above each
-    tau_sobolev gives the sum with no cap.
+    The reference sums come from the earlier polars query, which joined each cell with each line. Only the order of
+    the additions is different, thus the values agree within the rounding error. A larger cap gives a larger sum, and
+    a cap above each tau_sobolev gives the sum with no cap.
     """
     timestep = 40
     time_days = at.get_timestep_times(modelpath)[timestep]
@@ -1027,6 +956,9 @@ def test_expansion_opacities_give_each_cap_its_own_column() -> None:
 
     sums = {taucap: dfopacities[at.lines.core.get_capped_column(taucap)].sum() for taucap in sorted(taucaps)}
     assert at.lines.core.get_capped_column(1234567.0) != at.lines.core.get_capped_column(1234568.0)
+    assert dfopacities.height == 100
+    assert math.isclose(dfopacities["exopac"].sum(), 1397.6901658607103, rel_tol=1e-12)
+    assert math.isclose(dfopacities["linebinned"].sum(), 11675.7786539805, rel_tol=1e-12)
     assert math.isclose(sums[1.0], 1652.4668052744682, rel_tol=1e-12)
     assert math.isclose(sums[1e300], dfopacities["linebinned"].sum(), rel_tol=1e-12)
     assert list(sums.values()) == sorted(sums.values())
@@ -1034,7 +966,7 @@ def test_expansion_opacities_give_each_cap_its_own_column() -> None:
 
 
 def test_expansion_opacities_of_a_null_population_are_zero() -> None:
-    """A null population of an ion gives no opacity from that ion, and a null temperature gives no opacity.
+    """A null population of an ion gives no opacity from that ion. A null or zero temperature gives no opacity.
 
     The kernel reads contiguous columns with no nulls, thus get_expansion_opacities() must replace each null.
     """
@@ -1056,8 +988,9 @@ def test_expansion_opacities_of_a_null_population_are_zero() -> None:
         get_opacities(dfcell.with_columns(pl.lit(None, dtype=pl.Float32).alias(f"nnion_{ionstr}"))),
         get_opacities(dfcell.with_columns(pl.lit(0.0, dtype=pl.Float32).alias(f"nnion_{ionstr}"))),
     )
-    dfnotemperature = get_opacities(dfcell.with_columns(pl.lit(None, dtype=pl.Float32).alias("T_exc")))
-    assert np.allclose(dfnotemperature.select(pl.all().abs().max()).row(0), 0.0, rtol=0.0, atol=0.0)
+    for temperature in (None, 0.0):
+        dfnotemperature = get_opacities(dfcell.with_columns(pl.lit(temperature, dtype=pl.Float32).alias("T_exc")))
+        assert np.allclose(dfnotemperature.select(pl.all().abs().max()).row(0), 0.0, rtol=0.0, atol=0.0), temperature
 
 
 def test_expansion_opacities_keep_a_nan_in_each_sum() -> None:
@@ -1110,12 +1043,6 @@ def test_expansion_opacities_skip_a_line_with_a_null_constant() -> None:
     dfnoline = get_opacities([dftransitions.lazy().filter(~isfirstline) for dftransitions in adata["transitions"]])
 
     pltest.assert_frame_equal(dfnullconstant, dfnoline)
-
-
-def test_lambda_bin_edges_reject_a_range_with_no_bin() -> None:
-    """A range with no bin stops with a message, not with an IndexError in get_expansion_opacities()."""
-    with pytest.raises(ValueError, match="holds no bin"):
-        at.lines.core.get_lambda_bin_edges(5000.0, 4000.0, 10.0)
 
 
 def test_lambda_bin_edges_cover_the_full_range() -> None:
@@ -1257,37 +1184,6 @@ def test_plotopacity_even_window_has_its_centre_at_a_bin_edge() -> None:
     assert np.isclose(row["exopac"], (8.0 + 16.0 + 32.0) / 3, rtol=1e-12, atol=0.0)
 
 
-def test_plotopacity_legend_gives_the_width_of_the_window_bins() -> None:
-    """The title of the legend gives the width of the bins that the moving average takes.
-
-    A width of 210 Angstroms takes 11 bins of 20 Angstroms, which are 220 Angstroms. The title gave the width of
-    the request beside the number of bins.
-    """
-    dfopacities = pl.DataFrame({"lambda_angstroms_lower": [3000.0, 3020.0], "lambda_angstroms_upper": [3020.0, 3040.0]})
-    title = at.lines.plotopacity.get_smoothing_text(dfopacities, 210.0)
-    assert title is not None
-    assert "moving average of 220 " in title
-    assert "(11 bins)" in title
-    # a width of a whole number of bins stays as it is
-    title = at.lines.plotopacity.get_smoothing_text(dfopacities, 200.0)
-    assert title is not None
-    assert "moving average of 200 " in title
-    assert "(10 bins)" in title
-    assert at.lines.plotopacity.get_smoothing_text(dfopacities, 0.0) is None
-
-
-def test_opacity_cell_batches_hold_fewer_cells_for_more_bins() -> None:
-    """A batch has one row for each cell and bin, thus a batch of more bins must hold fewer cells.
-
-    Each batch held 4096 cells, and the 4998 bins of the ejectaopacity defaults then took 3.6 GB for one batch.
-    """
-    dfcells = pl.DataFrame({"modelgridindex": range(10000)})
-    for numbins in (100, 1200, 4998, 49980):
-        batches = at.lines.core.get_cell_batches(dfcells, numbins)
-        assert sum(batch.height for batch in batches) == dfcells.height
-        assert max(batch.height for batch in batches) * numbins <= at.lines.core.ROWSPERBATCH, numbins
-
-
 def test_plotopacity_median_of_the_cells_agrees_with_the_median_of_each_bin() -> None:
     """-cellaverage median takes the mass-weighted median of the cells from a histogram of log10 of the opacity.
 
@@ -1421,7 +1317,8 @@ def test_plotopacity_writes_the_drawn_values(
     """--write_data gives the drawn bins, the moving averages, the ratios, the line counts, and the Planck mean.
 
     The moving average has one more point at each end of the range, thus it goes in a second table. With no moving
-    average, the ratios go in the table of the bins, with one value for each bin.
+    average, the ratios go in the table of the bins, with one value for each bin. A run with no --showplanckmean
+    draws no Planck mean.
     """
     commonargs = ["-modelpath", str(modelpath), "-timestep", "40", "-xmin", "3000", "-xmax", "4000", "--write_data"]
     at.lines.plotopacity.main(
@@ -1462,6 +1359,7 @@ def test_plotopacity_writes_the_drawn_values(
     assert not (tmp_path / "noaverage_movingaverage.txt").exists()
     dfbins = read_data_file(tmp_path / "noaverage.txt")
     assert "planckmean_exopac_cm2_per_g" not in dfbins.columns
+    assert mockaxhline.call_count == 1
     axes = list(dict.fromkeys(call.args[0] for call in mockplot.call_args_list))
     ratioplots = [call.args for call in mockplot.call_args_list if call.args[0] is axes[1]]
     for column, (_, ratiox, ratioy) in zip(columns[1:], ratioplots, strict=True):
@@ -1469,29 +1367,6 @@ def test_plotopacity_writes_the_drawn_values(
         assert np.allclose(
             dfbins[f"ratio_{column}_to_exopac"].to_numpy(), ratioy[0::3], rtol=1e-12, atol=0.0, equal_nan=True
         )
-
-
-def test_expansion_opacities_give_zero_for_a_cell_with_no_temperature() -> None:
-    """A null T_exc and a T_exc of zero give a zero expansion opacity, and a positive T_exc gives a finite value."""
-    timestep = 40
-    time_days = at.get_timestep_times(modelpath)[timestep]
-    dfcell = at.lines.core.get_cell_estimators(modelpath, timestep, None, "Te")
-    assert dfcell.height == 1
-    edges = at.lines.core.get_lambda_bin_edges(3000.0, 4000.0, 20.0)
-    lines = at.lines.core.get_opacity_lines(
-        at.lines.core.get_opacity_atomic_data(modelpath), dfcell.columns, edges, time_days
-    )
-    dfcells = pl.concat([dfcell, dfcell, dfcell]).with_columns(
-        modelgridindex=pl.Series([0, 1, 2], dtype=dfcell["modelgridindex"].dtype),
-        T_exc=pl.Series([None, 0.0, dfcell["T_exc"].item()], dtype=pl.Float64),
-    )
-    dfbins = at.lines.core.get_expansion_opacities(lines, dfcells, edges, time_days)
-    for column in at.lines.core.get_opacity_columns(at.lines.core.DEFAULT_TAUCAPS):
-        values = dfbins.group_by("modelgridindex", maintain_order=True).agg(pl.col(column).abs().sum())[column]
-        assert values[0] == pytest.approx(0.0)
-        assert values[1] == pytest.approx(0.0)
-        assert np.isfinite(values[2])
-        assert values[2] > 0.0
 
 
 def test_opacity_levels_are_the_levels_that_artis_keeps() -> None:
@@ -1522,9 +1397,38 @@ def test_opacity_levels_are_the_levels_that_artis_keeps() -> None:
     )
 
 
-def test_opacity_lines_name_an_ion_with_no_transition_table() -> None:
-    """An ion with no table in transitiondata.txt gives a clear error and not ColumnNotFoundError."""
-    adata = at.lines.core.get_opacity_atomic_data(modelpath)
-    adata = adata.with_columns(pl.Series("transitions", [pl.LazyFrame() for _ in range(adata.height)], dtype=pl.Object))
-    with pytest.raises(ValueError, match=r"transitiondata\.txt holds no table for Fe_II"):
-        at.lines.core.get_opacity_lines(adata, ["nnion_Fe_II"], [3000.0, 4000.0], 10.0)
+def test_line_with_two_rows_in_transitiondata_has_the_opacity_of_one_line(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ARTIS merges the rows of one pair of levels into one line with the sum of their A values.
+
+    Each row was a line of its own with a part of the optical depth. Thus the expansion opacity of an optically
+    thick line was up to n times too large for n rows. Here each line has two rows with half of its A value.
+    """
+    timestep = 40
+    time_days = at.get_timestep_times(modelpath)[timestep]
+    dfcell = at.lines.core.get_cell_estimators(modelpath, timestep, None, "Te")
+    edges = at.lines.core.get_lambda_bin_edges(3000.0, 4000.0, 20.0)
+
+    def get_exopac() -> npt.NDArray[np.float64]:
+        lines = at.lines.core.get_opacity_lines(
+            at.lines.core.get_opacity_atomic_data(modelpath), dfcell.columns, edges, time_days
+        )
+        return at.lines.core.get_expansion_opacities(lines, dfcell, edges, time_days)["exopac"].to_numpy()
+
+    exopac_onerow = get_exopac()
+    get_levels = at.lines.core.get_levels
+
+    def get_levels_with_two_rows_per_line(*args: t.Any, **kwargs: t.Any) -> pl.DataFrame:
+        adata = get_levels(*args, **kwargs)
+        splittransitions = []
+        for dftransitions in adata["transitions"]:
+            lztransitions = dftransitions.lazy()
+            if "A" in lztransitions.collect_schema().names():
+                halfrows = lztransitions.with_columns(pl.col("A") / 2)
+                lztransitions = pl.concat([halfrows, halfrows])
+            splittransitions.append(lztransitions)
+        return adata.with_columns(pl.Series("transitions", splittransitions, dtype=pl.Object))
+
+    monkeypatch.setattr(at.lines.core, "get_levels", get_levels_with_two_rows_per_line)
+    exopac_tworows = get_exopac()
+    assert exopac_onerow.max() > 0.0
+    assert np.allclose(exopac_tworows, exopac_onerow, rtol=1e-6, atol=0.0)

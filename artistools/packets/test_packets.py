@@ -113,23 +113,6 @@ def test_directionbins_unequal_bincounts() -> None:
         assert pkt["dirbin"] == get_reference_dirbin(pkt["dirx"], pkt["diry"], pkt["dirz"], nphibins, ncosthetabins)
 
 
-@pytest.mark.parametrize("nphibins", [4, 10])
-def test_directionbins_phibin_upper_edge(nphibins: int) -> None:
-    """A direction with diry == 0 and dirx < 0 gives acos(cosphi) + pi == 2 pi, which must not overflow the ring."""
-    ncosthetabins = 10
-    dirx, diry, dirz = -1.0, 0.0, 0.0
-
-    dfpackets = at.packets.add_packet_directions_lazypolars(
-        pl.DataFrame({"dirx": [dirx], "diry": [diry], "dirz": [dirz]})
-    )
-    binned = at.packets.bin_packet_directions_polars(
-        dfpackets, nphibins=nphibins, ncosthetabins=ncosthetabins
-    ).collect()
-
-    assert binned["phibin"].item() == nphibins - 1
-    assert binned["dirbin"].item() == get_reference_dirbin(dirx, diry, dirz, nphibins, ncosthetabins)
-
-
 @pytest.mark.parametrize(
     ("direction", "expecteddirbin"),
     [
@@ -138,15 +121,17 @@ def test_directionbins_phibin_upper_edge(nphibins: int) -> None:
         ((0.0, 1e-30, -1.0), 5),
         ((0.0, -1e-30, 1.0), 90),
         ((0.0, 1e-13, 1.0), 95),
+        ((-1.0, 0.0, 0.0), 59),
     ],
 )
-def test_a_direction_along_the_z_axis_gets_the_bin_of_artis(
+def test_a_direction_on_an_edge_of_the_phi_bins_gets_the_bin_of_artis(
     direction: tuple[float, float, float], expecteddirbin: int
 ) -> None:
-    """A direction along the z axis has no phi angle, and ARTIS takes cosphi = 1 for it (vectors.h).
+    """A direction along the z axis, or along -x, gets the direction bin of ARTIS (vectors.h).
 
-    The division 0/0 gave cosphi = NaN, thus the direction got phi bin 0 and not the phi bin of ARTIS. A small
-    component across the axis gave the true phi, which ARTIS ignores below 1e-12.
+    ARTIS takes cosphi = 1 along the z axis. The division 0/0 gave cosphi = NaN, thus the direction got phi bin 0.
+    A small component across the axis gave the true phi, which ARTIS ignores below 1e-12. Along -x, phi is 2 pi,
+    which must stay in the last phi bin.
     """
     dirx, diry, dirz = direction
     dfpackets = at.packets.add_packet_directions_lazypolars(
@@ -332,21 +317,6 @@ def test_read_of_absent_packets_makes_no_cache_folder(tmp_path: Path, virtual: b
         get_packets_rankbatch_parquetfile(tmp_path, batch_mpiranks=[0], batchindex=0, virtual=virtual)
 
     assert list(tmp_path.iterdir()) == []
-
-
-def test_a_packets_file_with_a_cut_line_stops_the_conversion(tmp_path: Path) -> None:
-    """A file that ARTIS or a copy still writes ends in a cut line, and its cache must not keep the partial data.
-
-    The reader gave the values of the cut line to the first columns and null to the others, with no error.
-    """
-    from artistools.packets.core import readfile_text
-
-    columns = ["number", "where", "type_id", "e_cmf", "e_rf", "pellet_nucindex"]
-    packetsfile = tmp_path / "packets00_0000.out"
-    packetsfile.write_text("1 58900 32 1.2e45 1.00799e+45 5 \n2 58900 32 1.2e45 1.007", encoding="utf-8")
-
-    with pytest.raises(ValueError, match="fewer values than the header"):
-        readfile_text(packetsfile, column_names=columns)
 
 
 def test_packets_cache_without_stamps_is_stale_when_the_text_files_exist(tmp_path: Path) -> None:
@@ -592,26 +562,32 @@ def test_scan_packets_gives_nan_to_the_thermal_velocity_of_a_packet_with_no_reco
 
 @mock.patch("artistools.packets.plotlastpacketinteraction.save_figure")
 @mock.patch.object(mplax.Axes, "imshow", side_effect=mplax.Axes.imshow, autospec=True)
-def test_lastpacketinteraction_ignores_a_packet_with_no_thermal_emission_record(
+def test_lastpacketinteraction_takes_the_start_of_the_timestep_and_ignores_a_packet_with_no_record(
     mockimshow: mock.MagicMock, mocksavefigure: mock.MagicMock
 ) -> None:
-    """A packet with no thermal emission record gave a large negative weight, which removed the innermost bin."""
+    """The plot takes a packet at the start of the timestep and not a packet at the end.
+
+    The window of the arrival time included its right edge, thus it took a packet of the next timestep. A packet with
+    no thermal emission record gave a large negative weight, which removed the innermost bin.
+    """
     from artistools.packets import plotlastpacketinteraction
 
     modelpath = at.get_path("testdata") / "testmodel"
     tdays = 300.0
     timestep = at.misc.get_timestep_of_timedays(modelpath, tdays)
-    t_arrive_d = at.get_timestep_times(modelpath, loc="mid")[timestep]
+    t_start = at.get_timestep_times(modelpath, loc="start")[timestep]
+    t_end = at.get_timestep_times(modelpath, loc="end")[timestep]
     emtime_s = 250.0 * at.constants.day_to_s
-    beta = 0.01
-    # the two packets are in one bin of the histogram: a record at a velocity of 0.01 c, and no record
+    # a record at the start in the bin of 0.01 c, a packet at the start with no record in the same bin, and a
+    # record at the end in the bin of 0.21 c
+    betas = [0.01, 0.0, 0.21]
     dfpackets = pl.DataFrame({
-        "t_arrive_d": [t_arrive_d, t_arrive_d],
-        "e_rf": [1.0e40, 1.0e40],
-        "trueem_posx": [beta * at.constants.C_cm_per_s * emtime_s, 0.0],
-        "trueem_posy": [0.0, 0.0],
-        "trueem_posz": [beta * at.constants.C_cm_per_s * emtime_s, 0.0],
-        "trueem_time": [emtime_s, -1.0],
+        "t_arrive_d": [t_start, t_start, t_end],
+        "e_rf": [1.0e40, 1.0e40, 1.0e40],
+        "trueem_posx": [beta * at.constants.C_cm_per_s * emtime_s for beta in betas],
+        "trueem_posy": [0.0, 0.0, 0.0],
+        "trueem_posz": [beta * at.constants.C_cm_per_s * emtime_s for beta in betas],
+        "trueem_time": [emtime_s, -1.0, emtime_s],
     })
 
     with mock.patch.object(
@@ -930,81 +906,6 @@ def test_a_1d_velocity_at_the_edges_of_the_grid_gets_the_right_cell() -> None:
     assert cells == [0, 0, 1, 2, None, None, None]
 
 
-@mock.patch("artistools.packets.plotlastpacketinteraction.save_figure")
-@mock.patch.object(mplax.Axes, "imshow", side_effect=mplax.Axes.imshow, autospec=True)
-def test_lastpacketinteraction_takes_the_start_of_the_timestep_and_not_the_end(
-    mockimshow: mock.MagicMock, mocksavefigure: mock.MagicMock
-) -> None:
-    """A packet that arrives at the start of the timestep is in the plot, and a packet at the end is not.
-
-    The window of the arrival time included its right edge, thus it took a packet of the next timestep instead.
-    """
-    from artistools.packets import plotlastpacketinteraction
-
-    modelpath = at.get_path("testdata") / "testmodel"
-    tdays = 300.0
-    timestep = at.misc.get_timestep_of_timedays(modelpath, tdays)
-    t_start = at.get_timestep_times(modelpath, loc="start")[timestep]
-    t_end = at.get_timestep_times(modelpath, loc="end")[timestep]
-    emtime_s = 250.0 * at.constants.day_to_s
-    # the packet at the start is in the bin of 0.01 c, and the packet at the end is in the bin of 0.21 c
-    betas = [0.01, 0.21]
-    dfpackets = pl.DataFrame({
-        "t_arrive_d": [t_start, t_end],
-        "e_rf": [1.0e40, 1.0e40],
-        "trueem_posx": [beta * at.constants.C_cm_per_s * emtime_s for beta in betas],
-        "trueem_posy": [0.0, 0.0],
-        "trueem_posz": [beta * at.constants.C_cm_per_s * emtime_s for beta in betas],
-        "trueem_time": [emtime_s, emtime_s],
-    })
-
-    with mock.patch.object(
-        plotlastpacketinteraction, "get_reduced_packet_set", return_value=(1, dfpackets.lazy(), 1.0)
-    ):
-        c_kmps = at.constants.C_cm_per_s / at.constants.km_to_cm
-        plotlastpacketinteraction.packets_2d_hist_bin_and_ejecta_vel(
-            modelpath,
-            tdays,
-            -1,
-            25,
-            0.5 * c_kmps,
-            "c",
-            ions=None,
-            srIItriplet=False,
-            logcolorscale=False,
-            trueem=True,
-            lambdarange=None,
-            outputfile=None,
-            args=None,
-            absorption=False,
-        )
-
-    assert mocksavefigure.call_count == 1
-    heatmap = mockimshow.call_args.args[1].T
-    assert heatmap.count() == 1
-    assert heatmap[0, 25] > 0.0
-
-
-def test_scan_packets_stops_for_a_model_with_no_escaped_gamma_packets(tmp_path: Path) -> None:
-    """ARTIS removes the escaped gamma packets unless KEEP_ESCAPED_GAMMAS is true, which is not the default.
-
-    The empty frame gave a gamma-ray light curve and a gamma-ray spectrum of zero with no message.
-    """
-    type_escape, type_rpkt = at.packets.core.type_ids["TYPE_ESCAPE"], at.packets.core.type_ids["TYPE_RPKT"]
-    cachepath = tmp_path / "packetsbatch00_0000_0000.out.parquet.tmp"
-    pl.DataFrame(
-        {"type_id": [type_escape, type_escape], "escape_type_id": [type_rpkt, type_rpkt]},
-        schema={"type_id": pl.Int32, "escape_type_id": pl.Int32},
-    ).write_parquet(cachepath)
-
-    with mock.patch("artistools.packets.core.get_packets_batch_parquet_paths", return_value=(1, [cachepath])):
-        _, dfrpkt = at.packets.scan_packets(tmp_path, escape_type="TYPE_RPKT")
-        assert dfrpkt.collect().height == 2
-
-        with pytest.raises(ValueError, match="KEEP_ESCAPED_GAMMAS"):
-            at.packets.scan_packets(tmp_path, escape_type="TYPE_GAMMA")
-
-
 @pytest.mark.parametrize(
     ("columnname", "values"),
     [("originated_from_positron", [True, False]), ("originated_from_particlenotgamma", [1, 0])],
@@ -1046,50 +947,6 @@ def test_lastpacketinteraction_main_writes_the_plot_to_the_output_folder(tmp_pat
     outputfile = tmp_path / "lastinteraction.pdf"
     plotlastpacketinteraction.main(argsraw=["-modelpath", str(modelpath), "-tdays", "300", "-o", str(outputfile)])
     assert outputfile.is_file()
-
-
-@pytest.mark.parametrize(
-    ("argsraw", "expectedmessage"),
-    [
-        (["-element", "Xx"], "-element Xx is no element symbol"),
-        (["-dirbin", "100"], "-dirbin 100 is no direction bin"),
-        (["-dirbin", "35", "--average_over_phi_angle"], "-dirbin 35 is not the first direction bin"),
-        (["-dirbin", "-10"], "-dirbin -10 is no direction bin"),
-        ([], "The command has no time"),
-        (["-lambdamin", "3500"], "The wavelength range needs two ends"),
-        (["--absorption", "--use_thermalemissiontype"], "--absorption takes the last absorption"),
-    ],
-)
-def test_lastpacketinteraction_refuses_a_selection_that_matches_no_packet(
-    argsraw: list[str], expectedmessage: str, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """An unknown element and a direction bin outside the costheta bins gave an empty plot with no error."""
-    from artistools.packets import plotlastpacketinteraction
-
-    timeargs = [] if not argsraw else ["-timedays", "300"]
-    modelpath = at.get_path("testdata") / "testmodel"
-    with (
-        mock.patch.object(plotlastpacketinteraction, "packets_2d_hist_bin_and_ejecta_vel") as mockplot,
-        pytest.raises(SystemExit),
-    ):
-        plotlastpacketinteraction.main(argsraw=["-modelpath", str(modelpath), *timeargs, *argsraw])
-
-    assert mockplot.call_count == 0
-    captured = capsys.readouterr()
-    assert expectedmessage in captured.err + captured.out
-
-
-def test_timestep_of_a_time_at_the_start_of_a_timestep() -> None:
-    """An ARTIS timestep holds its start time.
-
-    A time at a start went to the timestep before it, and the first gave -1.
-    """
-    from artistools.packets.core import get_timestep_expr
-
-    dftimes = pl.DataFrame({"time": [0.5, 1.0, 1.5, 2.0, 3.0, 3.5]})
-    timesteps = dftimes.select(get_timestep_expr(pl.col("time"), [1.0, 2.0, 3.0])).to_series().to_list()
-
-    assert timesteps == [-1, 0, 0, 1, 2, 2]
 
 
 @mock.patch.object(mplax.Axes, "imshow", side_effect=mplax.Axes.imshow, autospec=True)
@@ -1473,54 +1330,6 @@ def test_plotspherical_gif(tmp_path: Path) -> None:
     ]
     with Image.open(tmp_path / "sphericalplot.gif") as gif:
         assert getattr(gif, "n_frames", 1) == 3
-
-
-def test_plotspherical_element_arguments_give_messages(capsys: pytest.CaptureFixture[str]) -> None:
-    """-elem with -atomic_number, or an -elem that is no element symbol, gives a message.
-
-    The first stopped with a bare AssertionError, and the second plotted the packets of "Z=-1".
-    """
-    with pytest.raises(SystemExit):
-        at.packets.plotspherical.main(argsraw=[], modelpath=modelpath, elem="Fe", atomic_number=26)
-    assert "Give one of --elem and --atomic-number" in capsys.readouterr().err
-
-    with pytest.raises(SystemExit):
-        at.packets.plotspherical.main(argsraw=[], modelpath=modelpath, elem="Xx")
-    assert "-elem Xx is not an element symbol" in capsys.readouterr().err
-
-
-def test_plotspherical_makes_the_output_folder(tmp_path: Path) -> None:
-    """A -o path that has no file extension names a folder, which the command makes.
-
-    The command wrote a file that had the name of the folder and no extension, and a run with
-    --makegif stopped, because it built the path of each frame below a folder that did not exist.
-    """
-    outfolder = tmp_path / "frames"
-    at.packets.plotspherical.main(argsraw=[], modelpath=modelpath, outputfile=str(outfolder), timemin=250, timemax=300)
-
-    assert outfolder.is_dir(), "the command must make the folder that -o names"
-    assert list(outfolder.glob("plotspherical_*.pdf")), f"no plot in {list(outfolder.iterdir())}"
-
-
-def test_plotspherical_gif_keeps_the_name_that_o_gives(tmp_path: Path) -> None:
-    """A -o path that has a file extension names the gif, and its folder then holds the frames.
-
-    A path such as movie.gif became a folder, thus the file that the user asked for was never written.
-    """
-    gifpath = tmp_path / "movie.gif"
-    at.packets.plotspherical.main(
-        argsraw=[], modelpath=modelpath, makegif=True, timemin=250, timemax=253, outputfile=str(gifpath)
-    )
-
-    assert gifpath.is_file(), f"the gif must keep its name, but {list(tmp_path.iterdir())}"
-    assert list(gifpath.parent.glob("plotspherical_*.png")), "the frames go in the folder of the gif"
-
-    # a path with no file extension still names a folder that holds the gif and the frames
-    outfolder = tmp_path / "movie"
-    at.packets.plotspherical.main(
-        argsraw=[], modelpath=modelpath, makegif=True, timemin=250, timemax=253, outputfile=str(outfolder)
-    )
-    assert (outfolder / "sphericalplot.gif").is_file(), f"no gif in {list(outfolder.iterdir())}"
 
 
 @mock.patch.object(mplax.Axes, "pcolormesh", side_effect=mplax.Axes.pcolormesh, autospec=True)

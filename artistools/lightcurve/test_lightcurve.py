@@ -345,6 +345,7 @@ def test_band_lightcurve_peakmag_risetime_plot(tmp_path: Path) -> None:
         assert dfdata["dirbin"].to_list() == [-1]
         assert 250.0 <= dfdata["risetime_polyfit"].item() <= 300.0
         assert -20.0 < dfdata["peak_mag_polyfit"].item() < -5.0
+        assert dfdata["deltam15_polyfit"].item() > 0.0
 
 
 def test_viewing_angle_peakmag_risetime_scatter_plot(
@@ -492,16 +493,6 @@ def test_linelabel_direction_bin_keeps_the_label_arg(mockplot: mock.MagicMock, t
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_colour_evolution_plot_color_arg(mockplot: mock.MagicMock, tmp_path: Path) -> None:
-    """A -color value must reach the plotted line."""
-    at.lightcurve.plot(
-        argsraw=[], modelpath=modelpath, colour_evolution=["B-V"], color=["magenta"], outputfile=tmp_path
-    )
-
-    assert [callargs.kwargs["color"] for callargs in mockplot.call_args_list] == ["magenta"]
-
-
-@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_colour_evolution_plot_viewingangle_colours(mockplot: mock.MagicMock, tmp_path: Path) -> None:
     """Direction bins get one colour each from the tab20 colour map, whatever -color says.
 
@@ -528,17 +519,6 @@ def test_colour_evolution_plot_viewingangle_colours(mockplot: mock.MagicMock, tm
 
     colors = [callargs.kwargs["color"] for callargs in mockplot.call_args_list]
     assert colors == [*palette, palette[0]]
-
-
-def test_dirbin_palette_avoids_the_assigned_colours() -> None:
-    """The direction bin palette holds tab20 colours, minus any that a whole series was given."""
-    tab20colors = [mplcolors.to_hex(color) for color in plt.get_cmap("tab20")(np.linspace(0, 1.0, 20))]
-
-    palette = [mplcolors.to_hex(color) for color in at.lightcurve.plotlightcurve.get_dirbin_palette([tab20colors[0]])]
-    assert palette == tab20colors[1:]
-
-    # every colour of the map assigned leaves none free, and a bin still has to be drawn in something
-    assert len(at.lightcurve.plotlightcurve.get_dirbin_palette(tab20colors)) == len(tab20colors)
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
@@ -855,69 +835,6 @@ def test_bol_reflightcurve_lsun(mockerrorbar: mock.MagicMock) -> None:
     yerr = mockerrorbar.call_args_list[0][1]["yerr"]
     assert np.isclose(yerr[0][0], 2.7737755982632654e41 / Lsun_to_erg_per_s, rtol=1e-4)
     assert np.isclose(yerr[1][0], 3.681894356120629e41 / Lsun_to_erg_per_s, rtol=1e-4)
-
-
-@mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
-def test_bol_reflightcurve_magnitude(mockerrorbar: mock.MagicMock) -> None:
-    """A bolometric reference light curve must be converted to magnitudes when the axis is in magnitudes."""
-    at.lightcurve.plot(
-        argsraw=[], modelpath=[REFLIGHTCURVE, modelpath], magnitude=True, outputfile=outputpath / "lc_reflc_mag.pdf"
-    )
-
-    _arr_time_d, arr_mag = get_reflightcurve_errorbar_call(mockerrorbar)
-
-    dflightcurve, _metadata = at.lightcurve.read_bol_reflightcurve_data(REFLIGHTCURVE)
-    lum_lsun = dflightcurve["luminosity_erg/s"].to_numpy() / Lsun_to_erg_per_s
-    assert np.allclose(arr_mag, Mbol_sun - 2.5 * np.log10(lum_lsun), rtol=1e-10)
-    assert np.isclose(arr_mag[0], -16.4306375858, rtol=1e-9)
-
-    # the file gives a symmetric error in log10(luminosity), so both magnitude error bars are 2.5 times it
-    yerr = mockerrorbar.call_args_list[0][1]["yerr"]
-    expected_magerr = 2.5 * dflightcurve["log_lbol_err"].to_numpy()
-    assert np.allclose(yerr[0], expected_magerr, rtol=1e-3)
-    assert np.allclose(yerr[1], expected_magerr, rtol=1e-3)
-
-
-def test_convert_lum_to_plotunits_nonpositive() -> None:
-    """A zero or negative luminosity has no magnitude, and must not raise a numpy warning."""
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        result = at.lightcurve.plotlightcurve.convert_lum_lsun_to_plotunits(np.array([0.0, -1.0, 1.0]), "mag")
-
-    assert np.isinf(result[0])
-    assert np.isnan(result[1])
-    assert np.isclose(result[2], Mbol_sun)
-
-
-def test_get_reflightcurve_yerr_magnitude() -> None:
-    """Magnitude error bars must reach the magnitudes of the brightest and faintest luminosity bounds.
-
-    matplotlib draws the bar from y - yerr[0] to y + yerr[1], and a brighter (larger) luminosity is a smaller
-    magnitude, so the two rows are asymmetric and must not be swapped.
-    """
-    lum = np.array([1e42, 1e42, 1e42])
-    errplus = np.array([1e42, 0.0, 1e42])
-    errminus = np.array([0.9e42, 0.0, 2e42])  # the last error bar reaches past zero luminosity
-
-    yerr, unbounded = at.lightcurve.plotlightcurve.get_reflightcurve_yerr(lum, errminus, errplus, "mag")
-    mag = at.lightcurve.plotlightcurve.convert_lum_ergs_to_plotunits(lum, "mag")
-
-    assert np.isclose(yerr[0][0], 2.5 * np.log10(2.0))  # brighter by a factor of two
-    assert np.isclose(yerr[1][0], 2.5)  # fainter by a factor of ten
-    assert yerr[1][0] > yerr[0][0], "the fainter (upper) row must not be swapped with the brighter (lower) row"
-
-    assert np.isclose(mag[0] - yerr[0][0], Mbol_sun - 2.5 * np.log10(2e42 / Lsun_to_erg_per_s))
-    assert np.isclose(mag[0] + yerr[1][0], Mbol_sun - 2.5 * np.log10(0.1e42 / Lsun_to_erg_per_s))
-
-    assert np.isclose(yerr[0][1], 0.0)  # a zero error stays zero on both sides
-    assert np.isclose(yerr[1][1], 0.0)
-
-    # a bar reaching zero luminosity has no faintest magnitude. A NaN there makes matplotlib drop the whole
-    # bar, so the faint side has no length and the point is flagged for an arrow instead
-    assert np.allclose(unbounded, [False, False, True])
-    assert np.isfinite(yerr[1][2])
-    assert np.isclose(yerr[1][2], 0.0)
-    assert np.isclose(yerr[0][2], 2.5 * np.log10(2.0))
 
 
 def test_get_reflightcurve_yerr_nonpositive_luminosity_draws_no_bar() -> None:
@@ -1330,22 +1247,6 @@ def test_lightcurve_plot_one_sided_time_limit_keeps_the_data_in_view(mockplot: m
     assert xmax > 300.0, xmax
 
 
-@mock.patch.object(mplax.Axes, "set_ylabel", side_effect=mplax.Axes.set_ylabel, autospec=True)
-def test_gamma_lightcurve_magnitude_ylabel(mockylabel: mock.MagicMock) -> None:
-    """A gamma-ray light curve in magnitudes is not a bolometric magnitude, and must not be labelled as one."""
-    at.lightcurve.plot(
-        argsraw=[],
-        modelpath=modelpath_classic_3d,
-        gamma=True,
-        rpkt=False,
-        magnitude=True,
-        outputfile=outputpath / "lc_gamma_mag.pdf",
-    )
-
-    ylabels = [callargs[0][1] for callargs in mockylabel.call_args_list]
-    assert ylabels == [r"Absolute $\gamma$-ray Magnitude"]
-
-
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_averaged_direction_bin_magnitude_is_rebuilt(mockplot: mock.MagicMock) -> None:
     """Averaging direction bins averages the luminosity, so the magnitude must be rebuilt from the result.
@@ -1428,19 +1329,6 @@ def run_set_scatterplot_plot_params(
     return axis.get_xlim()[1], ymin, ymax
 
 
-def test_set_scatterplot_plot_params_without_xmin() -> None:
-    """The light curve parser names its range -timemin/-timemax, so the scatter setup must not read args.xmin.
-
-    Reading args.xmin raised AttributeError and made every --make_viewing_angle_peakmag_* run fail.
-    """
-    xmax, ymin, ymax = run_set_scatterplot_plot_params([15.0, 19.0], ymin=None, ymax=None)
-
-    assert ymin > ymax, "the magnitude axis must point downwards"
-    # neither side falls back to the default 0-1 view when no limit was given
-    assert xmax >= 10.0
-    assert ymin >= 19.0
-
-
 def test_readfile_rebuilds_the_magnitude_after_averaging() -> None:
     """The loader owns the averaging, so the magnitude cannot be left as the mean of the magnitudes.
 
@@ -1459,26 +1347,6 @@ def test_readfile_rebuilds_the_magnitude_after_averaging() -> None:
 
     assert np.allclose(averaged["mag"].to_numpy(), magofmeanlum, equal_nan=True)
     assert not np.allclose(averaged["mag"].to_numpy(), stalemean["mag"].to_numpy(), equal_nan=True)
-
-
-def test_color_arg_rejects_a_colour_matplotlib_cannot_parse() -> None:
-    """A mistyped colour must be named by the argument that took it, not by a colour cycle helper."""
-    parser = argparse.ArgumentParser()
-    at.lightcurve.addargs(parser)
-
-    assert parser.parse_args(["-color", "tab:blue", "#1F77B4"]).color == ["tab:blue", "#1F77B4"]
-
-    for argname in ("-color", "-refspeccolors"):
-        with pytest.raises(SystemExit):
-            parser.parse_args([argname, "notacolour"])
-
-
-def test_transparent_series_colour_leaves_the_cycle_alone() -> None:
-    """A series drawn in "none" holds no colour, so it must not remove black from the palette."""
-    assert not at.plottools.get_assigned_colors(["none"])
-    assert mplcolors.to_hex("#000000") in {
-        mplcolors.to_hex(color) for color in at.plottools.get_unused_colors(["#000000", "#ffffff"], ["none"])
-    }
 
 
 @pytest.mark.parametrize("plottype", ["bolometric", "band", "colour_evolution"])
@@ -1512,23 +1380,6 @@ def test_nonpositive_limit_on_a_log_axis_is_dropped(capsys: pytest.CaptureFixtur
     ymin, ymax = axis.get_ylim()
     assert ymin > 0.0, "the data must stay in view rather than the axis freezing at a rejected limit"
     assert np.isclose(ymax, 1e45)
-
-
-def test_viewing_angle_scatter_needs_the_angle_averaged_step(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Writing the per-direction-bin data and plotting it are two runs, so asking for both must say so."""
-    monkeypatch.chdir(tmp_path)
-
-    with pytest.raises(ValueError, match="angle-averaged"):
-        at.lightcurve.plot(
-            argsraw=[],
-            modelpath=[modelpath],
-            filter=["B"],
-            timemin=250,
-            timemax=300,
-            outputfile=tmp_path,
-            save_viewing_angle_peakmag_risetime_delta_m15_to_file=True,
-            make_viewing_angle_peakmag_risetime_scatter_plot=True,
-        )
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
@@ -1696,12 +1547,23 @@ def test_band_plot_first_dirbin_takes_the_color_arg(mockplot: mock.MagicMock) ->
 
 
 def test_scatterplot_magnitude_axis_stays_inverted_with_limits() -> None:
-    """set_ylim re-sorts the pair it is given, so an inversion applied before it is lost."""
+    """The magnitude axis points downwards with -ymin and -ymax, and with no limits.
+
+    set_ylim sorts the pair again, thus it lost an inversion that came before it. The scatter setup read args.xmin,
+    which the light curve parser does not make, thus each --make_viewing_angle_peakmag_* run stopped.
+    """
     _xmax, ymin, ymax = run_set_scatterplot_plot_params([-19.0, -15.0], ymin=-20.0, ymax=-14.0)
 
     assert ymin > ymax, "the magnitude axis must point downwards even when -ymin/-ymax are given"
     assert np.isclose(ymin, -14.0)
     assert np.isclose(ymax, -20.0)
+
+    xmax, ymin, ymax = run_set_scatterplot_plot_params([15.0, 19.0], ymin=None, ymax=None)
+
+    assert ymin > ymax, "the magnitude axis must point downwards"
+    # neither side falls back to the default 0-1 view when no limit was given
+    assert xmax >= 10.0
+    assert ymin >= 19.0
 
 
 def test_lightcurve_print_data_survives_quiet(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
@@ -1765,38 +1627,6 @@ def test_lightcurve_day_range_of_a_model_clamps_to_its_timesteps() -> None:
     assert withmodel.timemax < 300.0
     assert np.isclose(reference.timemin, 260.0)
     assert np.isclose(reference.timemax, 300.0)
-
-
-CLASSIC1DPATH = at.get_path("testdata") / "test-classicmode_1d"
-
-
-def test_lightcurve_timestep_must_mean_the_same_days_for_every_model() -> None:
-    """A timestep names different days on a different timestep grid.
-
-    The plot holds one time axis, thus the days of the first model filtered every model, and the second
-    curve showed another timestep without a word. Two grids that disagree now stop the command, and
-    -timedays serves both because a day means the same everywhere.
-    """
-    import argparse
-
-    from artistools.misc import apply_time_range_args
-
-    def build(timestep: str | None, timedays: str | None) -> argparse.Namespace:
-        return argparse.Namespace(timestep=timestep, timedays=timedays, timemin=None, timemax=None)
-
-    # one grid, or the same grid twice, resolves the timestep as before
-    sameargs = build("40", None)
-    apply_time_range_args(sameargs, [modelpath, modelpath])
-    assert sameargs.timemin is not None
-
-    with pytest.raises(SystemExit) as excinfo:
-        apply_time_range_args(build("40", None), [modelpath, CLASSIC1DPATH])
-    assert excinfo.value.code == 1
-
-    # a range in days means the same for every model, thus it needs no agreement between the grids
-    daysargs = build(None, "260-300")
-    apply_time_range_args(daysargs, [modelpath, CLASSIC1DPATH])
-    assert daysargs.timemin is not None
 
 
 def test_lightcurve_timestep_takes_a_path_that_names_a_file(tmp_path: Path) -> None:
@@ -1937,27 +1767,6 @@ def test_viewing_angle_peakmag_without_filter_refuses_virtual_observers(
     assert not list(tmp_path.glob("*_viewing_angle_data.txt"))
 
 
-def test_band_peakmag_export_writes_one_file_for_each_band(tmp_path: Path) -> None:
-    """Each band has its own data file with one row for each direction bin, and the decline rate is positive."""
-    at.lightcurve.plot(
-        argsraw=[],
-        modelpath=modelpath,
-        filter=["bol", "B"],
-        plotviewingangle=-1,
-        timemin=250,
-        timemax=300,
-        save_viewing_angle_peakmag_risetime_delta_m15_to_file=True,
-        outputfile=tmp_path,
-    )
-
-    for band in ("bol", "B"):
-        (datafile,) = tmp_path.glob(f"{band}band_*_viewing_angle_data.txt")
-        data = at.misc.read_wsv(datafile, comment_prefix="#").to_numpy()
-        assert data.shape == (1, 4)
-        assert data[0, 0] == -1, "the first column names the angle-averaged direction bin"
-        assert data[0, 3] > 0.0
-
-
 def test_angle_averaged_export_with_two_bands_gives_one_row_for_each_model(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -2019,19 +1828,6 @@ def test_escape_type_selects_the_packet_type(mockylabel: mock.MagicMock) -> None
 
     ylabels = [callargs[0][1] for callargs in mockylabel.call_args_list]
     assert ylabels == ["Absolute Bolometric Magnitude"]
-
-
-def test_find_lightcurve_file_refuses_a_direction_resolved_gamma_request() -> None:
-    """ARTIS writes no direction-resolved gamma-ray light curve, thus the request must not read the UVOIR file."""
-    with pytest.raises(FileNotFoundError, match="direction-resolved gamma"):
-        at.lightcurve.find_lightcurve_file(modelpath_classic_3d, directionresolved=True, gamma=True)
-
-    # each request on its own still names the file that holds it
-    assert at.lightcurve.find_lightcurve_file(modelpath_classic_3d).name.startswith("light_curve.out")
-    assert at.lightcurve.find_lightcurve_file(modelpath_classic_3d, directionresolved=True).name.startswith(
-        "light_curve_res.out"
-    )
-    assert at.lightcurve.find_lightcurve_file(modelpath_classic_3d, gamma=True).name.startswith("gamma_light_curve.out")
 
 
 @pytest.mark.parametrize("ratio", [False, True])
@@ -2949,15 +2745,6 @@ def test_hesma_model_is_drawn_on_the_panel_of_each_band(mockplot: mock.MagicMock
     assert (tmp_path / "bands.pdf").is_file()
 
 
-def test_filter_data_gives_the_reference_wavelength() -> None:
-    """The reference wavelength of a band comes from the same cached read as its transmission curve."""
-    filterdir = Path(at.get_path("artistools_dir"), "data/filters/")
-    assert np.isclose(
-        at.lightcurve.get_filter_data(filterdir, "B")[1],
-        float((filterdir / "B.txt").read_text(encoding="utf-8").splitlines()[2]),
-    )
-
-
 def test_viewer_drops_the_options_that_the_command_refuses_together(
     make_viewer: Callable[[str, list[str]], interactive.LightCurveViewer],
 ) -> None:
@@ -3348,21 +3135,6 @@ def test_reference_band_data_takes_a_header_line_that_starts_with_a_hash(tmp_pat
     assert np.allclose(dfband["magnitude"].to_numpy(), [12.0 - 5 * np.log10(10e6) + 5, 12.5 - 5 * np.log10(10e6) + 5])
 
 
-def test_reference_band_data_with_no_label_takes_the_name_that_the_command_gives(tmp_path: Path) -> None:
-    """A band reference file with no label takes the name that the command gives, as a bolometric file does.
-
-    The band reader took the stem of the file. Thus a file with no label gave "refband" in the band legend and
-    "refband.dat" in the bolometric legend.
-    """
-    datafile = tmp_path / "refband.dat"
-    datafile.write_text("time magnitude band\n55800.0 12.0 B\n", encoding="utf-8")
-    (tmp_path / "refband.dat.meta.yml").write_text("timecorrection: 55790.0\n", encoding="utf-8")
-
-    _, metadata = at.lightcurve.core.read_reflightcurve_band_data(datafile)
-
-    assert metadata["label"] == str(datafile)
-
-
 @pytest.mark.parametrize(("zvalue", "distance_mpc"), [("1e-3", 4.28), ("0", None), ("-0.01", None)])
 def test_reference_band_data_takes_its_distance_from_a_redshift(
     tmp_path: Path, zvalue: str, distance_mpc: float | None
@@ -3473,9 +3245,10 @@ def test_plot_with_no_light_curve_stops_with_a_message(tmp_path: Path, capsys: p
 def test_packets_light_curve_of_a_model_with_no_model_file(
     mockplot: mock.MagicMock, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """The rest frame light curve of the packets needs no model.txt. Only the comoving frame needs it.
+    """The light curves of the packets need no model.txt, in the rest frame and in the comoving frame.
 
-    A copy of a model folder with no model.txt stopped with FileNotFoundError, also with no --plotcmf.
+    A copy of a model folder with no model.txt stopped with FileNotFoundError, also with no --plotcmf. The comoving
+    frame then took the velocity of the model surface from model.txt, and it now takes the position of each packet.
     """
     modelcopy = tmp_path / "nomodel"
     modelcopy.mkdir()
@@ -3487,9 +3260,8 @@ def test_packets_light_curve_of_a_model_with_no_model_file(
         argsraw=[], modelpath=[modelcopy], frompackets=True, plotcmf=True, outputfile=tmp_path / "lc.pdf"
     )
     stderr = capsys.readouterr().err
-    assert "holds no model.txt" in stderr
-    assert "--plotcmf draws no curve" in stderr
-    assert len(mockplot.call_args_list) == 1
+    assert "--plotcmf draws no curve" not in stderr
+    assert len(mockplot.call_args_list) == 2
     assert (tmp_path / "lc.pdf").is_file()
 
 

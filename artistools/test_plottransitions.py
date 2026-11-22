@@ -19,21 +19,6 @@ outputpath = at.get_path("testoutput")
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
-def test_transitions_with_a_model_also_draws_the_lte_temperatures(mockplot: mock.MagicMock, tmp_path: Path) -> None:
-    """With a model path, each -T gives an LTE series beside the NLTE series.
-
-    The command drew the NLTE series alone and ignored -T with no message.
-    """
-    at.plottransitions.main(argsraw=[], modelpath=modelpath, outputfile=tmp_path, timedays=300, T=[5000.0, 8000.0])
-
-    labels = [callargs.kwargs["label"] for callargs in mockplot.call_args_list]
-    # one series of each type in each panel of the seven ions
-    assert labels.count("NLTE") == 7
-    assert labels.count("LTE T1 = 5000 K") == 7
-    assert labels.count("LTE T2 = 8000 K") == 7
-
-
-@mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 @pytest.mark.benchmark
 def test_transitions(mockplot: mock.MagicMock, get_plot_xy: Callable[[t.Any], tuple[np.ndarray, np.ndarray]]) -> None:
     at.plottransitions.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timedays=300)
@@ -117,11 +102,20 @@ def test_kurucz_transitions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
 def test_plottransitions_writes_the_drawn_values(
     mockplot: mock.MagicMock, tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
 ) -> None:
-    """--write_data gives one row for each ion, each series, and each wavelength, and the ion names the panel."""
+    """--write_data gives one row for each ion, each series, and each wavelength, and the ion names the panel.
+
+    With a model path, each -T gives an LTE series beside the NLTE series. The command drew the NLTE series alone
+    and ignored -T with no message.
+    """
     at.plottransitions.main(
         argsraw=[], modelpath=modelpath, timedays=300, T=[5000.0], outputfile=tmp_path / "trans.pdf", write_data=True
     )
     dftable = read_data_file(tmp_path / "trans.txt")
+
+    labels = [callargs.kwargs["label"] for callargs in mockplot.call_args_list]
+    # one series of each type in each panel of the seven ions
+    assert labels.count("NLTE") == 7
+    assert labels.count("LTE T1 = 5000 K") == 7
 
     axes = list(dict.fromkeys(call.args[0] for call in mockplot.call_args_list))
     ionlabels = list(dict.fromkeys(dftable["ion"]))
@@ -181,7 +175,12 @@ def test_transitions_distribute_the_superlevel_population(temperature: float) ->
 
 def test_transition_superlevel_uses_only_the_kept_levels(tmp_path: Path) -> None:
     levels = pl.DataFrame({"levelindex": [0, 1, 2], "g": [1.0, 3.0, 5.0], "energy_ev": [0.0, 1.0, 2.0]})
-    atomicdata = pl.DataFrame({"Z": [26], "ion_stage": [2], "levels": pl.Series([levels], dtype=pl.Object)})
+    atomicdata = pl.DataFrame({
+        "Z": [26],
+        "ion_stage": [2],
+        "levels": pl.Series([levels], dtype=pl.Object),
+        "transitions": pl.Series([pl.LazyFrame()], dtype=pl.Object),
+    })
     with (
         mock.patch.object(at.lines.core, "get_levels", return_value=atomicdata),
         mock.patch.object(at.lines.core, "get_kept_level_counts", return_value={26: 2}),

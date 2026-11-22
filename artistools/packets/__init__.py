@@ -10,6 +10,7 @@ from artistools.packets.core import count_packets_textfiles as count_packets_tex
 from artistools.packets.core import filter_packets_dirbin as filter_packets_dirbin
 from artistools.packets.core import get_emission_velocity_expr as get_emission_velocity_expr
 from artistools.packets.core import get_emission_velocity_lineofsight_expr as get_emission_velocity_lineofsight_expr
+from artistools.packets.core import get_escape_time_cmf_days_expr as get_escape_time_cmf_days_expr
 from artistools.packets.core import get_modelgridindex_expr as get_modelgridindex_expr
 from artistools.packets.core import get_modelgridindex_from_velocity_expr as get_modelgridindex_from_velocity_expr
 from artistools.packets.core import get_packets as get_packets

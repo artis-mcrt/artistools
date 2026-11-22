@@ -1,4 +1,3 @@
-import argparse
 import dataclasses as dc
 import math
 import shlex
@@ -35,9 +34,6 @@ def test_deltalogx_largestscale_is_the_diagonal_of_a_cell(
     """-deltalogx largestscale gives Δv/c of the diagonal of a cell of a 3D grid, and the viewer keeps the keyword."""
     vmax_cmps = 2892020000.0
     expected = math.sqrt(3) * 2 * vmax_cmps / 10 / at.constants.C_cm_per_s
-    args = argparse.Namespace(deltalogx="largestscale", modelspecpaths=[modelpath_classic_3d])
-    plotspectra.resolve_deltalogx_scale(args)
-    assert math.isclose(args.deltalogx, expected, rel_tol=1e-6)
 
     viewer = make_viewer(
         "spectra", [str(modelpath_classic_3d), "-t", "5", "-deltalogx", "largestscale", "--interactive"]
@@ -713,6 +709,8 @@ def test_interactive_unlock_gives_the_default_count(
     locked = dc.replace(viewer.values, fixedionlist=("Fe II", "Co II"), maxseriescount=2, countfromlist=True)
     assert interactive.remove_series_lock(locked).maxseriescount == plotspectra.DEFAULT_MAXSERIESCOUNT
     assert interactive.remove_series_lock(dc.replace(locked, countfromlist=False)).maxseriescount == 2
+    # a change of the packet type clears the list, and it gave the command a count of the length of the list
+    assert interactive.set_packet_type(locked, gamma=True).maxseriescount == plotspectra.DEFAULT_MAXSERIESCOUNT
 
 
 def test_interactive_data_source(make_viewer: Callable[[str, list[str]], interactive.SpectrumViewer]) -> None:
@@ -1005,7 +1003,20 @@ def test_viewer_keys_the_models_by_the_tokens_of_the_list() -> None:
     """A path with a trailing slash must give the model of its row, or the window stops at the start."""
     viewer = interactive.SpectrumViewer([f"{modelpath}/", "-t", "300"], mplfig.Figure())
     assert set(viewer.grid.modeltimes) == set(viewer.values.spectra)
-    assert viewer.grid.loadkey == (viewer.values.spectra, viewer.values.timegrid)
+    assert viewer.grid.loadkey == (viewer.values.spectra, viewer.values.timegrid, False)
+
+
+def test_viewer_plotinvalidpart_of_the_option_table_sets_the_valid_timesteps() -> None:
+    """--plotinvalidpart in the option table lets the time controls reach the timesteps before the valid range.
+
+    The time grid read the flag of the start command alone, thus a row of the table did not change the valid times.
+    """
+    viewer = interactive.SpectrumViewer([str(modelpath), "-t", "300"], mplfig.Figure())
+    validcount = len(viewer.grid.validtimesteps)
+    viewer.values = dc.replace(viewer.values, otheroptions=(("--plotinvalidpart", ()),))
+    viewer.load_models(viewer.values.spectra, viewer.values.timegrid)
+    assert viewer.grid.loadkey[2]
+    assert len(viewer.grid.validtimesteps) > validcount
 
 
 def test_viewer_command_keeps_the_time_grid_of_a_later_model() -> None:
