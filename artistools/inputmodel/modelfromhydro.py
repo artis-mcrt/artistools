@@ -118,23 +118,17 @@ def get_snapshot_time_geomunits(pathtogriddata: Path | str) -> tuple[float, floa
 
     if len(snapshotinfofiles) > 1:
         exit_with_error(f"{pathtogriddata} holds more than one *_info.dat file of the snapshot")
-    snapshotinfofile = Path(snapshotinfofiles[0])
 
-    if snapshotinfofile.is_file():
-        # the glob above accepts a compressed info file, thus the read has to accept one too
-        with zopen(snapshotinfofile, encoding="utf-8") as fsnapshotinfo:
-            line1 = fsnapshotinfo.readline()
-            simulation_end_time_geomunits = float(line1.split()[2])
-            print(
-                f"Found simulation snapshot time to be {simulation_end_time_geomunits} "
-                f"({simulation_end_time_geomunits * geometric_time_to_s} s)"
-            )
+    # the glob above accepts a compressed info file, thus the read has to accept one too
+    with zopen(snapshotinfofiles[0], encoding="utf-8") as fsnapshotinfo:
+        simulation_end_time_geomunits = float(fsnapshotinfo.readline().split()[2])
+    print(
+        f"Found simulation snapshot time to be {simulation_end_time_geomunits} "
+        f"({simulation_end_time_geomunits * geometric_time_to_s} s)"
+    )
 
-        mergertime_geomunits = get_merger_time_geomunits(pathtogriddata)
-        print(f"  Time since merger {(simulation_end_time_geomunits - mergertime_geomunits) * geometric_time_to_s} s")
-
-    else:
-        exit_with_error("Could not find the snapshot info file that gives the simulation time")
+    mergertime_geomunits = get_merger_time_geomunits(pathtogriddata)
+    print(f"  Time since merger {(simulation_end_time_geomunits - mergertime_geomunits) * geometric_time_to_s} s")
 
     return simulation_end_time_geomunits, mergertime_geomunits
 
