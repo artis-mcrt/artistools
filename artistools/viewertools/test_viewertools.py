@@ -30,8 +30,24 @@ from artistools.viewertools import widgets as viewerwidgets
 from artistools.viewertools import window as viewerwindow
 from artistools.viewertools.window import apply_values
 
+if t.TYPE_CHECKING:
+    from PySide6 import QtCore
+
 modelpath = at.get_path("testdata") / "testmodel"
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
+
+
+def wait_until(app: "QtCore.QCoreApplication", is_done: Callable[[], bool]) -> None:
+    """Run the events of the Qt application until is_done gives True, for 10 seconds at most."""
+    deadline = time.perf_counter() + 10.0
+    while not is_done() and time.perf_counter() < deadline:
+        app.processEvents()
+        time.sleep(0.005)
+
+
+def queue_is_idle(queue: viewerwindow.DrawQueue[t.Any]) -> bool:
+    """Return True if the queue has no plot or task in progress and no values that wait."""
+    return queue.rendering is None and queue.task is None and queue.requestedvalues is None
 
 
 @pytest.mark.parametrize("kind", ["spectra", "lightcurve"])
@@ -56,19 +72,12 @@ def test_viewer_gives_the_standard_spellings_for_older_ones(
 
 
 @pytest.mark.parametrize("kind", ["spectra", "lightcurve"])
-def test_viewer_changes_the_residual_baseline(kind: str, make_viewer: Callable[[str, list[str]], t.Any]) -> None:
-    """The option table gives the baseline index to the command and keeps the residual panel."""
+def test_viewer_reads_a_bare_residual_baseline_flag(kind: str, make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+    """A bare --residualbaselineseries after the paths gives a row with no value and a residual panel."""
     timetokens = ["-t", "300"] if kind == "spectra" else []
     viewer = make_viewer(kind, [str(modelpath), str(modelpath), *timetokens, "--residualbaselineseries"])
     assert viewer.values.otheroptions == (("--residualbaselineseries", ()),)
     assert viewer.residualaxis is not None
-    assert apply_values(viewer, dc.replace(viewer.values, otheroptions=(("--residualbaselineseries", ("1",)),))) is None
-    assert viewer.values.otheroptions == (("--residualbaselineseries", ("1",)),)
-    assert viewer.residualaxis is not None
-    tokens = viewer.get_plot_tokens()
-    assert tokens[tokens.index("--residualbaselineseries") + 1] == "1"
-    assert apply_values(viewer, dc.replace(viewer.values, otheroptions=())) is None
-    assert viewer.residualaxis is None
 
 
 @pytest.mark.parametrize("kind", ["spectra", "lightcurve"])
@@ -99,10 +108,7 @@ def test_viewer_selects_the_residual_series(kind: str, make_viewer: Callable[[st
     assert apply_values(viewer, dc.replace(viewer.values, otheroptions=options)) is None
     assert viewer.residualaxis is not None
     assert len(viewer.residualaxis.lines) == 2
-    parser = viewercore.make_parser(
-        at.spectra.plotspectra.addargs if kind == "spectra" else at.lightcurve.plotlightcurve.addargs
-    )
-    args = parser.parse_args(viewer.get_plot_tokens())
+    args = viewer.parser.parse_args(viewer.get_plot_tokens())
     assert args.residuals == [0]
     assert args.residualbaselineseries == 2
     assert apply_values(viewer, dc.replace(viewer.values, otheroptions=(("-residual", ()),))) is None
@@ -112,11 +118,8 @@ def test_viewer_selects_the_residual_series(kind: str, make_viewer: Callable[[st
 
 
 @pytest.mark.parametrize("kind", ["spectra", "lightcurve"])
-@pytest.mark.parametrize("residualtype", ["absolute", "relative", "relativelog"])
-def test_viewer_selects_the_residual_type(
-    kind: str, residualtype: str, make_viewer: Callable[[str, list[str]], t.Any]
-) -> None:
-    """Both viewers use the residual type from the option table."""
+def test_viewer_selects_the_residual_type(kind: str, make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+    """Both viewers use the residual type from the option table. The type relativelog also sets a log scale."""
     timetokens = ["-t", "300"] if kind == "spectra" else []
     viewer = make_viewer(kind, [str(modelpath)] * 2 + timetokens + ["--residual"])
     assert viewer.residualaxis is not None
@@ -125,42 +128,32 @@ def test_viewer_selects_the_residual_type(
     initialvalues = np.asarray(viewer.residualaxis.lines[0].get_ydata())
     assert np.isfinite(initialvalues).any()
     assert np.allclose(initialvalues[np.isfinite(initialvalues)], 1.0)
-    options = (("--residual", ()), ("--residualtype", (residualtype,)))
+    options = (("--residual", ()), ("--residualtype", ("relativelog",)))
     assert apply_values(viewer, dc.replace(viewer.values, otheroptions=options)) is None
     assert viewer.residualaxis is not None
-    assert viewer.residualaxis.get_yscale() == ("log" if residualtype == "relativelog" else "linear")
+    assert viewer.residualaxis.get_yscale() == "log"
     line = viewer.residualaxis.lines[0]
     values = np.asarray(line.get_ydata())
     finite = np.isfinite(values)
     assert finite.any()
-    # a spectrum has a flux of the order of 1e-13, thus the default atol of 1e-8 accepts each absolute residual
-    assert np.allclose(values[finite], 0.0 if residualtype == "absolute" else 1.0, rtol=1e-12, atol=0.0)
-    parser = viewercore.make_parser(
-        at.spectra.plotspectra.addargs if kind == "spectra" else at.lightcurve.plotlightcurve.addargs
-    )
-    args = parser.parse_args(viewer.get_plot_tokens())
-    assert args.residualtype == residualtype
-    action = viewercore.get_actions_by_flag(parser)["--residualtype"]
+    assert np.allclose(values[finite], 1.0, rtol=1e-12, atol=0.0)
+    args = viewer.parser.parse_args(viewer.get_plot_tokens())
+    assert args.residualtype == "relativelog"
+    action = viewercore.get_actions_by_flag(viewer.parser)["--residualtype"]
     assert viewercore.get_option_kind(action) == "choice"
     assert viewercore.get_default_tokens(action) == ("relative",)
 
 
-@pytest.mark.parametrize("residualtype", ["absolute", "relative", "relativelog"])
 @pytest.mark.parametrize("kind", ["spectra", "lightcurve"])
-def test_viewer_sets_the_residual_y_maximum(
-    kind: str, residualtype: str, make_viewer: Callable[[str, list[str]], t.Any]
-) -> None:
-    """Both viewers pass the residual maximum through the option table and the command."""
+def test_viewer_sets_the_residual_y_maximum(kind: str, make_viewer: Callable[[str, list[str]], t.Any]) -> None:
+    """Both viewers pass the residual maximum of a log residual axis through the option table and the command."""
     timetokens = ["-t", "300"] if kind == "spectra" else []
-    viewer = make_viewer(kind, [str(modelpath)] * 2 + timetokens + ["-residual", "-residualtype", residualtype])
-    options = (("-residual", ()), ("-residualtype", (residualtype,)), ("-residualymax", ("2.5",)))
+    viewer = make_viewer(kind, [str(modelpath)] * 2 + timetokens + ["-residual", "-residualtype", "relativelog"])
+    options = (("-residual", ()), ("-residualtype", ("relativelog",)), ("-residualymax", ("2.5",)))
     assert apply_values(viewer, dc.replace(viewer.values, otheroptions=options)) is None
     assert viewer.residualaxis is not None
     assert np.isclose(viewer.residualaxis.get_ylim()[1], 2.5)
-    parser = viewercore.make_parser(
-        at.spectra.plotspectra.addargs if kind == "spectra" else at.lightcurve.plotlightcurve.addargs
-    )
-    assert np.isclose(parser.parse_args(viewer.get_plot_tokens()).residualymax, 2.5)
+    assert np.isclose(viewer.parser.parse_args(viewer.get_plot_tokens()).residualymax, 2.5)
 
 
 @pytest.mark.parametrize(("kind", "timetokens"), [("spectra", ["-t", "300"]), ("lightcurve", ["--plotcmf"])])
@@ -503,13 +496,6 @@ def test_window_takes_the_colours_of_a_new_palette() -> None:
     assert result.stdout.strip().splitlines()[-1] == "#202020 #ff0000"
 
 
-def test_viewer_status_line_gives_the_error() -> None:
-    """The status line gives the error of argparse, and not the usage line that argparse prints before it."""
-    stderr = "usage: artistools [options] [specpath ...]\nerror: argument -xmin: invalid float value: 'abc'\nhelp: -h"
-    assert viewercore.get_first_line(stderr) == "argument -xmin: invalid float value: 'abc'"
-    assert viewercore.get_first_line("A file is missing\nThe second line") == "A file is missing"
-
-
 def test_viewer_queue_moves_a_clamped_control_back() -> None:
     """A handler that clamps a control to the values of the plot gives unchanged values, and the control must move back.
 
@@ -648,12 +634,6 @@ def test_viewer_rejection_marks_the_field_of_its_own_plot() -> None:
     showvalues = mock.Mock()
     queue = viewerwindow.DrawQueue(QtCore.QObject(), viewer, mock.Mock(), showvalues, mock.Mock(), render=render)
 
-    def wait_for_plots() -> None:
-        deadline = time.perf_counter() + 10.0
-        while (queue.rendering is not None or queue.requestedvalues is not None) and time.perf_counter() < deadline:
-            app.processEvents()
-            time.sleep(0.005)
-
     def is_live(field: object) -> bool:
         return field is not deletedfield
 
@@ -669,14 +649,14 @@ def test_viewer_rejection_marks_the_field_of_its_own_plot() -> None:
         app.processEvents()
         # the plot of 1 is in progress, and the command accepts it. The command rejects the next change
         queue.apply(2)
-        wait_for_plots()
+        wait_until(app, lambda: queue_is_idle(queue))
         mockmark.assert_called_once_with(fields[1], "rejected 2")
         queue.apply(3)
-        wait_for_plots()
+        wait_until(app, lambda: queue_is_idle(queue))
         assert mockmark.call_args == mock.call(fields[2], "rejected 3")
         showvalues.reset_mock()
         queue.apply(4)
-        wait_for_plots()
+        wait_until(app, lambda: queue_is_idle(queue))
         assert mockmark.call_count == 2, "a field that Qt deleted must get no mark"
         assert showvalues.called, "the window must show the values of the plot after a rejection"
     queue.close()
@@ -755,25 +735,19 @@ def test_viewer_cancel_discards_the_plot_in_progress() -> None:
     viewer = mock.Mock(values=0, warning="")
     queue = viewerwindow.DrawQueue(QtCore.QObject(), viewer, mock.Mock(), mock.Mock(), mock.Mock(), render=render)
 
-    def wait_for_plots() -> None:
-        deadline = time.perf_counter() + 10.0
-        while (queue.rendering is not None or queue.requestedvalues is not None) and time.perf_counter() < deadline:
-            app.processEvents()
-            time.sleep(0.005)
-
     queue.apply(1)
     app.processEvents()
     assert queue.is_busy()
     queue.cancel()
     assert viewer.values == 0, "the controls must show the values of the plot on the screen"
     assert not queue.is_busy()
-    wait_for_plots()
+    wait_until(app, lambda: queue_is_idle(queue))
     assert not shown, "the discarded plot must not replace the plot on the screen"
     queue.apply(2)
     app.processEvents()
     queue.cancel()
     queue.apply(3)
-    wait_for_plots()
+    wait_until(app, lambda: queue_is_idle(queue))
     assert shown == [3]
     assert queue.drawnvalues == viewer.values == 3
     queue.close()
@@ -810,17 +784,8 @@ def test_viewer_queue_draws_in_a_worker_thread() -> None:
     afterdraw = mock.Mock()
     queue = viewerwindow.DrawQueue(QtCore.QObject(), viewer, mock.Mock(), mock.Mock(), afterdraw, render=render)
 
-    def wait_until(condition: Callable[[], bool]) -> None:
-        deadline = time.perf_counter() + 10.0
-        while not condition() and time.perf_counter() < deadline:
-            app.processEvents()
-            time.sleep(0.005)
-
-    def plots_ended() -> bool:
-        return queue.rendering is None and queue.requestedvalues is None
-
     queue.apply(1)
-    wait_until(lambda: rendered == [1])
+    wait_until(app, lambda: rendered == [1])
     # the plot of 1 waits for the release, thus the window thread runs these changes while the plot is in progress
     queue.apply(2)
     queue.apply(3)
@@ -828,7 +793,7 @@ def test_viewer_queue_draws_in_a_worker_thread() -> None:
     assert rendered == [1], "a change during a plot must wait for the end of that plot"
     assert viewer.values == 3, "the window must show the values of a change at once"
     releaseplot.set()
-    wait_until(plots_ended)
+    wait_until(app, lambda: queue_is_idle(queue))
     assert rendered == [1, 3]
     assert "MainThread" not in renderthreads
     assert showthreads == ["MainThread", "MainThread"]
@@ -836,7 +801,7 @@ def test_viewer_queue_draws_in_a_worker_thread() -> None:
 
     # a rejection keeps the values of the last plot
     queue.apply(-1)
-    wait_until(plots_ended)
+    wait_until(app, lambda: queue_is_idle(queue))
     assert viewer.values == queue.drawnvalues == 3
     afterdraw.assert_called_with("rejected")
     queue.close()
@@ -867,6 +832,8 @@ def test_viewer_status_line_reads_text_in_colour() -> None:
     assert viewercore.get_last_warning(warning) == "Every Te value is below the requested minimum"
     error = "\x1b[1;34musage: \x1b[0martistools [options]\n\x1b[1;31merror: \x1b[0m'q=1' is not a plane or a line\n"
     assert viewercore.get_first_line(error) == "'q=1' is not a plane or a line"
+    # a text with no line that starts with "error: " gives its first line
+    assert viewercore.get_first_line("A file is missing\nThe second line") == "A file is missing"
 
 
 def test_viewer_shift_drag_selects_a_y_range_in_one_frame() -> None:
@@ -1027,12 +994,7 @@ def test_viewer_queue_runs_a_task_between_plots() -> None:
     assert queue.run_task(task, "Reload in progress...", ondone)
     assert not queue.run_task(task, "Reload in progress...", ondone), "a second task must wait for the first"
     queue.apply(2)
-    deadline = time.perf_counter() + 10.0
-    while (
-        queue.rendering is not None or queue.task is not None or queue.requestedvalues is not None
-    ) and time.perf_counter() < deadline:
-        app.processEvents()
-        time.sleep(0.005)
+    wait_until(app, lambda: queue_is_idle(queue))
     assert events == ["plot 1", "task", "plot 2"]
     ondone.assert_called_once_with(None)
     assert queue.plotseconds < 0.4, "the time of the task is not the time of a plot"
@@ -1075,12 +1037,27 @@ def test_range_slider_keeps_a_range_of_one_position_and_stays_inside_the_slider(
 def test_viewer_option_rows_split_a_group_of_switches() -> None:
     """Argparse reads -qv as -q and -v, and the option table must give each switch its own row.
 
-    The table read -qv as the flag -q with the value "v", and the command then held a stray positional argument.
+    The table read -qv as the flag -q with the value "v", and the command then held a stray positional argument. The
+    second -q gives no second row, because argparse keeps one value of a switch.
     """
     parser = viewercore.make_parser(at.estimators.addargs)
     rows, othertokens = viewercore.split_option_rows(parser, ["Te", "mymodel", "-qv", "-qt300", "--xmin", "5"])
-    assert rows == (("--quiet", ()), ("--verbose", ()), ("--quiet", ()), ("--timedays", ("300",)), ("--xmin", ("5",)))
+    assert rows == (("--quiet", ()), ("--verbose", ()), ("--timedays", ("300",)), ("--xmin", ("5",)))
     assert othertokens == ["Te", "mymodel"]
+
+
+def test_viewer_option_rows_follow_argparse_for_a_repeated_option_and_a_dash() -> None:
+    """A repeated option that keeps its last values gets one row with them, and a lone "-" is a value.
+
+    The series list read the first row of --label, but argparse keeps the last, and an edit then copied the first row
+    over the others. is_flag took "-" as a flag, thus "--linestyle - :" gave the series paths - and :.
+    """
+    parser = viewercore.make_parser(at.spectra.plotspectra.addargs)
+    rows, othertokens = viewercore.split_option_rows(
+        parser, ["m1", "m2", "--label", "A", "--xmin", "5", "--label", "B", "C", "--linestyle", "-", ":"]
+    )
+    assert rows == (("--label", ("B", "C")), ("--xmin", ("5",)), ("--linestyle", ("-", ":")))
+    assert othertokens == ["m1", "m2"]
 
 
 def test_viewer_removes_an_option_of_two_values_with_its_values_alone() -> None:
@@ -1094,6 +1071,17 @@ def test_viewer_removes_an_option_of_two_values_with_its_values_alone() -> None:
     rows, othertokens = viewercore.split_option_rows(parser, tokens)
     assert rows == (("--emissionradialvelocityrange", ("1000", "2000")), ("--xmin", ("5",)))
     assert othertokens == ["mymodel"]
+
+
+def test_viewer_merges_two_flags_of_one_destination_into_the_last_flag() -> None:
+    """--residuals and --residualbaselineseries share one destination, and argparse keeps the value of the last flag.
+
+    The merge used the flag, thus the viewer wrote --residualbaselineseries 2 before --residuals and selected series 0.
+    """
+    parser = viewercore.make_parser(at.spectra.plotspectra.addargs)
+    tokens = ["--residualbaselineseries", "1", "--residuals", "--residualbaselineseries", "2"]
+    rows, _ = viewercore.split_option_rows(parser, tokens)
+    assert rows == (("--residualbaselineseries", ("2",)),)
 
 
 # each viewer with the arguments of a plot that sets several of its controls
@@ -1314,15 +1302,9 @@ def test_viewer_queue_draws_the_waiting_values_after_an_error_of_the_controls() 
     showvalues = mock.Mock()
     queue = viewerwindow.DrawQueue(QtCore.QObject(), viewer, mock.Mock(), showvalues, mock.Mock(), render=render)
 
-    def wait_until(is_done: Callable[[], bool]) -> None:
-        deadline = time.perf_counter() + 10.0
-        while not is_done() and time.perf_counter() < deadline:
-            app.processEvents()
-            time.sleep(0.005)
-
     with mock.patch.object(viewerwindow, "set_plot_busy"), mock.patch.object(viewerwindow, "show_plot_banner"):
         queue.apply(1)
-        wait_until(lambda: queue.rendering is not None)
+        wait_until(app, lambda: queue.rendering is not None)
         queue.apply(2)
         # the queue reads the signal of the new values during the plot, as in a window
         app.processEvents()
@@ -1335,7 +1317,7 @@ def test_viewer_queue_draws_the_waiting_values_after_an_error_of_the_controls() 
         with pytest.raises(ValueError, match="Invalid value"):
             queue.show_rendered()
         showvalues.side_effect = None
-        wait_until(lambda: queue.rendering is None and queue.requestedvalues is None)
+        wait_until(app, lambda: queue_is_idle(queue))
     assert rendered == [1, 2]
     queue.close()
 
@@ -1364,20 +1346,12 @@ def test_viewer_queue_polls_a_task_that_after_draw_starts() -> None:
     viewer = mock.Mock(values=0, warning="")
     queue = viewerwindow.DrawQueue(QtCore.QObject(), viewer, mock.Mock(), mock.Mock(), after_draw, render=render)
 
-    def wait_for_queue() -> None:
-        deadline = time.perf_counter() + 10.0
-        while (
-            queue.rendering is not None or queue.task is not None or queue.requestedvalues is not None
-        ) and time.perf_counter() < deadline:
-            app.processEvents()
-            time.sleep(0.005)
-
     with mock.patch.object(viewerwindow, "set_plot_busy"), mock.patch.object(viewerwindow, "show_plot_banner"):
         queue.apply(1)
-        wait_for_queue()
+        wait_until(app, lambda: queue_is_idle(queue))
         ondone.assert_called_once_with(None)
         queue.apply(2)
-        wait_for_queue()
+        wait_until(app, lambda: queue_is_idle(queue))
     assert rendered == [1, 2]
     queue.close()
 

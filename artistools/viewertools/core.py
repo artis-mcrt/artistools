@@ -443,7 +443,13 @@ def find_option_action(parser: argparse.ArgumentParser, argstring: str) -> tuple
 
 def is_flag(argstring: str) -> bool:
     """Return True for a flag, and False for a value, e.g. a negative number or a text with a space."""
-    return argstring.startswith("-") and not re.match(r"-\.?\d", argstring) and " " not in argstring.partition("=")[0]
+    # argparse reads a lone "-" as a value, e.g. the solid line style of --linestyle
+    return (
+        argstring != "-"
+        and argstring.startswith("-")
+        and not re.match(r"-\.?\d", argstring)
+        and " " not in argstring.partition("=")[0]
+    )
 
 
 def split_argstrings(parser: "SuggestingArgumentParser", tokens: "Sequence[str]") -> list[str]:
@@ -514,27 +520,41 @@ def standardise_flags(parser: "SuggestingArgumentParser", tokens: "Sequence[str]
     return standardised
 
 
-def remove_options(parser: "SuggestingArgumentParser", tokens: "Sequence[str]", dests: "Collection[str]") -> list[str]:
-    """Return the tokens without the options of these dests and without the values of those options."""
+def iter_option_tokens(
+    parser: "SuggestingArgumentParser", tokens: "Sequence[str]"
+) -> "Generator[tuple[argparse.Action | None, list[str], tuple[str, ...]]]":
+    """Yield each option of the tokens with its tokens and its values, or None with a token that no option takes.
+
+    A flag that holds its value, e.g. -t300 or --xmin=5, gives that value. The tokens after "--" come as one item.
+    """
     argstrings = split_argstrings(parser, tokens)
-    kept: list[str] = []
     index = 0
     while index < len(argstrings):
         argstring = argstrings[index]
-        index += 1
         if argstring == "--":
-            kept.extend(argstrings[index - 1 :])
-            break
-
+            yield None, argstrings[index:], ()
+            return
         action, holdsvalue = find_option_action(parser, argstring)
-        if action is None or action.dest not in dests:
-            kept.append(argstring)
-            continue
+        index += 1
+        if action is None:
+            yield None, [argstring], ()
+        elif holdsvalue:
+            _, equals, value = argstring.partition("=")
+            yield action, [argstring], (value if equals else argstring[2:],)
+        else:
+            values = tuple(argstrings[index : index + count_option_values(action, argstrings, index)])
+            yield action, [argstring, *values], values
+            index += len(values)
 
-        if not holdsvalue:
-            index += count_option_values(action, argstrings, index)
 
-    return kept
+def remove_options(parser: "SuggestingArgumentParser", tokens: "Sequence[str]", dests: "Collection[str]") -> list[str]:
+    """Return the tokens without the options of these dests and without the values of those options."""
+    return [
+        token
+        for action, optiontokens, _ in iter_option_tokens(parser, tokens)
+        if action is None or action.dest not in dests
+        for token in optiontokens
+    ]
 
 
 def get_table_actions(parser: argparse.ArgumentParser, hiddendests: "Collection[str]") -> list[argparse.Action]:
@@ -595,33 +615,52 @@ def split_option_rows(parser: "SuggestingArgumentParser", tokens: "Sequence[str]
     """Return each option of the tokens with its values, and the tokens that are not part of an option.
 
     Each row gives the first flag of the option, thus an alias, e.g. --dx, becomes the full flag, e.g. --deltax.
+    An option that keeps only the values of its last flag, e.g. --label, gets one row (see merge_repeated_rows).
     """
     rows: list[tuple[str, tuple[str, ...]]] = []
+    rowactions: list[argparse.Action] = []
     othertokens: list[str] = []
-    argstrings = split_argstrings(parser, tokens)
-    index = 0
-    while index < len(argstrings):
-        argstring = argstrings[index]
-        index += 1
-        if argstring == "--":
-            othertokens.extend(argstrings[index - 1 :])
-            break
-
-        action, holdsvalue = find_option_action(parser, argstring)
+    for action, optiontokens, values in iter_option_tokens(parser, tokens):
         if action is None:
-            othertokens.append(argstring)
-            continue
-
-        values: list[str] = []
-        if holdsvalue:
-            _, equals, value = argstring.partition("=")
-            values.append(value if equals else argstring[2:])
+            othertokens.extend(optiontokens)
         else:
-            values.extend(argstrings[index : index + count_option_values(action, argstrings, index)])
-            index += len(values)
-        rows.append((action.option_strings[0], tuple(values)))
+            rows.append((action.option_strings[0], values))
+            rowactions.append(action)
+    return merge_repeated_rows(rows, rowactions), othertokens
 
-    return tuple(rows), othertokens
+
+def option_accumulates(action: argparse.Action) -> bool:
+    """Return True for an option that keeps the values of each of its flags, e.g. of action="append".
+
+    argparse gives the classes of these actions no public names, thus the test reads the names of the classes. The
+    class of action="extend" is a subclass of the class of action="append".
+    """
+    accumulatingclassnames = {"_AppendAction", "_AppendConstAction", "_CountAction"}
+    return any(actionclass.__name__ in accumulatingclassnames for actionclass in type(action).__mro__)
+
+
+def merge_repeated_rows(
+    rows: "Sequence[tuple[str, tuple[str, ...]]]", rowactions: "Sequence[argparse.Action]"
+) -> OptionRows:
+    """Return the rows with one row for each destination that keeps only the values of its last flag.
+
+    argparse keeps the values of the last flag of such an option, e.g. --label, thus the merged row takes that flag
+    and its values. It takes the place of the first row. Two flags can share one destination, e.g. --residuals and
+    --residualbaselineseries, thus the merge uses the destination. An edit of one series then cannot copy the values of
+    a different row. An option that accumulates its values, e.g. --obsspec, keeps each row.
+    """
+    lastrow_of_dest = {
+        action.dest: (flag, values)
+        for (flag, values), action in zip(rows, rowactions, strict=True)
+        if not option_accumulates(action)
+    }
+    mergedrows: list[tuple[str, tuple[str, ...]]] = []
+    for (flag, values), action in zip(rows, rowactions, strict=True):
+        if option_accumulates(action):
+            mergedrows.append((flag, values))
+        elif action.dest in lastrow_of_dest:
+            mergedrows.append(lastrow_of_dest.pop(action.dest))
+    return tuple(mergedrows)
 
 
 def get_option_tokens(flag: str, value: str) -> list[str]:
@@ -642,11 +681,9 @@ def set_row_values(rows: OptionRows, changes: "Mapping[str, tuple[str, ...] | No
 
     A new option goes after the other rows.
     """
-    changed = [
-        (flag, changes.get(flag, values)) for flag, values in rows if not (flag in changes and changes[flag] is None)
-    ]
     present = {flag for flag, _ in rows}
-    added = [(flag, values) for flag, values in changes.items() if values is not None and flag not in present]
+    added = [(flag, values) for flag, values in changes.items() if flag not in present]
+    changed = [(flag, changes.get(flag, values)) for flag, values in rows]
     return tuple((flag, values) for flag, values in (*changed, *added) if values is not None)
 
 
@@ -706,6 +743,7 @@ def move_series_styles(
         positions: dict[str, list[int]] = {}
         for index, path in enumerate(oldpaths):
             positions.setdefault(path, []).append(index)
+        # the second copy of a path stays the second copy
         sourceindices = [positions[path].pop(0) if positions.get(path) else None for path in newpaths]
     changes: dict[str, tuple[str, ...] | None] = {}
     for flag in SERIES_STYLE_FLAGS:
@@ -721,28 +759,16 @@ def move_series_styles(
 
 
 def move_residual_indices(
-    rows: OptionRows,
-    oldpaths: "Sequence[str]",
-    newpaths: "Sequence[str]",
-    sourceindices: "Sequence[int | None] | None" = None,
+    rows: OptionRows, oldpaths: "Sequence[str]", newpaths: "Sequence[str]", sourceindices: "Sequence[int | None]"
 ) -> OptionRows:
     """Return the option rows with the residual baseline and the residual series on the same series in the new list.
 
-    These options give a series by its index in plot order. The row of a removed baseline goes away, and the command
-    then takes the series at index 0. A removed series goes out of --residual, and a list with no series left goes
-    away. A command with --residual and no baseline row takes the baseline at index 0.
+    These options give a series by its index in plot order. sourceindices gives the old index of each new series. The
+    row of a removed baseline goes away, and the command then takes the series at index 0. A removed series goes out
+    of --residual, and a list with no series left goes away. A command with --residual and no baseline row takes the
+    baseline at index 0.
     """
-    if list(oldpaths) == list(newpaths) and sourceindices is None:
-        return rows
-    positions: dict[str, list[int]] = {}
-    for position, path in enumerate(newpaths):
-        positions.setdefault(path, []).append(position)
-    # the second copy of a path stays the second copy
-    newindices = (
-        {index: positions[path].pop(0) for index, path in enumerate(oldpaths) if positions.get(path)}
-        if sourceindices is None
-        else {index: position for position, index in enumerate(sourceindices) if index is not None}
-    )
+    newindices = {index: position for position, index in enumerate(sourceindices) if index is not None}
 
     def get_new_index(word: str) -> str | None:
         """Return the new index of a series, the unchanged word for a non-index, or None for a removed series."""

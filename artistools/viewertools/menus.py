@@ -128,15 +128,12 @@ def add_menus(
         "Redo": queue.can_redo,
         "Cancel Plot": queue.is_busy,
     }
-    titles: dict[str, Callable[[], str]] = {"Play": playbutton.text} if playbutton is not None else {}
-    plotcallbacks: dict[str, Callable[[], object]] = {
-        "Undo": queue.undo,
-        "Redo": queue.redo,
-        **({"Play": playbutton.toggle} if playbutton is not None else {}),
-        "Cancel Plot": cancel_plot,
+    alltitles: dict[str, Callable[[], str]] = {
+        "Hide Sidebar": lambda: "Show Sidebar" if is_sidebar_hidden(window) else "Hide Sidebar",
+        "Enter Full Screen": lambda: "Exit Full Screen" if window.isFullScreen() else "Enter Full Screen",
+        **({"Play": playbutton.text} if playbutton is not None else {}),
     }
-
-    windowcallbacks: dict[str, Callable[[], object]] = {
+    allcallbacks: dict[str, Callable[[], object]] = {
         "Hide Sidebar": lambda: toggle_sidebar(window),
         "Enter Full Screen": lambda: window.showNormal() if window.isFullScreen() else window.showFullScreen(),
         "Minimize": window.showMinimized,
@@ -144,13 +141,12 @@ def add_menus(
         "Settings…": show_settings_window,
         "artistools Help": lambda: QtGui.QDesktopServices.openUrl(QtCore.QUrl(HELP_URL)),
         "About": lambda: show_about(window),
+        "Undo": queue.undo,
+        "Redo": queue.redo,
+        **({"Play": playbutton.toggle} if playbutton is not None else {}),
+        "Cancel Plot": cancel_plot,
+        **callbacks,
     }
-    windowtitles: dict[str, Callable[[], str]] = {
-        "Hide Sidebar": lambda: "Show Sidebar" if is_sidebar_hidden(window) else "Hide Sidebar",
-        "Enter Full Screen": lambda: "Exit Full Screen" if window.isFullScreen() else "Enter Full Screen",
-    }
-    allcallbacks = {**windowcallbacks, **plotcallbacks, **callbacks}
-    alltitles = {**windowtitles, **titles}
     menubar = window.menuBar()
     menus = {name: menubar.addMenu(name) for name in ("File", "Edit", "View", "Window", "Help")}
     actions: dict[str, QtGui.QAction] = {}
