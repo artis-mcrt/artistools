@@ -30,8 +30,10 @@ from artistools.misc import add_help_note
 from artistools.misc import ALL_MODEL_EDGE_KEYS
 from artistools.misc import CellDirectionRange
 from artistools.misc import exit_with_error
+from artistools.misc import find_sn3d_input_file
 from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
+from artistools.misc import folder_is_artis_model
 from artistools.misc import get_bin_index_expr
 from artistools.misc import get_cell_counts_of_edges
 from artistools.misc import get_cell_direction_range
@@ -59,6 +61,7 @@ from artistools.misc import read_parquet_cache_metadata
 from artistools.misc import read_wsv
 from artistools.misc import resolve_modelpath
 from artistools.misc import resolve_outputfile
+from artistools.misc import SN3D_INPUT_FOLDERS
 from artistools.misc import SPHERICAL_EDGE_COORDINATES
 from artistools.misc import UNIFORM_EDGE_COORDINATES
 from artistools.misc import validate_model_edges
@@ -957,6 +960,86 @@ def require_no_ye_file_of_earlier_model(outputfolder: Path, modelpath: Path | st
         )
 
 
+def get_sn3d_model_folder(inputfolder: Path) -> Path:
+    """Return the model folder of sn3d for the folder of a model.txt, e.g. the parent of a data folder.
+
+    sn3d reads its input files from the model folder, data/, and artis/data/. A data folder is part of the model
+    folder above it only if that folder holds input.txt. The function returns an absolute path. It keeps a symbolic
+    link, e.g. a data/ that links to a shared folder, because sn3d finds the files through that link.
+    """
+    inputfolder = Path(os.path.normpath(inputfolder.absolute()))
+    for datafolder in SN3D_INPUT_FOLDERS[1:]:
+        dataparts = Path(datafolder).parts
+        if inputfolder.parts[-len(dataparts) :] == dataparts:
+            modelfolder = inputfolder.parents[len(dataparts) - 1]
+            if folder_is_artis_model(modelfolder):
+                return modelfolder
+    return inputfolder
+
+
+def get_sn3d_file_copies(modelfolder: Path, filename: str) -> list[Path]:
+    """Return each copy of a file in the folders that sn3d searches, e.g. data/Ye.txt.zst and Ye.txt.gz."""
+    return [
+        path
+        for datafolder in SN3D_INPUT_FOLDERS
+        for path in get_file_copies(modelfolder / datafolder / filename)
+        if path.is_file()
+    ]
+
+
+def is_one_of_the_files(path: Path, files: Sequence[Path]) -> bool:
+    """Return True if path is the same file as a file of the list, also through a symbolic link."""
+    return any(path.samefile(otherpath) for otherpath in files)
+
+
+def find_ye_file_to_merge(sourcefolder: Path, outputfolder: Path, formatversion: int) -> Path | None:
+    """Return the Ye.txt that sn3d reads for the model.txt in sourcefolder, or None.
+
+    A write of format version 2 deletes each copy of Ye.txt beside the new model.txt, and the column Ye gets the
+    values of the returned file. Thus the function stops for these cases:
+
+    - the write deletes a different copy of Ye.txt of the source model, e.g. Ye.txt.gz, which would lose its values;
+    - a Ye.txt or an abundances.txt that sn3d would read for the new model, and that the write does not delete, e.g.
+      data/Ye.txt. sn3d stops for such a file with a model of version 2.
+    """
+    sourcemodelfolder = get_sn3d_model_folder(sourcefolder)
+    yefilepath = find_sn3d_input_file("Ye.txt", sourcemodelfolder)
+    if formatversion != 2:
+        return yefilepath
+    sourcecopies = get_sn3d_file_copies(sourcemodelfolder, "Ye.txt")
+    lostcopies = [
+        path
+        for path in get_file_copies(outputfolder / "Ye.txt")
+        if path.is_file()
+        and is_one_of_the_files(path, sourcecopies)
+        and not (yefilepath is not None and path.samefile(yefilepath))
+    ]
+    if lostcopies:
+        exit_with_error(
+            f"The model holds {lostcopies[0]}, which sn3d does not read, and the write of format version 2 deletes it",
+            "Keep one Ye.txt or Ye.txt.zst in the model, or give a different output folder",
+        )
+    remainingcopies = [
+        path
+        for filename in ("Ye.txt", "abundances.txt")
+        for path in get_sn3d_file_copies(get_sn3d_model_folder(outputfolder), filename)
+        if path.name in {filename, f"{filename}.zst"}
+        and not (outputfolder.is_dir() and path.parent.samefile(outputfolder))
+    ]
+    if remainingcopies:
+        # a file of the source model holds values that the conversion needs, thus a move or a deletion loses them
+        isofsourcemodel = is_one_of_the_files(
+            remainingcopies[0], get_sn3d_file_copies(sourcemodelfolder, remainingcopies[0].name)
+        )
+        exit_with_error(
+            f"sn3d would read {remainingcopies[0]} for the new model of format version 2, and it stops for such a file",
+            "The file is part of the source model. Give a different output folder"
+            if isofsourcemodel
+            else "Move the file beside model.txt, which lets the command merge and delete it, or delete the file",
+        )
+    return yefilepath
+
+
 @on_model_host
 def get_modelmeta(modelpath: Path) -> dict[str, t.Any]:
     """Return the metadata of the model, e.g. the dimensions and the time of the model.
@@ -1368,6 +1451,18 @@ def get_spherical_cell_index_of_velocities(
         index_phi = np.searchsorted(np.asarray(modelmeta["phi_edges_radians"], dtype=np.float64), phi, side="right") - 1
         cellindex += index_phi * (ncoordgridr * ncoordgridtheta)
     return np.where(index_r < ncoordgridr, cellindex, -1).astype(np.int64)
+
+
+def get_spherical_slice_velocity_cmps(slicevelocity_cmps: float, vmax_cmps: float) -> float:
+    """Return the position of the plane of a slice of a spherical model, 1e-9 vmax above the given plane [cm/s].
+
+    Each point of the image lies on the plane, and a cell holds its lower edge. Thus a plane on a cell edge took the
+    cells of a different side in each half of the image. The plane above takes the cells on the positive side. The
+    image takes the cell edges in float64, thus 1e-9 vmax is far above the rounding error. A plane less than 1e-9 vmax
+    below vmax stays, because the plane above is outside the model.
+    """
+    planeabove_cmps = slicevelocity_cmps + 1.0e-9 * vmax_cmps
+    return planeabove_cmps if planeabove_cmps < vmax_cmps else slicevelocity_cmps
 
 
 # an image of 2000 x 2000 points takes approximately 130 MB for the cell search
@@ -2027,18 +2122,31 @@ def with_rho_of_1d_model(dfmodel: pl.DataFrame) -> pl.DataFrame:
     A version 2 file holds rho in place of logrho.
 
     A version 1 file gives logrho only. A dataframe can hold both columns, e.g. from a version 2 file. The function
-    then stops if they do not agree, because it cannot know which column a caller changed.
+    then stops if they do not agree (see require_agreement_of_rho_and_logrho).
     """
     if "rho" not in dfmodel.columns:
         return dfmodel.with_columns(rho=RHO_FROM_LOGRHO.cast(pl.Float32))
-    maxlogdifference = dfmodel.select((LOGRHO_FROM_RHO - pl.col("logrho")).abs().max()).item()
+    require_agreement_of_rho_and_logrho(dfmodel)
+    return dfmodel
+
+
+def require_agreement_of_rho_and_logrho(dfmodel: pl.DataFrame) -> None:
+    """Stop if the dataframe of a 1D model holds rho and logrho, and the two columns do not agree.
+
+    A dataframe can hold both columns, e.g. from a version 2 file. A writer reads one of them, and it cannot know
+    which column a caller changed. An empty cell agrees if rho is 0 and logrho is -98 or less.
+    """
+    if "rho" not in dfmodel.columns or "logrho" not in dfmodel.columns:
+        return
+    isemptyinboth = (pl.col("rho") == 0.0) & (pl.col("logrho") <= -98.0)
+    logdifference = pl.when(isemptyinboth).then(0.0).otherwise((LOGRHO_FROM_RHO - pl.col("logrho")).abs())
+    maxlogdifference = dfmodel.select(logdifference.max()).item()
     if maxlogdifference is not None and maxlogdifference > 1e-4:
         msg = (
             f"The columns rho and logrho of the 1D model do not agree: log10(rho) and logrho have a difference of up"
             f" to {maxlogdifference:.3g}. Change both columns, or drop one of them"
         )
         raise ValueError(msg)
-    return dfmodel
 
 
 def with_cell_ids_from_zero(
@@ -2090,6 +2198,7 @@ def save_modeldata(
     modelmeta: dict[str, t.Any] | None = None,
     extracols: Sequence[str] = (),
     dfelabundances: pl.DataFrame | pl.LazyFrame | None = None,
+    deletecellidfiles: bool = False,
     **kwargs: t.Any,
 ) -> None:
     """Write model.txt, a snapshot of the density and the composition, from the cell properties and the metadata.
@@ -2166,8 +2275,13 @@ def save_modeldata(
     in each cell. Thus the function writes one of these columns only if it is not zero in a cell with density.
 
     A version 2 model has no Ye.txt, because the column Ye of model.txt gives the electron fraction. It also has no
-    opacity.txt, which sn3d does not read. The function deletes a Ye.txt and an opacity.txt of the output folder
-    when it writes a version 2 file. It does not change these two files when it writes a version 1 file.
+    opacity.txt, which sn3d does not read. When the function writes a version 2 file named model.txt, it stops for a
+    Ye.txt or an opacity.txt of the output folder. Such a file can hold the only copy of its values.
+
+    Give deletecellidfiles=True to delete these files. Give it after a merge of Ye.txt (see with_ye_of_yefile). Also
+    give it when the user agreed to replace the files of an earlier model. The function does not change these two
+    files when it writes a version 1 file. It also does not change them when it writes a file with a different name
+    (e.g. model_alt.txt), which is not the model of the folder.
 
     A version 2 model has no abundances.txt. sn3d takes the mass fraction of an element as the sum of its nuclide
     columns and of its column X_<element>_otherstable, e.g. X_Ni56 + X_Ni58 + X_Ni_otherstable. Give dfelabundances
@@ -2226,12 +2340,25 @@ def save_modeldata(
         colnames = [*colnames, "inputcellid"]
 
     outputfolder = resolve_outputfile(outpath, "model.txt").parent
-    # sn3d reads the files beside model.txt. A file with a different name, e.g. model_v2.txt, keeps them for the
-    # model.txt of its folder
-    writesmodelfile = without_compressed_extension(resolve_outputfile(outpath, "model.txt")).name == "model.txt"
+    # sn3d reads the abundances.txt and the Ye.txt beside model.txt. A file with a different name, e.g.
+    # model_alt.txt, is a different model, thus its write leaves these files of the folder as they are
+    writesmodeltxt = without_compressed_extension(resolve_outputfile(outpath, "model.txt")).name == "model.txt"
     oldabundancefiles = [
-        path for path in get_file_copies(outputfolder / "abundances.txt") if writesmodelfile and path.is_file()
+        path for path in get_file_copies(outputfolder / "abundances.txt") if writesmodeltxt and path.is_file()
     ]
+    oldcellidfiles = [
+        path
+        for filename in CELL_ID_FILE_NAMES
+        for path in get_file_copies(outputfolder / filename)
+        if formatversion == 2 and writesmodeltxt and path.is_file()
+    ]
+    if oldcellidfiles and not deletecellidfiles:
+        msg = (
+            f"{oldcellidfiles[0]} gives values of the cells, and a model of format version 2 has no such file. Merge"
+            " the values of Ye.txt with with_ye_of_yefile. Then give deletecellidfiles=True. As an alternative, delete"
+            " the file"
+        )
+        raise ValueError(msg)
     if formatversion == 2:
         if dfelabundances is not None:
             dfmodel = with_otherstable_columns(dfmodel.lazy().collect(), dfelabundances.lazy().collect())
@@ -2270,6 +2397,9 @@ def save_modeldata(
     )
     version2keylines: list[str] = []
     hasdensity = pl.col("rho") > 0
+    if coordinates == "spherical1d" and formatversion == 1:
+        # the writer of version 1 reads logrho alone, thus logrho must agree with a changed rho
+        require_agreement_of_rho_and_logrho(dfmodel)
     if formatversion == 2:
         dfmodel = dfmodel.sort("inputcellid")
         if coordinates not in SPHERICAL_EDGE_COORDINATES:
@@ -2447,12 +2577,9 @@ def save_modeldata(
             oldabundancefile.unlink()
             remove_parquet_cache(oldabundancefile)
             print(f"Deleted {oldabundancefile}, because the model.txt of format version 2 gives the element masses")
-    if formatversion == 2 and writesmodelfile:
-        for filename in CELL_ID_FILE_NAMES:
-            for oldcellfile in get_file_copies(outputfolder / filename):
-                if oldcellfile.is_file():
-                    oldcellfile.unlink()
-                    print(f"Deleted {oldcellfile}, because a model of format version 2 has no {filename}")
+    for oldcellfile in oldcellidfiles:
+        oldcellfile.unlink()
+        print(f"Deleted {oldcellfile}, because a model of format version 2 has no such file")
     print_detail(f"Took {time.perf_counter() - timestart:.1f} seconds")
 
 
@@ -2681,7 +2808,7 @@ def dimension_reduce_model(
     *,
     modelmeta: dict[str, t.Any],
     **kwargs: t.Any,
-) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame, dict[str, t.Any]]:
+) -> tuple[pl.DataFrame, pl.DataFrame | None, pl.DataFrame | None, dict[str, t.Any]]:
     """Convert a model to fewer dimensions: to a 2D model, a 1D spherical model, or a model with one zone.
 
     A 3D Cartesian model gives a 2D cylindrical model. Each cell goes to the output cell that holds its mid-point.
@@ -2689,7 +2816,7 @@ def dimension_reduce_model(
     radial edges. Each output cell is then a sum of complete cells, thus the mass of each output cell is exact.
 
     The function can also change the particle gridcontributions and the table of the elemental abundances to agree
-    with the new model.
+    with the new model. Each of these two results is None if the caller gives no such table.
     """
     assert outputdimensions in {0, 1, 2}
 
@@ -2940,25 +3067,22 @@ def dimension_reduce_model(
         else pl.LazyFrame()
     )
 
-    dfmodel_out, dfelabundances_out, dfgridcontributions_out = pl.collect_all((
+    dfmodel_out, dfelabundances_collected, dfgridcontributions_collected = pl.collect_all((
         dfmodel_out,
         dfelabundances_out,
         dfgridcontributions_out,
     ))
+    # an output is None for an input that is None
+    dfelabundances_out = None if dfelabundances is None else dfelabundances_collected
+    dfgridcontributions_out = None if dfgridcontributions is None else dfgridcontributions_collected
 
-    if dfelabundances is not None:
-        assert modelmeta_out["npts_model"] == dfelabundances_out.select(pl.len()).item()
+    if dfelabundances_out is not None:
+        assert modelmeta_out["npts_model"] == dfelabundances_out.height
 
     if modelmeta_out["coordinates"] in SPHERICAL_EDGE_COORDINATES:
         # this model has format version 2 only, and that version has cell ids from 0
-        dfmodel_out, dfelabundances_zero, dfgridcontributions_zero = with_cell_ids_from_zero(
-            dfmodel_out,
-            dfelabundances_out if "inputcellid" in dfelabundances_out.columns else None,
-            dfgridcontributions_out if "cellindex" in dfgridcontributions_out.columns else None,
-        )
-        dfelabundances_out = dfelabundances_out if dfelabundances_zero is None else dfelabundances_zero
-        dfgridcontributions_out = (
-            dfgridcontributions_out if dfgridcontributions_zero is None else dfgridcontributions_zero
+        dfmodel_out, dfelabundances_out, dfgridcontributions_out = with_cell_ids_from_zero(
+            dfmodel_out, dfelabundances_out, dfgridcontributions_out
         )
         modelmeta_out["firstinputcellid"] = 0
 

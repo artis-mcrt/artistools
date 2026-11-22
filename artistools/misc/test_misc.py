@@ -1661,7 +1661,7 @@ def test_server_protocol_changes_with_the_readers(package_modules: list[Path]) -
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (21, "69e24cb9f926002e"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (22, "69e24cb9f926002e"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )
@@ -2167,6 +2167,64 @@ FORCE_SPHERICAL_OPTIONS: t.Final = (
 )
 
 
+CARTESIAN_COUNT_OPTIONS: t.Final = (
+    "constexpr int CUBOID_NCOORDGRID_X = 50;\nconstexpr int CUBOID_NCOORDGRID_Y = 50;\n"
+    "constexpr int CUBOID_NCOORDGRID_Z = 50;\n"
+)
+
+
+def write_escape_surface_model(tmp_path: Path, coordinates: str, gridout: str | None, options: str | None) -> Path:
+    """Write a model of the time grid of the test model, with vmax = 3000 km/s, grid.out, and artisoptions.h."""
+    modelfolder = tmp_path / "model"
+    modelfolder.mkdir()
+    for sourcefile in (at.get_path("testdata") / "testmodel").iterdir():
+        if not sourcefile.name.startswith(("model.txt", "abundances.txt", "grid.out")):
+            (modelfolder / sourcefile.name).symlink_to(sourcefile)
+    modellines = [
+        "format_version 2",
+        f"coordinates {coordinates.split(maxsplit=1)[0]}",
+        "t_model_init_days 1.0",
+        *ESCAPE_SURFACE_MODELS[coordinates],
+        "columns inputcellid rho",
+        "0 1e-12",
+        "1 1e-12",
+    ]
+    (modelfolder / "model.txt").write_text("\n".join(modellines) + "\n", encoding="utf-8")
+    if gridout is not None:
+        (modelfolder / "grid.out").write_text(gridout, encoding="utf-8")
+    if options is not None:
+        (modelfolder / "artisoptions.h").write_text(options, encoding="utf-8")
+    return modelfolder
+
+
+@pytest.mark.parametrize(
+    ("options", "startfactor"),
+    [
+        # without the counts of the propagation cells, the start takes the corner of the model grid
+        (None, 1.0),
+        # a cell of the Cartesian grid has the width 2 vmax / 50, thus half its diagonal is sqrt(3) vmax / 50
+        (CARTESIAN_COUNT_OPTIONS, 1.0 + math.sqrt(3.0) / 50.0),
+    ],
+)
+def test_valid_range_starts_when_light_from_the_matter_of_the_largest_radius_arrives(
+    tmp_path: Path, options: str | None, startfactor: float
+) -> None:
+    """The valid range of the arrival times starts at t_start (1 + v / c), with v at the matter of the largest radius.
+
+    sn3d gives each propagation cell the matter at the centre of the cell. Thus a cell at the edge of a 1D model on a
+    Cartesian grid has matter up to half a cell diagonal beyond vmax. The start took vmax, which accepted early times.
+    """
+    from artistools.misc import get_escaped_arrivalrange
+
+    modelfolder = write_escape_surface_model(tmp_path, "spherical1d", CARTESIAN_GRID_OUT, options)
+    firststart_days = at.get_timestep_times(modelfolder, loc="start")[0]
+    vmax_on_c = 3000.0 * at.constants.km_to_cm / at.constants.C_cm_per_s
+    get_escaped_arrivalrange.cache_clear()
+    validrange_start_days = get_escaped_arrivalrange(modelfolder)[1]
+    assert validrange_start_days is not None
+    assert math.isclose(validrange_start_days, firststart_days * (1.0 + startfactor * vmax_on_c), rel_tol=1e-12)
+
+
 @pytest.mark.parametrize(
     ("coordinates", "gridout", "options", "escapefactor"),
     [
@@ -2174,6 +2232,8 @@ FORCE_SPHERICAL_OPTIONS: t.Final = (
         ("spherical1d", None, None, math.sqrt(3.0)),
         ("spherical1d", DIRECT_GRID_OUT, None, 1.0),
         ("spherical1d", CARTESIAN_GRID_OUT, None, math.sqrt(3.0)),
+        # a job that stops early can leave an empty grid.out, which shows no map
+        ("spherical1d", "", None, math.sqrt(3.0)),
         ("cylindrical2d", DIRECT_GRID_OUT, None, math.sqrt(2.0)),
         ("cylindrical2d", CARTESIAN_GRID_OUT, None, math.sqrt(3.0)),
         ("spherical2d", None, None, math.sqrt(3.0)),
@@ -2202,27 +2262,7 @@ def test_valid_range_ends_at_the_escape_surface_of_the_grid_of_the_run(
     """
     from artistools.misc import get_escaped_arrivalrange
 
-    modelfolder = tmp_path / "model"
-    modelfolder.mkdir()
-    for sourcefile in (at.get_path("testdata") / "testmodel").iterdir():
-        if not sourcefile.name.startswith(("model.txt", "abundances.txt", "grid.out")):
-            (modelfolder / sourcefile.name).symlink_to(sourcefile)
-    edgelines = ESCAPE_SURFACE_MODELS[coordinates]
-    modellines = [
-        "format_version 2",
-        f"coordinates {coordinates.split(maxsplit=1)[0]}",
-        "t_model_init_days 1.0",
-        *edgelines,
-        "columns inputcellid rho",
-        "0 1e-12",
-        "1 1e-12",
-    ]
-    (modelfolder / "model.txt").write_text("\n".join(modellines) + "\n", encoding="utf-8")
-    if gridout is not None:
-        (modelfolder / "grid.out").write_text(gridout, encoding="utf-8")
-    if options is not None:
-        (modelfolder / "artisoptions.h").write_text(options, encoding="utf-8")
-
+    modelfolder = write_escape_surface_model(tmp_path, coordinates, gridout, options)
     lastend_days = at.get_timestep_times(modelfolder, loc="end")[-1]
     vmax_on_c = 3000.0 * at.constants.km_to_cm / at.constants.C_cm_per_s
     get_escaped_arrivalrange.cache_clear()

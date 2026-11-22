@@ -518,19 +518,13 @@ def makemodelfromgriddata(
         dfelabundances = None
 
     if dimensions < 3:
-        # the function returns an empty frame, not None, for an input that was None. The guards below
-        # test for None, thus an empty frame would write an empty gridcontributions.txt
-        gave_elabundances = dfelabundances is not None
-        gave_gridcontributions = dfgridcontributions is not None
-        dfmodel, dfelabundances_reduced, dfgridcontributions_reduced, modelmeta = dimension_reduce_model(
+        dfmodel, dfelabundances, dfgridcontributions, modelmeta = dimension_reduce_model(
             dfmodel=dfmodel,
             outputdimensions=dimensions,
             dfelabundances=dfelabundances,
             dfgridcontributions=dfgridcontributions,
             modelmeta=modelmeta,
         )
-        dfelabundances = dfelabundances_reduced if gave_elabundances else None
-        dfgridcontributions = dfgridcontributions_reduced if gave_gridcontributions else None
 
     if getcellopacityfromYe:
         # the reduction changes the cells, thus opacity.txt must name the cells of the output model
@@ -566,6 +560,8 @@ def makemodelfromgriddata(
         dfmodel=dfmodel,
         modelmeta=modelmeta,
         dfelabundances=None if hasabundancefile else dfelabundances,
+        # the overwrite prompt names the Ye.txt and the opacity.txt of an earlier model in the output folder
+        deletecellidfiles=True,
     )
 
 

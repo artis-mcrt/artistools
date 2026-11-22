@@ -117,6 +117,7 @@ from artistools.misc.dirbins import split_multitable_dataframe as split_multitab
 from artistools.misc.dirbins import warn_direction_bin_noise as warn_direction_bin_noise
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS as COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import drop_trailing_null_column as drop_trailing_null_column
+from artistools.misc.fileio import find_sn3d_input_file as find_sn3d_input_file
 from artistools.misc.fileio import firstexisting as firstexisting
 from artistools.misc.fileio import firstexisting_or_none as firstexisting_or_none
 from artistools.misc.fileio import get_decompress_errors as get_decompress_errors
@@ -136,6 +137,7 @@ from artistools.misc.fileio import raise_if_no_final_line_end as raise_if_no_fin
 from artistools.misc.fileio import read_complete_lines as read_complete_lines
 from artistools.misc.fileio import read_wsv as read_wsv
 from artistools.misc.fileio import readnoncommentline as readnoncommentline
+from artistools.misc.fileio import SN3D_INPUT_FOLDERS as SN3D_INPUT_FOLDERS
 from artistools.misc.fileio import with_compressed_extension as with_compressed_extension
 from artistools.misc.fileio import without_compressed_extension as without_compressed_extension
 from artistools.misc.fileio import write_file_atomic as write_file_atomic

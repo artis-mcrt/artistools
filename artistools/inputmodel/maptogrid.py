@@ -80,12 +80,26 @@ SPHERICAL_GRID_SHAPE_DEFAULT = (25, 16, 32)
 
 
 def get_modified_smoothing_lengths(
-    h: npt.NDArray[np.float64], dis: npt.NDArray[np.float64], rmean: float, hmean: float, modifysmoothinglength: str
+    h: npt.NDArray[np.float64],
+    dis: npt.NDArray[np.float64],
+    rmean: float,
+    hmean: float,
+    modifysmoothinglength: str,
+    cellwidth: float | None = None,
 ) -> npt.NDArray[np.float64]:
-    """Return the smoothing length of each particle for a spherical map, after the option of --modifysmoothinglength.
+    """Return the smoothing length of each particle after the option of --modifysmoothinglength.
 
-    The options give the lengths that the Cartesian map gives. option1, option5, and option6 set the length from the
-    width of a Cartesian cell, thus a spherical map stops for them.
+    The options are:
+
+    - option1: a minimum of 1.5 cell widths, thus no particle is lost;
+    - option2: a minimum of 0.25 times the radius of the particle;
+    - option3: a minimum of 0.4 times the radius, beyond 1.5 times the mean radius;
+    - option4 (default): a minimum of 1.5 times the mean length, beyond the mean radius;
+    - option5: a minimum of 0.75 cell widths and a maximum of 2500, beyond the mean radius;
+    - option6: a minimum of 0.75 cell widths, beyond the mean radius.
+
+    cellwidth is the width of a Cartesian cell. A spherical map gives no cell width, thus it stops for option1,
+    option5, and option6.
     """
     if modifysmoothinglength == "False":
         return h
@@ -95,6 +109,12 @@ def get_modified_smoothing_lengths(
         return np.where(dis > 1.5 * rmean, np.maximum(h, 0.4 * dis), h)
     if modifysmoothinglength == "option4":
         return np.where(dis > rmean, np.maximum(h, 1.5 * hmean), h)
+    if cellwidth is not None and modifysmoothinglength == "option1":
+        return np.maximum(h, 1.5 * cellwidth)
+    if cellwidth is not None and modifysmoothinglength == "option5":
+        return np.where(dis > rmean, np.minimum(np.maximum(h, 0.75 * cellwidth), 2500), h)
+    if cellwidth is not None and modifysmoothinglength == "option6":
+        return np.where(dis > rmean, np.maximum(h, 0.75 * cellwidth), h)
     msg = (
         f"--modifysmoothinglength {modifysmoothinglength} sets the smoothing length from the width of a Cartesian"
         " cell. For --coordinates spherical, give False, option2, option3, or option4"
@@ -267,8 +287,8 @@ def map_particles_to_spherical_grid(
     outputfolderpath: Path,
     dfparticles: pl.DataFrame,
     gridshape: tuple[int, int, int],
-    r_outer: float,
-    dtextra: float,
+    r_outer_geomunits: float,
+    dtextra_geomunits: float,
     logprint: Callable[..., None],
     normalisekernelweights: bool = False,
 ) -> None:
@@ -277,10 +297,11 @@ def map_particles_to_spherical_grid(
     dfparticles holds the columns id, x, y, z, h, pmass, mass, and ye of the particles, with the smoothing length
     after the option of --modifysmoothinglength. mass is pmass * rho / rho_rst, which is the mass that the particle
     gives to the density field. gridshape gives the cell counts n_r, n_theta, and n_phi. get_spherical_deposit
-    describes the default method and the method of normalisekernelweights. The cell ids of both files start at 0, as
+    describes the default method and the method of normalisekernelweights. r_outer_geomunits and dtextra_geomunits are
+    in the geometric units of the SPH code (G = c = Msun = 1). The cell ids of both files start at 0, as
     format version 2 of model.txt needs. The files of a Cartesian map have cell ids from 1.
     """
-    edges = get_spherical_grid_edges(r_outer, *gridshape)
+    edges = get_spherical_grid_edges(r_outer_geomunits, *gridshape)
     volumes = get_spherical_cell_volumes(*edges)
     ncells = volumes.size
     logprint(
@@ -289,7 +310,8 @@ def map_particles_to_spherical_grid(
     )
     logprint(
         f"Grid: n_r x n_theta x n_phi = {' x '.join(str(count) for count in gridshape)} = {ncells} cells. The radial"
-        f" edges are uniform from 0 to {r_outer}. The polar edges are uniform in cos(theta), thus the cells of one"
+        f" edges are uniform from 0 to {r_outer_geomunits} (geometric units). The polar edges are uniform in"
+        " cos(theta), thus the cells of one"
         " shell have equal volumes. The azimuthal edges are uniform"
     )
     if normalisekernelweights:
@@ -320,7 +342,7 @@ def map_particles_to_spherical_grid(
         position, dfparticles["h"].to_numpy(), particlemass, edges, get_wij(), normalisekernelweights
     )
 
-    isinside = np.sqrt(np.sum(position**2, axis=1)) <= r_outer
+    isinside = np.sqrt(np.sum(position**2, axis=1)) <= r_outer_geomunits
     hasnocellinkernel = isinside & ~(weightsums > 0.0)
     logprint(
         f"Particles inside the outer radius: {np.count_nonzero(isinside)} of {len(weightsums)}, with the mass"
@@ -376,7 +398,9 @@ def map_particles_to_spherical_grid(
 
     with Path(outputfolderpath, SPHERICAL_GRID_FILE_NAME).open("w", encoding="utf-8") as fgrid:
         fgrid.write("coordinates spherical3d\n")
-        fgrid.write(f"dtextra_geomunits {dtextra} # extra time after explosion simulation ended (in geom units)\n")
+        fgrid.write(
+            f"dtextra_geomunits {dtextra_geomunits} # extra time after explosion simulation ended (in geom units)\n"
+        )
         fgrid.writelines(
             f"{key} {' '.join(f'{edge:.17g}' for edge in axisedges.tolist())}\n"
             for key, axisedges in zip(SPHERICAL_GRIDDAT_EDGE_KEYS, edges, strict=True)
@@ -479,7 +503,7 @@ def maptogrid(
     x = dfsnapshot["x"].to_numpy()
     y = dfsnapshot["y"].to_numpy()
     z = dfsnapshot["z"].to_numpy()
-    h = dfsnapshot["h"].to_numpy().copy()
+    h = dfsnapshot["h"].to_numpy()
     pmass = dfsnapshot["pmass"].to_numpy()
     rho_rst = dfsnapshot["rho_rst"].to_numpy()
     rho = dfsnapshot["rho"].to_numpy()
@@ -534,8 +558,8 @@ def maptogrid(
                 ye="ye",
             ),
             sphericalgridshape,
-            r_outer=setgrid_fractionrmax * rmax,
-            dtextra=dtextra,
+            r_outer_geomunits=setgrid_fractionrmax * rmax,
+            dtextra_geomunits=dtextra,
             logprint=logprint,
             normalisekernelweights=normalisekernelweights,
         )
@@ -575,52 +599,10 @@ def maptogrid(
     particlesinsidegrid = set()
 
     logprint(f"Modifysmoothinglength: {modifysmoothinglength}")
+    # the search box below and the kernel must use the same smoothing length
+    h = get_modified_smoothing_lengths(h, np.sqrt(x * x + y * y + z * z), rmean, hmean, modifysmoothinglength, dx)
 
     for n in range(npart):
-        # the smoothing length changes first, because the search box below and the kernel must use
-        # the same value. A box from the snapshot h drops every contribution that the larger h adds
-        if modifysmoothinglength != "False":
-            # -- change h by hand ---------
-
-            # option 1 minimum that no particle is lost
-
-            # option 2 increase smoothing everywhere, i.e. less holes but also less structure
-
-            # option 3 increase smoothing beyond some distance
-
-            # a combination of the options is possible. Option 1 alone fills the hole in the centre.
-            # Later ejecta can also fill this hole
-            if modifysmoothinglength == "option1":
-                h[n] = max(h[n], 1.5 * dx)  # option 1
-
-            dis = math.sqrt(x[n] * x[n] + y[n] * y[n] + z[n] * z[n])
-
-            if modifysmoothinglength == "option2":
-                h[n] = max(h[n], 0.25 * dis)  # option 2
-
-            if modifysmoothinglength == "option3" and dis > 1.5 * rmean:
-                h[n] = max(h[n], 0.4 * dis)  # option 3
-
-            # option 4 (default) -- for particles with radius > mean particle radius choose the larger h
-            # from the particle h and 150% of the mean h for all particles
-            if modifysmoothinglength == "option4" and dis > rmean:
-                h[n] = max(h[n], hmean * 1.5)
-            # option 5 -- set a minimum smoothing length of 0.75 * dx and a maximum of 2500.
-            # This applies to a particle with a radius above the mean, and it keeps the length
-            # of an outer particle within a limit
-            if modifysmoothinglength == "option5" and dis > rmean:
-                h[n] = max(h[n], 0.75 * dx)
-                h[n] = min(h[n], 2500)
-            # option 6 -- as option 5, but with no maximum. Use this option to let the smoothing
-            # length of an outer particle grow above 0.75 * dx
-            if modifysmoothinglength == "option6" and dis > rmean:
-                h[n] = max(h[n], 0.75 * dx)
-
-            # -------------------------------
-
-            # a further option could set the smoothing length from the neighbours. No code
-            # does this yet
-
         maxdist = 2.0 * h[n]
         maxdist2 = maxdist**2
 

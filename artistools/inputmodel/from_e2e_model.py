@@ -5,6 +5,7 @@ Oliver Just wrote the original script, and Gerrit Leck changed it for the map of
 
 import argparse
 import itertools
+import math
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
@@ -817,8 +818,35 @@ def map_to_artis(
             .select(cs.by_name(lzdyn_model.collect_schema().names()) | cs.by_name("volume", "vel_r_mid_on_c"))
             .collect()
         )
-        dyn_model = dyn_model.with_columns(dfmodel["bin_state"].alias("bin_state"))
-        dyn_abunds = scan_initelemabundances(modelpath=Path(replacedyn))
+        # the merge takes the cell of each id, thus the two grids must have the same cells
+        dyngrid = (dyn_modelmeta_in.get("coordinates"), *(dyn_modelmeta_in.get(f"ncoordgrid{axis}") for axis in "xyz"))
+        thisgrid = ("cartesian3d", *(int(count) for count in grid_dims))
+        dynvmax_cmps = float(dyn_modelmeta_in["vmax_cmps"])
+        # the merge takes rho of each cell as it is, and a homologous density changes as t^-3
+        dyntmodel_days = float(dyn_modelmeta_in["t_model_init_days"])
+        if (
+            dyn_model.height != numb_cells
+            or dyngrid != thisgrid
+            or not math.isclose(dynvmax_cmps, vmax_on_c * CLIGHT, rel_tol=1e-4)
+            or not math.isclose(dyntmodel_days, t_model_init_s / day_to_s, rel_tol=1e-4)
+        ):
+            exit_with_error(
+                f"The model of -replacedyn has the grid {dyngrid} with vmax {dynvmax_cmps:.6e} cm/s at"
+                f" {dyntmodel_days:g} d, but this model has the grid {thisgrid} with vmax {vmax_on_c * CLIGHT:.6e} cm/s"
+                f" at {t_model_init_s / day_to_s:g} d",
+                "Give a model of the dynamical ejecta at this time, on the grid of --ngridx, --ngridy, and --ngridz",
+            )
+        # the grid of this model has the cell ids 1 to N, and a model of format version 2 has 0 to N - 1. The joins
+        # and the filters below take the cell of an id, thus the ids of the dynamical ejecta must also start at 1
+        firstdynid = dyn_model["inputcellid"].min()
+        assert isinstance(firstdynid, int)
+        dyn_model = dyn_model.with_columns(
+            (pl.col("modelgridindex") + 1).cast(dyn_model.schema["inputcellid"]).alias("inputcellid"),
+            dfmodel["bin_state"].alias("bin_state"),
+        )
+        dyn_abunds = scan_initelemabundances(modelpath=Path(replacedyn)).with_columns(
+            pl.col("inputcellid") - firstdynid + 1
+        )
         # scan_modeldata adds tracercount only for a model.txt that holds it
         dyn_model = dyn_model.drop(["tracercount", "modelgridindex"], strict=False)
 
@@ -1660,6 +1688,13 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         )
 
     # a version 1 model also gets abundances.txt, and a version 2 model gets otherstable columns in model.txt
-    save_modeldata(dfmodel=dfmodel, modelmeta=modelmeta, outpath=args.outputfile, dfelabundances=dfelabundances)
+    # the overwrite prompt names the Ye.txt and the opacity.txt of an earlier model in the output folder
+    save_modeldata(
+        dfmodel=dfmodel,
+        modelmeta=modelmeta,
+        outpath=args.outputfile,
+        dfelabundances=dfelabundances,
+        deletecellidfiles=True,
+    )
     if dfgridcontributions is not None:
         save_gridparticlecontributions(dfgridcontributions, args.outputfile)

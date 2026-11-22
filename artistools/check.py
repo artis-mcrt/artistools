@@ -45,6 +45,7 @@ from artistools.logs import get_logged_rank_count
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_table_output
 from artistools.misc import exit_with_error
+from artistools.misc import find_sn3d_input_file
 from artistools.misc import firstexisting_or_none
 from artistools.misc import format_range_list
 from artistools.misc import get_escaped_arrivalrange
@@ -497,6 +498,7 @@ def check_input_files(modelpath: Path) -> tuple[str, str]:
     no abundances.txt and no Ye.txt, and sn3d stops if one of these files is present.
     """
     inputfiles = dict(INPUTFILE_READERS)
+    problems = []
     modelfile = firstexisting_or_none("model.txt", folder=modelpath, search_subfolders=False)
     if modelfile is not None:
         hasversion2 = False
@@ -505,20 +507,25 @@ def check_input_files(modelpath: Path) -> tuple[str, str]:
             hasversion2 = get_model_format_version(fmodel.readline(), modelfile) == 2
         if hasversion2:
             del inputfiles["abundances.txt"]
+            # sn3d stops for a file that it finds with its own search, which differs from the search of artistools
             for filename, quantity in (("abundances.txt", "element mass"), ("Ye.txt", "electron")):
-                if firstexisting_or_none(filename, folder=modelpath, search_subfolders=False) is not None:
-                    return "warning", (
-                        f"the model folder holds {filename}, but model.txt has format version 2, which gives the"
-                        f" {quantity} fractions. sn3d stops for this file"
+                stalefile = find_sn3d_input_file(filename, modelpath)
+                if stalefile is not None:
+                    problems.append(
+                        f"the model folder holds {stalefile.relative_to(modelpath)}, but model.txt has format version"
+                        f" 2, which gives the {quantity} fractions. sn3d stops for this file"
                     )
+    # the readers of artistools read the files of the model folder alone
     missing = [
         f"{filename} ({readers})"
         for filename, readers in inputfiles.items()
         if firstexisting_or_none(filename, folder=modelpath, search_subfolders=False) is None
     ]
-    if not missing:
+    if missing:
+        problems.append(f"the model folder holds no {'; no '.join(missing)}")
+    if not problems:
         return "ok", f"the model folder holds {', '.join(inputfiles)}"
-    return "warning", f"the model folder holds no {'; no '.join(missing)}"
+    return "warning", "; ".join(problems)
 
 
 def check_caches(modelpath: Path) -> tuple[str, str]:

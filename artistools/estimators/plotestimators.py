@@ -72,6 +72,7 @@ from artistools.estimators.plotitems import split_plotitem_styles
 from artistools.estimators.plotitems import VARIABLE_ALIASES
 from artistools.inputmodel import get_cell_direction_selection
 from artistools.inputmodel import get_spherical_image_cell_indices
+from artistools.inputmodel import get_spherical_slice_velocity_cmps
 from artistools.inputmodel import resolve_cell_direction_range
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_celldirectionrange
@@ -2402,6 +2403,9 @@ def get_spherical_image_values(
     is a ring around the z axis. For a spherical3d model, the value of a ring of r and theta is then the mean over
     its cells in phi. get_panel_means gives the weight.
     """
+    if sliceaxis is not None:
+        # get_cells_of_slice moves the plane in the same way, thus each point has a cell that the reader read
+        slicevelocity_cmps = get_spherical_slice_velocity_cmps(slicevelocity_cmps, float(modelmeta["vmax_cmps"]))
     cellindices = get_spherical_image_cell_indices(modelmeta, sliceaxis, slicevelocity_cmps)
     ringcount = (len(modelmeta["vel_r_edges_kmps"]) - 1) * (len(modelmeta["theta_edges_radians"]) - 1)
     # the points of an image with no sliceaxis are in the first cell of phi, thus their cell index is a ring index
@@ -2422,9 +2426,7 @@ def get_spherical_image_values(
     for panelindex in range(len(panels)):
         # a cell with no estimators, and a point outside the grid, give NaN
         cellvalues = np.full(int(modelmeta["npts_model"]), np.nan)
-        cellvalues[dfcells["imagecell"].to_numpy()] = (
-            dfcells[f"panel{panelindex}"].cast(pl.Float64).fill_null(float("nan")).to_numpy()
-        )
+        cellvalues[dfcells["imagecell"].to_numpy()] = dfcells[f"panel{panelindex}"].to_numpy()
         grids.append(np.where(isingrid, cellvalues[np.where(isingrid, cellindices, 0)], np.nan))
 
     plotaxes = ("rcyl", "z") if sliceaxis is None else tuple(axisname for axisname in "xyz" if axisname != sliceaxis)
@@ -2498,9 +2500,9 @@ def get_image_values(
     for panelindex in range(len(panels)):
         ncells2 = int(modelmeta[f"ncoordgrid{plotaxis2}"])
         grid = np.full((2 * ncells2 if ismirrored else ncells2, ncells1), np.nan)
-        grid[dfcells["cellindex2"].to_numpy(), dfcells["cellindex1"].to_numpy()] = (
-            dfcells[f"panel{panelindex}"].cast(pl.Float64).fill_null(float("nan")).to_numpy()
-        )
+        grid[dfcells["cellindex2"].to_numpy(), dfcells["cellindex1"].to_numpy()] = dfcells[
+            f"panel{panelindex}"
+        ].to_numpy()
         if ismirrored:
             grid[:ncells2] = grid[ncells2:][::-1]
         grids.append(grid)

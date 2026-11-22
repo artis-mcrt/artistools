@@ -4589,6 +4589,57 @@ def test_image_of_a_spherical_model_gives_each_point_the_value_of_its_cell(tmp_p
     assert planecells == sorted(index_r + 2 * (1 + 3 * index_phi) for index_r in range(2) for index_phi in range(4))
 
 
+def test_slice_of_a_spherical_model_on_cell_edges_takes_the_cells_on_the_positive_side(tmp_path: Path) -> None:
+    """A slice plane on a cell edge gives the cells on its positive side, in both halves of the image.
+
+    Each point of the image lies on the plane, and a cell holds its lower edge. Thus on x = 0, the half with y > 0
+    showed the cells at -x. The half with y < 0 showed the cells at +x. On z = 0, the image showed the cells below
+    the plane.
+    """
+    vmax_cmps = 2.0e9
+    modelmeta: dict[str, t.Any] = {
+        "coordinates": "spherical3d",
+        "dimensions": 3,
+        "t_model_init_days": 1.0,
+        "vel_r_edges_kmps": [0.0, 1.0e4, 2.0e4],
+        "theta_edges_radians": [0.0, math.pi / 2, math.pi],
+        "phi_edges_radians": np.linspace(0.0, 2.0 * math.pi, 5).tolist(),
+        "vmax_cmps": vmax_cmps,
+        "npts_model": 16,
+    }
+    panels = [plotestimators.ImagePanel(pl.col("Te"), plotestimators.PanelStyle("Te", None, None, None))]
+    estimators = pl.LazyFrame({
+        "timestep": [5] * 16,
+        "modelgridindex": list(range(16)),
+        "deltavol_deltat": [1.0] * 16,
+        "Te": [1000.0 + cellindex for cellindex in range(16)],
+    })
+
+    def get_te_of_cell(index_theta: int, index_phi: int) -> float:
+        # each of the points below is in the outer shell (index_r = 1)
+        return 1000.0 + 1 + 2 * (index_theta + 2 * index_phi)
+
+    def get_point_index(velocity_cmps: float) -> int:
+        return int((velocity_cmps + vmax_cmps) / (2.0 * vmax_cmps / 400))
+
+    # on x = 0, the +x side is phi in [0, pi / 2) for y > 0 and phi in [3 pi / 2, 2 pi) for y < 0
+    (gridyz,), _ = plotestimators.get_image_values(estimators, panels, modelmeta, "x", [5], 0.0)
+    for y_cmps, index_phi in ((1.5e9, 0), (-1.5e9, 3)):
+        te = gridyz[get_point_index(1.0e7), get_point_index(y_cmps)]
+        assert np.isclose(te, get_te_of_cell(0, index_phi), rtol=1e-12, atol=0.0), y_cmps
+    # on z = 0, the +z side is the polar cell 0
+    (gridxy,), _ = plotestimators.get_image_values(estimators, panels, modelmeta, "z", [5], 0.0)
+    assert np.isclose(
+        gridxy[get_point_index(1.0e7), get_point_index(1.5e9)], get_te_of_cell(0, 0), rtol=1e-12, atol=0.0
+    )
+
+    # --slice reads the cells of the same points
+    dfmodel = pl.DataFrame({"inputcellid": pl.int_range(16, eager=True, dtype=pl.Int32), "rho": 1.0e-12})
+    at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta=dict(modelmeta))
+    planecells = at.estimators.get_cells_of_slice(tmp_path, [("x", 0.0, "x = 0")])
+    assert {(cellindex // 2) // 2 for cellindex in planecells} == {0, 3}
+
+
 def test_image_of_a_mass_fraction_takes_the_mass_weight_of_the_line_plot() -> None:
     """A pixel of a mass fraction or Ye is a mean with the cell masses as weights, as the line plot gives.
 
