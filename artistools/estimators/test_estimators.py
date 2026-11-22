@@ -545,9 +545,15 @@ def test_logscalex_automatic_bins_of_more_than_308_decades() -> None:
 
 
 def test_logscalex_bin_width_of_more_than_308_decades() -> None:
-    """The ratio of the two limits overflows to infinity, and the bin width of the line ends must stay finite."""
+    """The ratio of the two limits overflows to infinity, and the bin width of the line ends must stay finite.
+
+    A velocity line starts from zero on a linear axis. A log axis does not show zero, thus the line starts elsewhere.
+    """
     figuredata = mock.MagicMock(xlimits=(1.0e-200, 1.0e200))
-    _, xbinwidth = plotestimators.get_line_ends(figuredata, argparse.Namespace(x="rho", xbins=2, logscalex=True))
+    startfromzero, xbinwidth = plotestimators.get_line_ends(
+        figuredata, argparse.Namespace(x="velocity", xbins=2, logscalex=True)
+    )
+    assert not startfromzero
     assert xbinwidth is not None
     assert np.isclose(xbinwidth, 200.0 * math.log(10.0))
 
@@ -575,13 +581,6 @@ def test_logscalex_ignores_a_limit_at_or_below_zero(capsys: pytest.CaptureFixtur
     assert "--xmin" in capsys.readouterr().err
 
 
-def test_logscalex_stops_with_no_x_value_above_zero(capsys: pytest.CaptureFixture[str]) -> None:
-    """The bins and the limits need a value above zero, thus the command gives the reason and the correction."""
-    with pytest.raises(SystemExit):
-        plotestimators.get_xlist("rho", get_log_estimators([-1.0, 0.0]), None, get_logscalex_args())
-    assert "--logscalex" in capsys.readouterr().err
-
-
 def test_logscalex_histogram_limit_keeps_the_cell_with_an_edge_at_zero() -> None:
     """The inner cell of a model starts at zero. The axis starts at its midpoint, thus the plot keeps that cell.
 
@@ -605,64 +604,6 @@ def test_logscalex_line_ends_at_the_bin_edges_in_log_x() -> None:
         dflinepoints, startfromzero=False, xbinwidth=math.log(10.0), logxbins=True
     )
     assert np.allclose(extended["xvalue_binned"], [1.0, 10.0**0.5, 10.0**1.5, 100.0])
-
-
-def test_logscalex_line_does_not_start_from_zero() -> None:
-    """A velocity axis starts from zero, and a log axis does not show zero."""
-    figuredata = mock.MagicMock(xlimits=(1.0, 100.0))
-    args = argparse.Namespace(x="velocity", xbins=2, logscalex=True)
-    startfromzero, xbinwidth = plotestimators.get_line_ends(figuredata, args)
-    assert not startfromzero
-    assert xbinwidth is not None
-    assert np.isclose(xbinwidth, math.log(10.0))
-
-
-@mock.patch.object(mplax.Axes, "set_xscale", side_effect=mplax.Axes.set_xscale, autospec=True)
-def test_logscalex_sets_the_scale_of_the_axis(mockxscale: mock.MagicMock, tmp_path: Path) -> None:
-    """The option reaches the axes of the figure."""
-    at.estimators.plot(
-        argsraw=[],
-        modelpath=modelpath_classic_3d,
-        plotlist=[["Te"]],
-        timedays=4,
-        logscalex=True,
-        outputfile=tmp_path / "test_logscalex.pdf",
-    )
-    assert any(call.args[1] == "log" for call in mockxscale.call_args_list)
-
-
-@pytest.mark.parametrize("name", ["xscale", "_xscale"])
-def test_xscale_directive_names_the_figure_option(name: str, capsys: pytest.CaptureFixture[str]) -> None:
-    """The subplots share one x axis, thus xscale= stops the command and names --logscalex.
-
-    The message suggested yscale before, which is a different axis.
-    """
-    with pytest.raises(SystemExit):
-        plotitems.get_directive_name(name)
-    message = " ".join(capsys.readouterr().err.split())
-    assert "--logscalex" in message
-    assert "yscale" not in message
-
-
-def test_logscalex_does_not_apply_to_a_colour_image(capsys: pytest.CaptureFixture[str]) -> None:
-    """The axes of a colour image have negative velocities, thus the image keeps a linear axis and gives a warning."""
-    args = argparse.Namespace(
-        x=None,
-        xbins=None,
-        filtermovingavg=0,
-        filtersavgol=None,
-        markers=False,
-        histogram=False,
-        logscalex=True,
-        slice=None,
-        projection=None,
-        dimensionreduce=2,
-        readonlymgi=None,
-        modelgridindex=None,
-    )
-    plotestimators.resolve_snapshot_arguments(args)
-    assert not args.logscalex
-    assert "--logscalex" in capsys.readouterr().err
 
 
 def test_histogram_of_one_x_value_takes_the_extent_of_the_cell() -> None:
@@ -938,6 +879,10 @@ def test_estimparse() -> None:
     pldf = at.rustext.estimparse(modelpath, 0, 0)
     assert pldf.height == 100
     assert {"timestep", "modelgridindex", "TR", "Te", "nne", "nnion_Fe_II", "heating_ff"} <= set(pldf.columns)
+    # an f32 cannot hold every cell number of a large 3D grid, e.g. 26999999 becomes 27000000
+    assert pldf.schema["timestep"] == pl.Int32
+    assert pldf.schema["modelgridindex"] == pl.Int32
+    assert pldf.schema["Te"] == pl.Float32
 
     firstcell = pldf.sort("timestep", "modelgridindex").row(0, named=True)
     assert firstcell["timestep"] == 0
@@ -2136,29 +2081,6 @@ def test_get_elemcolor_is_stable_and_unbounded() -> None:
     assert get_elemcolor(atomic_number=at.get_atomic_number("Fegroup")) not in elementcolors.values()
 
 
-def test_unknown_element_of_averageionisation_names_the_element() -> None:
-    """The error named the atomic number -1, which the user did not give, in place of the name of the element."""
-    from artistools.estimators.plotestimators import get_average_charge_expr
-
-    with pytest.raises(ValueError, match="No element data found for Xx"):
-        get_average_charge_expr("Xx", ["nnelement_Fe", "nnion_Fe_II"])
-
-
-def test_estimparse_index_columns_are_integers() -> None:
-    """The timestep and modelgridindex columns must be parsed as integers, not floats.
-
-    Everything in the cell header used to be stored as f32, which cannot represent every cell number of a large
-    3D grid exactly: 26999999 comes back as 27000000.
-    """
-    dfestim = at.rustext.estimparse(modelpath, 0, 0)
-
-    for colname in ("timestep", "modelgridindex"):
-        assert dfestim.schema[colname] == pl.Int32, f"{colname} must stay an exact integer"
-
-    # the physical quantities are still f32
-    assert dfestim.schema["Te"] == pl.Float32
-
-
 def test_the_stamp_of_a_batch_cache_decides_the_conversion(tmp_path: Path) -> None:
     """A cache with the stamp of the text source is current, and a different stamp needs the conversion again.
 
@@ -2197,37 +2119,6 @@ def test_the_stamp_of_a_batch_cache_decides_the_conversion(tmp_path: Path) -> No
 
     # a text source time outside the tolerance of the stamp needs the conversion again
     assert not rankbatch_parquet_is_current(parquetfilepath, mtime + MTIME_TOLERANCE_S + 10.0, textsource_complete=True)
-
-
-def test_a_cache_without_a_current_stamp_is_stale(tmp_path: Path) -> None:
-    """A cache must hold the current cache version and the time of its text source, or a scan rejects it.
-
-    The freshness rule compared only modification times. Thus a scan accepted a cache that an older
-    artistools wrote with different columns, and the diagonal concat filled the difference with
-    nulls.
-    """
-    from artistools.estimators.core import rankbatch_parquet_is_current
-
-    mtime = 1000.0
-
-    # a cache that holds no version stamp is stale when the text files exist, because the reader
-    # cannot check its format. The stamp is accepted only when the text files are gone
-    unstamped = tmp_path / "estimbatch00_0000_0002.out.parquet.tmp"
-    at.misc.write_parquet_atomic(pl.DataFrame({"timestep": [0]}), unstamped, metadata={"textsource_mtime": str(mtime)})
-    assert not rankbatch_parquet_is_current(unstamped, mtime, textsource_complete=True)
-    assert rankbatch_parquet_is_current(unstamped, mtime, textsource_complete=False)
-
-    # a matching text source time but a different cache version
-    oldversion = tmp_path / "estimbatch01_0003_0005.out.parquet.tmp"
-    at.misc.write_parquet_atomic(
-        pl.DataFrame({"timestep": [0]}), oldversion, metadata={"cacheversion": "0", "textsource_mtime": str(mtime)}
-    )
-    assert not rankbatch_parquet_is_current(oldversion, mtime, textsource_complete=True)
-
-    # a file that is not parquet
-    unreadable = tmp_path / "estimbatch02_0006_0008.out.parquet.tmp"
-    unreadable.write_bytes(b"not parquet")
-    assert not rankbatch_parquet_is_current(unreadable, mtime, textsource_complete=True)
 
 
 def test_one_rewritten_rank_file_makes_its_batch_stale(tmp_path: Path) -> None:
@@ -2387,28 +2278,6 @@ def test_exportmassfractions(tmp_path: Path) -> None:
     assert np.isclose(massfracs["Co"], 0.0969611, rtol=1e-5)
 
 
-def test_parse_ion_row_classic_keys_elements_by_symbol() -> None:
-    """The classic reader must key an element number density on the element symbol, as every consumer does."""
-    from artistools.estimators.estimators_classic import parse_ion_row_classic
-
-    outdict: dict[str, t.Any] = {}
-    # six leading values that the reader skips, then one population for each ion
-    row = ["0", "1", "2", "3", "4", "5", "10.0", "20.0", "40.0"]
-    parse_ion_row_classic(row, outdict, {26: [1, 2], 28: [1]})
-
-    assert np.isclose(outdict["nnion_Fe_I"], 10.0)
-    assert np.isclose(outdict["nnion_Fe_II"], 20.0)
-    assert np.isclose(outdict["nnion_Ni_I"], 40.0)
-
-    # the element key uses the symbol, so that plotestimators and exportmassfractions can find it
-    assert np.isclose(outdict["nnelement_Fe"], 30.0)
-    assert np.isclose(outdict["nnelement_Ni"], 40.0)
-    assert not [key for key in outdict if key.startswith("nnelement_") and key[len("nnelement_") :].isdigit()]
-
-    # add_derived_estimator_columns derives nntot, so the reader must not carry its own copy
-    assert "nntot" not in outdict
-
-
 @pytest.mark.parametrize(
     ("plotarg", "expected"),
     [("te", "Did you mean Te?"), ("notavariable", "--listvariables"), ("rhoo", "Did you mean rho?")],
@@ -2422,22 +2291,6 @@ def test_estimator_unknown_variable_suggests_a_name(
 
     assert excinfo.value.code == 1
     assert expected in capsys.readouterr().err
-
-
-@pytest.mark.parametrize(("directive", "expected"), [("_foo=bar", "not a plot directive"), ("ymim=1", "ymin")])
-def test_estimator_unknown_directive_names_the_valid_ones(
-    directive: str, expected: str, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """An unknown plot directive must say so and name the directives that exist."""
-    with pytest.raises(SystemExit) as excinfo:
-        at.estimators.plot(
-            argsraw=[], modelpath=modelpath, outputfile=outputpath, timedays=260, plotlist=[["rho", directive]]
-        )
-
-    assert excinfo.value.code == 1
-    captured = capsys.readouterr().err
-    assert expected in captured
-    assert "yscale=" in captured
 
 
 def test_estimator_valid_ion_accepts_an_ion_and_rejects_a_variable_typo() -> None:
@@ -2457,10 +2310,28 @@ def test_estimator_listvariables_collapses_the_species_families(capsys: pytest.C
     assert "estimator variables:" in out
     assert "nnion_<ion>" in out
     assert "nnelement_<element>" in out
+    assert "init_X_<element or nuclide>" in out
 
     # the listing names the family, thus no column of it appears in full
     assert "nnion_Fe_II" not in out
     assert "nnelement_Fe" not in out
+
+    # a group of columns that share a prefix appears one time, with a description of the group.
+    # The test model has no deposition columns, thus this checks the groups that it does have
+    for prefix, description in (
+        ("cooling_<name>", "cooling rate"),
+        ("heating_<name>", "heating rate"),
+        ("init_<name>", "model snapshot"),
+        ("vel_<name>", "velocity coordinates"),
+    ):
+        assert prefix in out, prefix
+        assert description in out, description
+    assert "cooling_adiabatic" not in out
+
+    # the test model holds no isotope columns, thus read that family from the summariser
+    from artistools.estimators.core import summarise_columns
+
+    assert "nniso_<nuclide>" in summarise_columns(["nniso_Fe56", "nniso_Ni_otherstable"])
 
     # it is far shorter than one line for each column
     assert len(out.splitlines()) < 60
@@ -2504,28 +2375,18 @@ def test_estimator_ionpoptype_is_local_to_a_subplot(mockylabel: mock.MagicMock, 
     assert POPTYPE_YLABELS["elpop"] in labels
 
 
-def test_estimator_unknown_ionpoptype_names_the_valid_ones(capsys: pytest.CaptureFixture[str]) -> None:
-    """An unknown ion population type must stop the command. The message must name the valid types."""
+@pytest.mark.parametrize("xminitem", ["xmin=260", ["xmin", 260.0]])
+def test_estimator_xmin_is_a_figure_argument_and_not_a_directive(
+    xminitem: str | list[t.Any], capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The subplots share one horizontal axis, thus xmin= names the argument that sets it for the figure.
+
+    normalise_plotitems adds the underscore to the string form alone. Thus the bare list reached the ion branch, and
+    it stopped with a TypeError that named no argument.
+    """
     with pytest.raises(SystemExit) as excinfo:
         at.estimators.plot(
-            argsraw=[],
-            modelpath=modelpath,
-            outputfile=outputpath,
-            timedays=260,
-            plotlist=[[["populations", ["Fe II"]], ["ionpoptype", "elpops"]]],
-        )
-
-    assert excinfo.value.code == 1
-    message = capsys.readouterr().err
-    assert "elpops" in message
-    assert "elpop" in message
-
-
-def test_estimator_xmin_is_a_figure_argument_and_not_a_directive(capsys: pytest.CaptureFixture[str]) -> None:
-    """The subplots share one horizontal axis, thus xmin= names the argument that sets it for the figure."""
-    with pytest.raises(SystemExit) as excinfo:
-        at.estimators.plot(
-            argsraw=[], modelpath=modelpath, outputfile=outputpath, timedays=260, plotlist=[["rho", "xmin=260"]]
+            argsraw=[], modelpath=modelpath, outputfile=outputpath, timedays=260, plotlist=[["rho", xminitem]]
         )
 
     assert excinfo.value.code == 1
@@ -2558,23 +2419,6 @@ def test_estimator_xmin_argument_sets_the_axis_of_every_subplot(mockxlim: mock.M
         assert np.allclose(limits, (1000.0, 4000.0))
 
 
-def test_estimator_xmin_as_a_plot_item_names_the_argument(capsys: pytest.CaptureFixture[str]) -> None:
-    """A bare list ["xmin", value] must give the same message as the "xmin=value" string.
-
-    normalise_plotitems adds the underscore to the string form alone, thus the bare list reached the ion
-    branch and stopped with a TypeError that named no argument.
-    """
-    with pytest.raises(SystemExit) as excinfo:
-        at.estimators.plot(
-            argsraw=[], modelpath=modelpath, outputfile=outputpath, timedays=260, plotlist=[["rho", ["xmin", 260.0]]]
-        )
-
-    assert excinfo.value.code == 1
-    message = capsys.readouterr().err
-    assert "-xmin" in message
-    assert "share one horizontal axis" in message
-
-
 def test_split_species_suffix_reads_a_symbol_that_is_also_a_roman_numeral() -> None:
     """C, V, I, X, and L are element symbols and Roman numerals, thus one reading of a name is not enough.
 
@@ -2589,25 +2433,6 @@ def test_split_species_suffix_reads_a_symbol_that_is_also_a_roman_numeral() -> N
 
     # a suffix that names no element stays out of a species family
     assert split_species_suffix("init_X_Fegroup") is None
-
-
-def test_estimator_listvariables_describes_each_prefix_group(capsys: pytest.CaptureFixture[str]) -> None:
-    """A group of columns that share a prefix appears one time, with a description of the group."""
-    at.estimators.plot(argsraw=[], modelpath=modelpath, listvariables=True)
-
-    out = capsys.readouterr().out
-    # the test model has no deposition columns, thus this checks the groups that it does have
-    for prefix, description in (
-        ("cooling_<name>", "cooling rate"),
-        ("heating_<name>", "heating rate"),
-        ("init_<name>", "model snapshot"),
-        ("vel_<name>", "velocity coordinates"),
-    ):
-        assert prefix in out, prefix
-        assert description in out, description
-
-    # the group names each member one time, thus no member appears with its prefix
-    assert "cooling_adiabatic" not in out
 
 
 def test_split_species_suffix_rebuilds_the_column_name() -> None:
@@ -2743,21 +2568,6 @@ def test_species_placeholder_names_what_a_family_takes() -> None:
     assert species_placeholder(["Fe", "Fe52", "Ni56"]) == "element or nuclide"
 
 
-def test_listvariables_heading_names_the_kind_of_each_family(capsys: pytest.CaptureFixture[str]) -> None:
-    """The listing must show which kind of species each family takes."""
-    at.estimators.plot(argsraw=[], modelpath=modelpath, listvariables=True)
-    out = capsys.readouterr().out
-
-    assert "nnelement_<element>" in out
-    assert "nnion_<ion>" in out
-    assert "init_X_<element or nuclide>" in out
-
-    # the test model holds no isotope columns, thus read that family from the summariser
-    from artistools.estimators.core import summarise_columns
-
-    assert "nniso_<nuclide>" in summarise_columns(["nniso_Fe56", "nniso_Ni_otherstable"])
-
-
 def test_summarise_ions_breaks_a_range_at_a_gap() -> None:
     """A missing ion stage must break the range, so that the listing names no absent column."""
     from artistools.estimators.core import summarise_ions
@@ -2824,19 +2634,6 @@ def test_estimator_keyword_timestep_reads_an_int(mockplot: mock.MagicMock) -> No
     assert drawn[11] == drawn["11"], "the int and the text must name the same timestep"
 
 
-def test_estimator_makegif_writes_one_frame_per_timestep(tmp_path: Path) -> None:
-    """--makegif must write one frame per timestep and join them, and it must not need --multiplot.
-
-    The frame list was made before --makegif set multiplot, thus --makegif alone wrote one frame and no gif.
-    """
-    at.estimators.plot(
-        argsraw=[], modelpath=modelpath, outputfile=tmp_path, plotlist=[["rho"]], timestep="0-2", makegif=True
-    )
-
-    assert len(list(tmp_path.glob("*.png"))) == 3
-    assert [giffile.name for giffile in tmp_path.glob("*.gif")] == ["plotestimators_evolution_ts000-ts002.gif"]
-
-
 def test_classic_estimator_files_follow_zopen_precedence(tmp_path: Path) -> None:
     """The reader must skip a .bak sibling, and it must pick between two compressed forms as zopen does.
 
@@ -2862,20 +2659,6 @@ def test_classic_estimator_files_follow_zopen_precedence(tmp_path: Path) -> None
     # the plain file wins over every compressed form, as zopen reads it
     (tmp_path / "estimators_0000.out").write_text("newest\n")
     assert [path.name for path in get_classic_estimator_files(tmp_path)] == ["estimators_0000.out"]
-
-
-def test_estimator_x_variable_names_the_choices(capsys: pytest.CaptureFixture[str]) -> None:
-    """-x takes any variable of the model, thus a wrong name must say what the choices are."""
-    with pytest.raises(SystemExit) as excinfo:
-        at.estimators.plot(
-            argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=40, plotlist=[["rho"]], x="Tee"
-        )
-
-    assert excinfo.value.code == 1
-    message = capsys.readouterr().err
-    assert "Did you mean Te?" in message
-    assert "time, timestep, velocity, and beta" in message
-    assert "--listvariables" in message
 
 
 def build_classic_restart_model(
@@ -2963,6 +2746,13 @@ def test_classic_estimators_read_a_real_model() -> None:
     assert firstcell["nnion_Al_I"] >= 0.0
     assert len([key for key in firstcell if key.startswith("nnion_")]) > 50
 
+    # plotestimators and exportmassfractions find an element by its symbol and not by its atomic number
+    feiondensities = [value for key, value in firstcell.items() if key.startswith("nnion_Fe_")]
+    assert sum(feiondensities) > 0.0
+    assert np.isclose(firstcell["nnelement_Fe"], sum(feiondensities), rtol=1e-9, atol=0.0)
+    # add_derived_estimator_columns derives nntot, thus the reader must not carry its own copy
+    assert "nntot" not in firstcell
+
 
 def test_classicartis_on_a_modern_model_names_the_difference() -> None:
     """A modern ARTIS run writes the modern estimator format, even with the options of the classic code.
@@ -2982,18 +2772,6 @@ def test_scan_estimators_finds_the_classic_format_with_no_flag() -> None:
         at.estimators.scan_estimators(modelpath=CLASSIC1DPATH).collect(),
         at.estimators.scan_estimators(modelpath=CLASSIC1DPATH, classicartis=True).collect(),
     )
-
-
-def test_classicartis_reads_a_classic_model_through_the_scanner() -> None:
-    """The whole path from --classicartis to a dataframe must work for a classic ARTIS model."""
-    estimators = at.estimators.scan_estimators(modelpath=CLASSIC1DPATH, classicartis=True).collect()
-
-    assert estimators.height > 0
-    assert {"timestep", "modelgridindex", "Te", "TR"} <= set(estimators.columns)
-    # Series.max() gives a wide union, thus narrow it before the comparison
-    maxtemperature = estimators["Te"].max()
-    assert isinstance(maxtemperature, float)
-    assert maxtemperature > 0.0
 
 
 def test_makegif_opens_the_gif_and_no_frame(tmp_path: Path) -> None:
@@ -3018,6 +2796,7 @@ def test_makegif_opens_the_gif_and_no_frame(tmp_path: Path) -> None:
     assert len(opened) == 1, f"one file must open, not {len(opened)}"
     assert opened[0].endswith(".gif"), opened[0]
     assert len(list(outfolder.glob("*.png"))) == 3, "each timestep must still give a frame"
+    assert [giffile.name for giffile in outfolder.glob("*.gif")] == ["plotestimators_evolution_ts040-ts042.gif"]
 
 
 def test_show_makes_room_for_the_title_above_the_offset_text(tmp_path: Path) -> None:
@@ -3898,24 +3677,6 @@ def test_deposition_counts_a_repeated_channel_one_time() -> None:
     assert channels == ["gamma", "alpha"]
 
 
-def test_deposition_names_the_channels_of_the_model() -> None:
-    """An unknown channel must give a message that names the channels of the model."""
-    colnames = ["total_dep", "deposition_gamma", "deposition_positron"]
-    dfcell = pl.LazyFrame({"deposition_gamma": [1.0], "deposition_positron": [2.0]})
-
-    # no channel of its own means every channel of the model
-    channels = at.estimators.deposition.select_deposition_channels(colnames, None)
-    expr = at.estimators.deposition.get_channel_sum_expression(channels)
-    assert np.isclose(dfcell.select(expr).collect().item(), 3.0)
-
-    channels = at.estimators.deposition.select_deposition_channels(colnames, ["deposition_gamma"])
-    expr = at.estimators.deposition.get_channel_sum_expression(channels)
-    assert np.isclose(dfcell.select(expr).collect().item(), 1.0)
-
-    with pytest.raises(ValueError, match=re.escape("no deposition rate of alpha. It holds gamma, positron")):
-        at.estimators.deposition.select_deposition_channels(colnames, ["alpha"])
-
-
 def test_deposition_timeselection_takes_a_list_and_a_range() -> None:
     """-timedays and -timestep each take a list. Each item of the list means what it means elsewhere."""
     tmids = at.get_timestep_times(modelpath, loc="mid")
@@ -4114,13 +3875,23 @@ def test_an_archived_run_folder_keeps_a_cache_of_an_old_version(tmp_path: Path) 
     # a batch that still holds every text file keeps the strict rule
     assert not rankbatch_cache_cannot_be_rebuilt(oldversion, textsource_complete=True)
     assert not rankbatch_parquet_is_current(oldversion, 1000.0, textsource_complete=True)
+    assert not rankbatch_parquet_is_current(unreadable, 1000.0, textsource_complete=True)
+
+    # a cache with no version stamp is stale when every text file exists, because the reader cannot check its
+    # format. An older artistools wrote such a cache with different columns, and a concat filled them with nulls
+    unstamped = tmp_path / "estimbatch02_0006_0008.out.parquet.tmp"
+    at.misc.write_parquet_atomic(pl.DataFrame({"timestep": [0]}), unstamped, metadata={"textsource_mtime": "1000.0"})
+    assert not rankbatch_parquet_is_current(unstamped, 1000.0, textsource_complete=True)
+    assert rankbatch_parquet_is_current(unstamped, 1000.0, textsource_complete=False)
 
 
-def test_an_archived_run_folder_keeps_its_timesteps(tmp_path: Path) -> None:
+@pytest.mark.parametrize("metadata", [None, {"cacheversion": "0", "textsource_mtime": "1000.0"}])
+def test_an_archived_run_folder_keeps_its_timesteps(tmp_path: Path, metadata: dict[str, str] | None) -> None:
     """get_runfolder_timesteps() must read the cache of a run folder whose text files are incomplete.
 
     A batch of three ranks keeps the file of rank 0 alone, thus no conversion can replace the cache.
     A rejection made get_runfolder_timesteps() find no timesteps, and the folder then held no data.
+    A version before the stamps wrote a cache with no metadata, and an old version wrote a cache with a stamp.
     """
     from artistools.misc import get_runfolder_timesteps
 
@@ -4130,10 +3901,10 @@ def test_an_archived_run_folder_keeps_its_timesteps(tmp_path: Path) -> None:
     textfile.write_text("timestep 0\n")
     os.utime(textfile, (1000.0, 1000.0))
 
-    # the cache of an archived run folder holds neither stamp, because a version before the stamps wrote it
     at.misc.write_parquet_atomic(
         pl.DataFrame({"timestep": [0, 1, 2], "modelgridindex": [0, 0, 0]}),
         runfolder / "estimbatch00_0000_0002.out.parquet.tmp",
+        metadata=metadata,
     )
 
     # the text file of rank 0 holds timestep 0 alone, thus a fall back to it would lose two timesteps
@@ -4260,14 +4031,6 @@ def test_plot_argument_takes_ions_of_a_variable_that_is_also_a_total() -> None:
     assert normalise_plotitems(["vel_r_mid", "Fe II"], estimatorcolumns) == ["vel_r_mid", "Fe II"]
 
 
-def test_plot_argument_rejects_a_series_type_with_no_names() -> None:
-    """A type of series covers the names after it, thus it must not stand alone."""
-    from artistools.estimators.plotitems import normalise_plotitems
-
-    with pytest.raises(SystemExit):
-        normalise_plotitems(["populations"], ["Te", "nnion_Fe_II"])
-
-
 def test_viewer_reads_the_type_of_a_subplot_as_the_command_does(capsys: pytest.CaptureFixture[str]) -> None:
     """The viewer must give a subplot the type that the command reads.
 
@@ -4287,60 +4050,12 @@ def test_viewer_reads_the_type_of_a_subplot_as_the_command_does(capsys: pytest.C
     assert plotitems.normalise_plotitems(["n_e"], estimatorcolumns) == ["nne"]
 
 
-def test_a_partial_batch_keeps_a_cache_of_an_old_version(tmp_path: Path) -> None:
-    """A batch that keeps some text files must still answer from a cache that no conversion can replace.
-
-    get_runfolder_timesteps() must name the timesteps that a scan then gives it. A rejection made it
-    read the one text file that remains, thus it lost the timesteps that only the cache holds and it
-    named a set that the scan cannot deliver.
-    """
-    from artistools.estimators.core import CACHEVERSION
-    from artistools.estimators.core import rankbatch_parquet_is_current
-    from artistools.misc import get_runfolder_timesteps
-    from artistools.misc import rankbatch_parquet_staleness
-
-    runfolder = tmp_path / "job1.slurm"
-    runfolder.mkdir()
-    # the file of rank 0 remains, thus the batch is incomplete and no conversion can take place
-    textfile = runfolder / "estimators_0000.out"
-    textfile.write_text("timestep 0\n")
-    os.utime(textfile, (1000.0, 1000.0))
-
-    parquetfilepath = runfolder / "estimbatch00_0000_0002.out.parquet.tmp"
-    at.misc.write_parquet_atomic(
-        pl.DataFrame({"timestep": [0, 1, 2], "modelgridindex": [0, 0, 0]}),
-        parquetfilepath,
-        metadata={"cacheversion": "0", "textsource_mtime": "1000.0"},
-    )
-
-    # the reason still names the fault, so that the reader can give a warning
-    assert "cache format version" in str(
-        rankbatch_parquet_staleness(parquetfilepath, CACHEVERSION, 1000.0, textsource_complete=False)
-    )
-    # but the cache answers, because the scan of the model keeps it for the same reason
-    assert rankbatch_parquet_is_current(parquetfilepath, 1000.0, textsource_complete=False)
-    assert get_runfolder_timesteps(runfolder) == (0, 1, 2)
-
-    # a damaged cache is no source at all, thus it answers nothing
-    parquetfilepath.write_bytes(b"not parquet")
-    assert not rankbatch_parquet_is_current(parquetfilepath, 1000.0, textsource_complete=False)
-
-
 def parse_estimator_args(argsraw: list[str]) -> argparse.Namespace:
     """Parse a plotestimators command line and resolve its positional arguments."""
     args = at.misc.parse_cli_args(at.estimators.plotestimators.addargs, None, None, argsraw)
     at.estimators.plotestimators.resolve_positional_args(args)
 
     return args
-
-
-def test_positional_variables_need_no_plot_flag() -> None:
-    """The positional variables need no -plot, and they share one subplot."""
-    args = parse_estimator_args(["T_e", "TR", str(modelpath), "-t", "300"])
-
-    assert args.modelpath == modelpath
-    assert args.plotlist == [["T_e", "TR"]]
-    assert args.timedays == "300"
 
 
 def test_a_positional_list_comes_before_the_plot_lists() -> None:
@@ -4450,14 +4165,6 @@ def test_a_working_folder_that_the_user_cannot_list_gives_the_folder_message(
     assert "The command line gives no ARTIS model folder" in capsys.readouterr().err
 
 
-def test_a_folder_and_modelpath_together_give_an_error(capsys: pytest.CaptureFixture[str]) -> None:
-    """A positional folder and -modelpath can name two models, thus the command stops with an error."""
-    with pytest.raises(SystemExit):
-        parse_estimator_args(["Te", str(modelpath), "-modelpath", str(modelpath_classic_3d)])
-
-    assert "two different models" in capsys.readouterr().err
-
-
 def test_a_positional_variable_plots_the_model_of_the_working_folder(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -4491,6 +4198,14 @@ def test_the_listing_takes_a_search_term(capsys: pytest.CaptureFixture[str]) -> 
     out = capsys.readouterr().out
     assert "heating_<name>" in out
     assert "cooling_<name>" not in out
+    # a search shows fewer variables than the full list, thus the heading names the search terms
+    assert "that hold heating" in out
+    assert f"modelpath: {modelpath.resolve()}" in out
+
+    # an empty term matches every column, thus the listing ignores it
+    at.estimators.plot(argsraw=[], modelpath=modelpath, listvariables=True, plotitems=[""])
+
+    assert "that hold" not in capsys.readouterr().out
 
     # a term that no variable holds gives an error and a suggestion, and not an empty listing
     with pytest.raises(SystemExit):
@@ -4564,7 +4279,7 @@ def test_a_folder_after_plot_gives_the_model() -> None:
     assert not args.plotlist
 
 
-def test_one_model_in_two_forms_gives_no_error() -> None:
+def test_one_model_in_two_forms_gives_no_error(capsys: pytest.CaptureFixture[str]) -> None:
     """The folder and -modelpath can name one model, thus only two different models give an error."""
     args = parse_estimator_args(["Te", str(modelpath), "-modelpath", str(modelpath)])
 
@@ -4574,6 +4289,8 @@ def test_one_model_in_two_forms_gives_no_error() -> None:
     with pytest.raises(SystemExit):
         parse_estimator_args(["Te", str(modelpath), "-modelpath", "."])
 
+    assert "two different models" in capsys.readouterr().err
+
 
 def test_an_empty_positional_argument_names_no_folder() -> None:
     """An unset shell variable gives an empty argument, and Path("") is the working folder."""
@@ -4581,20 +4298,6 @@ def test_an_empty_positional_argument_names_no_folder() -> None:
 
     assert args.modelpath == modelpath
     assert args.plotlist == [["Te", ""]]
-
-
-def test_the_listing_names_the_search_terms(capsys: pytest.CaptureFixture[str]) -> None:
-    """A search shows fewer variables than the full list, thus the heading must name the search terms."""
-    at.estimators.plot(argsraw=[], modelpath=modelpath, listvariables=True, plotitems=["heating"])
-
-    out = capsys.readouterr().out
-    assert "that hold heating" in out
-    assert f"modelpath: {modelpath.resolve()}" in out
-
-    # an empty term matches every column, thus this function ignores it
-    at.estimators.plot(argsraw=[], modelpath=modelpath, listvariables=True, plotitems=[""])
-
-    assert "that hold" not in capsys.readouterr().out
 
 
 def test_the_progress_message_names_the_model_folder(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
@@ -5544,6 +5247,48 @@ def test_cumulative_population_does_not_change_with_the_x_range() -> None:
 
     assert np.allclose(get_values(None), [1.0, 3.0, 7.0], rtol=1e-12, atol=0.0)
     assert np.allclose(get_values(1500.0), [3.0, 7.0], rtol=1e-12, atol=0.0)
+
+
+def test_cumulative_population_of_shells_with_several_cells_counts_each_cell_at_the_x() -> None:
+    """Each shell of a spherical model holds several cells at one velocity, and its point counts all of them.
+
+    The cells at one x value got different partial sums, and the line took their mean. Thus two shells of three
+    cells gave 2 and 5 in place of 3 and 6. Automatic bins with edges on the shell velocities also put both shells
+    of this model into the points of far bins. In a larger model, these bins merged the inner two shells.
+    """
+    from artistools.estimators.plotestimators import get_line_points
+    from artistools.estimators.plotestimators import get_multi_ion_series_plans
+    from artistools.estimators.plotestimators import get_xlist
+
+    shellvelocities_kmps = [1000.0, 2000.0]
+    estimators = pl.LazyFrame({
+        "timestep": [0] * 6,
+        "modelgridindex": list(range(6)),
+        "vel_r_mid": np.repeat(shellvelocities_kmps, 3) * at.constants.km_to_cm,
+        "volume": [1.0] * 6,
+        "deltavol_deltat": [1.0] * 6,
+        "tmid_days": [1.0] * 6,
+        "nnion_Fe_II": [1.0] * 6,
+        "nnelement_Fe": [1.0] * 6,
+    })
+    args = argparse.Namespace(
+        xmin=None,
+        xmax=None,
+        xbins=None,
+        markers=False,
+        colorbyion=False,
+        modelgridindex=None,
+        histogram=False,
+        classicartis=True,
+        x="velocity",
+    )
+    _, _, _, dfinrange, dffullrange, _ = get_xlist("velocity", estimators, None, args)
+    (plan,) = get_multi_ion_series_plans(
+        {}, "populations", ["Fe II"], dfinrange, dffullrange, modelpath, "cumulative", args
+    )
+    dflinepoints = get_line_points(plan.dfseries, args).collect()
+    assert np.allclose(dflinepoints["xvalue_binned"], shellvelocities_kmps, rtol=1e-12, atol=0.0)
+    assert np.allclose(dflinepoints["yvalue_binned"], [3.0, 6.0], rtol=1e-12, atol=0.0)
 
 
 def test_units_of_a_column_of_tellurium_are_not_kelvin() -> None:

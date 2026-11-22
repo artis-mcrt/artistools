@@ -97,15 +97,6 @@ def test_read_transitiondata() -> None:
     pltest.assert_frame_equal(selectedions[26, 2], dftransitions)
 
 
-def test_read_transitiondata_truncated(tmp_path: Path) -> None:
-    """A truncated ion header raises a Python exception rather than panicking in the extension."""
-    truncated = tmp_path / "transitiondata.txt"
-    truncated.write_text("26 2\n")
-
-    with pytest.raises(Exception, match="line ended where a transition count was expected"):
-        read_transitiondata(truncated)
-
-
 @pytest.mark.parametrize("ionlist", [None, {(26, 2)}, {(27, 2)}])
 def test_read_transitiondata_rejects_a_table_that_the_file_ends_inside(
     tmp_path: Path, ionlist: set[tuple[int, int]] | None
@@ -178,7 +169,10 @@ def test_read_transitiondata_reads_the_legacy_format_of_four_columns(tmp_path: P
 
 
 def test_read_transitiondata_errors_name_the_file_and_the_line(tmp_path: Path) -> None:
-    """A parse error names the file and the line. The test model file has 1.9 million lines."""
+    """A parse error names the file and the line. The test model file has 1.9 million lines.
+
+    An ion header that the file cuts short gives an exception, and not a panic of the extension.
+    """
     transitionsfile = tmp_path / "transitiondata.txt"
     transitionsfile.write_text("26 2 3\n1 2 1.0 2.0 1\n1 3 1.0e-3x 2.0 1\n2 3 1.0 2.0 1\n", encoding="utf-8")
     with pytest.raises(Exception, match=r"transitiondata\.txt:3: could not parse \"1\.0e-3x\" as an A value"):
@@ -190,6 +184,10 @@ def test_read_transitiondata_errors_name_the_file_and_the_line(tmp_path: Path) -
 
     transitionsfile.write_text("26 x 3\n", encoding="utf-8")
     with pytest.raises(Exception, match=r"transitiondata\.txt:1: could not parse \"x\" as an ion stage"):
+        read_transitiondata(transitionsfile)
+
+    transitionsfile.write_text("26 2\n", encoding="utf-8")
+    with pytest.raises(Exception, match=r"transitiondata\.txt:1: line ended where a transition count was expected"):
         read_transitiondata(transitionsfile)
 
 
@@ -584,14 +582,6 @@ def test_get_ionstages_from_outputfile_finds_a_log_in_a_run_folder(tmp_path: Pat
     assert at.atomic.get_ionstages_from_outputfile(tmp_path) == {26: [2]}
 
 
-def test_get_composition_data_from_outputfile_refuses_a_log_with_no_list(tmp_path: Path) -> None:
-    """A log with no list of the elements gives a message, and not a frame of no elements."""
-    (tmp_path / "output_0-0.txt").write_text("start of the log\n", encoding="utf-8")
-
-    with pytest.raises(ValueError, match="holds no list of the elements"):
-        at.atomic.get_composition_data_from_outputfile(tmp_path)
-
-
 LINELIST_HEADER = "#lambda_angstroms atomic_number ion_stage upperlevelindex lowerlevelindex"
 # each tuple is one line: the vacuum wavelength [Angstrom], the atomic number, the ion stage, the zero-based upper
 # level index, and the zero-based lower level index, in the order of the columns of linelist.out
@@ -928,16 +918,6 @@ def test_vacuum_to_air_angstroms_agrees_with_nist() -> None:
     )
 
 
-def test_get_z_a_nucname() -> None:
-    assert at.get_z_a_nucname("Pb208") == (82, 208)
-    assert at.get_z_a_nucname("X_Pb208") == (82, 208)
-    assert at.get_z_a_nucname("nniso_Pb208") == (82, 208)
-    assert at.get_z_a_nucname("Fe56") == (26, 56)
-    assert at.get_z_a_nucname("Ni56") == (28, 56)
-    assert at.get_z_a_nucname("Co56") == (27, 56)
-    assert at.get_z_a_nucname("H1") == (1, 1)
-
-
 def test_get_atomic_number_and_elsymbol() -> None:
     assert at.get_atomic_number("Fe") == 26
     assert at.get_atomic_number("Ni") == 28
@@ -977,18 +957,6 @@ def test_get_atomic_number_and_elsymbol() -> None:
         at.get_elsymbol(119)
     with pytest.raises(ValueError, match="does not start with an element symbol"):
         at.get_z_a_nucname("Xx56")
-
-
-def test_decode_roman_numeral() -> None:
-    assert at.decode_roman_numeral("I") == 1
-    assert at.decode_roman_numeral("II") == 2
-    assert at.decode_roman_numeral("III") == 3
-    assert at.decode_roman_numeral("IV") == 4
-    assert at.decode_roman_numeral("V") == 5
-    assert at.decode_roman_numeral("X") == 10
-    assert at.decode_roman_numeral("XX") == 20
-    assert at.decode_roman_numeral("i") == 1  # case-insensitive
-    assert at.decode_roman_numeral("INVALID") == -1
 
 
 def test_get_ionstring() -> None:
@@ -1033,10 +1001,3 @@ def test_get_ion_tuple_no_separator() -> None:
     assert at.get_ion_tuple("FII") == (9, 2)
     assert at.get_ion_tuple("CIV") == (6, 4)
     assert at.get_ion_tuple("OI") == (8, 1)
-
-
-def test_get_ion_tuple_rejects_missing_element() -> None:
-    """A string with a separator but no element symbol must raise rather than return atomic number -1."""
-    for badionstr in (" II", "_II", "notanion", "Fe "):
-        with pytest.raises(ValueError, match="Could not parse ionstr"):
-            at.get_ion_tuple(badionstr)

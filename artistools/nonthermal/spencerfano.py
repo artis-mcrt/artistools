@@ -348,19 +348,11 @@ def get_element_conditions(args: argparse.Namespace, step: int, stepcount: int) 
 
 def get_sweep_parameters(args: argparse.Namespace, step: int) -> tuple[float, float, int]:
     """Return the emin, the emax, and the npts of the energy grid at one step of a --vary sweep."""
-    emin = args.emin
-    emax = args.emax
-    npts = args.npts
-    if args.vary == "emax":
-        emax *= 2**step
-    elif args.vary == "emax,npts":
-        npts *= 2**step
-        emax *= 2**step
-    elif args.vary == "emin":
-        emin *= 2**step
-    elif args.vary == "npts":
-        npts *= 2**step
-
+    # --vary emax,npts doubles the two values together
+    varied = str(args.vary).split(",")
+    emin = args.emin * 2**step if "emin" in varied else args.emin
+    emax = args.emax * 2**step if "emax" in varied else args.emax
+    npts = args.npts * 2**step if "npts" in varied else args.npts
     return emin, emax, npts
 
 
@@ -415,15 +407,27 @@ def solve_step(
             sf.set_temperature(conditions.T_e)
             sf.set_atomic_data(adata_polars=adata)
 
+        heldions: set[tuple[int, int]] = set()
         for Z, ion_stage in ions:
             nnion = ionpopdict[Z, ion_stage]
             if nnion == 0.0:
                 print(f"   Skipping Z={Z} ion_stage {ion_stage} due to nnion={nnion:.1e}")
                 continue
+            if ion_stage > Z:
+                # a bare nucleus has no bound electron to ionise or to excite, and ARTIS skips it (nonthermal.cc)
+                print(
+                    f"   Z={Z} ion_stage {ion_stage} is a bare nucleus with no bound electron, thus the solver skips it"
+                )
+                continue
 
             sf.add_ionisation(Z, ion_stage, nnion)
             if not args.noexcitation:
                 sf.add_ion_excitation(Z, ion_stage, nnion)
+            heldions.add((Z, ion_stage))
+
+        # the solver sums n_e from the charges of the ions that it holds, and a skipped ion also has free electrons
+        print("  The free electron density is x_e n_tot. ARTIS uses this value as the nne of a model cell")
+        sf.override_n_e(conditions.x_e * conditions.nntot)
 
         sf.solve(deposition_ev_per_s_per_cm3=conditions.deposition_density_ev)
 
@@ -455,9 +459,7 @@ def solve_step(
             "frac_heating": sf.get_frac_heating(),
         } | {
             f"frac_ionization_{get_ion_column_name(atomic_number, ion_stage)}": (
-                sf.get_frac_ionisation_ion(atomic_number, ion_stage)
-                if ionpopdict[atomic_number, ion_stage] > 0.0
-                else 0.0
+                sf.get_frac_ionisation_ion(atomic_number, ion_stage) if (atomic_number, ion_stage) in heldions else 0.0
             )
             for atomic_number, ion_stage in ions
         }

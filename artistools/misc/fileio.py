@@ -9,7 +9,6 @@ import sys
 import typing as t
 from collections.abc import Callable
 from collections.abc import Generator
-from collections.abc import Iterable
 from collections.abc import Sequence
 from functools import cache
 from functools import lru_cache
@@ -121,14 +120,19 @@ def get_file_copies(filepath: Path) -> list[Path]:
     return [uncompressedpath, *(with_compressed_extension(uncompressedpath, ext) for ext in COMPRESSED_EXTENSIONS)]
 
 
-def find_compressed(filename: Path | str) -> tuple[str, Path] | None:
-    """Return the extension and the path of filename.zst, .gz, or .xz, or None if no compressed file exists."""
-    for ext in COMPRESSED_EXTENSIONS:
-        path_withext = with_compressed_extension(filename, ext)
-        if path_withext.exists():
-            return ext, path_withext
+def with_compressed_sibling(filename: Path | str) -> Path:
+    """Return the path of filename, or of filename.zst, .gz, or .xz when only that compressed file exists.
 
-    return None
+    The named file wins, thus a stale compressed copy never shadows a file that a run has just written. A name with no
+    file and no compressed sibling stays as it is, thus the error of the open names the file that the caller gave.
+    """
+    filepath = Path(filename)
+    if filepath.is_file():
+        return filepath
+
+    return next(
+        (path for ext in COMPRESSED_EXTENSIONS if (path := with_compressed_extension(filename, ext)).exists()), filepath
+    )
 
 
 def get_decompress_open(ext: str) -> Callable[..., t.IO[t.Any]]:
@@ -176,20 +180,11 @@ def zopen(
 ) -> t.IO[str] | t.IO[bytes]:
     """Open filename, falling back to filename.zst, filename.gz or filename.xz.
 
-    The named file wins, thus a stale compressed copy never shadows a file that a run has just written.
-    This is the same precedence that read_wsv and firstexisting use. The errors argument takes the value
-    that the open functions take, e.g. "replace" for a file that holds a bad byte.
+    The named file wins, see with_compressed_sibling. This is the same precedence that read_wsv and firstexisting use.
+    The errors argument takes the value that the open functions take, e.g. "replace" for a file that holds a bad byte.
     """
     check_local_path(filename)
-    filepath = Path(filename)
-    if not filepath.is_file():
-        found = find_compressed(filename)
-        if found is None:
-            # let open() raise the FileNotFoundError naming the file the caller actually asked for
-            return filepath.open(mode=mode, encoding=encoding, errors=errors)
-        ext, foundpath = found
-        return get_decompress_open(ext)(foundpath, mode=mode, encoding=encoding, errors=errors)
-
+    filepath = with_compressed_sibling(filename)
     if filepath.suffix in COMPRESSED_EXTENSIONS:
         return get_decompress_open(filepath.suffix)(filepath, mode=mode, encoding=encoding, errors=errors)
 
@@ -230,14 +225,10 @@ def polars_source_open(filename: Path | str, mode: str = "r") -> Generator[t.IO[
 def zopenpl(filename: Path | str) -> t.IO[bytes] | Path:
     """Return a polars source for filename, or for a compressed sibling when the named file does not exist.
 
-    The named file wins, for the same reason as in zopen. If polars can read the file directly, this
+    The named file wins, see with_compressed_sibling. If polars can read the file directly, this
     returns a Path rather than a file object.
     """
-    filepath = Path(filename)
-    if not filepath.is_file() and (found := find_compressed(filename)):
-        return polars_source(found[1])
-
-    return polars_source(filepath)
+    return polars_source(with_compressed_sibling(filename))
 
 
 @cache
@@ -359,10 +350,7 @@ def read_complete_lines(filename: Path | str, content: str) -> bytes:
     in zopen. The caller gives the bytes to polars, thus the function decompresses the file one time only.
     """
     check_local_path(filename)
-    filepath = Path(filename)
-    if not filepath.is_file() and (found := find_compressed(filename)):
-        filepath = found[1]
-
+    filepath = with_compressed_sibling(filename)
     with polars_error_note(filepath):
         data = read_decompressed_bytes(filepath)
 
@@ -515,18 +503,9 @@ def read_wsv(
     which it is true. It must keep the header line. A filter that drops most lines before the parse saves the
     memory of a large file.
     """
-    filepath = Path(filename)
-    if not filepath.is_file():
-        # fall back to a compressed sibling only when the named file itself does not exist, so a freshly
-        # written uncompressed file is never shadowed by a stale compressed copy
-        found = find_compressed(filename)
-        if found is not None:
-            filepath = found[1]
-
+    filepath = with_compressed_sibling(filename)
     if header_from_comment:
         assert comment_prefix is not None
-        # filepath was already resolved with unshadowed precedence above, so zopen would undo that by
-        # re-running find_compressed and reading the header out of a stale compressed sibling
         # the comment holds the column names, and it can hold a byte that is not valid UTF-8, thus
         # replace such a byte here as the read of the lines below also does
         with zopen(filepath, errors="replace") as fin:
@@ -606,26 +585,21 @@ def firstexisting(
     A caller gives purpose to say what the file holds and which commands read it, because a list of
     names alone does not tell a user what to do next.
     """
-    if isinstance(filelist, str | Path):
-        filelist = [Path(filelist)]
-    else:
-        assert isinstance(filelist, Iterable)
-        filelist = [Path(x) for x in filelist]
-
+    filenames = [Path(filelist)] if isinstance(filelist, str | Path) else [Path(name) for name in filelist]
     folder = Path(folder)
     fullpaths = []
 
-    def search_folders(filelist: list[str | Path] | list[Path]) -> Generator[Path]:
-        yield Path(folder)
+    def search_folders() -> Generator[Path]:
+        yield folder
         if search_subfolders:
-            for filename in filelist:
+            for filename in filenames:
                 # a glob gives the names in the order of the file system, thus the result would
                 # differ between two machines. The natural order of the folders gives the order of the
                 # runs, and get_run_subfolders and the cache checks take the same order
-                yield from sorted({p.parent for p in Path(folder).glob(f"*/{filename}*")}, key=natural_sort_key)
+                yield from sorted({p.parent for p in folder.glob(f"*/{filename}*")}, key=natural_sort_key)
 
-    for searchfolder in search_folders(filelist):
-        for filename in filelist:
+    for searchfolder in search_folders():
+        for filename in filenames:
             thispath = Path(searchfolder, filename)
             if thispath.exists():
                 return thispath
@@ -635,7 +609,7 @@ def firstexisting(
             if tryzipped:
                 for ext in COMPRESSED_EXTENSIONS:
                     filename_withext = with_compressed_extension(filename, ext)
-                    if filename_withext not in filelist:
+                    if filename_withext not in filenames:
                         thispath = Path(searchfolder, filename_withext)
                         if thispath.exists():
                             return thispath

@@ -430,11 +430,9 @@ def write_parquet_atomic(
             # gives the file a second name, and fails if that name is taken, thus the destination appears
             # complete in one step and no reader of it ever sees a different file at the same path
             os.link(partialfilepath, parquetfilepath)
-        except FileExistsError:
-            replace_outdated_file(partialfilepath, parquetfilepath, replaces)
         except OSError:
-            # a file system without hard links cannot make the destination appear in one step, but the
-            # locked identity rule still applies: install, replace the out-of-date file, or keep a rival's
+            # a name that is taken, or a file system without hard links, takes the locked identity rule: install,
+            # replace the out-of-date file, or keep a rival's
             replace_outdated_file(partialfilepath, parquetfilepath, replaces)
     finally:
         partialfilepath.unlink(missing_ok=True)

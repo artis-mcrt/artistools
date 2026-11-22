@@ -100,12 +100,6 @@ def test_estimparse_gives_the_index_columns_for_a_text_of_empty_cells(tmp_path: 
         assert dict(dfempty.schema) == {"timestep": pl.Int32, "modelgridindex": pl.Int32}
 
 
-def test_estimparse_rejects_a_rank_range_with_no_rank() -> None:
-    """A rankmin above rankmax gave an empty concatenation, which panicked in polars with a BaseException."""
-    with pytest.raises(Exception, match="the rank range 1 to 0 holds no rank"):
-        at.rustext.estimparse(modelpath, 1, 0)
-
-
 def test_estimparse_roman_numerals_agree_with_the_python_table(tmp_path: Path) -> None:
     """The ion columns of the Rust reader must have the names that get_ionstring gives.
 

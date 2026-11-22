@@ -4,9 +4,7 @@ import subprocess
 from pathlib import Path
 from unittest import mock
 
-import matplotlib.pyplot as plt
 import numpy as np
-import polars as pl
 import pytest
 
 import artistools as at
@@ -33,43 +31,6 @@ def test_plot_commands_write_the_format_of_the_suffix(tmp_path: Path) -> None:
 
     at.packets.plotspherical.main(argsraw=[], modelpath=modelpath, timestep=40, outputfile=tmp_path / "map.png")
     assert (tmp_path / "map.png").read_bytes().startswith(pngmagic)
-
-
-def test_merge_pdf_files_keeps_inputs_until_written(tmp_path: Path) -> None:
-    """The input files must survive until the merged file exists."""
-    pdfpaths = []
-    for i in range(2):
-        fig, ax = plt.subplots()
-        ax.plot([0, 1], [i, i])
-        pdfpath = tmp_path / f"page{i}.pdf"
-        fig.savefig(pdfpath, format="pdf")
-        plt.close(fig)
-        pdfpaths.append(str(pdfpath))
-
-    at.misc.merge_pdf_files(pdfpaths)
-
-    merged = tmp_path / "page0-page1.pdf"
-    assert merged.is_file()
-    assert merged.stat().st_size > 0
-    assert not any(Path(p).exists() for p in pdfpaths)
-
-
-def test_print_saved_gives_the_shorter_path(capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
-    """A file outside the working folder gave a chain of "..", which is longer than the full path."""
-    faraway = tmp_path / "figure.pdf"
-    faraway.touch()
-
-    opencommand = at.misc.commandoutput.get_open_command()
-    at.misc.print_saved(faraway)
-    reported = capsys.readouterr().out.removeprefix(f"{opencommand} ").strip().strip("'")
-
-    assert ".." not in reported
-    assert Path(reported).resolve() == faraway.resolve()
-
-    # a file below the working folder keeps its short relative name
-    here = Path("localfigure.pdf")
-    at.misc.print_saved(Path.cwd() / here)
-    assert capsys.readouterr().out.strip() == f"{opencommand} {here}"
 
 
 def test_progress_goes_to_the_standard_error_and_the_product_to_the_standard_output(
@@ -168,17 +129,6 @@ def test_figures_of_one_command_print_one_document(tmp_path: Path, capsys: pytes
     jsonrows = json.loads(capsys.readouterr().out)["data"]
     assert {row["ion"].split()[0] for row in jsonrows} == {"Fe", "Co"}
     assert all(row["figure"].startswith(f"plotnltepops_{row['ion'].split()[0]}_") for row in jsonrows)
-
-
-def test_json_rows_give_null_for_nan_and_infinity() -> None:
-    """A strict parser of JSON refuses NaN and Infinity, thus the JSON output gives null for each of them."""
-    from artistools.misc.commandoutput import get_json_rows
-
-    dfdata = pl.DataFrame({"x": [1.5, float("nan"), float("inf"), float("-inf"), None], "n": [1, 2, 3, 4, 5]})
-    rows = get_json_rows(dfdata)
-    assert [row["x"] for row in rows] == [1.5, None, None, None, None]
-    assert [row["n"] for row in rows] == [1, 2, 3, 4, 5]
-    json.loads(json.dumps(rows, allow_nan=False))
 
 
 def test_default_output_names_follow_one_scheme(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

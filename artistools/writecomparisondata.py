@@ -5,7 +5,6 @@ import glob
 import math
 import typing as t
 from collections.abc import Sequence
-from io import TextIOWrapper
 from pathlib import Path
 
 import numpy as np
@@ -40,6 +39,42 @@ from artistools.misc import print_warning
 from artistools.misc import scan_deposition
 from artistools.spectra import scan_spec
 
+if t.TYPE_CHECKING:
+    from collections.abc import Iterable
+
+
+def get_times_line(times: Sequence[float], selected_timesteps: Sequence[int]) -> str:
+    """Return the header line that gives the time in days of each selected timestep."""
+    return f"#TIMES[d]: {' '.join(f'{times[ts]:.2f}' for ts in selected_timesteps)}\n"
+
+
+def get_cell_line(vel_r_mid: float, values: "Iterable[float]") -> str:
+    """Return the line of one cell: the mid-point velocity in km/s, then each value."""
+    return f"{vel_r_mid / km_to_cm:.2f}" + "".join(f" {value:.4e}" for value in values) + "\n"
+
+
+def write_timestep_blocks(
+    outputfile: Path,
+    modelpath: str | Path,
+    dfcells: pl.DataFrame,
+    selected_timesteps: Sequence[int],
+    columnsline: str,
+    headerlines: Sequence[str] = (),
+) -> None:
+    """Write a file with one block for each timestep, and one line in a block for each cell of dfcells at the timestep.
+
+    dfcells holds the columns timestep and vel_r_mid, then the values of the line. headerlines come after #NTIMES. A
+    cell that a timestep does not hold gives no line, thus each block counts its own lines.
+    """
+    times = get_timestep_times(modelpath)
+    with outputfile.open("w", encoding="utf-8") as f:
+        f.writelines((f"#NTIMES: {len(selected_timesteps)}\n", *headerlines, get_times_line(times, selected_timesteps)))
+        f.write("#\n")
+        for timestep in selected_timesteps:
+            dftimestep = dfcells.filter(pl.col("timestep") == timestep).drop("timestep")
+            f.write(f"#TIME: {times[timestep]:.2f}\n#NVEL: {dftimestep.height}\n{columnsline}\n")
+            f.writelines(get_cell_line(vel_r_mid, values) for vel_r_mid, *values in dftimestep.iter_rows())
+
 
 def write_spectra(modelpath: str | Path, selected_timesteps: Sequence[int], outfilepath: Path) -> None:
     """Write the spectra at the selected timesteps in code comparison workshop format."""
@@ -62,27 +97,13 @@ def write_spectra(modelpath: str | Path, selected_timesteps: Sequence[int], outf
     with outfilepath.open("w", encoding="utf-8") as outfile:
         outfile.write(f"#NTIMES: {len(selected_timesteps)}\n")
         outfile.write(f"#NWAVE: {len(lambdas)}\n")
-        outfile.write(f"#TIMES[d]: {' '.join([f'{times[ts]:.2f}' for ts in selected_timesteps])}\n")
+        outfile.write(get_times_line(times, selected_timesteps))
         outfile.write("#wavelength[Ang] flux_t0[erg/s/Ang] flux_t1[erg/s/Ang] ... flux_tn[erg/s/Ang]\n")
 
         for n in reversed(range(len(lambdas))):
             outfile.write(
                 f"{lambdas[n]:.2f} " + " ".join([f"{lum_lambda[n, ts]:.4e}" for ts in selected_timesteps]) + "\n"
             )
-
-
-def write_ntimes_nvel(
-    outfile: TextIOWrapper, selected_timesteps: Sequence[int], modelpath: str | Path, ncells: int
-) -> None:
-    """Write the header lines that give the number of times, the number of cells, and the times.
-
-    ncells is the number of rows that the file holds. An empty cell has no estimators, thus the count
-    of the model cells promised more rows than the file gives.
-    """
-    times = get_timestep_times(modelpath)
-    outfile.write(f"#NTIMES: {len(selected_timesteps)}\n")
-    outfile.write(f"#NVEL: {ncells}\n")
-    outfile.write(f"#TIMES[d]: {' '.join([f'{times[ts]:.2f}' for ts in selected_timesteps])}\n")
 
 
 def get_nonempty_cells(
@@ -190,12 +211,14 @@ def write_edep(
     )
 
     with Path(outfile).open("w", encoding="utf-8") as f:
-        write_ntimes_nvel(f, selected_timesteps, modelpath, dfdeposition.height)
+        f.write(f"#NTIMES: {len(selected_timesteps)}\n")
+        # an empty cell has no estimators, thus the count of the model cells gave more lines than the file holds
+        f.write(f"#NVEL: {dfdeposition.height}\n")
+        f.write(get_times_line(get_timestep_times(modelpath), selected_timesteps))
         f.write("#vel_mid[km/s] Edep_t0[erg/s/cm^3] Edep_t1[erg/s/cm^3] ... Edep_tn[erg/s/cm^3]\n")
-        for vel_r_mid, *celldepositions in dfdeposition.iter_rows():
-            f.write(f"{vel_r_mid / km_to_cm:.2f}")
-            f.write("".join(f" {celldeposition:.4e}" for celldeposition in celldepositions))
-            f.write("\n")
+        f.writelines(
+            get_cell_line(vel_r_mid, celldepositions) for vel_r_mid, *celldepositions in dfdeposition.iter_rows()
+        )
 
 
 def get_column_or_zero(dfestimators: pl.DataFrame, colname: str) -> pl.Expr:
@@ -216,18 +239,12 @@ def write_ionfracts(
     outputpath: Path,
 ) -> None:
     """Write the ion fractions of every element in code comparison workshop format, one file per element."""
-    times = get_timestep_times(modelpath)
-    elementlist = get_composition_data(modelpath)
-    nelements = len(elementlist)
-    for elementindex in range(nelements):
-        atomic_number = elementlist["Z"].item(elementindex)
+    dfcomposition = get_composition_data(modelpath).select("Z", "nions", "lowermost_ion_stage")
+    for atomic_number, nions, lowermost_ion_stage in dfcomposition.iter_rows():
         elsymb = get_elsymbol(atomic_number)
-        nions = elementlist["nions"].item(elementindex)
-        lowermost_ion_stage = elementlist["lowermost_ion_stage"].item(elementindex)
         # the format labels the neutral stage 0 and needs a column for each stage up to the highest one. ARTIS
         # holds no population below lowermost_ion_stage, thus those columns hold zero
         nstages = lowermost_ion_stage + nions - 1
-        nstagesbelowlowermost = lowermost_ion_stage - 1
         ionstrs = [
             get_ionstring(atomic_number, ion_stage, sep="_", style="spectral")
             for ion_stage in range(lowermost_ion_stage, nstages + 1)
@@ -236,6 +253,7 @@ def write_ionfracts(
         dfionfracs = dfestimators.select(
             "timestep",
             "vel_r_mid",
+            *(pl.lit(0.0).alias(f"stage{stage}") for stage in range(lowermost_ion_stage - 1)),
             *(
                 pl
                 .when(expr_elabund > 0.0)
@@ -246,22 +264,14 @@ def write_ionfracts(
             ),
         )
         pathfileout = Path(outputpath, f"ionfrac_{elsymb.lower()}_{model_id}_artisnebular.txt")
-        with pathfileout.open("w", encoding="utf-8") as f:
-            f.write(f"#NTIMES: {len(selected_timesteps)}\n")
-            f.write(f"#NSTAGES: {nstages}\n")
-            f.write(f"#TIMES[d]: {' '.join([f'{times[ts]:.2f}' for ts in selected_timesteps])}\n")
-            f.write("#\n")
-            for timestep in selected_timesteps:
-                dftimestep = dfionfracs.filter(pl.col("timestep") == timestep).drop("timestep")
-                f.write(f"#TIME: {times[timestep]:.2f}\n")
-                # a cell that this timestep does not hold gives no row, thus each block counts its own rows
-                f.write(f"#NVEL: {dftimestep.height}\n")
-                f.write(f"#vel_mid[km/s] {' '.join([f'{elsymb.lower()}{stage}' for stage in range(nstages)])}\n")
-                for vel_r_mid, *ionfracs in dftimestep.iter_rows():
-                    f.write(f"{vel_r_mid / km_to_cm:.2f}")
-                    f.write(f" {0.0:.4e}" * nstagesbelowlowermost)
-                    f.write("".join(f" {ionfrac:.4e}" for ionfrac in ionfracs))
-                    f.write("\n")
+        write_timestep_blocks(
+            pathfileout,
+            modelpath,
+            dfionfracs,
+            selected_timesteps,
+            f"#vel_mid[km/s] {' '.join([f'{elsymb.lower()}{stage}' for stage in range(nstages)])}",
+            headerlines=[f"#NSTAGES: {nstages}\n"],
+        )
 
         # a file of zeros says nothing about the model, thus the writer takes it away again
         maxionfrac = float(dfionfracs.select(pl.max_horizontal(ionstrs).max().fill_null(0.0)).item())
@@ -278,22 +288,13 @@ def write_phys(
     outputpath: Path,
 ) -> None:
     """Write the physical conditions of every cell in code comparison workshop format."""
-    times = get_timestep_times(modelpath)
-    dfphys = dfestimators.select("timestep", "vel_r_mid", "Te", "rho", "nne", "nntot")
-    with Path(outputpath, f"phys_{model_id}_artisnebular.txt").open("w", encoding="utf-8") as f:
-        f.write(f"#NTIMES: {len(selected_timesteps)}\n")
-        f.write(f"#TIMES[d]: {' '.join([f'{times[ts]:.2f}' for ts in selected_timesteps])}\n")
-        f.write("#\n")
-        for timestep in selected_timesteps:
-            dftimestep = dfphys.filter(pl.col("timestep") == timestep).drop("timestep")
-            f.write(f"#TIME: {times[timestep]:.2f}\n")
-            # a cell that this timestep does not hold gives no row, thus each block counts its own rows
-            f.write(f"#NVEL: {dftimestep.height}\n")
-            f.write("#vel_mid[km/s] temp[K] rho[gcc] ne[/cm^3] natom[/cm^3]\n")
-            for vel_r_mid, *cellvalues in dftimestep.iter_rows():
-                f.write(f"{vel_r_mid / km_to_cm:.2f}")
-                f.write("".join(f" {cellvalue:.4e}" for cellvalue in cellvalues))
-                f.write("\n")
+    write_timestep_blocks(
+        Path(outputpath, f"phys_{model_id}_artisnebular.txt"),
+        modelpath,
+        dfestimators.select("timestep", "vel_r_mid", "Te", "rho", "nne", "nntot"),
+        selected_timesteps,
+        "#vel_mid[km/s] temp[K] rho[gcc] ne[/cm^3] natom[/cm^3]",
+    )
 
 
 def write_lbol_edep(modelpath: str | Path, selected_timesteps: Sequence[int], outputpath: Path) -> None:

@@ -175,89 +175,55 @@ def get_grid(
     bstraj = np.zeros(ntraj)  # binary state (bs) variable (1: dynamical, 0: secular)
 
     time_s = dat.f.time
-    starting_idx = 0
-    closest_idx = (np.abs(time_s - t_model_init_s)).argmin()
-    i = -1
     tot_Q_rel = 0
 
-    # first get masses and see if they have to be set to zero if the corresponding ejecta types shall be excluded
-    # also set to integrated energy release up to snapshot time to zero
-
+    # an excluded ejecta type keeps no mass and no energy release. The exclusion must also remove its neutrino loss
     mass_arr = dat.f.mass.copy()
     qdot_arr = dat.f.qdot.copy()
-    # the exclusion of an ejecta type must also remove its neutrino loss, thus this array comes first
     hnuloss_arr = dat.f.hnuloss.copy() if no_nu_trapping else np.zeros_like(qdot_arr, dtype=np.float64)
-
-    # ... non-dynamical ejecta
-    if nohmns:
-        # exclude HMNS ejecta
-        mass_arr[np.where(state == 0)] = 1e-30
-        qdot_arr[np.where(state == 0)] = 1e-30
-        hnuloss_arr[np.where(state == 0)] = 1e-30
-    if notorus:
-        # exclude torus ejecta
-        mass_arr[np.where(state == 1)] = 1e-30
-        qdot_arr[np.where(state == 1)] = 1e-30
-        hnuloss_arr[np.where(state == 1)] = 1e-30
+    excludedstates = [
+        ejectastate for ejectastate, isexcluded in ((0, nohmns), (1, notorus), (-1, nodynej)) if isexcluded
+    ]
+    isexcludedtraj = np.isin(state, excludedstates)
+    for arr in (mass_arr, qdot_arr, hnuloss_arr):
+        arr[isexcludedtraj] = 1e-30
 
     # no multiplication with mass to keep it a specific energy release
     time_by_t_snap = time_s / t_model_init_s
 
-    # closest_idx names the row of the snapshot time, thus the slice must end one row after it
-    snapshot_end_idx = closest_idx + 1
+    # the slice ends one row after the row of the snapshot time
+    tosnapshot = slice(0, (np.abs(time_s - t_model_init_s)).argmin() + 1)
 
-    for i1 in nodid:  # index of Oli's original list
-        i += 1  # index in the new list accounting for unprocessed trajs.
+    # nodid comes first in trajids, then dynid
+    for i, i1 in enumerate(nodid):  # i1 is the id of Oli's original list
         i2 = firstindex_of_id[i1]  # index in Zeweis extended list of trajs.
         mtraj[i] = mass_arr[i2] * msol
         qtraj[i] = np.trapezoid(
-            time_by_t_snap[starting_idx:snapshot_end_idx]
-            * (qdot_arr[i2] + hnuloss_arr[i2])[starting_idx:snapshot_end_idx],
-            time_s[starting_idx:snapshot_end_idx],
+            time_by_t_snap[tosnapshot] * (qdot_arr[i2] + hnuloss_arr[i2])[tosnapshot], time_s[tosnapshot]
         )
         tot_Q_rel += mtraj[i] * qtraj[i]
-
-    # ... dynamical ejecta
-
-    if nodynej:
-        # exclude dynamical ejecta
-        mass_arr[np.where(state == -1)] = 1e-30
-        qdot_arr[np.where(state == -1)] = 1e-30
-        hnuloss_arr[np.where(state == -1)] = 1e-30
-    for i1 in dynid:
-        i += 1  # index in the new list accounting for unprocessed trajs.
-        i3 = np.where(dynidall == i1)[0]  # indices in Zeweis extended list of trajs.
-        mtraj[i] = np.sum(mass_arr[i3]) * msol
-        # qdot is a specific rate [erg/g/s], thus the merged pieces take the mass-weighted mean and not the sum
-        qdot_merged = np.average(qdot_arr[i3] + hnuloss_arr[i3], axis=0, weights=mass_arr[i3])
-        qtraj[i] = np.trapezoid(
-            time_by_t_snap[starting_idx:snapshot_end_idx] * qdot_merged[starting_idx:snapshot_end_idx],
-            time_s[starting_idx:snapshot_end_idx],
-        )
-        tot_Q_rel += mtraj[i] * qtraj[i]
-
-    print(f"tot_Q_rel: {tot_Q_rel}")
-
-    i = -1
-    # ... non-dynamical ejecta
-    for i1 in nodid:  # index of Oli's original list
-        i += 1  # index in the new list accounting for unprocessed trajs.
-        i2 = firstindex_of_id[i1]  # index in Zeweis extended list of trajs.
         xtraj[i, :] = xiso0[i2, :]
         yetraj[i] = dat.f.t5out[i2, 4]
         vtraj[i] = dat.f.pos[i2, 0]
         atraj[i] = dat.f.pos[i2, 1]
         bstraj[i] = 0
-    # ... dynamical ejecta
-    for i1 in dynid:  # index of my original list
-        i += 1  # index in the new list accounting for unprocessed trajs.
-        i4 = np.where(dynidall == i1)[0]  # indices in Zeweis extended list of trajs.
-        weights = dat.f.mass[i4] * msol / (np.sum(dat.f.mass[i4]) * msol)
-        xtraj[i, :] = np.sum(weights * xiso0[i4, :].T, axis=1)
-        yetraj[i] = np.sum(weights * dat.f.t5out[i4, 4])
-        vtraj[i] = np.sum(weights * dat.f.pos[i4, 0])
-        atraj[i] = np.sum(weights * dat.f.pos[i4, 1])
+
+    for i, i1 in enumerate(dynid, start=nnod):
+        i3 = np.where(dynidall == i1)[0]  # indices in Zeweis extended list of trajs.
+        mtraj[i] = np.sum(mass_arr[i3]) * msol
+        # qdot is a specific rate [erg/g/s], thus the merged pieces take the mass-weighted mean and not the sum
+        qdot_merged = np.average(qdot_arr[i3] + hnuloss_arr[i3], axis=0, weights=mass_arr[i3])
+        qtraj[i] = np.trapezoid(time_by_t_snap[tosnapshot] * qdot_merged[tosnapshot], time_s[tosnapshot])
+        tot_Q_rel += mtraj[i] * qtraj[i]
+        # the composition and the position take the weights of the masses before the exclusion of an ejecta type
+        weights = dat.f.mass[i3] * msol / (np.sum(dat.f.mass[i3]) * msol)
+        xtraj[i, :] = np.sum(weights * xiso0[i3, :].T, axis=1)
+        yetraj[i] = np.sum(weights * dat.f.t5out[i3, 4])
+        vtraj[i] = np.sum(weights * dat.f.pos[i3, 0])
+        atraj[i] = np.sum(weights * dat.f.pos[i3, 1])
         bstraj[i] = 1
+
+    print(f"tot_Q_rel: {tot_Q_rel}")
 
     # now do the mapping using an SPH like interpolation
     # (see e.g. Price 2007, http://adsabs.harvard.edu/abs/2007PASA...24..159P,
@@ -973,14 +939,11 @@ def map_to_artis(
             # determine elemental abundances for abundances.txt as before again (no interpolation)
             dictelabunds = {"inputcellid": np.array(range(1, numb_cells + 1))}
             for isot_str in X_list:
-                Z = get_atomic_number(isot_str)
                 interpol_X_iso = dfmodel[isot_str].to_numpy()
-                elem_str = f"X_{get_elsymbol(Z)}"
-                if elem_str in dictelabunds:
-                    dictelabunds[elem_str] = dictelabunds[elem_str].copy()
-                    dictelabunds[elem_str] += interpol_X_iso
-                else:
-                    dictelabunds[elem_str] = interpol_X_iso
+                elem_str = f"X_{get_elsymbol(get_atomic_number(isot_str))}"
+                dictelabunds[elem_str] = (
+                    dictelabunds[elem_str] + interpol_X_iso if elem_str in dictelabunds else interpol_X_iso
+                )
             dfabundances = pl.DataFrame(dictelabunds).fill_null(0.0)
         else:
             # replace above threshold
@@ -1067,7 +1030,6 @@ def map_to_artis(
                 print(f"  New ejecta mass after replacing and rescaling: {M_rescaled} Msun")
                 dfmodel = dfmodel.drop("vel_r_mid_on_c")
 
-        dfmodel = dfmodel.drop("bin_state")
         superfluous_cols = [
             "bin_state",
             "vel_r_mid_on_c",
@@ -1078,8 +1040,7 @@ def map_to_artis(
             "X_el",
             "X_scale",
         ]
-        dfmodel = dfmodel.drop([col for col in superfluous_cols if col in dfmodel.columns])
-        dfmodel = dfmodel.drop([col for col in dfmodel.columns if "_dyn" in col])
+        dfmodel = dfmodel.drop(superfluous_cols, strict=False).drop(cs.contains("_dyn"))
         print("Done!")
 
         dfelabundances = dfabundances
@@ -1193,17 +1154,17 @@ def merge_neighbour_cells(
     r_mid_grid = np.array([(i + 0.5) * Delta_r for i in range(N_cell_r_new)])
     z_mid_grid = np.array([-r_max_snap + (i + 0.5) * Delta_z for i in range(N_cell_z_new)])
 
+    # one copy of the mass blocks serves each field
+    massblocks = coarse_grid_blocks(dfmodel["mass_g"].to_numpy(), red_fact_1D, N_cell_r_new, N_cell_z_new, N_cell_r_old)
+
+    def remap_field(fieldname: str) -> npt.NDArray[np.float64]:
+        return remap_mass_weighted_quantity(
+            dfmodel, fieldname, red_fact_1D, N_cell_r_new, N_cell_z_new, N_cell_r_old, Delta_r, Delta_z, massblocks
+        )
+
     print("Now remap masses, q and Ye")
     # remap density, integrated energy release and Y_e
-    new_rho_arr = remap_mass_weighted_quantity(
-        dfmodel, "mass_g", red_fact_1D, N_cell_r_new, N_cell_z_new, ngrid_rcyl, Delta_r, Delta_z
-    )
-    new_q_arr = remap_mass_weighted_quantity(
-        dfmodel, "q", red_fact_1D, N_cell_r_new, N_cell_z_new, ngrid_rcyl, Delta_r, Delta_z
-    )
-    new_ye_arr = remap_mass_weighted_quantity(
-        dfmodel, "Ye", red_fact_1D, N_cell_r_new, N_cell_z_new, ngrid_rcyl, Delta_r, Delta_z
-    )
+    new_rho_arr, new_q_arr, new_ye_arr = (remap_field(fieldname) for fieldname in ("mass_g", "q", "Ye"))
     print("  Done.")
 
     # new model data frame
@@ -1225,11 +1186,8 @@ def merge_neighbour_cells(
 
     nuclide_columns = [col for col in dfmodel.columns if col.startswith("X_")][1:]
 
-    massblocks = coarse_grid_blocks(dfmodel["mass_g"].to_numpy(), red_fact_1D, N_cell_r_new, N_cell_z_new, N_cell_r_old)
     for nuclide in nuclide_columns:
-        new_X_arr = remap_mass_weighted_quantity(
-            dfmodel, nuclide, red_fact_1D, N_cell_r_new, N_cell_z_new, N_cell_r_old, Delta_r, Delta_z, massblocks
-        )
+        new_X_arr = remap_field(nuclide)
         dictabunds[nuclide] = new_X_arr
         el = "".join([i for i in nuclide[2:] if not i.isdigit()])
         if el in element_abbrevs_list_titled:

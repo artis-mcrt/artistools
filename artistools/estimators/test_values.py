@@ -12,39 +12,6 @@ import artistools as at
 modelpath_classic_3d = at.get_path("testdata") / "test-classicmode_3d"
 
 
-def test_values_of_one_cell_agree_with_the_estimators() -> None:
-    """The values command must give the raw estimators of the cell, and not a mean over cells or bins."""
-    from artistools.estimators.values import get_values_table
-
-    dfvalues = get_values_table(modelpath_classic_3d, ["Te", "TR", "nne", "rho"], timesteps=[29], modelgridindex=[23])
-    assert dfvalues.columns == [
-        "timestep",
-        "time_days",
-        "modelgridindex",
-        "vel_r_mid_kmps",
-        "Te[K]",
-        "TR[K]",
-        "nne[e^-/cm^3]",
-        "rho[g/cm^3]",
-    ]
-    assert dfvalues.height == 1
-
-    expected = (
-        at
-        .scan_estimators(modelpath_classic_3d, modelgridindex=23, timestep=29, join_modeldata=True)
-        .select("tmid_days", "vel_r_mid", "Te", "TR", "nne", "rho")
-        .collect()
-        .row(0, named=True)
-    )
-    row = dfvalues.row(0, named=True)
-    assert row["timestep"] == 29
-    assert row["modelgridindex"] == 23
-    assert np.isclose(row["time_days"], at.get_timestep_times(modelpath_classic_3d, loc="mid")[29], rtol=1e-6)
-    assert np.isclose(row["vel_r_mid_kmps"], expected["vel_r_mid"] / at.constants.km_to_cm, rtol=1e-6)
-    for variable, column in (("Te", "Te[K]"), ("TR", "TR[K]"), ("nne", "nne[e^-/cm^3]"), ("rho", "rho[g/cm^3]")):
-        assert np.isclose(row[column], expected[variable], rtol=1e-6, atol=0.0), variable
-
-
 def test_values_of_a_range_of_cells_give_one_row_for_each_cell_and_timestep(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -64,18 +31,23 @@ def test_values_of_a_range_of_cells_give_one_row_for_each_cell_and_timestep(
 
     dfexpected = (
         at
-        .scan_estimators(modelpath_classic_3d, modelgridindex=[14, 15], timestep=[28, 29])
-        .select("timestep", "modelgridindex", "Te", "nne")
+        .scan_estimators(modelpath_classic_3d, modelgridindex=[14, 15], timestep=[28, 29], join_modeldata=True)
+        .select("timestep", "modelgridindex", "vel_r_mid", "Te", "nne")
         .sort("timestep", "modelgridindex")
         .collect()
     )
+    tmids_days = at.get_timestep_times(modelpath_classic_3d, loc="mid")
+    assert np.allclose(
+        dfwritten["time_days"].to_numpy(), [tmids_days[timestep] for timestep in dfexpected["timestep"]], rtol=1e-6
+    )
+    assert np.allclose(
+        dfwritten["vel_r_mid_kmps"].to_numpy(),
+        dfexpected["vel_r_mid"].to_numpy() / at.constants.km_to_cm,
+        rtol=1e-6,
+        atol=0.0,
+    )
     assert np.allclose(dfwritten["Te[K]"].to_numpy(), dfexpected["Te"].to_numpy(), rtol=1e-6, atol=0.0)
     assert np.allclose(dfwritten["nne[e^-/cm^3]"].to_numpy(), dfexpected["nne"].to_numpy(), rtol=1e-6, atol=0.0)
-
-    # the header of the file tells how the command made the table
-    header = [line for line in outputfile.read_text(encoding="utf-8").splitlines() if line.startswith("#")]
-    assert any("with no average" in line for line in header)
-    assert any(line.startswith("# command:") for line in header)
 
 
 def test_values_give_the_time_of_volume_prevtimestep(

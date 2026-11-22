@@ -223,9 +223,6 @@ def get_artis_abund_sequences(
             verbose=False,
         ).filter(pl.col("mass_g") > 0)
 
-        if all(mgi >= 0 for mgi in mgiplotlist):
-            estimators_lazy = estimators_lazy.filter(pl.col("modelgridindex").is_in(mgiplotlist))
-
         estimatorcolumns = estimators_lazy.collect_schema().names()
         # ARTIS gives the number density of the stable isotopes that it does not follow as <El>_otherstable. Such a
         # nucleus has the mean stable mass of the element in compositiondata.txt (decay.cc). Only such a column
@@ -475,7 +472,6 @@ def plot_cell_abund_evolution(
     fig, axesgrid = make_frame_figure(rows=len(arr_species), aspect=0.383, sharex=False)
     axes = axesgrid[:, 0]
     axes[-1].set_xlabel("Time [days]")
-    axis = axes[0]
     print(f"{'':7s}  gsi_abund artis_abund")
 
     drawnseries: list[pl.DataFrame] = []
@@ -484,7 +480,9 @@ def plot_cell_abund_evolution(
 
         strnuc_latex = strnuc_to_latex(strspecies)
 
+        print(f"{strspecies:7s}  ", end="")
         if df_gsi_abunds is not None:
+            print(f"{df_gsi_abunds[strspecies][1]:.2e}", end="")
             axis.plot(
                 arr_time_gsi_days,
                 df_gsi_abunds[strspecies],
@@ -499,10 +497,6 @@ def plot_cell_abund_evolution(
                     "GSINET", strspecies, pl.Series(arr_time_gsi_days), df_gsi_abunds[strspecies], "massfraction"
                 )
             )
-
-        print(f"{strspecies:7s}  ", end="")
-        if df_gsi_abunds is not None:
-            print(f"{df_gsi_abunds[strspecies][1]:.2e}", end="")
         else:
             print(" [no GSINET]", end="")
 
@@ -743,15 +737,13 @@ def plot_qdot_abund_modelcells(
             print(f"model.txt griddata_root {griddata_root} is not a directory!")
         if not traj_root.is_dir():
             print(f"model.txt traj_root {traj_root} is not a directory!")
-        gsinet_available = False
 
-    arr_z = [get_atomic_number(species) for species in arr_species]
-    arr_a = [
-        int(a) if a is not None else a
-        for a in [species.lstrip(string.ascii_letters) or None for species in arr_species]
-    ]
-    arr_n = [a - z if a is not None else None for z, a in zip(arr_z, arr_a, strict=True)]
-    arr_strnuc_z_n = list(zip(arr_species, arr_z, arr_n, strict=True))
+    # an element has no mass number, thus its N is None and its abundance sums all its isotopes
+    arr_strnuc_z_n: list[tuple[str, int, int | None]] = []
+    for species in arr_species:
+        z = get_atomic_number(species)
+        massnumber = species.lstrip(string.ascii_letters)
+        arr_strnuc_z_n.append((species, z, int(massnumber) - z if massnumber else None))
 
     lzdfmodel = lzdfmodel.with_columns(cellmass_on_mtot=pl.col("mass_g") / pl.col("mass_g").sum())
 

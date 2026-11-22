@@ -527,39 +527,27 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         exit_with_error(f"No trajectory of {summarypath} has network data")
     decay_power_keys = [key for key in next(iter(decay_powers_of_traj.values())) if key != "timedays"]
 
-    ej_states = ["any", -1, 0, 1]
-    ej_names = ["all", "dyn", "hmns", "torus"]
-    for i in range(4):
-        state = ej_states[i]
-        if not args.npz:
-            label, Ye_lower, Ye_upper = Ye_bins[i]
-            labelfull = f"Ye [{Ye_lower}, {Ye_upper}]" if math.isfinite(Ye_upper) else "all Ye"
-            print(f"Processing Ye bin {label}... Ye: [{Ye_lower}, {Ye_upper}]")
-            selected_traj_ids = traj_summ_data.filter(
-                pl.col("Ye").is_between(Ye_lower, Ye_upper, closed=closed_of_bin[label])
-            )["Id"].to_list()
-
-            print(f" {len(selected_traj_ids)} trajectories selected")
-            if len(selected_traj_ids) == 0:
-                print(f"No trajectories found for Ye [{Ye_lower}, {Ye_upper}]")
-                continue
+    ejectatypes = (("all", "any"), ("dyn", -1), ("hmns", 0), ("torus", 1))
+    for (Ye_label, Ye_lower, Ye_upper), (ejectaname, ejectastate) in zip(Ye_bins, ejectatypes, strict=True):
+        if args.npz:
+            filelabel = labelfull = ejectaname
+            selected_traj_ids = set(traj_ids)
+            if ejectastate != "any":
+                selected_traj_ids &= trajids_of_ejectastate[ejectastate]
         else:
-            # select by ejecta type
-            selected_traj_ids = traj_ids if state == "any" else list(set(traj_ids) & trajids_of_ejectastate[state])
-            print(f" {len(selected_traj_ids)} trajectories selected")
-            if len(selected_traj_ids) == 0:
-                print_warning(f"No trajectories found for eject state {state}")
-                continue
-            labelfull = ej_names[i]
-            label = ej_names[i]
+            filelabel = Ye_label
+            labelfull = f"Ye [{Ye_lower}, {Ye_upper}]" if math.isfinite(Ye_upper) else "all Ye"
+            print(f"Processing Ye bin {Ye_label}... Ye: [{Ye_lower}, {Ye_upper}]")
+            isinbin = pl.col("Ye").is_between(Ye_lower, Ye_upper, closed=closed_of_bin[Ye_label])
+            selected_traj_ids = set(traj_summ_data.filter(isinbin)["Id"].to_list())
+        print(f" {len(selected_traj_ids)} trajectories selected")
 
-        selected_traj_id_set = set(selected_traj_ids)
         selectedtrajdata = [
-            trajdata for traj_id, trajdata in decay_powers_of_traj.items() if traj_id in selected_traj_id_set
+            trajdata for traj_id, trajdata in decay_powers_of_traj.items() if traj_id in selected_traj_ids
         ]
         # a sum of no trajectory gives zero rates, and the ratios of the plot then divide zero by zero
         if not selectedtrajdata:
-            print_warning(f"No selected trajectory of {labelfull} has network data")
+            print_warning(f"No trajectory of {labelfull} has network data")
             continue
         decay_powers: dict[str, npt.NDArray[np.floating]] = {
             k: sum((trajdata[k] for trajdata in selectedtrajdata), start=np.zeros_like(arr_t_day))
@@ -582,7 +570,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             args,
             decay_powers,
             labelfull,
-            outfilepath=args.outputfile / f"beta_release_ratios_tot_{nuc_dataset}_Ye{label}.pdf",
+            outfilepath=args.outputfile / f"beta_release_ratios_tot_{nuc_dataset}_Ye{filelabel}.pdf",
         )
 
 
@@ -594,30 +582,20 @@ def plot_decay_powers(
     fig, axesgrid = make_frame_figure(args, rows=2, aspect=0.913)
     axes = axesgrid[:, 0]
     ax0 = axes[0]
-    ax0.axhline(y=0.45, color=ARTIS_colors[2], linestyle="dotted", label=r"Barnes+16 $\gamma$")
-    ax0.axhline(y=0.20, color=ARTIS_colors[0], linestyle="dotted", label=r"Barnes+16 $e^{-}$")
-    ax0.axhline(y=0.35, color=ARTIS_colors[1], linestyle="dotted", label=r"Barnes+16 $\nu$")
-    ax0.plot(
-        arr_t_day,
-        decay_powers["abundweighted_gamma"] / decay_powers["abundweighted_gammanuelec"],
-        color=ARTIS_colors[2],
-        linestyle="-",
-        label=f"Traj {labelfull} gamma",
+    # the column, the energy fraction of the reference lines, the colour, and the label of each particle
+    particles = (
+        ("gamma", 0.45, ARTIS_colors[2], r"$\gamma$"),
+        ("elec", 0.20, ARTIS_colors[0], r"$e^{-}$"),
+        ("nu", 0.35, ARTIS_colors[1], r"$\nu$"),
     )
-    ax0.plot(
-        arr_t_day,
-        decay_powers["abundweighted_elec"] / decay_powers["abundweighted_gammanuelec"],
-        color=ARTIS_colors[0],
-        linestyle="-",
-        label=rf"Traj {labelfull} $e^{{-}}$",
-    )
-    ax0.plot(
-        arr_t_day,
-        decay_powers["abundweighted_nu"] / decay_powers["abundweighted_gammanuelec"],
-        color=ARTIS_colors[1],
-        linestyle="-",
-        label=rf"Traj {labelfull} $\nu$",
-    )
+    fractions = {
+        particle: decay_powers[f"abundweighted_{particle}"] / decay_powers["abundweighted_gammanuelec"]
+        for particle, *_ in particles
+    }
+    for _, barnesfraction, colour, label in particles:
+        ax0.axhline(y=barnesfraction, color=colour, linestyle="dotted", label=f"Barnes+16 {label}")
+    for particle, _, colour, label in particles:
+        ax0.plot(arr_t_day, fractions[particle], color=colour, linestyle="-", label=f"Traj {labelfull} {label}")
     ax0.set_ylabel("energy release rate / Qdot")
     ax1 = axes[1]
     ax1.plot(arr_t_day, decay_powers["Qdot"], linestyle="-", linewidth=3, label=f"Traj {labelfull} Qdot")
@@ -641,9 +619,9 @@ def plot_decay_powers(
         {
             "": pl.DataFrame({
                 "time_days": arr_t_day,
-                "gamma_fraction": decay_powers["abundweighted_gamma"] / decay_powers["abundweighted_gammanuelec"],
-                "electron_fraction": decay_powers["abundweighted_elec"] / decay_powers["abundweighted_gammanuelec"],
-                "neutrino_fraction": decay_powers["abundweighted_nu"] / decay_powers["abundweighted_gammanuelec"],
+                "gamma_fraction": fractions["gamma"],
+                "electron_fraction": fractions["elec"],
+                "neutrino_fraction": fractions["nu"],
                 "Qdot": decay_powers["Qdot"],
                 "abundweighted_gammanuelec": decay_powers["abundweighted_gammanuelec"],
                 "abundweighted_Qdot": decay_powers["abundweighted_Qdot"],

@@ -45,7 +45,6 @@ from artistools.estimators.core import get_temperature_limits
 from artistools.estimators.core import get_units
 from artistools.estimators.core import get_units_string
 from artistools.estimators.core import get_variable
-from artistools.estimators.core import get_variablelongunits
 from artistools.estimators.core import get_varname_formatted
 from artistools.estimators.core import join_cell_modeldata
 from artistools.estimators.core import parse_slice_argument
@@ -98,7 +97,6 @@ from artistools.misc import arggroup
 from artistools.misc import artis_subfolders
 from artistools.misc import dashes_arg
 from artistools.misc import exit_with_error
-from artistools.misc import flatten_list
 from artistools.misc import folder_is_artis_model
 from artistools.misc import format_cell_direction_range
 from artistools.misc import format_frame_path
@@ -124,7 +122,6 @@ from artistools.misc import print_product
 from artistools.misc import print_warning
 from artistools.misc import require_cartesian3d_model
 from artistools.misc import resolve_frameset_paths
-from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_positional_modelpath
 from artistools.misc import resolve_slice_axis
 from artistools.misc import scan_timesteps
@@ -161,18 +158,7 @@ if t.TYPE_CHECKING:
     from artistools.misc import FrameSet
 
 
-colors_tab10: t.Final = (
-    (0.12156862745098039, 0.4666666666666667, 0.7058823529411765, 1.0),
-    (1.0, 0.4980392156862745, 0.054901960784313725, 1.0),
-    (0.17254901960784313, 0.6274509803921569, 0.17254901960784313, 1.0),
-    (0.8392156862745098, 0.15294117647058825, 0.1568627450980392, 1.0),
-    (0.5803921568627451, 0.403921568627451, 0.7411764705882353, 1.0),
-    (0.5490196078431373, 0.33725490196078434, 0.29411764705882354, 1.0),
-    (0.8901960784313725, 0.4666666666666667, 0.7607843137254902, 1.0),
-    (0.4980392156862745, 0.4980392156862745, 0.4980392156862745, 1.0),
-    (0.7372549019607844, 0.7411764705882353, 0.13333333333333333, 1.0),
-    (0.09019607843137255, 0.7450980392156863, 0.8117647058823529, 1.0),
-)
+colors_tab10: t.Final = tuple(mc.to_rgba(colour) for colour in mc.TABLEAU_COLORS.values())
 
 # reserve colours for these elements. Immutable, because get_unreserved_elemcolors() derives the rest of the
 # palette from it once and caches the result, so a later mutation would silently hand a reserved colour out twice
@@ -225,7 +211,7 @@ def get_unreserved_elemcolors() -> tuple["mplt.ColorType", ...]:
 
 def get_ylabel(variable: str) -> str:
     """Return the y-axis label for an estimator variable, preferring its long units over the short ones."""
-    return get_variablelongunits(variable) or get_units_string(variable)
+    return get_variable(variable).longlabel or get_units_string(variable)
 
 
 def get_point_colour(color: "mplt.ColorType") -> tuple[float, float, float, float]:
@@ -343,6 +329,15 @@ class SubplotSettings(t.TypedDict, total=False):
 HISTOGRAM_EDGE_TOLERANCE: t.Final = 1e-4
 
 
+def get_weighted_mean_expr(values: pl.Expr, weights: pl.Expr) -> pl.Expr:
+    """Return the mean of the values with the weights, or the plain mean when the weights have a sum of 0.
+
+    Every weight of a group can be zero, e.g. an element that is absent from the cells of a bin has no mass. Equal
+    weights make the weighted mean the plain mean, thus the group keeps its value.
+    """
+    return pl.when(weights.sum() != 0.0).then((values * weights).sum() / weights.sum()).otherwise(values.mean())
+
+
 def get_line_points(dfseries: pl.LazyFrame, args: argparse.Namespace) -> pl.LazyFrame:
     """Return the average line of a series in each x bin, with the minimum and the maximum of the bin.
 
@@ -361,12 +356,7 @@ def get_line_points(dfseries: pl.LazyFrame, args: argparse.Namespace) -> pl.Lazy
         .group_by("xvalue_binned")
         .agg(
             *edgeexprs,
-            # every weight of a bin can be zero, e.g. an element that is absent from the bin has no mass.
-            # Equal weights make the weighted average the plain average, thus the bin keeps its point
-            yvalue_binned=pl
-            .when(pl.col("celltsweight").sum() != 0.0)
-            .then((pl.col("yvalue") * pl.col("celltsweight")).sum() / pl.col("celltsweight").sum())
-            .otherwise(pl.col("yvalue").mean()),
+            yvalue_binned=get_weighted_mean_expr(pl.col("yvalue"), pl.col("celltsweight")),
             yvalue_binned_min=pl.col("yvalue").min(),
             yvalue_binned_max=pl.col("yvalue").max(),
         )
@@ -443,6 +433,19 @@ def get_histogram_steps(dflinepoints: pl.DataFrame) -> pl.DataFrame:
     gapafterbin = np.flatnonzero(~np.isclose(lower[1:], upper[:-1], rtol=0.0, atol=edgetolerance))
     insertindices = 2 * gapafterbin + 2
     return pl.DataFrame({name: np.insert(values, insertindices, np.nan) for name, values in columns.items()})
+
+
+def xvalue_count_fits_bins_of_largest_interval(xvaluelist: Sequence[float], xdeltamax: float, logscalex: bool) -> bool:
+    """Return True if the sorted distinct x values are not more than the bins of their largest interval, plus one.
+
+    n values on a grid of the interval d cover (n - 1) d, thus such a bin holds one value or none. Values that are
+    not on a grid can also pass, e.g. 0, 0.6, and 1.6 give one bin of the width 1. Bins then merge values and leave
+    empty bins, thus one point for each value is the better plot. With --logscalex, the interval is in ln(x).
+    """
+    if len(xvaluelist) < 2:
+        return False
+    xspan = math.log(xvaluelist[-1]) - math.log(xvaluelist[0]) if logscalex else xvaluelist[-1] - xvaluelist[0]
+    return len(xvaluelist) <= round(xspan / xdeltamax) + 1
 
 
 def get_line_ends(figuredata: "LineFigureData", args: argparse.Namespace) -> tuple[bool, float | None]:
@@ -553,11 +556,7 @@ def get_series_summary_query(
         xvalid.sort_by([yvalid, xvalid]).first().alias("x_at_ymin"),
         yvalid.max().alias("ymax"),
         xvalid.sort_by([yvalid, xvalid], descending=[True, False]).first().alias("x_at_ymax"),
-        pl
-        .when(weightvalid.sum() != 0.0)
-        .then((yvalid * weightvalid).sum() / weightvalid.sum())
-        .otherwise(yvalid.mean())
-        .alias("weightedmean"),
+        get_weighted_mean_expr(yvalid, weightvalid).alias("weightedmean"),
         pl
         .when(weightvalid.sum() != 0.0)
         .then(pl.lit(weightname))
@@ -1120,14 +1119,10 @@ def get_ion_series_weight(
     A population and a rate for each unit of volume, e.g. cooling_coll_Fe_II, take the volume alone.
     """
     elsymbol = get_elsymbol(atomic_number)
-    if seriestype == "populations" and poptype == "elpop":
-        return get_population_normfactor(
-            seriestype, poptype, atomic_number
-        ), f"number of {elsymbol} nuclei in the cell times time step duration"
-    if seriestype == "populations" and poptype == "totalpop":
-        return get_population_normfactor(
-            seriestype, poptype, atomic_number
-        ), "number of nuclei in the cell times time step duration"
+    if seriestype == "populations" and poptype in {"elpop", "totalpop"}:
+        nuclei = f"{elsymbol} nuclei" if poptype == "elpop" else "nuclei"
+        normfactor = get_population_normfactor(seriestype, poptype, atomic_number)
+        return normfactor, f"number of {nuclei} in the cell times time step duration"
     if seriestype == "populations" or (
         get_units(get_column_name(seriestype, atomic_number, ion_stage)[0], latex=False) == "erg/s/cm^3"
     ):
@@ -1230,14 +1225,19 @@ def get_multi_ion_series_plans(
     if seriestype == "populations" and poptype == "cumulative":
         print_detail(f"The cumulative count of each timestep sums the cells in the order of {args.x}")
 
-    lazyframes = []
-    weightnames: list[str] = []
-    for (atomic_number, ion_stage), _ in ionentries:
+    # the colour of an ion comes from its stage, thus Fe II and Co II take the same colour. A subplot of more than one
+    # element thus keeps the colours of the elements, and the ions of an element differ by the dash
+    colorbyion = args.colorbyion and len({atomic_number for (atomic_number, _), _ in ionentries}) == 1
+    if args.colorbyion and not colorbyion:
+        settings["elementcolours"] = True
+    dashes_list = [(), (3, 1, 1, 1), (1.5, 1.5), (6, 3), (1, 3)]
+    linewidth_list = [1.0, 1.0, 1.0, 0.7, 0.7]
+    plans = []
+    for seriesindex, ((atomic_number, ion_stage), seriesname) in enumerate(ionentries):
         colname, ionstr = get_column_name(seriestype, atomic_number, ion_stage)
         expr_yvals = pl.col(colname)
         print(f"  Plotting {seriestype} {ionstr.replace('_', ' ')}")
 
-        assert poptype in POPTYPE_YLABELS
         # a radial density and a cumulative count take the number density, and the code below converts it
         expr_normfactor = get_population_normfactor(seriestype, poptype, atomic_number)
 
@@ -1255,12 +1255,12 @@ def get_multi_ion_series_plans(
         if ispopulation and poptype == "cumulative":
             # multiply each cell's number density by its volume before the sum, so the result is a particle count
             # the sum is over the cells of one timestep, thus it must restart at each timestep
+            # the cells at one x value get different partial sums, and the line takes the mean at each x. Thus each
+            # cell takes the largest partial sum at its x value, which counts each cell up to and at that x
             dfion = estimators.join(
-                fullrangeestimators.select(
-                    "timestep",
-                    "modelgridindex",
-                    cumulativecount=(expr_yvals * pl.col("volume")).cum_sum().over("timestep"),
-                ),
+                fullrangeestimators.with_columns(
+                    cumulativecount=(expr_yvals * pl.col("volume")).cum_sum().over("timestep")
+                ).select("timestep", "modelgridindex", pl.col("cumulativecount").max().over("timestep", "xvalue")),
                 on=["timestep", "modelgridindex"],
                 how="left",
                 maintain_order="left",
@@ -1268,26 +1268,14 @@ def get_multi_ion_series_plans(
             expr_yvals = pl.col("cumulativecount")
 
         weight, weightname = get_ion_series_weight(seriestype, poptype, atomic_number, ion_stage, estimatorcolumns)
-        weightnames.append(weightname)
-        lazyframes.append(
-            dfion.select(
-                (pl.col("deltavol_deltat") * weight).alias("celltsweight"),
-                # 0/0 gives NaN for a cell that holds none of the element. Make it null. The weighted
-                # mean in get_line_points then drops the cell and does not count it as zero.
-                (expr_yvals / expr_normfactor).fill_nan(None).alias("yvalue"),
-                cs.starts_with("xvalue", "xbin_"),
-            )
+        dfseries = dfion.select(
+            (pl.col("deltavol_deltat") * weight).alias("celltsweight"),
+            # 0/0 gives NaN for a cell that holds none of the element. Make it null. The weighted
+            # mean in get_line_points then drops the cell and does not count it as zero.
+            (expr_yvals / expr_normfactor).fill_nan(None).alias("yvalue"),
+            cs.starts_with("xvalue", "xbin_"),
         )
 
-    # the colour of an ion comes from its stage, thus Fe II and Co II take the same colour. A subplot of more than one
-    # element thus keeps the colours of the elements, and the ions of an element differ by the dash
-    colorbyion = args.colorbyion and len({atomic_number for (atomic_number, _), _ in ionentries}) == 1
-    if args.colorbyion and not colorbyion:
-        settings["elementcolours"] = True
-    plans = []
-    for seriesindex, (((atomic_number, ion_stage), seriesname), dfseries, weightname) in enumerate(
-        zip(ionentries, lazyframes, weightnames, strict=True)
-    ):
         plotlabel = str(
             ion_stage
             if hasattr(ion_stage, "lower") and ion_stage != "ALL"
@@ -1311,10 +1299,7 @@ def get_multi_ion_series_plans(
             if ion_stage != "ALL":
                 color = f"C{variantindex % 10}"
 
-        dashes_list = [(), (3, 1, 1, 1), (1.5, 1.5), (6, 3), (1, 3)]
         dashes = dashes_list[styleindex % len(dashes_list)]
-
-        linewidth_list = [1.0, 1.0, 1.0, 0.7, 0.7]
         linewidth = linewidth_list[styleindex % len(linewidth_list)] * 1.5
 
         if plotkwargs.get("linestyle", "solid") != "None":
@@ -1330,14 +1315,7 @@ def get_multi_ion_series_plans(
             )
         )
 
-    if seriestype == "populations":
-        ylabel = POPTYPE_YLABELS.get(poptype)
-        if ylabel is None:
-            msg = f"Unknown poptype: {poptype}"
-            raise ValueError(msg)
-        settings["ylabel"] = ylabel
-    else:
-        settings["ylabel"] = get_varname_formatted(seriestype)
+    settings["ylabel"] = POPTYPE_YLABELS[poptype] if seriestype == "populations" else get_varname_formatted(seriestype)
 
     if plans:
         settings["cliplogbottom"] = True
@@ -1538,6 +1516,15 @@ def get_xlist(
             # a single row gives None, and a column that holds one x value gives 0.0
             print(f"The x values give no interval to bin by ({xdeltamax}). Setting xbins to 25")
             args.xbins = 25
+        elif xvalue_count_fits_bins_of_largest_interval(stats["xvalue"], xdeltamax, logscalex):
+            # e.g. the radial shells of a spherical model. Bins of this width have their edges on the x values. Thus
+            # such a bin merges two shells and moves the others by up to half a shell
+            print(
+                f"The {len(stats['xvalue'])} x values are not more than the bins of their largest interval {xdeltamax},"
+                " plus one. Thus each x value gets one point, with the mean of its cells"
+            )
+            args.xbins = None
+            args.colorbyion = True
         else:
             args.xbins = int((math.log(xmax) - math.log(xmin) if logscalex else xmax - xmin) / xdeltamax)
             print(
@@ -1694,18 +1681,14 @@ def get_subplot_plans(
     The caller collects the series of all the subplots in one call.
     """
     settings: SubplotSettings = {"showlegend": False, "legendncols": 1}
-    ylabel = None
-    sameylabel = True
-    seriesvars = [var for var in plotitems if isinstance(var, str | pl.Expr)]
-    seriescount = len(seriesvars)
+    ylabels = [
+        get_ylabel(var.meta.output_name() if isinstance(var, pl.Expr) else var)
+        for var in plotitems
+        if isinstance(var, str | pl.Expr)
+    ]
+    seriescount = len(ylabels)
+    sameylabel = len(set(ylabels)) <= 1
     print(f"Subplot: {plotitems}")
-    for variable in seriesvars:
-        variablename = variable.meta.output_name() if isinstance(variable, pl.Expr) else variable
-        if ylabel is None:
-            ylabel = get_ylabel(variablename)
-        elif ylabel != get_ylabel(variablename):
-            sameylabel = False
-            break
 
     remaining_plotitems: list[t.Any] = []
     # the -ionpoptype argument gives the type for the whole figure. A directive of a subplot replaces it
@@ -1755,8 +1738,8 @@ def get_subplot_plans(
                 nounits=sameylabel,
                 **plotkwargs,
             )
-            if showlegend and sameylabel and ylabel is not None:
-                settings["ylabel"] = ylabel
+            if showlegend and sameylabel:
+                settings["ylabel"] = ylabels[0]
         else:  # it's a sequence of values
             seriestype, params = plotitem
             settings["showlegend"] = True
@@ -1843,15 +1826,13 @@ def finish_subplot(ax: mplax.Axes, args: argparse.Namespace, settings: SubplotSe
 
 
 def get_snapshot_timestrings(
-    modelpath: Path | str, timestepslist: Sequence[t.Any], *, multiplot: bool
+    modelpath: Path | str, timestepslist: Sequence[int], *, multiplot: bool
 ) -> tuple[str, str]:
     """Return the timesteps and the time range of a snapshot as text for a title and a file name."""
     if multiplot:
         return f"ts{timestepslist[0]:03d}", f"{get_timestep_time(modelpath, timestepslist[0]):.2f}d"
 
-    timesteps_flat = flatten_list(list(timestepslist))
-    timestepmin = min(timesteps_flat)
-    timestepmax = max(timesteps_flat)
+    timestepmin, timestepmax = min(timestepslist), max(timestepslist)
 
     strtimestep = f"ts{timestepmin:03d}-ts{timestepmax:03d}" if timestepmax != timestepmin else f"ts{timestepmin:03d}"
     timelow_days, timehigh_days = (
@@ -2094,7 +2075,7 @@ def draw_line_figure(
 
 
 def make_figure(
-    figuredata: "LineFigureData | ImageFigureData", args: argparse.Namespace, frameset: "FrameSet | None" = None
+    figuredata: "LineFigureData | ImageFigureData", args: argparse.Namespace, frameset: "FrameSet"
 ) -> tuple[str, pl.DataFrame | None]:
     """Draw the figure of the data, save it, and return the output filename and the table of the plotted data.
 
@@ -2104,27 +2085,16 @@ def make_figure(
     """
     fig = draw_figure_data(figuredata, args)
     dftable = get_figure_table(figuredata, args) if args.print_data or args.write_data else None
-    framefields = figuredata.framefields
-    if isinstance(figuredata, ImageFigureData):
-        assert frameset is not None
-        outfilename = format_frame_path(frameset.frametemplate, **framefields, format=args.format)
-    elif "cell" in framefields:
-        # a plot of one cell against time is no frame of a set, thus it names itself
-        outpath = resolve_outputfile(args.outputfile, CELLEVOLUTIONFRAMENAME)
-        outfilename = format_frame_path(outpath, **framefields, format=args.format)
-    else:
-        # a line of -slice has the plot of a snapshot, thus its file name must hold the line
-        slicefields: dict[str, str] = (
-            {"kind": "slice", "plane": get_slice_filetag(args)} if args.slice is not None else {}
-        )
-        framename = IMAGEFRAMENAME if slicefields else SNAPSHOTFRAMENAME
-        # the caller of a set of frames gives the frameset, thus every frame lands beside its product
-        outpath = frameset.frametemplate if frameset is not None else resolve_outputfile(args.outputfile, framename)
-        outfilename = format_frame_path(outpath, **framefields, format=args.format, **slicefields)
+    # a line of -slice has the plot of a snapshot, thus its file name must hold the line. The fields of an image
+    # already name its plane
+    slicefields = {"kind": "slice", "plane": get_slice_filetag(args)} if args.slice is not None else {}
+    outfilename = format_frame_path(
+        frameset.frametemplate, **(slicefields | figuredata.framefields), format=args.format
+    )
 
     if isinstance(figuredata, LineFigureData):
         print_line_figure_summary(figuredata, args)
-    save_figure(fig, outfilename, args=args, isframe=frameset is not None and frameset.combines, dpi=args.dpi)
+    save_figure(fig, outfilename, args=args, isframe=frameset.combines, dpi=args.dpi)
 
     return outfilename, dftable
 
@@ -2152,33 +2122,27 @@ def get_line_figure_table(figuredata: LineFigureData, args: argparse.Namespace) 
     for subplotindex, (seriesdatas, _) in enumerate(figuredata.subplots):
         for series in seriesdatas:
             dfdrawn: list[tuple[str, pl.DataFrame]] = []
-            if series.dflinepoints is not None and "xbin_lower" in series.dflinepoints.columns:
+            if (dfline := series.dflinepoints) is not None:
+                if "xbin_lower" not in dfline.columns:
+                    dfline = extend_line_to_its_ends(
+                        dfline.with_columns(bin_centre=pl.lit(value=True)),
+                        startfromzero,
+                        xbinwidth,
+                        logxbins=getattr(args, "logscalex", False),
+                    )
                 dfdrawn.append((
                     "line",
-                    series.dflinepoints.select(
+                    dfline.select(
                         pl.col("xvalue_binned").alias(xcolumn),
-                        pl.col("xbin_lower").alias(f"{xcolumn}_lower"),
-                        pl.col("xbin_upper").alias(f"{xcolumn}_upper"),
-                        value=pl.col("yvalue_binned"),
-                        value_min=pl.col("yvalue_binned_min"),
-                        value_max=pl.col("yvalue_binned_max"),
-                    ),
-                ))
-            elif series.dflinepoints is not None:
-                dfdrawnline = extend_line_to_its_ends(
-                    series.dflinepoints.with_columns(bin_centre=pl.lit(value=True)),
-                    startfromzero,
-                    xbinwidth,
-                    logxbins=getattr(args, "logscalex", False),
-                )
-                dfdrawn.append((
-                    "line",
-                    dfdrawnline.select(
-                        pl.col("xvalue_binned").alias(xcolumn),
-                        value=pl.col("yvalue_binned"),
-                        value_min=pl.col("yvalue_binned_min"),
-                        value_max=pl.col("yvalue_binned_max"),
-                        bin_centre=pl.col("bin_centre"),
+                        *(
+                            pl.col(f"xbin_{edge}").alias(f"{xcolumn}_{edge}")
+                            for edge in ("lower", "upper")
+                            if f"xbin_{edge}" in dfline.columns
+                        ),
+                        pl.col("yvalue_binned").alias("value"),
+                        pl.col("yvalue_binned_min").alias("value_min"),
+                        pl.col("yvalue_binned_max").alias("value_max"),
+                        cs.by_name("bin_centre", require_all=False),
                     ),
                 ))
             if series.dfpoints is not None:
@@ -2259,8 +2223,8 @@ IMAGEPOPTYPES = ("absolute", "elpop", "totalpop")
 
 def get_ion_panel_columns(
     seriestype: str, ionlist: Sequence[str], poptype: str, estimatorcolumns: Collection[str]
-) -> list[tuple[pl.Expr, str, str, pl.Expr]]:
-    """Return the expression, the column name, the label, and the weight of each ion of a series in the estimators.
+) -> list[tuple[pl.Expr, str, pl.Expr]]:
+    """Return the expression, the label, and the weight of each ion of a series in the estimators.
 
     get_ion_series_weight gives the weight, thus a pixel and a bin of a line take the same mean.
     """
@@ -2270,7 +2234,7 @@ def get_ion_panel_columns(
             f"The types for an image are {', '.join(IMAGEPOPTYPES)}",
         )
 
-    columns: list[tuple[pl.Expr, str, str, pl.Expr]] = []
+    columns: list[tuple[pl.Expr, str, pl.Expr]] = []
     for ionstr in ionlist:
         atomic_number, ion_stage = get_iontuple(ionstr)
         colname, ionlabel = get_column_name(seriestype, atomic_number, ion_stage)
@@ -2288,7 +2252,7 @@ def get_ion_panel_columns(
         )
         # 0/0 gives NaN for a cell that holds none of the element, and the mean leaves such a cell out
         weight, _ = get_ion_series_weight(seriestype, poptype, atomic_number, ion_stage, estimatorcolumns)
-        columns.append(((pl.col(colname) / normfactor).alias(colname), colname, label, weight))
+        columns.append(((pl.col(colname) / normfactor).alias(colname), label, weight))
 
     return columns
 
@@ -2315,42 +2279,35 @@ def get_image_panels(plotlist: list[list[t.Any]], estimatorcolumns: Collection[s
             for plotitem in plotitems
             if not isinstance(plotitem, str | pl.Expr) and (directive := get_directive_name(plotitem[0])) is not None
         }
-        columns: list[tuple[pl.Expr, str, str]] = []
-        weights: dict[str, pl.Expr] = {}
+        # the expression, the label, and the weight of each panel, see ImagePanel
+        columns: list[tuple[pl.Expr, str, pl.Expr | None]] = []
         for plotitem in plotitems:
-            if isinstance(plotitem, pl.Expr):
-                colname = plotitem.meta.output_name()
-                columns.append((plotitem, colname, f"{get_varname_formatted(colname)}{get_units_string(colname)}"))
-                if is_quantity_per_unit_mass(colname):
-                    weights[colname] = pl.col("rho")
-            elif isinstance(plotitem, str):
-                if plotitem not in estimatorcolumns:
+            if isinstance(plotitem, str | pl.Expr):
+                if isinstance(plotitem, str) and plotitem not in estimatorcolumns:
                     exit_with_error(
                         f"'{plotitem}' is not an estimator variable",
                         suggest_names(plotitem, estimatorcolumns)
                         or "Run with --listvariables to see the variables of this model",
                     )
-                label = f"{get_varname_formatted(plotitem)}{get_units_string(plotitem)}"
-                columns.append((pl.col(plotitem), plotitem, label))
-                if is_quantity_per_unit_mass(plotitem):
-                    weights[plotitem] = pl.col("rho")
+                colexpr = pl.col(plotitem) if isinstance(plotitem, str) else plotitem
+                colname = colexpr.meta.output_name()
+                label = f"{get_varname_formatted(colname)}{get_units_string(colname)}"
+                columns.append((colexpr, label, pl.col("rho") if is_quantity_per_unit_mass(colname) else None))
             elif get_directive_name(plotitem[0]) is not None:
                 continue
             elif is_ionseriestype(plotitem[0], estimatorcolumns, plotitem[1]):
                 subplotpoptype = str(directives.get("ionpoptype", poptype))
-                for colexpr, colname, label, weight in get_ion_panel_columns(
-                    plotitem[0], plotitem[1], subplotpoptype, estimatorcolumns
-                ):
-                    columns.append((colexpr, colname, label))
-                    weights[colname] = weight
+                columns += get_ion_panel_columns(plotitem[0], plotitem[1], subplotpoptype, estimatorcolumns)
             elif plotitem[0] == "averageionisation":
                 for element in plotitem[1]:
                     chargeexpr, _ = get_average_charge_expr(element, estimatorcolumns)
                     elsymb = get_elsymbol(get_atomic_number(element))
-                    colname = f"averageionisation_{elsymb}"
-                    columns.append((chargeexpr.alias(colname), colname, f"Average ion charge of {elsymb}"))
                     # the line of a subplot takes the same weight, thus the image gives the charge of each nucleus
-                    weights[colname] = pl.col(f"nnelement_{elsymb}")
+                    columns.append((
+                        chargeexpr.alias(f"averageionisation_{elsymb}"),
+                        f"Average ion charge of {elsymb}",
+                        pl.col(f"nnelement_{elsymb}"),
+                    ))
             else:
                 print_warning(f"A colour image cannot show '{plotitem[0]}', thus the figure leaves it out")
 
@@ -2361,8 +2318,8 @@ def get_image_panels(plotlist: list[list[t.Any]], estimatorcolumns: Collection[s
         vmin = float(directives["ymin"]) if "ymin" in directives else None
         vmax = float(directives["ymax"]) if "ymax" in directives else None
         panels += [
-            ImagePanel(colexpr, PanelStyle(label, colourscale, vmin, vmax, subplotindex), weights.get(colname))
-            for colexpr, colname, label in columns
+            ImagePanel(colexpr, PanelStyle(label, colourscale, vmin, vmax, subplotindex), weight)
+            for colexpr, label, weight in columns
         ]
 
     if not panels:
@@ -2376,7 +2333,7 @@ def get_image_panels(plotlist: list[list[t.Any]], estimatorcolumns: Collection[s
 def get_panel_means(panels: Sequence[ImagePanel]) -> list[pl.Expr]:
     """Return the mean of each panel over the cells and the timesteps of a group, with volume x time as the weight.
 
-    A panel with a weightexpr takes the product of that weight with volume x time.
+    A panel with a weightexpr takes the product of that weight with volume x time. A group with no value gives NaN.
     """
     means = []
     for panelindex, panel in enumerate(panels):
@@ -2391,6 +2348,7 @@ def get_panel_means(panels: Sequence[ImagePanel]) -> list[pl.Expr]:
             .then((value * weight).filter(hasvalue).sum() / weightsum)
             # equal weights make the weighted mean the plain mean, as get_line_points does
             .otherwise(value.filter(hasvalue).mean())
+            .fill_null(float("nan"))
             .alias(f"panel{panelindex}")
         )
     return means
@@ -2423,11 +2381,7 @@ def get_shell_values_on_rz_grid(
     shellindex_clipped = np.minimum(shellindex, dfshells.height - 1)
     isinshell = (shellindex < dfshells.height) & (pointradius >= dfshells["vel_r_min"].to_numpy()[shellindex_clipped])
     return [
-        np.where(
-            isinshell,
-            dfshells[f"panel{panelindex}"].cast(pl.Float64).fill_null(float("nan")).to_numpy()[shellindex_clipped],
-            np.nan,
-        )
+        np.where(isinshell, dfshells[f"panel{panelindex}"].to_numpy()[shellindex_clipped], np.nan)
         for panelindex in range(len(panels))
     ]
 
@@ -3297,18 +3251,11 @@ def resolve_snapshot_arguments(args: argparse.Namespace) -> None:
         args.x = f"vel_{lineaxis}_mid_on_c"
 
 
-def select_cells_of_slice(
-    args: argparse.Namespace, modelpath: Path, conditions: Sequence[tuple[str, float, str]]
-) -> None:
-    """Select the cells of a 3D model that hold the plane or the line of --slice."""
-    args.modelgridindex = get_cells_of_slice(modelpath, list(conditions))
-    print(f"Getting the {len(args.modelgridindex)} cells that hold {args.slicelabel}")
-
-
 def select_cells(args: argparse.Namespace, modelpath: Path) -> None:
     """Select the cells of --slice or of --readonlymgi. The cells of the plot then come back with the data."""
     if args.slice is not None:
-        select_cells_of_slice(args, modelpath, parse_slice_argument(args.slice))
+        args.modelgridindex = get_cells_of_slice(modelpath, parse_slice_argument(args.slice))
+        print(f"Getting the {len(args.modelgridindex)} cells that hold {args.slicelabel}")
     elif args.readonlymgi:
         select_cells_along_axis(args, modelpath)
 
@@ -3445,21 +3392,26 @@ def prepare_snapshot(
     return estimators, panels
 
 
-def write_snapshot_figures(
+def write_figures(
     args: argparse.Namespace, figures: "Sequence[LineFigureData | ImageFigureData]", timesteps_included: list[int]
 ) -> None:
-    """Draw the figures of the internal structure at one time, and write one file for each frame.
+    """Draw the figures, and write one file for each frame.
 
     With --multiplot each timestep gives one frame. artistools then joins the frames into a gif or into
-    one PDF file.
+    one PDF file. A plot of one cell against time is one figure, and it names its file with the cell.
     """
-    isimage = isinstance(figures[0], ImageFigureData)
+    if "cell" in figures[0].framefields:
+        framename = CELLEVOLUTIONFRAMENAME
+    elif isinstance(figures[0], ImageFigureData) or args.slice is not None:
+        framename = IMAGEFRAMENAME
+    else:
+        framename = SNAPSHOTFRAMENAME
     # a gif or a merged PDF file holds every frame, thus many figures make one product
     firstts, lastts = timesteps_included[0], timesteps_included[-1]
     frameset = resolve_frameset_paths(
         args.outputfile,
         framecount=len(figures),
-        framename=IMAGEFRAMENAME if isimage or args.slice is not None else SNAPSHOTFRAMENAME,
+        framename=framename,
         productname=f"plotestimators_evolution_ts{firstts:03d}-ts{lastts:03d}.gif" if args.makegif else None,
         combines=len(figures) > 1 and (args.makegif or args.format == "pdf"),
         gifduration=1000.0 if args.makegif else None,
@@ -3839,10 +3791,4 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         exit_with_error(str(exc), "The output above names the cells and the timesteps that hold data")
 
     vars(args).update(changedargs)
-
-    if args.x in TIME_XVARIABLES:
-        outfilename, dftable = make_figure(figures[0], args)
-        if dftable is not None:
-            output_data(args, {"": dftable, "_summary": get_figure_summary_table(figures[0], args)}, outfilename)
-    else:
-        write_snapshot_figures(args, figures, timesteps_included)
+    write_figures(args, figures, timesteps_included)

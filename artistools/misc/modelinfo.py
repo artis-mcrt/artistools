@@ -27,6 +27,7 @@ from artistools.misc.console import print_warning
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import firstexisting_or_none
+from artistools.misc.fileio import get_decompress_errors
 from artistools.misc.fileio import get_text_compression
 from artistools.misc.fileio import natural_sort_key
 from artistools.misc.fileio import normalised_lines
@@ -93,9 +94,10 @@ def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[
 def read_grid_out(modelpath: Path) -> pl.DataFrame:
     """Return the propagation cells of grid.out in a local model folder, each with the index of its model cell.
 
-    sn3d writes only the propagation cells that have a model cell with matter.
+    sn3d writes only the propagation cells that have a model cell with matter. sn3d writes grid.out in the model
+    folder alone, and a grid.out in a subfolder is of a different model.
     """
-    filename = firstexisting("grid.out", tryzipped=True, folder=modelpath)
+    filename = firstexisting("grid.out", tryzipped=True, folder=modelpath, search_subfolders=False)
     with polars_source_open(filename) as source:
         return pl.read_csv(
             source,
@@ -485,61 +487,126 @@ def get_grid_max_radial_velocity_cmps(modelmeta: "Mapping[str, t.Any]") -> float
     return float(modelmeta["vmax_cmps"]) * cornerfactor.get(get_model_coordinates(modelmeta), 1.0)
 
 
-def get_escape_surface_max_radial_velocity_cmps(modelpath: Path, modelmeta: "Mapping[str, t.Any]") -> float:
-    """Return the largest radial velocity of the surface where the packets of a run escape [cm/s].
+def grid_out_gives_direct_map(modelpath: Path, modelmeta: "Mapping[str, t.Any]") -> bool:
+    """Return True if grid.out of a local model folder gives each propagation cell its own model cell.
 
-    modelpath is a local model folder. The packets escape at the outer edge of the propagation grid, which sn3d makes
-    from the cells of the model or as a Cartesian grid (GRID_TYPE_OVERRIDE). The option GRID_TYPE_OVERRIDE of the
-    artisoptions.h of the model folder shows which. Without the option, grid.out shows which: each propagation cell
-    of a grid of the model cells has the index of its model cell. grid.out lists only the cells with matter, thus a
-    few cells of a Cartesian grid can also have these indices, and the option is the more certain source. A
-    cartesian3d model has always its own grid. Without both sources, the function takes a Cartesian grid, which gives
-    the largest velocity and is thus the safe value.
+    sn3d opens grid.out in each job before it writes the cells, thus a job that stops early can leave an empty file.
+    Such a file, and a file that the reader cannot read, give False, which is the safe value. A mirrored model has
+    two propagation cells for each model cell, one in each half.
+    """
+    try:
+        dfgrid = read_grid_out(modelpath)
+    except FileNotFoundError:
+        return False
+    except (OSError, pl.exceptions.PolarsError, *get_decompress_errors()) as exc:
+        print_warning(f"The command cannot read the grid.out of {modelpath}, thus it takes a Cartesian grid: {exc}")
+        return False
+    modelgridindexofpropcell = (
+        get_mirrored_modelgridindex_of_propcell(pl.col("cellindex"), modelmeta)
+        if has_mirror_plane(modelmeta)
+        else pl.col("cellindex")
+    )
+    isdirectmap = dfgrid.select((pl.col("modelgridindex") == modelgridindexofpropcell).all(ignore_nulls=False)).item()
+    return dfgrid.height > 0 and isdirectmap is True
 
-    A spherical grid ends at vmax. A corner of a cylindrical grid is at sqrt(2) vmax, and a corner of a Cartesian
-    grid is at sqrt(3) vmax. With FORCE_SPHERICAL_ESCAPE_SURFACE in the artisoptions.h of the model folder, a packet
-    on one of these two grids escapes when it enters a cell whose nearest point to the centre is outside the sphere
-    of vmax. The cell that it leaves has its nearest point inside that sphere. Thus the packet is then at vmax plus
-    one cell diagonal or less.
+
+def propagation_grid_is_model_grid(modelpath: Path, modelmeta: "Mapping[str, t.Any]") -> bool:
+    """Return True if sn3d propagates the packets of a local model folder on the grid of the model cells.
+
+    A cartesian3d model always has its own grid. GRID_TYPE_OVERRIDE in artisoptions.h gives the grid of the run, and
+    sn3d permits only a Cartesian grid in place of the grid of the model. grid.out lists only the cells with matter,
+    thus it applies only without the option.
+    """
+    if get_model_coordinates(modelmeta) == "cartesian3d":
+        return True
+    gridoverride = get_artis_option(modelpath, "GRID_TYPE_OVERRIDE")
+    if gridoverride is not None:
+        return gridoverride != "GridType::CARTESIAN3D"
+    return grid_out_gives_direct_map(modelpath, modelmeta)
+
+
+def get_valid_range_radial_velocities_cmps(modelpath: Path, modelmeta: "Mapping[str, t.Any]") -> tuple[float, float]:
+    """Return the largest radial velocity of the matter and of the escape surface of a run [cm/s].
+
+    modelpath is a local model folder. The first value sets the start of the valid range, and the second value sets
+    its end. sn3d propagates the packets on the grid of the model cells or on a Cartesian grid (GRID_TYPE_OVERRIDE),
+    and propagation_grid_is_model_grid gives which. A spherical grid ends at vmax, a corner of a cylindrical grid is
+    at sqrt(2) vmax, and a corner of a Cartesian grid is at sqrt(3) vmax.
+
+    The matter: sn3d gives each propagation cell the matter of the model at the centre of the cell (grid.cc). On the
+    model grid, the matter thus ends at the corner of that grid. On a Cartesian propagation grid, the matter extends
+    up to half a cell diagonal beyond the corner of the model grid. Without the counts of the propagation cells, the
+    function takes the corner of the model grid.
+
+    The escape surface: the packets escape at the outer edge of the propagation grid. With
+    FORCE_SPHERICAL_ESCAPE_SURFACE, sn3d removes the matter of each cell whose centre is outside vmax. A packet then
+    escapes when it enters a cell whose nearest point to the centre is outside vmax. The cell that it leaves has its
+    nearest point inside vmax, thus the packet is at vmax plus one cell diagonal or less.
     """
     vmax_cmps = float(modelmeta["vmax_cmps"])
-    coordinates = get_model_coordinates(modelmeta)
-    hasmodelgrid = coordinates == "cartesian3d"
-    gridoverride = None if hasmodelgrid else get_artis_option(modelpath, "GRID_TYPE_OVERRIDE")
-    if gridoverride is not None:
-        # sn3d permits only a Cartesian grid in place of the grid of the model
-        hasmodelgrid = gridoverride != "GridType::CARTESIAN3D"
-    elif not hasmodelgrid:
-        with contextlib.suppress(FileNotFoundError):
-            # the two propagation cells of a mirror pair have the same model cell
-            ismodelgridcell = pl.col("modelgridindex") == (
-                get_mirrored_modelgridindex_of_propcell(pl.col("cellindex"), modelmeta)
-                if has_mirror_plane(modelmeta)
-                else pl.col("cellindex")
+    hasmodelgrid = propagation_grid_is_model_grid(modelpath, modelmeta)
+    modelcornervmax_cmps = get_grid_max_radial_velocity_cmps(modelmeta)
+    gridcornervmax_cmps = (
+        modelcornervmax_cmps
+        if hasmodelgrid
+        else get_grid_max_radial_velocity_cmps({"coordinates": "cartesian3d", "vmax_cmps": vmax_cmps})
+    )
+    celldiagonal_cmps = get_propagation_cell_diagonal_cmps(modelpath, modelmeta, hasmodelgrid=hasmodelgrid)
+    if celldiagonal_cmps is None:
+        if not hasmodelgrid:
+            print_warning(
+                f"artisoptions.h of {modelpath} gives no positive integer CUBOID_NCOORDGRID_X, _Y, and _Z. Thus the"
+                " start of the valid range takes the corner of the model grid. The matter of a Cartesian propagation"
+                " grid can extend half a cell diagonal beyond that corner (grid.cc)"
             )
-            hasmodelgrid = bool(read_grid_out(modelpath).select(ismodelgridcell.all()).item())
-    gridmeta = modelmeta if hasmodelgrid else {"coordinates": "cartesian3d", "vmax_cmps": vmax_cmps}
-    cornervmax_cmps = get_grid_max_radial_velocity_cmps(gridmeta)
-    gridcoordinates = get_model_coordinates(gridmeta)
-    if gridcoordinates not in {"cylindrical2d", "cartesian3d"}:
-        return cornervmax_cmps
-    if get_artis_option(modelpath, "FORCE_SPHERICAL_ESCAPE_SURFACE") != "true":
-        return cornervmax_cmps
+        return modelcornervmax_cmps, gridcornervmax_cmps
 
+    mattervmax_cmps = (
+        modelcornervmax_cmps
+        if hasmodelgrid
+        else min(gridcornervmax_cmps, modelcornervmax_cmps + celldiagonal_cmps / 2.0)
+    )
+    escapevmax_cmps = gridcornervmax_cmps
+    if get_artis_option(modelpath, "FORCE_SPHERICAL_ESCAPE_SURFACE") == "true":
+        mattervmax_cmps = min(mattervmax_cmps, vmax_cmps + celldiagonal_cmps / 2.0)
+        escapevmax_cmps = min(escapevmax_cmps, vmax_cmps + celldiagonal_cmps)
+    return mattervmax_cmps, escapevmax_cmps
+
+
+def get_propagation_cell_diagonal_cmps(
+    modelpath: Path, modelmeta: "Mapping[str, t.Any]", *, hasmodelgrid: bool
+) -> float | None:
+    """Return the diagonal of a cell of a Cartesian or a cylindrical propagation grid [cm/s], or None.
+
+    The model grid gives the counts of its cells. For a model on a different grid, a Cartesian propagation grid takes
+    them from CUBOID_NCOORDGRID_X, _Y, and _Z of artisoptions.h. A spherical grid, an absent count, and a
+    count that is not a positive integer give None.
+    """
+    gridcoordinates = get_model_coordinates(modelmeta) if hasmodelgrid else "cartesian3d"
     # the width of the propagation grid on each axis in units of vmax, and the count of its cells on that axis
     cellcounts: list[tuple[float, t.Any]]
     if gridcoordinates == "cylindrical2d":
         # the z axis of a mirrored model is the half from 0 to vmax
         zwidth = 1.0 if has_mirror_plane(modelmeta) else 2.0
-        cellcounts = [(1.0, modelmeta["ncoordgridrcyl"]), (zwidth, modelmeta["ncoordgridz"])]
-    elif hasmodelgrid:
-        cellcounts = [(2.0, modelmeta[f"ncoordgrid{axisname}"]) for axisname in "xyz"]
-    else:
+        cellcounts = [(1.0, modelmeta.get("ncoordgridrcyl")), (zwidth, modelmeta.get("ncoordgridz"))]
+    elif gridcoordinates == "cartesian3d" and hasmodelgrid:
+        cellcounts = [(2.0, modelmeta.get(f"ncoordgrid{axisname}")) for axisname in "xyz"]
+    elif gridcoordinates == "cartesian3d":
         cellcounts = [(2.0, get_artis_option(modelpath, f"CUBOID_NCOORDGRID_{axisname}")) for axisname in "XYZ"]
+    else:
+        return None
     if any(count is None for _, count in cellcounts):
-        return cornervmax_cmps
-    celldiagonal_cmps = vmax_cmps * math.sqrt(sum((gridwidth / int(count)) ** 2 for gridwidth, count in cellcounts))
-    return min(cornervmax_cmps, vmax_cmps + celldiagonal_cmps)
+        return None
+    try:
+        counts = [int(count) for _, count in cellcounts]
+    except ValueError:
+        # e.g. "2 * N" or the name of a different constant in artisoptions.h
+        return None
+    if min(counts) <= 0:
+        return None
+    return float(modelmeta["vmax_cmps"]) * math.sqrt(
+        sum((gridwidth / count) ** 2 for (gridwidth, _), count in zip(cellcounts, counts, strict=True))
+    )
 
 
 def require_cartesian3d_model(modelmeta: "Mapping[str, t.Any]", requirement: str, helptext: str) -> None:
@@ -1005,19 +1072,12 @@ def get_mpiranklist(
     if modelgridindex is None:
         return all_ranks()
 
-    if isinstance(modelgridindex, Iterable):
-        # a comparison of a numpy array with an empty list raises, thus the size of the array decides
-        cells = np.fromiter(modelgridindex, dtype=np.int64)
-        if cells.size == 0 or (cells < 0).any():
-            return all_ranks()
+    # a comparison of a numpy array with an empty list raises, thus the size of the array decides
+    cells = np.fromiter(modelgridindex if isinstance(modelgridindex, Iterable) else [modelgridindex], dtype=np.int64)
+    if cells.size == 0 or (cells < 0).any():
+        return all_ranks()
 
-        return sorted(set(get_mpiranks_of_cells(modelpath, cells).tolist()))
-
-    # in case modelgridindex is a single number rather than an iterable
-    if modelgridindex < 0:
-        return range(min(get_nprocs(modelpath), get_npts_model(modelpath)))
-
-    return [get_mpirankofcell(modelgridindex, modelpath=modelpath)]
+    return sorted(set(get_mpiranks_of_cells(modelpath, cells).tolist()))
 
 
 def get_rank_outputfiles(folderpath: Path, filenameformat: str) -> dict[int, Path]:
@@ -1509,10 +1569,7 @@ def get_nonempty_cellcounts(modelpath: Path) -> "Mapping[int, int] | None":
     cells alone, thus it writes no output file, and the absence of that file is not a fault.
     """
     dfranks = get_rankassignments(modelpath)
-    if dfranks is None:
-        return None
-
-    if "ndo_nonempty" not in dfranks.columns:
+    if dfranks is None or "ndo_nonempty" not in dfranks.columns:
         return None
 
     return MappingProxyType(dict(zip(dfranks["rank"], dfranks["ndo_nonempty"], strict=True)))

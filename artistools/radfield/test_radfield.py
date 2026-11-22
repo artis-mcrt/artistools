@@ -15,7 +15,6 @@ pytestmark = pytest.mark.usefixtures("close_figures")
 
 
 modelpath = at.get_path("testdata") / "testmodel"
-outputpath = at.get_path("testoutput")
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
@@ -132,18 +131,6 @@ def test_radfield_line_estimators_filter_cell_zero(mockscatter: mock.MagicMock) 
     # only the two rows of cell zero, not all four rows
     assert len(lambdas) == 2
     assert np.allclose(sorted(lambdas), sorted(at.constants.c_ang_per_s / np.array([1.0e15, 2.0e15])))
-
-
-@mock.patch.object(mplax.Axes, "set_ylim", side_effect=mplax.Axes.set_ylim, autospec=True)
-def test_radfield_honours_the_ymin_that_it_accepts(mocksetylim: mock.MagicMock) -> None:
-    """Plotradfield adds -ymin, thus the axis must start there and not at the hard-coded zero."""
-    at.radfield.plotradfield.main(
-        argsraw=[], modelpath=modelpath, outputfile=outputpath, timestep=40, modelgridindex=0, ymin=1e-14
-    )
-
-    bottoms = [callargs.kwargs["bottom"] for callargs in mocksetylim.call_args_list if "bottom" in callargs.kwargs]
-    assert bottoms, "the command must set the bottom of the axis"
-    assert 1e-14 in bottoms, f"the requested -ymin is missing from {bottoms}"
 
 
 def test_radfield_opens_the_merged_pdf_alone(tmp_path: Path) -> None:

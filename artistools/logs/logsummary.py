@@ -33,33 +33,26 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Count the warnings and the errors in the logs of an ARTIS model, by kind of message."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
     modelpath = get_model_folder(args.modelpath)
-    ranks: list[int] | None
+    ranks: list[int] | None = None
     cells: list[int] | None = None
     if args.modelgridindex:
-        ranks, cells = None, list(args.modelgridindex)
+        cells = list(args.modelgridindex)
+        rankstext = f"the ranks that update the cells {', '.join(str(cell) for cell in cells)} in each run folder"
+        missingtext = f"no log of {rankstext}"
+        hint = "Give --modelgridindex with the cells of the model"
     elif args.ranks == "all":
-        ranks = None
+        rankstext = "each rank that has a log in each run folder"
+        missingtext = "no log of a rank in a run folder"
+        hint = "Make sure that a run folder holds the output_*-*.txt files of ARTIS"
     else:
         ranks = parse_range_list(args.ranks)
+        rankstext = f"the ranks {', '.join(str(rank) for rank in ranks)}"
+        missingtext = f"no log of {rankstext}"
+        hint = "Give --ranks with ranks that ran"
 
     logfiles = get_logfiles(modelpath, ranks, cells)
-    if cells is not None:
-        rankstext = f"the ranks that update the cells {', '.join(str(cell) for cell in cells)} in each run folder"
-    elif ranks is None:
-        rankstext = "each rank that has a log in each run folder"
-    else:
-        rankstext = f"the ranks {', '.join(str(rank) for rank in ranks)}"
     if not logfiles:
-        exit_with_error(
-            f"{modelpath} has no log of a rank in a run folder"
-            if ranks is None and cells is None
-            else f"{modelpath} has no log of {rankstext}",
-            "Make sure that a run folder holds the output_*-*.txt files of ARTIS"
-            if ranks is None and cells is None
-            else "Give --ranks with ranks that ran"
-            if cells is None
-            else "Give --modelgridindex with the cells of the model",
-        )
+        exit_with_error(f"{modelpath} has {missingtext}", hint)
     print_detail(f"Reading {len(logfiles)} logs of {rankstext}")
 
     print_product(args, get_log_summary(logfiles))

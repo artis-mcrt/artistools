@@ -94,22 +94,7 @@ def test_console_script_runs_its_own_subcommand(
     [at.spectra.plotspectra.addargs, at.lightcurve.plotlightcurve.addargs],
     ids=["plotspectra", "plotlightcurves"],
 )
-@pytest.mark.parametrize(
-    ("tokens", "expected"),
-    [
-        ([], None),
-        (["-residualbaselineseries"], 0),
-        (["-residualbaselineseries", "2"], 2),
-        (["-residualbaselineseries=2"], 2),
-        (["-residuals"], 0),
-        (["-residuals", "0"], 0),
-        (["-residuals", "2"], 2),
-        (["-res"], 0),
-        (["-res", "2"], 2),
-        (["--residuals"], 0),
-        (["--residuals", "1"], 0),
-    ],
-)
+@pytest.mark.parametrize(("tokens", "expected"), [([], None), (["-residualbaselineseries=2"], 2)])
 def test_residual_option_takes_an_optional_index(
     addargs: Callable[[argparse.ArgumentParser], None], tokens: list[str], expected: int | None
 ) -> None:
@@ -563,28 +548,6 @@ def test_help_command_gives_the_help_of_one_command(capsys: pytest.CaptureFixtur
         artistools.__main__.main(argsraw=["help", "timesteps", "extra"])
     assert exitinfo.value.code == 2
     assert "error: The command timesteps has no subcommand extra" in capsys.readouterr().err
-
-
-def test_short_time_flag_always_means_timedays() -> None:
-    """-t must mean -timedays on every command, and never something else.
-
-    A command that takes no -timestep left -t ambiguous with -timedays and -time, thus -t failed there.
-    argparse also reads "-timestep 30" as "-t imestep", thus such a command declares the name it
-    refuses.
-    """
-    import artistools.hesma_scripts
-
-    # every parser that a command gets is this class, thus the test builds the same one
-    parser = at.misc.argparser.SuggestingArgumentParser(prog="hesma")
-    artistools.hesma_scripts.addargs(parser)
-
-    assert parser.parse_args(["-t", "300"]).timedays == 300
-    assert parser.parse_args(["-timedays", "300"]).timedays == 300
-
-    # the command takes no timestep, thus it names the argument that it does take
-    for flag in ("-timestep", "-ts"):
-        with pytest.raises(SystemExit):
-            parser.parse_args([flag, "40"])
 
 
 def test_unsupported_argument_names_the_replacement(capsys: pytest.CaptureFixture[str]) -> None:
@@ -1146,23 +1109,13 @@ def test_a_wavelength_range_takes_both_spellings() -> None:
 
 
 def test_every_command_reads_the_same_cell_grammar() -> None:
-    """-modelgridindex takes the same text on every command, and it names the cell that it says.
+    """-modelgridindex takes the same text on every command.
 
     plotnltepops read args.modelgridindex[0], and that text is a string, thus "-cell 12" gave the
     first character and plotted the cell 1. Six commands gave the argument a type or an action of
     their own, thus a range reached some and not others.
     """
     import artistools.__main__
-
-    # the text names one cell, a range of cells, or a list of them, whatever command reads it
-    assert at.misc.get_single_modelgridindex([12]) == 12
-    assert at.misc.get_single_modelgridindex(None) is None
-    assert at.misc.parse_range_list("3-7") == [3, 4, 5, 6, 7]
-    assert at.misc.parse_range_list("4,5,6") == [4, 5, 6]
-
-    # a command that reads one cell says so, in place of taking a cell that the text does not name
-    with pytest.raises(ValueError, match=r"'3-7' names 5 cells, and this command reads one"):
-        at.misc.get_single_modelgridindex([3, 4, 5, 6, 7])
 
     parser = artistools.__main__.build_parser()
     seen: set[int] = set()

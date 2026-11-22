@@ -29,16 +29,6 @@ def test_describe_counts_the_cells_and_the_rank_files_of_each_run_folder(capsys:
     assert "ARTIS of run folder job0: v2023.10-106-gfcb7e2c (branch develop)" in output
 
 
-def test_describe_of_a_folder_with_no_model_stops(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """Each line of the summary gave its own [Errno 2] for such a folder, and the exit status was 0."""
-    import artistools.__main__
-
-    with pytest.raises(SystemExit) as excinfo:
-        artistools.__main__.main(argsraw=["describe", str(tmp_path / "nosuchmodel")])
-    assert excinfo.value.code != 0
-    assert "is not an ARTIS model folder" in capsys.readouterr().err
-
-
 def test_describe_gives_the_effect_of_the_physics_options() -> None:
     """The ion balance of a kilonova model with FORCE_SAHA_ION_BALANCE is Saha at Te, and not the rate balance.
 

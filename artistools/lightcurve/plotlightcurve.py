@@ -1726,6 +1726,7 @@ def plot_lightcurve_from_refdata(
     lightcurve_data, metadata = read_reflightcurve_band_data(lightcurvefilename)
     linename = metadata["label"]
     assert linename is None or isinstance(linename, str)
+    seriesname = linename or str(lightcurvefilename)
     filterdir = Path(get_path("artistools_dir"), "data/filters/")
 
     axes = iter_axes(ax)
@@ -1750,7 +1751,7 @@ def plot_lightcurve_from_refdata(
             dfband["time"], dfband["magnitude"], "mag", ismagnitude=True, isband=True
         )
         print_series_summary(
-            f"{filter_name_raw} {linename or lightcurvefilename}",
+            f"{filter_name_raw} {seriesname}",
             summaryparts,
             summarywarnings,
             fields=summaryfields,
@@ -1759,21 +1760,11 @@ def plot_lightcurve_from_refdata(
         if plottedpoints is not None:
             plottedpoints.append(
                 get_magnitude_table(
-                    linename or str(lightcurvefilename),
-                    None,
-                    linename or str(lightcurvefilename),
-                    None,
-                    ("band", filter_name_raw),
-                    dfband["time"],
-                    dfband["magnitude"],
+                    seriesname, None, seriesname, None, ("band", filter_name_raw), dfband["time"], dfband["magnitude"]
                 )
             )
         add_residual_series(
-            residualseries,
-            linename or str(lightcurvefilename),
-            refline,
-            dfband["time"].to_numpy(),
-            dfband["magnitude"].to_numpy(),
+            residualseries, seriesname, refline, dfband["time"].to_numpy(), dfband["magnitude"].to_numpy()
         )
     return linename
 
@@ -1808,22 +1799,23 @@ def plot_color_evolution_from_data(
         .join(filter_data[1], how="inner", on="time", suffix="_second", maintain_order="left")
         .filter(is_in_range("time", timemin, timemax))
     )
-    axis = iter_axes(ax)[plotnumber]
+    colour_mag = merge_dataframes["magnitude"] - merge_dataframes["magnitude_second"]
     if plottedpoints is not None:
+        seriesname = metadata["label"] or str(lightcurvefilename)
         plottedpoints.append(
             get_magnitude_table(
-                metadata["label"] or str(lightcurvefilename),
+                seriesname,
                 None,
-                metadata["label"] or str(lightcurvefilename),
+                seriesname,
                 None,
                 ("colour", "-".join(filter_names)),
                 merge_dataframes["time"],
-                merge_dataframes["magnitude"] - merge_dataframes["magnitude_second"],
+                colour_mag,
             )
         )
-    axis.plot(
+    iter_axes(ax)[plotnumber].plot(
         merge_dataframes["time"],
-        merge_dataframes["magnitude"] - merge_dataframes["magnitude_second"],
+        colour_mag,
         marker=marker,
         linestyle="None",
         markersize=linewidth,
@@ -2425,7 +2417,9 @@ def resolve_plot_args(args: argparse.Namespace) -> None:
     Each change here also applies to the plot of the viewer, which calls this function for each command.
     """
     args.modelpath = normalize_path_list(args.modelpath)
-    apply_time_range_args(args, args.modelpath)
+    # each model selects the points with a mid time in the range, as get_time_range selects timesteps. A range that is
+    # clamped to the timesteps of one model would add points of a different model
+    apply_time_range_args(args, args.modelpath, clamp_to_timesteps=False)
     resolve_energy_rate_args(args)
     if args.escape_type is not None:
         # -escape_type is the old spelling of --rpkt and --gamma. It reached no reader before, thus

@@ -130,6 +130,8 @@ from artistools.spectra.core import get_no_sampled_emission_reason
 from artistools.spectra.core import get_reference_spectrum
 from artistools.spectra.core import get_shell_labels
 from artistools.spectra.core import get_spatial_scale_deltalogx
+from artistools.spectra.core import get_vspecpol_bins_inside_vpkt_window
+from artistools.spectra.core import get_vspecpol_time_bin_index
 from artistools.spectra.core import get_x_quantity_label
 from artistools.spectra.core import get_xy_spectrum
 from artistools.spectra.core import has_gamma_spec_file
@@ -207,9 +209,7 @@ def get_axis_labels(args: argparse.Namespace) -> tuple[str | None, str | None]:
                     ylabel = r"Scaled Luminosity"
                 case "packetcount":
                     ylabel = r"Scaled Monte Carlo packets"
-                case "photonflux":
-                    ylabel = f"Scaled photons/{str_xunit}"
-                case "photoncount":
+                case "photonflux" | "photoncount":
                     ylabel = f"Scaled photons/{str_xunit}"
                 case "eflux":
                     ylabel = "Scaled E$^2$ flux"
@@ -332,20 +332,30 @@ def plot_polarisation(args: argparse.Namespace) -> None:
     assert timemax is not None
 
     timeavg_float = (timemin + timemax) / 2.0
-    if args.plotvspecpol:
-        # the time bins of the virtual packets differ from the timesteps, thus get_time_range does not test them
-        check_time_range_overlaps_time_bins(
-            [float(timestr) for timestr in timearray],
-            timeavg_float,
-            timeavg_float,
-            f"vspecpol_total-{angle}.out of {modelpath}",
-        )
 
     def timedistance(timestr: str) -> float:
         return abs(float(timestr) - timeavg_float)
 
     # select the column by the exact header string, because the file writes the times in its own format
-    timecolname = min(timearray, key=timedistance)
+    if args.plotvspecpol:
+        vspecpoltimemids = [float(timestr) for timestr in timearray]
+        # the time bins of the virtual packets differ from the timesteps, thus get_time_range does not test them
+        check_time_range_overlaps_time_bins(
+            vspecpoltimemids, timeavg_float, timeavg_float, f"vspecpol_total-{angle}.out of {modelpath}"
+        )
+        # the time bins are logarithmic, thus the nearest middle time does not always give the bin that holds the time
+        timebinindex = get_vspecpol_time_bin_index(vspecpoltimemids, timeavg_float, side="right")
+        if timebinindex not in get_vspecpol_bins_inside_vpkt_window(vspecpoltimemids, get_vpkt_config(modelpath)):
+            exit_with_error(
+                f"The time bin at {timearray[timebinindex]} days of vspecpol_total-{angle}.out of {modelpath} is not"
+                " fully inside the time window of vpkt.txt. ARTIS divides the flux of a bin by the full width of"
+                " the bin, thus the flux of this bin is too low",
+                "Select a time inside the time window of vpkt.txt",
+            )
+        timecolname = timearray[timebinindex]
+    else:
+        # specpol.out gives the middle time of each timestep, and timeavg is such a middle time
+        timecolname = min(timearray, key=timedistance)
     timeavg = f"{float(timecolname):.4f}"
 
     dfdrawn = get_polarisation_spectrum(stokes_params, timecolname, args)
@@ -821,12 +831,12 @@ def plot_artis_spectrum(
     residualseries: list[ResidualSeries] | None = None,
     summaryrows: list[dict[str, t.Any]] | None = None,
     **plotkwargs: t.Any,
-) -> list[pl.DataFrame] | None:
-    """Plot an ARTIS output spectrum, and return the plotted data with one table for each wavelength grid.
+) -> list[tuple[str, pl.DataFrame]] | None:
+    """Plot an ARTIS output spectrum, and return the suffix and the data of each drawn series.
 
-    The function returns None if it draws no series, and an empty list if args asks for no data output. summaryrows
-    takes the fields of the summary line of each drawn series. read_dirbin_spectra reads the spectra of each panel,
-    and draw_dirbin_spectra draws them.
+    The suffix names the direction bin and the epoch of the panel, e.g. "_dirbin05_300d". The function returns None if
+    it draws no series. summaryrows takes the fields of the summary line of each drawn series. read_dirbin_spectra
+    reads the spectra of each panel, and draw_dirbin_spectra draws them.
     """
     # a model path can name a file of the model, e.g. spec.out
     inputpath = Path(modelpath)
@@ -838,8 +848,6 @@ def plot_artis_spectrum(
         print_warning(f"Skipping because {modelpath} does not exist")
         return None
 
-    # the data output names one column for each drawn series, thus the loops below collect every one of
-    # them. The suffix names the direction bin and the epoch of the panel
     drawnseries: list[tuple[str, pl.DataFrame]] = []
     # each direction bin and each panel draws a series, thus draw_dirbin_spectra prints each method line one time only
     printedmethodlines: set[str] = set()
@@ -865,7 +873,7 @@ def plot_artis_spectrum(
         [
             get_time_range(modelpath, timedays_range_str=timedays, clamp_to_timesteps=clamp_to_timesteps)
             for timedays in args.timedayslist
-            if model_covers_timedays(modelpath, timedays, quiet=True)
+            if model_covers_timedays(modelpath, timedays, clamp_to_timesteps=clamp_to_timesteps, quiet=True)
         ]
         if sharesreadofpackets
         else []
@@ -893,13 +901,13 @@ def plot_artis_spectrum(
         # each axis. A range that one of them resolved would reach the next one, and get_time_range
         # then drops a model whose last timestep ends before that range
         if args.multispecplot:
-            if not model_covers_timedays(modelpath, args.timedayslist[axindex]):
+            if not model_covers_timedays(modelpath, args.timedayslist[axindex], clamp_to_timesteps=clamp_to_timesteps):
                 continue
             (timestepmin, timestepmax, timemin, timemax) = get_time_range(
                 modelpath, timedays_range_str=args.timedayslist[axindex], clamp_to_timesteps=clamp_to_timesteps
             )
         else:
-            if not model_covers_timedays(modelpath, args.timedays):
+            if not model_covers_timedays(modelpath, args.timedays, clamp_to_timesteps=clamp_to_timesteps):
                 return None
             (timestepmin, timestepmax, timemin, timemax) = get_time_range(
                 modelpath,
@@ -992,14 +1000,7 @@ def plot_artis_spectrum(
             )
         )
 
-    if not drawnseries:
-        return None
-
-    if not (args.print_data or args.write_data):
-        # the caller counts a value that is not None as a drawn series, and the data output alone reads the tables
-        return []
-
-    return get_drawn_spectrum_tables(drawnseries, args.xunit, args.yvariable)
+    return drawnseries or None
 
 
 def draw_dirbin_spectra(
@@ -1094,38 +1095,27 @@ def draw_dirbin_spectra(
     return drawnseries
 
 
-def get_drawn_spectrum_tables(
-    drawnseries: Sequence[tuple[str, pl.DataFrame]], xunit: str, yvariable: str
-) -> list[pl.DataFrame]:
-    """Return the data of the drawn series of one model, with one table for each wavelength grid.
+def get_series_table(dfspectrum: pl.DataFrame, seriesname: str, xunit: str, yvariable: str) -> pl.DataFrame:
+    """Return the data of one drawn series, with the name of the series after the quantity in each column name.
 
     f_lambda is per Angstrom at 1 Mpc. The plotted columns give the values of the plot, thus they follow -distmpc,
     --normalised, -xunit, and -yvariable. A spectrum from packets also gives the relative Monte Carlo noise of each
     bin, as the table of plotlightcurves does. --shownoise only draws the band y * (1 +- relnoise).
     """
-    xcolumn = f"x_plotted_{xunit}"
-    gridtables: list[pl.DataFrame] = []
-    for seriessuffix, dfspectrum in drawnseries:
-        hasnoise = "yrelnoise" in dfspectrum.columns
-        hasedges = "x_lower" in dfspectrum.columns
-        add_to_grid_tables(
-            gridtables,
-            dfspectrum.select(
-                "lambda_angstroms",
-                pl.col("x").alias(xcolumn),
-                *(
-                    [pl.col("x_lower").alias(f"x_lower_{xunit}"), pl.col("x_upper").alias(f"x_upper_{xunit}")]
-                    if hasedges
-                    else []
-                ),
-                pl.col("f_lambda").alias(f"f_lambda{seriessuffix}"),
-                pl.col("y").alias(f"{yvariable}_plotted{seriessuffix}"),
-                *([pl.col("yrelnoise").alias(f"{yvariable}_relnoise{seriessuffix}")] if hasnoise else []),
-            ),
-            get_grid_columns(xunit),
-        )
-
-    return gridtables
+    hasedges = "x_lower" in dfspectrum.columns
+    hasnoise = "yrelnoise" in dfspectrum.columns
+    return dfspectrum.select(
+        "lambda_angstroms",
+        pl.col("x").alias(f"x_plotted_{xunit}"),
+        *(
+            [pl.col("x_lower").alias(f"x_lower_{xunit}"), pl.col("x_upper").alias(f"x_upper_{xunit}")]
+            if hasedges
+            else []
+        ),
+        pl.col("f_lambda").alias(f"f_lambda.{seriesname}"),
+        pl.col("y").alias(f"{yvariable}_plotted.{seriesname}"),
+        *([pl.col("yrelnoise").alias(f"{yvariable}_relnoise.{seriesname}")] if hasnoise else []),
+    )
 
 
 def get_grid_columns(xunit: str) -> tuple[str, ...]:
@@ -1163,6 +1153,12 @@ def check_codecomparison_args(args: argparse.Namespace) -> None:
         exit_with_error(
             "A code comparison spectrum needs a time, and the command gives no time range",
             "Give --timedays (e.g. -t 300 or -t 290-320), or --timemin and --timemax",
+        )
+    if args.multispecplot:
+        # the code comparison branch draws one spectrum on the first panel, at the middle of all the epochs
+        exit_with_error(
+            "A code comparison spectrum gives one time, and --timedayslist gives a panel for each of several times",
+            "Remove --timedayslist, or plot the code comparison spectrum in a separate command for each time",
         )
     unsupported = [
         option
@@ -1213,7 +1209,7 @@ def make_spectrum_plot(
 
         # only an ARTIS spectrum produces writable series data. Reset it every iteration, so that a reference
         # spectrum neither reads an unset variable nor re-writes the previous model's spectrum under its own name
-        seriesdata: list[pl.DataFrame] | None = None
+        seriesdata: list[tuple[str, pl.DataFrame]] | None = None
         otherlines: list[Line2D] = []
         if path_is_reference_spectrum(specpath):
             plotkwargs = get_series_plotkwargs(args, seriesindex, defaultlinewidth=1.1)
@@ -1278,22 +1274,13 @@ def make_spectrum_plot(
 
         if args.print_data or args.write_data:
             dfothers.append(get_drawn_lines_table(otherlines, args, specpath=str(specpath)))
-        if seriesdata:
+        if seriesdata and (args.print_data or args.write_data):
             # one column for each model, direction bin, and panel, e.g. f_lambda.mymodel_dirbin05_300d
-            gridcolumns = get_grid_columns(args.xunit)
-            for dfgrid in seriesdata:
+            for seriessuffix, dfspectrum in seriesdata:
                 add_to_grid_tables(
                     gridtables,
-                    dfgrid.select(
-                        *(colname for colname in dfgrid.columns if colname in gridcolumns),
-                        *(
-                            pl.col(colname).alias(f"{prefix}.{seriesname}{suffix}")
-                            for colname in dfgrid.columns
-                            if colname not in gridcolumns
-                            for prefix, suffix in [split_series_column(colname, args.yvariable)]
-                        ),
-                    ),
-                    gridcolumns,
+                    get_series_table(dfspectrum, f"{seriesname}{seriessuffix}", args.xunit, args.yvariable),
+                    get_grid_columns(args.xunit),
                 )
 
     if nseriesplotted == 0:
@@ -1321,14 +1308,6 @@ def make_spectrum_plot(
         set_plot_title(axis, args.title, args)
 
     return gridtables, pl.concat(dfothers, how="diagonal") if dfothers else pl.DataFrame()
-
-
-def split_series_column(colname: str, yvariable: str) -> tuple[str, str]:
-    """Return the quantity and the series suffix of a column of plot_artis_spectrum, e.g. ("f_lambda", "_dirbin05")."""
-    prefix = next(
-        prefix for prefix in ("f_lambda", f"{yvariable}_plotted", f"{yvariable}_relnoise") if colname.startswith(prefix)
-    )
-    return prefix, colname.removeprefix(prefix)
 
 
 def order_and_color_shells(
@@ -2579,7 +2558,7 @@ def resolve_frompackets(args: argparse.Namespace) -> None:
     """
     showcontributions = args.showemission or args.showabsorption
     if showcontributions and args.groupby is None:
-        args.groupby = "nuc" if args.gamma else "ion"
+        args.groupby = get_default_groupby(gamma=args.gamma)
 
     # each entry names an option in the message, and gives the condition under which it needs the packets
     packetreasons = {
@@ -2841,6 +2820,16 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         save_figure(fig, filenameout, args=args, dpi=args.dpi)
 
 
+def get_default_xunit(*, gamma: bool) -> str:
+    """Return the x unit that plotspectra takes when the command gives no --xunit."""
+    return "kev" if gamma else "angstrom"
+
+
+def get_default_groupby(*, gamma: bool) -> str:
+    """Return the --groupby that plotspectra takes for an emission plot when the command gives none."""
+    return "nuc" if gamma else "ion"
+
+
 def get_default_xlimits(xunit: str, *, gamma: bool) -> tuple[float, float]:
     """Return the x limits in increasing order for a command that gives no --xmin and no --xmax."""
     lambdalimits = (0.2, 0.004) if gamma else (2500.0, 19000.0)
@@ -2851,7 +2840,7 @@ def get_default_xlimits(xunit: str, *, gamma: bool) -> tuple[float, float]:
 def resolve_plot_args(args: argparse.Namespace) -> None:
     """Apply the defaults and the time range to args, and stop the command for a bad combination of arguments."""
     if args.xunit is None:
-        args.xunit = "kev" if args.gamma else "angstrom"
+        args.xunit = get_default_xunit(gamma=args.gamma)
     args.xunit = convert_xunit_aliases_to_canonical(args.xunit)
 
     defaultxmin, defaultxmax = get_default_xlimits(args.xunit, gamma=args.gamma)
@@ -2905,7 +2894,8 @@ def resolve_plot_args(args: argparse.Namespace) -> None:
             "--timestep names a timestep of a model, and no path is an ARTIS model or a code comparison model,"
             " thus it has no effect"
         )
-    else:
+    elif not args.timedayslist:
+        # each panel of --timedayslist resolves its own epoch, and the code below gives the range of all the epochs
         apply_time_range_args(args, modelspecpaths, clamp_to_timesteps=clamp_to_timesteps)
 
     gave_a_time = any(value is not None for value in (args.timestep, args.timedays, args.timemin, args.timemax))
@@ -2931,7 +2921,7 @@ def resolve_plot_args(args: argparse.Namespace) -> None:
             )[2:]
             for timesteppath in timesteppaths
             for timedays in timedaysvalues
-            if model_covers_timedays(timesteppath, timedays, quiet=True)
+            if model_covers_timedays(timesteppath, timedays, clamp_to_timesteps=clamp_to_timesteps, quiet=True)
         ]
         finiteranges = [
             (rangemin, rangemax)

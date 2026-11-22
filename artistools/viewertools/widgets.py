@@ -25,6 +25,7 @@ from artistools.viewertools.core import get_helptexts
 from artistools.viewertools.core import get_option_kind
 from artistools.viewertools.core import get_slider_handle_position
 from artistools.viewertools.core import get_table_actions
+from artistools.viewertools.core import option_accumulates
 from artistools.viewertools.core import OptionRows
 
 if t.TYPE_CHECKING:
@@ -663,15 +664,23 @@ def get_reorder_list_class() -> "type[QtWidgets.QListWidget]":
 
         @t.override
         def keyPressEvent(self, event: QtGui.QKeyEvent, /) -> None:
-            steps = {QtCore.Qt.Key.Key_Up: -1, QtCore.Qt.Key.Key_Down: 1}
-            holdsalt = bool(event.modifiers() & QtCore.Qt.KeyboardModifier.AltModifier)
-            if holdsalt and event.key() in steps and callable(callback := self.property("on_move")):
-                callback(steps[QtCore.Qt.Key(event.key())])
-                event.accept()
-            else:
+            if not send_move_key(self, event):
                 super().keyPressEvent(event)
 
     return ReorderList
+
+
+def send_move_key(widget: "QtWidgets.QWidget", event: "QtGui.QKeyEvent") -> bool:
+    """Give Alt-Up as -1 and Alt-Down as 1 to the on_move callback of the widget. Return True if it took the key."""
+    from PySide6 import QtCore
+
+    steps = {QtCore.Qt.Key.Key_Up: -1, QtCore.Qt.Key.Key_Down: 1}
+    holdsalt = bool(event.modifiers() & QtCore.Qt.KeyboardModifier.AltModifier)
+    if not (holdsalt and event.key() in steps and callable(callback := widget.property("on_move"))):
+        return False
+    callback(steps[QtCore.Qt.Key(event.key())])
+    event.accept()
+    return True
 
 
 @cache
@@ -720,12 +729,7 @@ def get_drag_header_class() -> "type[QtWidgets.QWidget]":
 
         @t.override
         def keyPressEvent(self, event: QtGui.QKeyEvent, /) -> None:
-            steps = {QtCore.Qt.Key.Key_Up: -1, QtCore.Qt.Key.Key_Down: 1}
-            holdsalt = bool(event.modifiers() & QtCore.Qt.KeyboardModifier.AltModifier)
-            if holdsalt and event.key() in steps and callable(callback := self.property("on_move")):
-                callback(steps[QtCore.Qt.Key(event.key())])
-                event.accept()
-            else:
+            if not send_move_key(self, event):
                 super().keyPressEvent(event)
 
         @t.override
@@ -1231,6 +1235,18 @@ def make_option_table(
         oldflag = optionrows[row][0] if row < len(optionrows) else ""
         if flag == oldflag or (flag and flag not in actionsbyflag):
             return
+        existingrow = next(
+            (index for index, (rowflag, _) in enumerate(optionrows) if rowflag == flag and index != row), None
+        )
+        if existingrow is not None and not option_accumulates(actionsbyflag[flag]):
+            # argparse keeps only the values of the last flag of such an option, thus a second row hides the first
+            if row < len(optionrows):
+                del optionrows[row]
+                existingrow -= int(row < existingrow)
+            show_option_rows()
+            optiontable.selectRow(existingrow)
+            on_rows(get_complete_rows())
+            return
         if not flag:
             del optionrows[row]
         elif row < len(optionrows):
@@ -1399,15 +1415,6 @@ def make_completer(names: "Sequence[str]", parent: "QtWidgets.QWidget") -> "QtWi
     return completer
 
 
-def add_command_section(
-    panellayout: "QtWidgets.QVBoxLayout",
-) -> "tuple[QtWidgets.QPlainTextEdit, QtWidgets.QPushButton]":
-    """Add the command after the sections of the panel, and return its text box and its Copy button."""
-    return add_copy_box(
-        panellayout, "Command", f"Copy the command to the clipboard ({get_menu_shortcut_texts()['Copy Command']})"
-    )
-
-
 def add_copy_box(
     panellayout: "QtWidgets.QVBoxLayout", title: str, copytooltip: str, *, maxlines: int = 8, wraplines: bool = True
 ) -> "tuple[QtWidgets.QPlainTextEdit, QtWidgets.QPushButton]":
@@ -1549,15 +1556,6 @@ def fit_command_box(commandtext: "QtWidgets.QPlainTextEdit") -> None:
     if commandtext.lineWrapMode() == QtWidgets.QPlainTextEdit.LineWrapMode.NoWrap:
         boxheight += commandtext.horizontalScrollBar().sizeHint().height()
     commandtext.setFixedHeight(math.ceil(boxheight + 2 * document.documentMargin() + 2 * commandtext.frameWidth()))
-
-
-def start_play_timer(playtimer: "QtCore.QTimer", plotseconds: float, fps: float) -> None:
-    """Start the pause before the next step of Play, thus a step takes 1/fps seconds.
-
-    The old plot stays in view while the worker draws the next one, thus the pause is the rest of the time of the step.
-    A plot that takes longer than 1/fps seconds gives a lower rate.
-    """
-    playtimer.start(max(0, round(1000.0 / fps - plotseconds * 1000.0)))
 
 
 def make_timer(window: "QtWidgets.QWidget", milliseconds: int) -> "QtCore.QTimer":

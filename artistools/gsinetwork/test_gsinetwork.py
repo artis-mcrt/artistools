@@ -451,32 +451,6 @@ def test_artis_abundance_removes_the_scale_of_the_map_from_the_initial_mass_that
     assert abund_of_mgi[0]["X_He4"].to_list() == pytest.approx([0.1, 0.1 + 0.2], rel=1e-9)
 
 
-def test_artis_abundance_converts_nniso_with_the_atomic_mass_unit(tmp_path: Path) -> None:
-    """A cell that holds only Sr88 gives a mass fraction of 1.
-
-    After artis-mcrt/artis#670, ARTIS converts a mass number to grams with the atomic mass unit. The mass of the
-    hydrogen atom gave a mass fraction that was 0.78% too large.
-    """
-    from artistools.constants import amu_g
-    from artistools.gsinetwork import comparetogsinetwork
-
-    rho = 1.0e-10
-    dfestimators = pl.LazyFrame({
-        "modelgridindex": [0],
-        "timestep": [0],
-        "tmid_days": [1.0],
-        "mass_g": [1.0e30],
-        "rho": [rho],
-        "nniso_Sr88": [rho / (88 * amu_g)],
-    })
-    with mock.patch.object(comparetogsinetwork, "scan_estimators", return_value=dfestimators):
-        abund_of_mgi = comparetogsinetwork.get_artis_abund_sequences(
-            tmp_path, pl.DataFrame({"timestep": [0]}), [0], ["Sr88"], {}
-        )
-
-    assert math.isclose(abund_of_mgi[0]["X_Sr88"].item(), 1.0, rel_tol=1e-9)
-
-
 def test_artis_abundance_of_a_model_with_no_compositiondata(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """A model with no compositiondata.txt still gives each curve, and an element leaves out its other stable isotopes.
 

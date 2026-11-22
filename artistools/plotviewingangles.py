@@ -27,26 +27,17 @@ from artistools.misc import require_cartesian3d_model
 from artistools.plottools import TRANSPARENT_DARKMODE_FORMATS
 
 
-def gen_viewing_angle_df(length: int) -> pl.DataFrame:
-    """Return the Cartesian endpoint of a vector of the given length that points into each direction bin."""
-    viewing_angles: dict[str, list[float | str]] = {"Angle-bin": [], "x_coord": [], "y_coord": [], "z_coord": []}
-
-    for i in range(get_viewingdirectionbincount()):
-        x_c, y_c, z_c = (float(coordinate) for coordinate in length * get_dirbin_centre_direction(i))
-
-        # 0 point
-        viewing_angles["Angle-bin"].append(f"{i:02d}")
-        viewing_angles["x_coord"].append(0.0)
-        viewing_angles["y_coord"].append(0.0)
-        viewing_angles["z_coord"].append(0.0)
-
-        # end point
-        viewing_angles["Angle-bin"].append(f"{i:02d}")
-        viewing_angles["x_coord"].append(x_c)
-        viewing_angles["y_coord"].append(y_c)
-        viewing_angles["z_coord"].append(z_c)
-
-    return pl.DataFrame(viewing_angles)
+def gen_viewing_angle_df(length: float) -> pl.DataFrame:
+    """Return the origin and the Cartesian endpoint of a vector of the given length into each direction bin."""
+    return pl.DataFrame(
+        [
+            (f"{i:02d}", *(float(coordinate) for coordinate in point))
+            for i in range(get_viewingdirectionbincount())
+            for point in (np.zeros(3), length * get_dirbin_centre_direction(i))
+        ],
+        schema={"Angle-bin": pl.String, "x_coord": pl.Float64, "y_coord": pl.Float64, "z_coord": pl.Float64},
+        orient="row",
+    )
 
 
 def get_plotted_tables(
@@ -94,12 +85,12 @@ def viewing_angles_visualisation(args: argparse.Namespace) -> None:
     x, y, z = (dfmodel[f"pos_{ax}_mid"].cast(pl.Float64).to_numpy() for ax in ("x", "y", "z"))
     rho = dfmodel["rho"].cast(pl.Float64).to_numpy()
 
-    isomin = min(rho.flatten()) if args.isomin is None else args.isomin
-    isomax = max(rho.flatten()) if args.isomax is None else args.isomax
+    isomin = rho.min() if args.isomin is None else args.isomin
+    isomax = rho.max() if args.isomax is None else args.isomax
     assert isomin < isomax, "isomin must be smaller than isomax"
 
     # the vectors reach the edge of the box at a line length of one
-    length = max(x.flatten()) * args.linelength
+    length = x.max() * args.linelength
     va = gen_viewing_angle_df(length)
     if args.print_data or args.write_data:
         output_data(args, get_plotted_tables((x, y, z), rho, va), outfile)
@@ -118,10 +109,10 @@ def viewing_angles_visualisation(args: argparse.Namespace) -> None:
 
     fig = fig.add_trace(
         go.Volume(
-            x=x.flatten(),
-            y=y.flatten(),
-            z=z.flatten(),
-            value=rho.flatten(),
+            x=x,
+            y=y,
+            z=z,
+            value=rho,
             isomin=isomin,
             isomax=isomax,
             opacity=args.opacity,  # a small value makes every surface visible through the ones in front of it

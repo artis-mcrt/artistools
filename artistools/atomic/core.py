@@ -492,37 +492,14 @@ def read_transitiondata(
     return transitiondata
 
 
-def get_transitiondata(
-    modelpath: str | Path,
-    ionlist: Collection[tuple[int, int]] | None = None,
-    quiet: bool = False,
-    *,
-    firstlevelnumber: int,
-) -> dict[tuple[int, int], pl.DataFrame]:
-    """Return a dictionary of transitions from (Z, ion_stage) to a polars DataFrame.
-
-    firstlevelnumber is the number of the first level of adata.txt, see get_first_level_number. A caller gives a
-    list or a tuple of ions, thus this makes the arguments hashable for the cache. The copy of the dictionary and of
-    each frame keeps a caller that changes one of them from changing what the next caller reads. A clone is cheap,
-    because polars shares the data of a frame. The cache key holds the absolute path, see ModelpathCache.
-    """
-    transitionsdict = get_transitiondata_cached(
-        resolve_modelpath(modelpath),
-        tuple(ionlist) if ionlist is not None else None,
-        firstlevelnumber=firstlevelnumber,
-        quiet=quiet,
-    )
-
-    return {ion: dftransitions.clone() for ion, dftransitions in transitionsdict.items()}
-
-
 @lru_cache(maxsize=8)
 def get_transitiondata_cached(
     modelpath: Path, ionlist: tuple[tuple[int, int], ...] | None = None, *, firstlevelnumber: int, quiet: bool = False
 ) -> dict[tuple[int, int], pl.DataFrame]:
     """Return the transitions of each ion, and keep them for the next caller.
 
-    Do not change the dictionary that this function returns.
+    firstlevelnumber is the number of the first level of adata.txt, see get_first_level_number. Do not change the
+    dictionary or a frame that this function returns.
     """
     ionset = set(ionlist) if ionlist else None
     transition_filename = misc.firstexisting("transitiondata.txt", folder=modelpath)
@@ -619,7 +596,7 @@ def get_levels_cached(
     firstlevelnumber = get_first_level_number(modelpath)
 
     transitionsdict: dict[tuple[int, int], pl.DataFrame] = (
-        get_transitiondata(modelpath, ionlist=ionlist, quiet=quiet, firstlevelnumber=firstlevelnumber)
+        get_transitiondata_cached(modelpath, ionlist, firstlevelnumber=firstlevelnumber, quiet=quiet)
         if get_transitions
         else {}
     )
@@ -916,15 +893,6 @@ def get_atomic_number_of_elsymbol() -> dict[str, int]:
     return {elsymbol: atomic_number for atomic_number, elsymbol in enumerate(get_elsymbolslist())}
 
 
-@lru_cache(maxsize=1)
-def get_elsymbols_longestfirst() -> tuple[str, ...]:
-    """Return the element symbols ordered longest first, for matching a symbol at the start of a string.
-
-    'Fe' must be tried before 'F', otherwise 'FeII' would match the fluorine prefix.
-    """
-    return tuple(sorted(get_elsymbolslist(), key=len, reverse=True))
-
-
 def get_elsymbols_df() -> pl.LazyFrame:
     """Return a polars LazyFrame of atomic number and element symbols.
 
@@ -1045,13 +1013,9 @@ def get_ion_tuple(ionstr: str) -> tuple[int, int] | int:
     elif (compaction := split_compact_ion_name(ionstr)) is not None:
         # no separator, e.g. 'FeII'
         return compaction
-    else:
+    elif (elsymbol := ionstr.rstrip(string.digits)) in get_elsymbolset():
         # a mass number in place of an ion stage, e.g. 'Fe56'
-        for elsym in get_elsymbols_longestfirst():
-            if ionstr.startswith(elsym) and ionstr.removeprefix(elsym).isdigit():
-                elem = elsym
-                strion_stage = ionstr.removeprefix(elsym)
-                break
+        elem, strion_stage = elsymbol, ionstr.removeprefix(elsymbol)
 
     if elem in {"?", ""} or strion_stage in {"?", ""}:
         msg = f"Could not parse ionstr {ionstr}"
@@ -1095,21 +1059,11 @@ def get_ionstring(
     if style == "spectral":
         return f"{get_elsymbol(atomic_number)}{sep}{roman_numerals[ion_stage]}"
 
-    strcharge = ""
+    # the charge notation, e.g. Fe0, Co+, and Fe2+
+    charge = ion_stage - 1
+    strcharge = "0" if charge == 0 else "+" if charge == 1 else f"{charge}+"
     if style == "chargelatex":
-        # ion notion e.g. Co+, Fe2+
-        if ion_stage > 2:
-            strcharge = r"$^{" + str(ion_stage - 1) + r"{+}}$"
-        elif ion_stage == 2:
-            strcharge = r"$^{+}$"
-        elif ion_stage == 1:
-            strcharge = r"$^{0}$"
-    elif ion_stage > 2:
-        strcharge = f"{ion_stage - 1}+"
-    elif ion_stage == 2:
-        strcharge = "+"
-    elif ion_stage == 1:
-        strcharge = "0"
+        strcharge = r"$^{0}$" if charge == 0 else r"$^{+}$" if charge == 1 else r"$^{" + str(charge) + r"{+}}$"
 
     return f"{get_elsymbol(atomic_number)}{strcharge}"
 

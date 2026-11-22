@@ -44,7 +44,6 @@ from artistools.misc import get_timestep_of_timedays
 from artistools.misc import get_timestep_time
 from artistools.misc import get_timestep_times
 from artistools.misc import get_viewingdirection_phibincount
-from artistools.misc import get_weighted_quantile_expr
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import positive_int_arg
@@ -57,6 +56,8 @@ from artistools.packets.core import filter_packets_dirbin
 from artistools.packets.core import get_emission_time_expr
 from artistools.packets.core import get_last_interaction_velocity_expr
 from artistools.packets.core import get_relative_error_expr
+from artistools.packets.core import get_velocity_axis_label
+from artistools.packets.core import get_velocity_quartile_exprs
 from artistools.packets.core import NOISY_RELATIVE_ERROR
 from artistools.packets.core import print_arrival_time_method
 from artistools.packets.core import print_last_interaction_convention
@@ -503,7 +504,7 @@ def plot_velocity_profiles_by_group(
     maxseriescount: int | None = 8,
     unit: t.Literal["kmps", "c"] = "kmps",
     outputfile: Path | None = None,
-    args: argparse.Namespace | None = None,
+    args: argparse.Namespace,
 ) -> None:
     """Plot the luminosity per unit velocity against the velocity of the last interaction, for each group.
 
@@ -523,8 +524,8 @@ def plot_velocity_profiles_by_group(
         None,
         lambdarange=lambdarange,
         absorption=absorption,
-        averageoverphi=getattr(args, "average_over_phi_angle", False),
-        maxpacketfiles=getattr(args, "maxpacketfiles", None),
+        averageoverphi=args.average_over_phi_angle,
+        maxpacketfiles=args.maxpacketfiles,
     )
     timestep, t_min, t_max = get_arrival_timestep(modelpath, tdays)
     delta_t_s = (t_max - t_min) * day_to_s
@@ -571,17 +572,13 @@ def plot_velocity_profiles_by_group(
     fractionoflabel = dict(zip(dfgroupsummary["label"], dfgroupsummary["luminosity_fraction"], strict=True))
     draw_group_profiles(ax, dftable, velocityedges_kmps, unit, fractionoflabel)
     # with --absorption the velocity is still the one of em_pos, which an electron scattering after the absorption moves
-    interaction = "thermal emission" if trueem else "interaction"
-    velocityname = "Radial velocity" if velocitykind == "radial" else "Line-of-sight velocity (towards the observer)"
-    ax.set_xlabel(f"{velocityname} of the last {interaction} [{VELOCITYUNIT_AXISLABELS[unit]}]")
+    ax.set_xlabel(f"{get_velocity_axis_label(position, velocitykind)} [{VELOCITYUNIT_AXISLABELS[unit]}]")
     ax.set_ylabel(rf"$\Delta L / \Delta v$ [erg s$^{{-1}}$ {INVERSE_VELOCITYUNIT_AXISLABELS[unit]}]")
     titleparts = [f"{get_model_name(modelpath)} {get_timestep_time(modelpath, timestep):.2f} d"]
     if lambdarange is not None:
         titleparts.append(f"{lambdarange[0]:.0f}-{lambdarange[1]:.0f} Å")
     if dirbin != -1:
-        titleparts.append(
-            get_dirbin_labels([dirbin], average_over_phi=getattr(args, "average_over_phi_angle", False))[dirbin]
-        )
+        titleparts.append(get_dirbin_labels([dirbin], average_over_phi=args.average_over_phi_angle)[dirbin])
     ax.set_title(", ".join(titleparts))
     set_legend(ax, args)
 
@@ -596,12 +593,11 @@ def plot_velocity_profiles_by_group(
     outfilename = resolve_outputfile(
         outputfile, f"{start_of_filename}{kind}_by{groupby}_ts{timestep}_into_dirbin{dirbin}.pdf"
     )
-    if args is not None:
-        output_data(
-            args,
-            {"": convert_velocity_columns(dftable, unit), "_summary": convert_velocity_columns(dfgroupsummary, unit)},
-            outfilename,
-        )
+    output_data(
+        args,
+        {"": convert_velocity_columns(dftable, unit), "_summary": convert_velocity_columns(dfgroupsummary, unit)},
+        outfilename,
+    )
     save_figure(fig, outfilename, args=args)
 
 
@@ -720,12 +716,7 @@ def get_group_summary(
             luminosity_erg_per_s=pl.col("e_rf").cast(pl.Float64).sum() * luminosity_factor,
             packetcount=pl.len(),
             luminosity_relative_error=get_relative_error_expr(pl.col("e_rf")),
-            **{
-                f"velocity_luminosity_q{round(quantile * 100)}_kmps": get_weighted_quantile_expr(
-                    "velocity_kmps", "e_rf", quantile
-                )
-                for quantile in (0.25, 0.5, 0.75)
-            },
+            **get_velocity_quartile_exprs(),
         )
         .with_columns(luminosity_fraction=luminosity / luminosity.sum())
         .sort("luminosity_erg_per_s", "label", descending=[True, False])
@@ -991,9 +982,7 @@ def get_selected_ions(args: argparse.Namespace) -> list[tuple[int | None, int | 
             try:
                 iontuple = get_ion_tuple(iontext.strip())
             except ValueError:
-                exit_with_error(
-                    f"--ions takes ions or elements, and '{iontext}' is neither", 'Give e.g. --ions "Sr II,Fe"'
-                )
+                iontuple = -1
             Z = iontuple[0] if isinstance(iontuple, tuple) else iontuple
             # get_atomic_number gives -1 for a text that is no element symbol, and 0 for the free neutron
             if Z < 1:

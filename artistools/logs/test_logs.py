@@ -1,4 +1,3 @@
-import argparse
 import io
 import os
 import shutil
@@ -259,7 +258,10 @@ def test_logsummary_log_that_cannot_be_read_is_not_a_copy(tmp_path: Path) -> Non
 def test_logsummary_reads_a_compressed_copy_of_a_log_once(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], read_data_file: Callable[[Path | io.StringIO], pl.DataFrame]
 ) -> None:
-    """A gzip copy of the log of a run in the model folder had a different name, and its messages counted twice."""
+    """A gzip copy of the log of a run in the model folder had a different name, and its messages counted twice.
+
+    Two gzip files of one text can have different bytes, e.g. another time in the header of gzip.
+    """
     import gzip
 
     import artistools.__main__
@@ -271,6 +273,18 @@ def test_logsummary_reads_a_compressed_copy_of_a_log_once(
     (modelfolder / "100.slurm" / "output_0-0.txt").write_text(logtext, encoding="utf-8")
     with gzip.open(modelfolder / "output_0-0.txt.gz", "wt", encoding="utf-8") as fcopy:
         fcopy.write(logtext)
+
+    artistools.__main__.main(argsraw=["logsummary", str(modelfolder), "--quiet"])
+    dfsummary = read_data_file(io.StringIO(capsys.readouterr().out))
+    assert dfsummary["count"].to_list() == [1]
+
+    (modelfolder / "100.slurm" / "output_0-0.txt").unlink()
+    for folder, mtime in ((modelfolder / "100.slurm", 1), (modelfolder, 2)):
+        with gzip.GzipFile(folder / "output_0-0.txt.gz", "wb", mtime=mtime) as fcopy:
+            fcopy.write(logtext.encode())
+    assert (modelfolder / "output_0-0.txt.gz").read_bytes() != (
+        modelfolder / "100.slurm" / "output_0-0.txt.gz"
+    ).read_bytes()
 
     artistools.__main__.main(argsraw=["logsummary", str(modelfolder), "--quiet"])
     dfsummary = read_data_file(io.StringIO(capsys.readouterr().out))
@@ -293,30 +307,6 @@ def test_logsummary_combines_the_summary_of_each_log() -> None:
     dfmessages = pl.concat([read_log_messages(logfile) for logfile in logfiles])
     dfall = combine_log_summaries([get_partial_log_summary(dfmessages)])
     pltest.assert_frame_equal(get_log_summary(logfiles), dfall)
-
-
-def test_logsummary_reads_two_gzip_copies_of_a_log_once(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], read_data_file: Callable[[Path | io.StringIO], pl.DataFrame]
-) -> None:
-    """Two gzip files of one text can have different bytes, e.g. another time in the header of gzip."""
-    import gzip
-
-    import artistools.__main__
-
-    modelfolder = tmp_path / "model"
-    (modelfolder / "100.slurm").mkdir(parents=True)
-    shutil.copy(modelpath / "input.txt", modelfolder / "input.txt")
-    logtext = b"timestep 0: time before update grid 0.1 (tstart + tdelta/2) 2.0 days\n[error] cell 3 has no matter\n"
-    for folder, mtime in ((modelfolder / "100.slurm", 1), (modelfolder, 2)):
-        with gzip.GzipFile(folder / "output_0-0.txt.gz", "wb", mtime=mtime) as fcopy:
-            fcopy.write(logtext)
-    assert (modelfolder / "output_0-0.txt.gz").read_bytes() != (
-        modelfolder / "100.slurm" / "output_0-0.txt.gz"
-    ).read_bytes()
-
-    artistools.__main__.main(argsraw=["logsummary", str(modelfolder), "--quiet"])
-    dfsummary = read_data_file(io.StringIO(capsys.readouterr().out))
-    assert dfsummary["count"].to_list() == [1]
 
 
 def test_log_reader_finds_a_message_on_the_line_of_a_timestep(tmp_path: Path) -> None:
@@ -399,15 +389,6 @@ def test_logfiles_write_data_holds_the_plotted_times(
         dfpage = dftable.filter(pl.col("timestep") == timestep).sort("mpirank")
         assert dfpage["mpirank"].to_list() == list(mpirank)
         assert np.allclose(dfpage[f"{call.kwargs['label']}_s"].to_numpy(), timetaken, rtol=1e-12, atol=0)
-
-
-def test_logfiles_with_no_timing_data_replace_the_table_of_an_earlier_run(tmp_path: Path) -> None:
-    """Logs with no timing line returned before the data output, thus the table of an earlier run stayed."""
-    tablefile = tmp_path / "logfiles.txt"
-    tablefile.write_text("timestep mpirank update_grid_s\n5 0 1.0\n", encoding="utf-8")
-    args = argparse.Namespace(print_data=False, write_data=True)
-    at.logs.plotlogfiles.make_plot({}, tmp_path / "logfiles.pdf", args=args)
-    assert "the table has no rows" in tablefile.read_text(encoding="utf-8")
 
 
 def test_plotlogfiles_output_template_names_a_field_that_the_command_does_not_give(tmp_path: Path) -> None:

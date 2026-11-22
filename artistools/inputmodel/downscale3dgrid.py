@@ -176,27 +176,16 @@ def make_downscaled_3d_grid(
         set_mpl_style()
         fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(6.8 * 1.5, 4.8))
         assert isinstance(axes, np.ndarray)
-        (ax1, ax2) = axes
 
-        middle_ind = int(rho.shape[0] / 2)
-        im1 = ax1.imshow(rho[middle_ind, :, :])
-        divider1 = make_axes_locatable(ax1)
-        cax1 = divider1.append_axes("right", size="5%", pad=0.05)
-        cbar1 = fig.colorbar(im1, cax=cax1)
-        ax1.set_xlabel("Cell index")
-        ax1.set_ylabel("Cell index")
-        ax1.set_title("Original resolution")
-        cbar1.set_label(r"$\rho$ (g/cm$^3$)")
-
-        middle_ind_small = int(rho_small.shape[0] / 2)
-        im2 = ax2.imshow(rho_small[middle_ind_small, :, :])
-        divider2 = make_axes_locatable(ax2)
-        cax2 = divider2.append_axes("right", size="5%", pad=0.05)
-        cbar2 = fig.colorbar(im2, cax=cax2)
-        ax2.set_xlabel("Cell index")
-        ax2.set_ylabel("Cell index")
-        ax2.set_title("Downscaled resolution")
-        cbar2.set_label(r"$\rho$ (g/cm$^3$)")
+        for ax, rhogrid, title in zip(
+            axes, (rho, rho_small), ("Original resolution", "Downscaled resolution"), strict=True
+        ):
+            im = ax.imshow(rhogrid[int(rhogrid.shape[0] / 2), :, :])
+            cbar = fig.colorbar(im, cax=make_axes_locatable(ax).append_axes("right", size="5%", pad=0.05))
+            ax.set_xlabel("Cell index")
+            ax.set_ylabel("Cell index")
+            ax.set_title(title)
+            cbar.set_label(r"$\rho$ (g/cm$^3$)")
 
         fig.tight_layout()
 

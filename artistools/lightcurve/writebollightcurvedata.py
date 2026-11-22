@@ -31,10 +31,8 @@ def get_bol_lc_from_spec(modelpath: Path) -> pl.DataFrame:
     timearray = res_specdata[0].collect_schema().names()[1:]
     # the light_curve.out mode writes every time, thus this mode does too. A fixed range of 5 to 80 days
     # dropped every time of a kilonova below 5 days and gave an empty file for a nebular model
-    selected = list(enumerate(timearray))
-    lightcurvedata: dict[str, t.Any] = {"time": [timestr for _, timestr in selected]}
-    timesteps = [ts for ts, _ in selected]
-    luminosities = get_bolometric_luminosities(modelpath, timesteps, dirbins=range(len(res_specdata)))
+    lightcurvedata: dict[str, t.Any] = {"time": timearray}
+    luminosities = get_bolometric_luminosities(modelpath, range(len(timearray)), dirbins=range(len(res_specdata)))
     for angle, angleluminosities in luminosities.items():
         lightcurvedata[f"angle={angle}"] = np.log10(angleluminosities)
 

@@ -28,7 +28,6 @@ from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_model_name
 from artistools.misc import get_timestep_times
 from artistools.misc import get_viewingdirection_phibincount
-from artistools.misc import get_weighted_quantile_expr
 from artistools.misc import normalize_path_list
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
@@ -38,6 +37,8 @@ from artistools.misc import print_warning
 from artistools.packets.core import addarg_maxpacketfiles
 from artistools.packets.core import addarg_velocitykind
 from artistools.packets.core import get_last_interaction_velocity_expr
+from artistools.packets.core import get_velocity_axis_label
+from artistools.packets.core import get_velocity_quartile_exprs
 from artistools.packets.core import NOISY_RELATIVE_ERROR
 from artistools.packets.core import print_arrival_time_method
 from artistools.packets.core import print_last_interaction_convention
@@ -161,12 +162,7 @@ def get_last_interaction_velocity_quartiles(
             .agg(
                 packetcount=pl.col("packetcount").sum(),
                 luminosity_relative_error=pl.col("energysquared").sum().sqrt() / pl.col("e_rf").sum(),
-                **{
-                    f"velocity_luminosity_q{round(quantile * 100)}_kmps": get_weighted_quantile_expr(
-                        "velocity_kmps", "e_rf", quantile
-                    )
-                    for quantile in (0.25, 0.5, 0.75)
-                },
+                **get_velocity_quartile_exprs(),
             )
             .with_columns(
                 time_days=pl.col("timestep").replace_strict(range(len(timemids)), timemids, return_dtype=pl.Float64)
@@ -332,11 +328,7 @@ def plot_velocity_against_time(
             "Give a different time range or a wider wavelength range",
         )
     ax.set_xlabel("Time [d]")
-    interaction = "thermal emission" if position == "trueem" else "interaction"
-    velocityname = (
-        "Radial velocity" if args.velocitykind == "radial" else "Line-of-sight velocity (towards the observer)"
-    )
-    ax.set_ylabel(f"{velocityname} of the last {interaction} [{VELOCITYUNIT_AXISLABELS[unit]}]")
+    ax.set_ylabel(f"{get_velocity_axis_label(position, args.velocitykind)} [{VELOCITYUNIT_AXISLABELS[unit]}]")
     set_axis_properties(ax, args, xlimits=(args.timemin, args.timemax, "-timemin"))
     if args.velocitykind == "radial":
         ax.set_ylim(bottom=0.0)

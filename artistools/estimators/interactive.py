@@ -354,22 +354,33 @@ def check_viewer_args(args: argparse.Namespace) -> None:
     )
 
 
-def get_default_xvariable(tokens: "Sequence[str]") -> str:
-    """Return the x variable that plotestimators takes for command tokens with no -x.
+def read_snapshot_args[T](tokens: "Sequence[str]", read: "Callable[[argparse.Namespace], T]") -> T | None:
+    """Return a value that read gives for the command tokens after resolve_snapshot_arguments.
 
-    --slice and --dimensionreduce set the x variable of a snapshot. Otherwise a command with no time plots against
-    time, and a command with a time plots a snapshot against the velocity. The plot of tokens that plotestimators
-    rejects gives the message, thus this function then returns the velocity.
+    The tokens that plotestimators rejects give None, and the plot of the tokens gives the message.
     """
-    xvariables: list[str] = []
+    values: list[T] = []
 
     def resolve() -> None:
         args = parse_cli_args(addargs, None, None, tokens)
         resolve_snapshot_arguments(args)
-        xvariables.append(args.x or get_default_x(timegiven=time_is_given(args), makegif=args.makegif))
+        values.append(read(args))
 
     run_command_step(resolve, echo=False)
-    return xvariables[0] if xvariables else "velocity"
+    return values[0] if values else None
+
+
+def get_default_xvariable(tokens: "Sequence[str]") -> str:
+    """Return the x variable that plotestimators takes for command tokens with no -x, or the velocity for bad tokens.
+
+    --slice and --dimensionreduce set the x variable of a snapshot. Otherwise a command with no time plots against
+    time, and a command with a time plots a snapshot against the velocity.
+    """
+
+    def read_xvariable(args: argparse.Namespace) -> str:
+        return args.x or get_default_x(timegiven=time_is_given(args), makegif=args.makegif)
+
+    return read_snapshot_args(tokens, read_xvariable) or "velocity"
 
 
 def is_evolution(values: ControlValues) -> bool:
@@ -555,15 +566,7 @@ def get_geometry_description(tokens: "Sequence[str]", modelmeta: "Mapping[str, t
 
     The tokens that plotestimators rejects give an empty text, and the status line gives the reason.
     """
-    descriptions: list[str] = []
-
-    def describe() -> None:
-        args = parse_cli_args(addargs, None, None, tokens)
-        resolve_snapshot_arguments(args)
-        descriptions.append(get_cell_selection_description(args, modelmeta))
-
-    run_command_step(describe, echo=False)
-    return descriptions[0] if descriptions else ""
+    return read_snapshot_args(tokens, partial(get_cell_selection_description, modelmeta=modelmeta)) or ""
 
 
 def set_geometry_mode(viewer: "EstimatorViewer", values: "ControlValues", mode: str) -> "ControlValues":
@@ -1053,13 +1056,9 @@ def get_nearest_cell(viewer: EstimatorViewer, xdata: float) -> int | None:
         return None
     axisisbeta = viewer.values.x == "beta" or viewer.xlimitscale != 1.0
     velocity = xdata * (C_cm_per_s if axisisbeta else km_to_cm)
-    cells = np.fromiter(
-        viewer.modeldata.cellvelocities.keys(), dtype=np.int64, count=len(viewer.modeldata.cellvelocities)
-    )
-    velocities = np.fromiter(
-        viewer.modeldata.cellvelocities.values(), dtype=np.float64, count=len(viewer.modeldata.cellvelocities)
-    )
-    return int(cells[np.argmin(np.abs(velocities - velocity))])
+    cells = list(viewer.modeldata.cellvelocities)
+    velocities = np.array(list(viewer.modeldata.cellvelocities.values()))
+    return cells[int(np.argmin(np.abs(velocities - velocity)))]
 
 
 def get_evolution_values(viewer: EstimatorViewer, cells: str) -> ControlValues:

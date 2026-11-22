@@ -3,6 +3,7 @@
 import argparse
 import itertools
 import typing as t
+from collections.abc import Mapping
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -155,46 +156,34 @@ def write_fit_table(args: argparse.Namespace, dftable: pl.DataFrame, datafile: P
 
 
 def save_viewing_angle_data_for_plotting(
-    band_name: str, modelname: str, dirbins: Sequence[int], args: argparse.Namespace
+    band_name: str,
+    modelname: str,
+    dirbins: Sequence[int],
+    fits: Sequence[Mapping[str, float]],
+    args: argparse.Namespace,
 ) -> None:
     """Write one model's per-direction-bin peak magnitude, rise time, and decline rate to a text file."""
-    if args.save_viewing_angle_peakmag_risetime_delta_m15_to_file:
-        # the first column names the direction bin of each row, thus a later plot needs no -plotviewingangle
-        columns: dict[str, Sequence[float]] = {
-            "dirbin": list(dirbins),
-            "peak_mag_polyfit": args.band_peakmag_polyfit,
-            "risetime_polyfit": args.band_risetime_polyfit,
-            "deltam15_polyfit": args.band_deltam15_polyfit,
-        }
-        if args.include_delta_m40:
-            columns["deltam40_polyfit"] = args.band_deltam40_polyfit
-        datafile = get_viewing_angle_data_folder(args) / get_viewing_angle_data_filename(band_name, modelname)
-        # the scatter plots and hesma_scripts read this file as text, thus it stays text for each --output-format
-        write_fit_table(args, pl.DataFrame(columns), datafile, outputformat=None)
-
-    elif wants_angle_averaged_data(args) and band_name == (args.filter[0] if args.filter else "lightcurve"):
-        # the angle-averaged writers index these lists by model, thus the first band alone gives one entry
-        args.band_risetime_angle_averaged_polyfit.append(args.band_risetime_polyfit)
-        args.band_peakmag_angle_averaged_polyfit.append(args.band_peakmag_polyfit)
-        args.band_delta_m15_angle_averaged_polyfit.append(args.band_deltam15_polyfit)
-
-    args.band_risetime_polyfit = []
-    args.band_peakmag_polyfit = []
-    args.band_deltam15_polyfit = []
-    if args.include_delta_m40:
-        args.band_deltam40_polyfit = []
+    # the first column names the direction bin of each row, thus a later plot needs no -plotviewingangle
+    columns: dict[str, Sequence[float]] = {"dirbin": list(dirbins)} | {
+        key: [fit[key] for fit in fits] for key in fits[0]
+    }
+    datafile = get_viewing_angle_data_folder(args) / get_viewing_angle_data_filename(band_name, modelname)
+    # the scatter plots and hesma_scripts read this file as text, thus it stays text for each --output-format
+    write_fit_table(args, pl.DataFrame(columns), datafile, outputformat=None)
 
 
-def write_viewing_angle_data(band_name: str, modelnames: list[str], args: argparse.Namespace) -> None:
+def write_viewing_angle_data(
+    band_name: str, modelnames: list[str], angleaveragedfits: Sequence[Mapping[str, float]], args: argparse.Namespace
+) -> None:
     """Write the angle-averaged peak magnitude, rise time, and decline rate of every model to a text file."""
     if wants_angle_averaged_data(args):
         write_fit_table(
             args,
             pl.DataFrame({
                 "object": modelnames,
-                f"{band_name}_band_risetime": np.ravel(args.band_risetime_angle_averaged_polyfit),
-                f"{band_name}_band_peakmag": np.ravel(args.band_peakmag_angle_averaged_polyfit),
-                f"{band_name}_band_deltam15": np.ravel(args.band_delta_m15_angle_averaged_polyfit),
+                f"{band_name}_band_risetime": [fit["risetime_polyfit"] for fit in angleaveragedfits],
+                f"{band_name}_band_peakmag": [fit["peak_mag_polyfit"] for fit in angleaveragedfits],
+                f"{band_name}_band_deltam15": [fit["deltam15_polyfit"] for fit in angleaveragedfits],
             }),
             get_viewing_angle_data_folder(args)
             / (
@@ -212,8 +201,8 @@ def calculate_peak_time_mag_deltam15(
     angle: int,
     key: str,
     args: argparse.Namespace,
-) -> None:
-    """Calculate band peak time, peak magnitude and delta m15."""
+) -> dict[str, float]:
+    """Return the fitted peak magnitude, rise time, and delta m15 of a band, and delta m40 with --include-delta-m40."""
     if args.timemin is None or args.timemax is None:
         exit_with_error(
             "The peak time, the rise time and delta m15 need a time range for the fit", "Give --timemin and --timemax"
@@ -257,13 +246,11 @@ def calculate_peak_time_mag_deltam15(
     deltam15_polyfit = mag_after15days_polyfit - peakmag_polyfit
     print(f"deltam15 polyfit = {deltam15_polyfit}")
 
-    args.band_risetime_polyfit.append(tmax_polyfit)
-    args.band_peakmag_polyfit.append(peakmag_polyfit)
-    args.band_deltam15_polyfit.append(deltam15_polyfit)
+    # the keys are the columns of the viewing angle data file, in the order of the file
+    fit = {"peak_mag_polyfit": peakmag_polyfit, "risetime_polyfit": tmax_polyfit, "deltam15_polyfit": deltam15_polyfit}
     if args.include_delta_m40:
-        deltam40_polyfit = fxfit[index_of_days_after_peak(40)] - peakmag_polyfit
-        print(f"deltam40 polyfit = {deltam40_polyfit}")
-        args.band_deltam40_polyfit.append(deltam40_polyfit)
+        fit["deltam40_polyfit"] = fxfit[index_of_days_after_peak(40)] - peakmag_polyfit
+        print(f"deltam40 polyfit = {fit['deltam40_polyfit']}")
 
     # Plotting the lightcurves for all viewing angles specified in the command line along with the
     # polynomial fit and peak mag, risetime to peak and delta m15 marked on the plots to check the
@@ -282,6 +269,8 @@ def calculate_peak_time_mag_deltam15(
             angle,
             args,
         )
+
+    return fit
 
 
 def lightcurve_polyfit(time: Sequence[float], magnitude: npt.NDArray[np.floating]) -> tuple[t.Any, t.Any]:
@@ -483,14 +472,26 @@ def set_scatterplot_plot_params(axis: mplax.Axes, args: argparse.Namespace) -> N
 
 
 def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
-    modelpaths: Sequence[Path | str], key: str, args: argparse.Namespace
+    modelpaths: Sequence[Path | str],
+    key: str,
+    angleaveragedfits: Sequence[Mapping[str, float]],
+    args: argparse.Namespace,
 ) -> None:
-    """Scatter plot peak magnitude against rise time or decline rate, one point per direction bin per model."""
+    """Scatter plot peak magnitude against rise time or decline rate, one point per direction bin per model.
+
+    angleaveragedfits gives the fit of the angle-averaged light curve of each model.
+    """
+    if args.make_viewing_angle_peakmag_risetime_scatter_plot:
+        fitkey, xcolumn, xlabel, filesuffix = "risetime_polyfit", "risetime_days", "Rise Time [days]", "risetime"
+    else:
+        fitkey, xcolumn, xlabel, filesuffix = "deltam15_polyfit", "deltam15", rf"$\Delta$m$_{{15}}$({key})", "dm15"
     fig, axesgrid = make_frame_figure(args)
     ax = axesgrid[0][0]
 
     datafolder = get_viewing_angle_data_folder(args)
     dfplotted: list[pl.DataFrame] = []
+    # each model gives a tuple of its direction bin points and its angle-averaged point for the legend
+    legendhandles: list[tuple[t.Any, t.Any]] = []
     modelnames = [get_model_name(modelpath) for modelpath in modelpaths]
     datanames = get_viewing_angle_data_names(modelpaths)
     for ii, modelname in enumerate(modelnames):
@@ -498,39 +499,24 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
         viewing_angle_plot_data = read_wsv(datafilename, comment_prefix="#")
 
         band_peak_mag_viewing_angles = viewing_angle_plot_data["peak_mag_polyfit"].cast(pl.Float64).to_numpy()
-        band_delta_m15_viewing_angles = viewing_angle_plot_data["deltam15_polyfit"].cast(pl.Float64).to_numpy()
-        band_risetime_viewing_angles = viewing_angle_plot_data["risetime_polyfit"].cast(pl.Float64).to_numpy()
+        xvalues_viewingangles = viewing_angle_plot_data[fitkey].cast(pl.Float64).to_numpy()
+        # the error bars below use the angle-averaged x value whether or not its point is drawn
+        xaverage, peakmagaverage = angleaveragedfits[ii][fitkey], angleaveragedfits[ii]["peak_mag_polyfit"]
 
         plotkwargsviewingangles, plotkwargsangleaveraged = set_scatterplot_plotkwargs(
             ii, viewing_angle_plot_data, datafilename, args
         )
 
-        # the error bars below use the angle-averaged x value whether or not its point is drawn
-        if args.make_viewing_angle_peakmag_risetime_scatter_plot:
-            xvalues_viewingangles = band_risetime_viewing_angles
-            xvalues_angleaveraged = args.band_risetime_angle_averaged_polyfit[ii]
-        else:
-            xvalues_viewingangles = band_delta_m15_viewing_angles
-            xvalues_angleaveraged = args.band_delta_m15_angle_averaged_polyfit[ii]
-
         a0 = ax.scatter(xvalues_viewingangles, band_peak_mag_viewing_angles, **plotkwargsviewingangles)
-        # the angle average has the direction bin -1, as in the readers of the light curves
-        # the fit of the angle average gives an array of one value. The error bars have the angle average as their
-        # centre, thus the table keeps that row while the plot draws its point or its error bars
+        # the angle average has the direction bin -1, as in the readers of the light curves. The error bars have the
+        # angle average as their centre, thus the table keeps that row while the plot draws its point or its error bars
         # the error bars give the standard deviation over the direction bins, thus the row of the average holds them
         xerr = None if args.noerrorbars else float(np.std(xvalues_viewingangles))
         yerr = None if args.noerrorbars else float(np.std(band_peak_mag_viewing_angles))
         averagepoint = (
             []
             if args.noangleaveraged and args.noerrorbars
-            else [
-                (-1, float(xaverage), float(yaverage), xerr, yerr)
-                for xaverage, yaverage in zip(
-                    np.ravel(xvalues_angleaveraged),
-                    np.ravel(args.band_peakmag_angle_averaged_polyfit[ii]),
-                    strict=False,
-                )
-            ]
+            else [(-1, float(xaverage), float(peakmagaverage), xerr, yerr)]
         )
         dfplotted.append(
             pl.DataFrame(
@@ -547,9 +533,9 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
                 ],
                 schema={
                     "dirbin": pl.Int64,
-                    "x": pl.Float64,
+                    xcolumn: pl.Float64,
                     "peakmag": pl.Float64,
-                    "x_err": pl.Float64,
+                    f"{xcolumn}_err": pl.Float64,
                     "peakmag_err": pl.Float64,
                 },
                 orient="row",
@@ -563,28 +549,19 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
         )
 
         if not args.noangleaveraged:
-            p0 = ax.scatter(
-                xvalues_angleaveraged, args.band_peakmag_angle_averaged_polyfit[ii], **plotkwargsangleaveraged
-            )
-            args.plotvalues.append((a0, p0))
+            p0 = ax.scatter(xaverage, peakmagaverage, **plotkwargsangleaveraged)
+            legendhandles.append((a0, p0))
         else:
-            args.plotvalues.append((a0, a0))
-        if not args.noerrorbars:
-            ax.errorbar(
-                xvalues_angleaveraged,
-                args.band_peakmag_angle_averaged_polyfit[ii],
-                xerr=np.std(xvalues_viewingangles),
-                yerr=np.std(band_peak_mag_viewing_angles),
-                ecolor=args.color[ii],
-                capsize=2,
-            )
+            legendhandles.append((a0, a0))
+        if xerr is not None:
+            ax.errorbar(xaverage, peakmagaverage, xerr=xerr, yerr=yerr, ecolor=args.color[ii], capsize=2)
 
     linelabels = [get_series_label(args.label, ii, modelname) for ii, modelname in enumerate(modelnames)]
 
     set_legend(
         ax,
         args,
-        handles=args.plotvalues,
+        handles=legendhandles,
         labels=linelabels,
         numpoints=1,
         handler_map={tuple: HandlerTuple(ndivide=None)},
@@ -594,22 +571,12 @@ def make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(
         frameon=False,
     )
 
-    if args.make_viewing_angle_peakmag_risetime_scatter_plot:
-        xlabel = "Rise Time [days]"
-    else:
-        xlabel = rf"$\Delta$m$_{{15}}$({key})"
-
     ax.set_xlabel(xlabel)
     ax.set_ylabel(rf"M$_{{\mathrm{{{key}}}}}$, max")
     set_scatterplot_plot_params(ax, args)
 
-    filestem = f"{get_filename_part(key)}_band_{get_filename_part(datanames[0])}"
-    if args.make_viewing_angle_peakmag_risetime_scatter_plot:
-        filename = f"{filestem}_risetime_peakmag.pdf"
-    else:
-        filename = f"{filestem}_dm15_peakmag.pdf"
-    xcolumn = "risetime_days" if args.make_viewing_angle_peakmag_risetime_scatter_plot else "deltam15"
-    dftable = pl.concat(dfplotted).rename({"x": xcolumn, "x_err": f"{xcolumn}_err"}) if dfplotted else pl.DataFrame()
+    filename = f"{get_filename_part(key)}_band_{get_filename_part(datanames[0])}_{filesuffix}_peakmag.pdf"
+    dftable = pl.concat(dfplotted) if dfplotted else pl.DataFrame()
     output_data(args, {"": dftable}, datafolder / filename)
     save_figure(fig, datafolder / filename, format="pdf", args=args)
 
@@ -742,27 +709,15 @@ def peakmag_risetime_declinerate_init(
             "Give --filter to make the light curve of each virtual packet observer from its spectra.",
         )
 
-    args.plotvalues = []  # a0 and p0 values for viewing angle scatter plots
-
-    args.band_risetime_polyfit = []
-    args.band_peakmag_polyfit = []
-    args.band_deltam15_polyfit = []
-    if args.include_delta_m40:
-        args.band_deltam40_polyfit = []
-
-    args.band_risetime_angle_averaged_polyfit = []
-    args.band_peakmag_angle_averaged_polyfit = []
-    args.band_delta_m15_angle_averaged_polyfit = []
-
     # two models of one name need two data files, thus each file takes the data name of its model
     datanames = get_viewing_angle_data_names(modelpaths)
 
     # a band light curve comes from the spectra, and the bolometric light curve from light_curve.out
     plottinglist: list[str] = list(args.filter) if args.filter else ["lightcurve"]
 
+    # the fit of the angle-averaged light curve of each model
+    angleaveragedfits: list[dict[str, float]] = []
     for modelpath, dataname in zip(modelpaths, datanames, strict=True):
-        lcdataframes: dict[int, pl.LazyFrame] = {}
-
         # check if doing viewing angle stuff, and if so define which data to use
         dirbins, _ = parse_directionbin_args(modelpath, args)
         if (args.plotviewingangle or args.plotvspecpol) and wants_angle_averaged_data(args):
@@ -811,8 +766,8 @@ def peakmag_risetime_declinerate_init(
             else {}
         )
 
-        # the fit results of one band fill the shared lists, and the save function then empties them for the next band
         for band_name in plottinglist:
+            fits: list[dict[str, float]] = []
             for dirbin in dirbins:
                 if args.filter:
                     time, brightness = get_band_lightcurve(
@@ -823,19 +778,20 @@ def peakmag_risetime_declinerate_init(
                     brightness = lightcurve_data["mag"].to_numpy()
                     time = lightcurve_data["time_days"].to_list()
 
-                # Calculating band peak time, peak magnitude and delta m15
-                calculate_peak_time_mag_deltam15(time, brightness, dataname, dirbin, band_name, args)
+                fits.append(calculate_peak_time_mag_deltam15(time, brightness, dataname, dirbin, band_name, args))
 
-            # write the data of this band to a file. A later plot then reads the file in place of the slow fit
-            save_viewing_angle_data_for_plotting(band_name, dataname, dirbins, args)
+            if args.save_viewing_angle_peakmag_risetime_delta_m15_to_file:
+                # a later plot then reads the file in place of the slow fit
+                save_viewing_angle_data_for_plotting(band_name, dataname, dirbins, fits, args)
+            elif band_name == plottinglist[0]:
+                # the angle-averaged modes fit dirbin -1 alone, and the first band alone gives one entry for each model
+                angleaveragedfits.append(fits[0])
 
-    # Saving all this viewing angle info for each model to a file so that it is available to plot if required again
-    # as it takes relatively long to run this for all viewing angles
-    write_viewing_angle_data(plottinglist[0], datanames, args)
+    # the fits of all the viewing angles take a long time, thus a file keeps them for a later plot
+    write_viewing_angle_data(plottinglist[0], datanames, angleaveragedfits, args)
 
     if args.make_viewing_angle_peakmag_delta_m15_scatter_plot or args.make_viewing_angle_peakmag_risetime_scatter_plot:
-        make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(modelpaths, plottinglist[0], args)
-        return
+        make_viewing_angle_risetime_peakmag_delta_m15_scatter_plot(modelpaths, plottinglist[0], angleaveragedfits, args)
 
 
 def plot_viewanglebrightness_at_fixed_time(modelpath: Path, args: argparse.Namespace) -> None:

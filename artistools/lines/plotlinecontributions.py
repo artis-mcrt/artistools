@@ -497,8 +497,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
     if args.xmin is None or args.xmax is None:
         exit_with_error("Give the wavelength range of the lines", "e.g. --lambdamin 8400 --lambdamax 8700")
-    if args.maxlines < 1:
-        exit_with_error(f"--maxlines {args.maxlines} gives no lines", "Give a number of 1 or more")
 
     timestep = get_selected_timestep(args.modelpath, args.timestep, args.timedays)
     print(f"Line contributions of {get_model_logname(args.modelpath)} at timestep {timestep}")

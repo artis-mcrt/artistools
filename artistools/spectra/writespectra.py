@@ -64,30 +64,26 @@ def write_flambda_spectra(modelpath: Path, outdirectory: Path) -> None:
         exit_with_error(f"{modelpath} has no time range in which the spectra are valid, e.g. the run stopped early")
     timesteps = [ts for ts in range(tslast + 1) if tmids[ts] >= tmin_d_valid and tmids[ts] <= tmax_d_valid]
 
-    lzspectra_of_timestep = [
-        scan_spectra(modelpath=modelpath, timestepmin=timestep, timestepmax=timestep, directionbins=[-1])
-        for timestep in timesteps
-    ]
-    if any(-1 not in lzspectra for lzspectra in lzspectra_of_timestep):
-        msg = f"{modelpath} holds no spec.out and no specpol.out, thus there is no angle-averaged spectrum to write"
-        raise FileNotFoundError(msg)
-
-    # one collect_all call evaluates the queries of all the timesteps together
-    dfspectra_alltimesteps = pl.collect_all([lzspectra[-1] for lzspectra in lzspectra_of_timestep])
-    for timestep, dfspectrum in zip(timesteps, dfspectra_alltimesteps, strict=True):
-        write_spectrum(dfspectrum, outfilepath=outdirectory / f"spectrum_ts{timestep:02.0f}_{tmids[timestep]:.2f}d.txt")
-
-    lzspectra_polar = [
-        scan_spectra(
-            modelpath=modelpath, timestepmin=timestep, timestepmax=timestep, average_over_phi=True, directionbins=[0]
-        )
-        for timestep in timesteps
-    ]
-    if lzspectra_polar and 0 in lzspectra_polar[0]:
-        dfspectra_polar = pl.collect_all([dirbin_spectra[0] for dirbin_spectra in lzspectra_polar])
-        for timestep, dfspectrum in zip(timesteps, dfspectra_polar, strict=True):
+    # scan_spectra raises an error for a model with no angle-averaged spectrum. A model with no direction bins gives
+    # no spectrum of the polar angle bin 0
+    for fileprefix, average_over_phi, dirbin in (("spectrum", False, -1), ("spectrum_polar00", True, 0)):
+        lzspectra_of_timestep = [
+            scan_spectra(
+                modelpath=modelpath,
+                timestepmin=timestep,
+                timestepmax=timestep,
+                average_over_phi=average_over_phi,
+                directionbins=[dirbin],
+            )
+            for timestep in timesteps
+        ]
+        if not lzspectra_of_timestep or dirbin not in lzspectra_of_timestep[0]:
+            continue
+        # one collect_all call evaluates the queries of all the timesteps together
+        dfspectra = pl.collect_all([lzspectra[dirbin] for lzspectra in lzspectra_of_timestep])
+        for timestep, dfspectrum in zip(timesteps, dfspectra, strict=True):
             write_spectrum(
-                dfspectrum, outfilepath=outdirectory / f"spectrum_polar00_ts{timestep:02.0f}_{tmids[timestep]:.2f}d.txt"
+                dfspectrum, outfilepath=outdirectory / f"{fileprefix}_ts{timestep:02.0f}_{tmids[timestep]:.2f}d.txt"
             )
 
 
