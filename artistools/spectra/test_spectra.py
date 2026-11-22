@@ -4,6 +4,7 @@ import gzip
 import itertools
 import lzma
 import math
+import os
 import re
 import typing as t
 from collections.abc import Callable
@@ -3947,3 +3948,16 @@ def test_polarisation_marks_zero_intensity_as_unavailable(capsys: pytest.Capture
     result = plotspectra.get_polarisation_spectrum(stokes, "3.0", args)
     assert result["3.0"].to_list() == [None, None]
     assert "no value at 2 of 2 points" in capsys.readouterr().out
+
+
+def test_vspecpol_rank_files_take_the_newest_copy_of_each_rank(tmp_path: Path) -> None:
+    """A continued run writes a rank file that also holds the flux of the earlier runs, thus the newest file applies."""
+    oldfile = tmp_path / "vspecpol_0000.out"
+    newfile = tmp_path / "1234.slurm" / "vspecpol_0000.out"
+    newfile.parent.mkdir()
+    for rankfile, mtime in ((oldfile, 1_000_000), (newfile, 2_000_000)):
+        rankfile.write_text("0\n", encoding="utf-8")
+        os.utime(rankfile, (mtime, mtime))
+
+    with mock.patch.object(atspectra, "get_nprocs", return_value=1):
+        assert atspectra.get_vspecpol_rank_files(tmp_path) == [newfile]

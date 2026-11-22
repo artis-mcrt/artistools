@@ -953,8 +953,9 @@ def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
 def get_vspecpol_rank_files(modelpath: Path | str) -> list[Path]:
     """Return the file of the virtual packet spectra of each MPI rank, which make_virtual_spectra_summed_file sums.
 
-    The search covers the model folder and then its run folders. A subfolder with an input.txt is a different model,
-    thus the search skips it.
+    The search covers the model folder and its run folders. A subfolder with an input.txt is a different model,
+    thus the search skips it. A continued run writes a file that also holds the flux of the earlier runs. Thus, if
+    two folders hold a file for a rank, the newest file applies.
     """
     modelfolder = Path(modelpath)
     searchfolders = [
@@ -964,18 +965,15 @@ def get_vspecpol_rank_files(modelpath: Path | str) -> list[Path]:
     rankfiles = []
     for mpirank in range(get_nprocs(modelfolder)):
         filenames = [f"vspecpol_{mpirank:04d}.out", f"vspecpol_{mpirank}-0.out"]
-        rankfile = next(
-            (
-                path
-                for folder in searchfolders
-                if (path := firstexisting_or_none(filenames, folder=folder, search_subfolders=False)) is not None
-            ),
-            None,
-        )
-        if rankfile is None:
+        candidates = [
+            path
+            for folder in searchfolders
+            if (path := firstexisting_or_none(filenames, folder=folder, search_subfolders=False)) is not None
+        ]
+        if not candidates:
             msg = f"{modelfolder} and its run folders hold no {filenames[0]} and no {filenames[1]}"
             raise FileNotFoundError(msg)
-        rankfiles.append(rankfile)
+        rankfiles.append(max(candidates, key=lambda path: path.stat().st_mtime))
     return rankfiles
 
 
