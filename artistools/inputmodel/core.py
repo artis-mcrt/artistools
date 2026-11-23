@@ -56,6 +56,7 @@ from artistools.misc import polars_source
 from artistools.misc import print_detail
 from artistools.misc import print_saved
 from artistools.misc import print_warning
+from artistools.misc import raise_if_no_final_line_end
 from artistools.misc import read_keyword_model_header
 from artistools.misc import read_parquet_cache_metadata
 from artistools.misc import read_wsv
@@ -66,6 +67,7 @@ from artistools.misc import SPHERICAL_EDGE_COORDINATES
 from artistools.misc import UNIFORM_EDGE_COORDINATES
 from artistools.misc import validate_model_edges
 from artistools.misc import with_compressed_extension
+from artistools.misc import with_compressed_sibling
 from artistools.misc import without_compressed_extension
 from artistools.misc import write_file_atomic
 from artistools.misc import write_parquet_atomic
@@ -198,6 +200,9 @@ def scan_modelfile_text(
 
     with zopen(filename) as fmodel:
         formatversion = get_model_format_version(fmodel.readline(), filename)
+    if formatversion == 2:
+        # a cut inside the last value gives a valid number, and the key cell_line_count does not find it
+        raise_if_no_final_line_end(with_compressed_sibling(filename))
 
     with zopen(filename) as fmodel:
         onelinepercellformat: bool | None = None
@@ -953,7 +958,8 @@ def require_no_ye_file_of_earlier_model(outputfolder: Path, modelpath: Path | st
     sn3d reads Ye.txt after model.txt, thus the values of that file would replace the electron fractions of the new
     model. The command does not delete the file, because a version 1 model can have its own Ye.txt.
     """
-    oldyefiles = [path for path in get_file_copies(outputfolder / "Ye.txt") if path.is_file()]
+    # sn3d searches the model folder, data/, and artis/data/, thus a Ye.txt in each of them applies
+    oldyefiles = get_sn3d_file_copies(get_sn3d_model_folder(outputfolder), "Ye.txt")
     if oldyefiles:
         exit_with_error(
             f"{oldyefiles[0]} is a file of an earlier model, and the new model.txt of {modelpath} has format version 1",
@@ -1821,14 +1827,19 @@ def get_elemabundances_of_model_columns(dfmodel: pl.LazyFrame) -> pl.LazyFrame:
     """Return the mass fraction of each element of each cell, as sn3d calculates it for a version 2 model.txt.
 
     The mass fraction of an element is the sum of its nuclide columns and of its column X_<element>_otherstable.
-    The result has the columns of scan_initelemabundances: inputcellid, and X_H to the last element (Z = 30 or more).
+    sn3d reads a small negative value as 0, thus the sum takes such a value as 0. The result has the columns of
+    scan_initelemabundances: inputcellid, and X_H to the last element (Z = 30 or more).
     """
     elementcols = get_element_columns_of_model(dfmodel.collect_schema().names())
     max_atomic_number = max([30, *elementcols])
     return dfmodel.select(
         "inputcellid",
         *[
-            (pl.sum_horizontal(elementcols[atomic_number]) if atomic_number in elementcols else pl.lit(0.0))
+            (
+                pl.sum_horizontal(clamped_nuclide_massfrac(col) for col in elementcols[atomic_number])
+                if atomic_number in elementcols
+                else pl.lit(0.0)
+            )
             .cast(pl.Float32)
             .alias(f"X_{get_elsymbol(atomic_number)}")
             for atomic_number in range(1, max_atomic_number + 1)
@@ -2695,10 +2706,23 @@ def scan_initelemabundances(modelpath: Path | str = ".", printwarningsonly: bool
                 )
             return get_elemabundances_of_model_columns(scan_modeldata(modelpath, printwarningsonly=True)[0])
 
-    # sn3d reads the abundances.txt beside model.txt, and a file in a subfolder is of a different model
-    return scan_abundance_file(
-        firstexisting("abundances.txt", folder=modelfolder, tryzipped=True, search_subfolders=False), printwarningsonly
-    )
+    abundancefile = find_abundance_file(modelfolder)
+    if abundancefile is None:
+        msg = f"sn3d finds no abundances.txt for the model.txt in {modelfolder}"
+        raise FileNotFoundError(msg)
+    return scan_abundance_file(abundancefile, printwarningsonly)
+
+
+def find_abundance_file(inputfolder: Path) -> Path | None:
+    """Return the abundances.txt that sn3d reads for the model.txt in a folder, or None.
+
+    sn3d searches the model folder, data/, and artis/data/, as for each input file. A different subfolder is of a
+    different model. artistools also reads a copy beside model.txt that gzip or xz compressed, which sn3d does not.
+    """
+    sn3dfile = find_sn3d_input_file("abundances.txt", get_sn3d_model_folder(inputfolder))
+    if sn3dfile is not None:
+        return sn3dfile
+    return firstexisting_or_none("abundances.txt", folder=inputfolder, tryzipped=True, search_subfolders=False)
 
 
 def scan_abundance_file(textfilepath: Path, printwarningsonly: bool = False) -> pl.LazyFrame:

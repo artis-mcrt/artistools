@@ -4685,6 +4685,17 @@ def test_spherical_model_reader_stops_for_a_wrong_file(
         at.inputmodel.scan_modeldata(tmp_path)
 
 
+def test_spherical_model_reader_stops_for_a_cut_last_line(tmp_path: Path) -> None:
+    """A cut inside the last value gives a valid number, e.g. 1.0 of 1.0e-12, thus only the missing line end shows it.
+
+    The key cell_line_count finds a lost line, and the reader accepted a file that ended inside its last line.
+    """
+    (tmp_path / "model.txt").write_text("\n".join(SPHERICAL2D_MODEL_LINES), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="does not end with a line end"):
+        at.inputmodel.scan_modeldata(tmp_path)
+
+
 @pytest.mark.parametrize("coordinates", ["spherical1d", "cylindrical2d", "cartesian3d"])
 def test_format_version_2_gives_the_cells_of_version_1(coordinates: str, tmp_path: Path) -> None:
     """A model in format version 2 gives the cells and the metadata of the same model in format version 1.
@@ -4782,6 +4793,9 @@ def test_otherstable_columns_give_the_element_mass_fractions() -> None:
         dfmodel.with_columns(X_Ni57=pl.Series([-5e-7, 0.25])), dfelabundances
     )
     assert dfnegative["X_Ni_otherstable"].to_list() == [0.125, 0.0]
+    # the sum of the element also takes such a value as 0, as sn3d does
+    dfnegativeelements = at.inputmodel.core.get_elemabundances_of_model_columns(dfnegative.lazy()).collect()
+    assert dfnegativeelements["X_Ni"].to_list() == [0.625, 0.5]
 
     # a null or a NaN mass fraction is not known, and the otherstable column would give it as 0
     for unknownvalue in (None, float("nan")):
@@ -5130,6 +5144,26 @@ def test_ye_file_to_merge_follows_the_search_of_sn3d(tmp_path: Path, monkeypatch
     (linkedmodel / "input.txt").write_text("", encoding="utf-8")
     (linkedmodel / "Ye.txt").write_text("1\n1 0.49\n", encoding="utf-8")
     assert find_ye_file_to_merge(linkedmodel / "data", tmp_path / "linkedout", 2) == linkedmodel / "Ye.txt"
+
+
+def test_abundances_and_old_ye_files_follow_the_search_of_sn3d(tmp_path: Path) -> None:
+    """sn3d searches the model folder, data/, and artis/data/ for each input file, also for a model.txt in data/.
+
+    The search for abundances.txt took only the folder of model.txt, thus a conversion of data/model.txt stopped.
+    The check for the Ye.txt of an earlier model took only the output folder, and sn3d then read a data/Ye.txt.
+    """
+    from artistools.inputmodel.core import find_abundance_file
+    from artistools.inputmodel.core import require_no_ye_file_of_earlier_model
+
+    modelfolder = tmp_path / "model"
+    (modelfolder / "data").mkdir(parents=True)
+    (modelfolder / "input.txt").write_text("", encoding="utf-8")
+    (modelfolder / "abundances.txt").write_text("1 1.0\n", encoding="utf-8")
+    assert find_abundance_file(modelfolder / "data") == modelfolder / "abundances.txt"
+
+    (modelfolder / "data" / "Ye.txt").write_text("1\n1 0.3\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        require_no_ye_file_of_earlier_model(modelfolder, tmp_path / "source")
 
 
 @pytest.mark.parametrize(

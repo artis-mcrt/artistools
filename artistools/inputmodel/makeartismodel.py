@@ -13,6 +13,7 @@ from artistools.constants import Msun_to_g
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import CELL_ID_FILE_NAMES
 from artistools.inputmodel.core import dimension_reduce_model
+from artistools.inputmodel.core import find_abundance_file
 from artistools.inputmodel.core import find_ye_file_to_merge
 from artistools.inputmodel.core import get_elemabundances_of_model_columns
 from artistools.inputmodel.core import get_model_file_path
@@ -230,13 +231,10 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
     if modelmeta["formatversion"] == 2:
         dfelabundances = get_elemabundances_of_model_columns(dfmodel.lazy()).collect()
     else:
-        # sn3d reads the abundances.txt beside model.txt, and a file in a subfolder is of a different model
-        abundancefile = firstexisting_or_none(
-            "abundances.txt", folder=sourcefolder, tryzipped=True, search_subfolders=False
-        )
+        abundancefile = find_abundance_file(sourcefolder)
         if abundancefile is None:
             exit_with_error(
-                f"{sourcefolder} holds no abundances.txt beside its model.txt of format version 1",
+                f"sn3d finds no abundances.txt for the model.txt of format version 1 in {sourcefolder}",
                 "sn3d needs abundances.txt for such a model, thus the element mass fractions of the model are not"
                 " known. Give the model its abundances.txt",
             )

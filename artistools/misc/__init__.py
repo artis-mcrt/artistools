@@ -139,6 +139,7 @@ from artistools.misc.fileio import read_wsv as read_wsv
 from artistools.misc.fileio import readnoncommentline as readnoncommentline
 from artistools.misc.fileio import SN3D_INPUT_FOLDERS as SN3D_INPUT_FOLDERS
 from artistools.misc.fileio import with_compressed_extension as with_compressed_extension
+from artistools.misc.fileio import with_compressed_sibling as with_compressed_sibling
 from artistools.misc.fileio import without_compressed_extension as without_compressed_extension
 from artistools.misc.fileio import write_file_atomic as write_file_atomic
 from artistools.misc.fileio import write_text_file_atomic as write_text_file_atomic
