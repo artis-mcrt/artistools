@@ -4717,6 +4717,24 @@ def test_spherical_model_reader_stops_for_a_wrong_file(
         at.inputmodel.scan_modeldata(tmp_path)
 
 
+@pytest.mark.parametrize("formatversion", [1, 2])
+def test_model_reader_keeps_each_digit_of_a_tracer_count(tmp_path: Path, formatversion: int) -> None:
+    """The reader gave tracercount as Float32, thus a count of 16777217 became 16777216."""
+    # the cell ids start at 1 in version 1 and at 0 in version 2
+    dfmodel = pl.DataFrame({
+        "inputcellid": [2 - formatversion, 3 - formatversion],
+        "vel_r_max_kmps": [1000.0, 2000.0],
+        "logrho": [-12.0, -12.0],
+        "tracercount": [16777217, 123456789],
+    })
+    at.inputmodel.save_modeldata(
+        dfmodel, outpath=tmp_path, modelmeta={"t_model_init_days": 1.0, "formatversion": formatversion}
+    )
+    dfread = at.inputmodel.scan_modeldata(tmp_path, printwarningsonly=True)[0].collect()
+    assert dfread["tracercount"].to_list() == [16777217, 123456789]
+    assert dfread.schema["tracercount"] == pl.Int64
+
+
 @pytest.mark.parametrize(
     ("qvalue", "match"), [("nan", "the columns q hold a value that is not finite"), ("-5", "have a negative q")]
 )

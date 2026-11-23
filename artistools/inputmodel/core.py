@@ -375,7 +375,7 @@ def scan_modelfile_text(
                 skip_rows=0 if formatversion == 2 else numheaderrows,
                 skip_lines=numheaderrows if formatversion == 2 else 0,
                 comment_prefix="#" if formatversion == 2 else None,
-                schema={col: pl.Int32 if col == "inputcellid" else pl.Float32 for col in columns},
+                schema={col: get_reader_column_type(col) for col in columns},
                 # A trailing space gives an empty last field. Version 1 ignores each field after the last column.
                 # sn3d stops for such a field in version 2, thus the reader raises and the slow reader takes the file
                 truncate_ragged_lines=formatversion == 1,
@@ -440,7 +440,14 @@ def scan_modelfile_text(
                 raise ValueError(msg)
             dfmodel = pl.concat([dfmodel, dfmodeloddlines], how="horizontal")
 
-        dfmodel = dfmodel.head(maxrowcount).with_columns(pl.exclude("inputcellid").cast(pl.Float32)).lazy()
+        dfmodel = (
+            dfmodel
+            .head(maxrowcount)
+            .with_columns(
+                pl.col(col).cast(get_reader_column_type(col)) for col in dfmodel.columns if col != "inputcellid"
+            )
+            .lazy()
+        )
 
     if (
         formatversion == 2
@@ -452,6 +459,15 @@ def scan_modelfile_text(
 
     # an old model.txt names the electron fraction cellYe, and Ye is the name everywhere after this point
     dfmodel = dfmodel.sort("inputcellid").rename({"velocity_outer": "vel_r_max_kmps", "cellYe": "Ye"}, strict=False)
+    if (
+        "tracercount" in dfmodel.collect_schema().names()
+        and dfmodel
+        .select((pl.col("tracercount").is_finite() & (pl.col("tracercount") == pl.col("tracercount").round())).all())
+        .collect()
+        .item()
+    ):
+        # a count of trajectories is a whole number, and the writer gives an integer column with all its digits
+        dfmodel = dfmodel.with_columns(pl.col("tracercount").cast(pl.Int64))
 
     # In version 1, sn3d stops for a file with too few cells. It takes the id of the first cell (0 or 1) as the start
     # of the cell index, and each id after it must be one more than the id before it
@@ -758,8 +774,8 @@ IS_WHOLE_INPUTCELLID = (
 # incorrect, e.g. a new column or a different data type in either one. Version 2 checks the cell count and the
 # cell ids of model.txt, and it puts the second line of a cell beside the first line in the order of the file.
 # Version 3 gives the key coordinates in the metadata of each model. Version 4 gives the key formatversion.
-# Version 5 checks more values of format version 2, as sn3d does.
-CACHEVERSION = 5
+# Version 5 checks more values of format version 2, as sn3d does. Version 6 gives tracercount as Int64.
+CACHEVERSION = 6
 
 
 def scan_parquet_cache(
@@ -1955,6 +1971,14 @@ ELEMENT_MASSFRAC_SUM_LIMIT = 1.0 + 1e-3
 MIN_INPUT_MASSFRAC = -1e-6
 # sn3d stops for X_Fegroup above this value, which permits rounding. A nuclide mass fraction has the maximum 1
 MAX_FEGROUP_MASSFRAC = 1.0 + 1e-3
+
+
+def get_reader_column_type(col: str) -> type[pl.DataType]:
+    """Return the type that the readers of model.txt give a column.
+
+    Float32 gives a tracer count of 16777217 as 16777216, and Float64 gives each whole number to 2^53 with no change.
+    """
+    return {"inputcellid": pl.Int32, "tracercount": pl.Float64}.get(col, pl.Float32)
 
 
 def get_columns_above_max_massfrac(dfmodel: pl.LazyFrame) -> list[str]:
