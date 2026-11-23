@@ -1,3 +1,4 @@
+import os
 import shutil
 import typing as t
 from collections.abc import Callable
@@ -114,7 +115,8 @@ def test_average_vspecpol_files(tmp_path: Path) -> None:
     """--averagevspecpolfiles averages the vspecpol_total files of every -specpath model.
 
     make_averaged_vspecfiles read args.modelpath, and plotspectra stores every path under
-    args.specpath, thus the command stopped with AttributeError before this test existed.
+    args.specpath, thus the command stopped with AttributeError before this test existed. The average runs in place
+    of the polarisation plot, thus a ratio keeps the two model paths.
     """
     modeldirs = [tmp_path / "model_a", tmp_path / "model_b"]
     for modeldir in modeldirs:
@@ -122,7 +124,9 @@ def test_average_vspecpol_files(tmp_path: Path) -> None:
         for filename in ("vspecpol_total-0.out", "vspecpol_total-1.out"):
             shutil.copy(at.get_path("testdata") / "vspecpolmodel" / filename, modeldir / filename)
 
-    at.spectra.plot(argsraw=[], specpath=[str(modeldir) for modeldir in modeldirs], averagevspecpolfiles=True)
+    at.spectra.plot(
+        argsraw=[], specpath=[str(modeldir) for modeldir in modeldirs], averagevspecpolfiles=True, stokesparam="Q/I"
+    )
 
     for specindex in (0, 1):
         averagedpath = modeldirs[0] / f"vspecpol_averaged-{specindex}.out"
@@ -158,6 +162,17 @@ def test_make_virtual_spectra_summed_file(tmp_path: Path) -> None:
         assert np.array_equal(total[0], source[0]), "the time header must not be summed"
         assert np.array_equal(total[1:, 0], source[1:, 0]), "the frequency column must not be summed"
         assert np.allclose(total[1:, 1:], 2 * source[1:, 1:], rtol=1e-12, atol=0.0)
+
+    # a continued run writes the rank files again, and a total that is older than a rank file then misses flux
+    totalfile = tmp_path / "vspecpol_total-0.out"
+    totaltime = totalfile.stat().st_mtime - 2000.0
+    os.utime(totalfile, (totaltime, totaltime))
+    for ranktime, expectsnewsum in ((totaltime - 1000.0, False), (totaltime + 1000.0, True)):
+        for mpirank in range(2):
+            os.utime(tmp_path / f"vspecpol_{mpirank:04d}.out", (ranktime, ranktime))
+        at.spectra.scan_vspecpol_data.cache_clear()
+        at.spectra.scan_vspecpol_data(tmp_path, 0)
+        assert (totalfile.stat().st_mtime > totaltime) == expectsnewsum, ranktime
 
 
 def test_vpkt_frompackets_spectrum_keeps_the_rows_inside_the_vpkt_ranges(
@@ -224,3 +239,23 @@ def test_vpkt_frompackets_plot_refuses_a_time_range_outside_the_vpkt_window(
             timemin=125,
             timemax=135,
         )
+
+
+def test_vspecpol_rank_files_come_from_the_newest_run_folder_with_each_rank(tmp_path: Path) -> None:
+    """A restarted run reads the sums of the run before it, thus the newest complete run folder holds the sums.
+
+    The search took the oldest run folder first, thus it summed the flux of the first run alone. A newest run folder
+    with a file for only some ranks is not complete. ARTIS writes the files in the folder vspecpol of the run folder.
+    """
+    # get_nprocs reads the rank count from line 22 of input.txt
+    (tmp_path / "input.txt").write_text("\n".join(["0"] * 21 + ["2"]) + "\n", encoding="utf-8")
+    runfolders = [tmp_path / "9876543.slurm", tmp_path / "10000001.slurm" / "vspecpol", tmp_path / "10000002.slurm"]
+    for runfolder, mpiranks in zip(runfolders, ((0, 1), (0, 1), (0,)), strict=True):
+        runfolder.mkdir(parents=True)
+        for mpirank in mpiranks:
+            (runfolder / f"vspecpol_{mpirank:04d}.out").write_text("", encoding="utf-8")
+
+    assert at.spectra.core.get_vspecpol_rank_files(tmp_path) == [
+        runfolders[1] / "vspecpol_0000.out",
+        runfolders[1] / "vspecpol_0001.out",
+    ]

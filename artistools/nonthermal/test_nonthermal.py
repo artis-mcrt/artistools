@@ -1,5 +1,4 @@
 import argparse
-import itertools
 import math
 from pathlib import Path
 from unittest import mock
@@ -19,30 +18,90 @@ def read_ntstats(ostatfile: Path) -> pl.DataFrame:
 
 
 def test_spencerfano(tmp_path: Path) -> None:
-    """Solve the cell of the test model at 300 days, and save the plot of the solution."""
+    """Solve the cell of the test model at 300 days, and save the plot of the solution.
+
+    The solution takes the ion populations of the estimators, thus the copy of the model has no nlte_*.out file.
+    The command stopped with FileNotFoundError when the model folder held no such file.
+    """
+    modelcopy = tmp_path / "model"
+    modelcopy.mkdir()
+    for filepath in modelpath.iterdir():
+        if not filepath.name.startswith("nlte_"):
+            (modelcopy / filepath.name).symlink_to(filepath)
+
+    pynonthermal = pytest.importorskip("pynonthermal")
     ostatfile = tmp_path / "ntstats.txt"
-    at.nonthermal.spencerfano.main(
-        argsraw=[],
-        modelpath=modelpath,
-        timedays=300,
-        makeplot=True,
-        npts=200,
-        noexcitation=True,
-        outputfile=tmp_path,
-        ostat=str(ostatfile),
-    )
+    with mock.patch.object(
+        pynonthermal.SpencerFanoSolver,
+        "override_n_e",
+        side_effect=pynonthermal.SpencerFanoSolver.override_n_e,
+        autospec=True,
+    ) as mockoverride:
+        at.nonthermal.spencerfano.main(
+            argsraw=[],
+            modelpath=modelcopy,
+            timedays=300,
+            makeplot=True,
+            npts=200,
+            noexcitation=True,
+            outputfile=tmp_path,
+            ostat=str(ostatfile),
+        )
 
     # 300 days is in timestep 54
     assert len(list(tmp_path.glob("spencerfano_cell00000_ts054_*.pdf"))) == 1
+    # the solver takes the nne of the estimators as ARTIS does, and not the sum of the charges of the ions it holds
+    estimatornne = at.estimators.read_estimators(modelpath, timestep=54, modelgridindex=0)[54, 0]["nne"]
+    mockoverride.assert_called_once()
+    assert np.isclose(mockoverride.call_args.args[1], estimatornne, rtol=1e-12, atol=0.0)
     dfstats = read_ntstats(ostatfile)
     assert dfstats["frac_excitation"].item() == 0
     assert dfstats["frac_sum"].item() == pytest.approx(1.0, abs=0.1)
 
 
 def test_spencerfano_excitation(tmp_path: Path) -> None:
-    """Solve with the excitation path. The solver reads the derived transition columns, e.g. epsilon_trans_ev."""
+    """Solve a cell as ARTIS does, with the excitation path, and examine what the solver gets.
+
+    - The grid comes from nonthermalspec_*.out of the run, except the npts that the command gives.
+    - The top ion of each element in the estimators has no ionisation. Ni has less than 1e-8 of nntot, thus it has no
+      ionisation.
+    - A lower level of nlte_*.out has its NLTE population.
+    """
+    pynonthermal = pytest.importorskip("pynonthermal")
     ostatfile = tmp_path / "ntstats.txt"
-    at.nonthermal.spencerfano.main(argsraw=[], modelpath=modelpath, timedays=300, npts=200, ostat=str(ostatfile))
+    solverclass = pynonthermal.SpencerFanoSolver
+    with (
+        mock.patch.object(solverclass, "__init__", side_effect=solverclass.__init__, autospec=True) as mockinit,
+        mock.patch.object(
+            solverclass, "add_ionisation", side_effect=solverclass.add_ionisation, autospec=True
+        ) as mockionisation,
+        mock.patch.object(
+            solverclass, "add_excitation", side_effect=solverclass.add_excitation, autospec=True
+        ) as mockexcitation,
+    ):
+        at.nonthermal.spencerfano.main(argsraw=[], modelpath=modelpath, timedays=300, npts=200, ostat=str(ostatfile))
+
+    gridkwargs = mockinit.call_args.kwargs
+    assert (gridkwargs["emin_ev"], gridkwargs["emax_ev"], gridkwargs["npts"]) == pytest.approx((1.0, 999.512, 200))
+    assert {call.args[1:3] for call in mockionisation.call_args_list} == {
+        (26, 1),
+        (26, 2),
+        (26, 3),
+        (26, 4),
+        (27, 2),
+        (27, 3),
+    }
+
+    dfnltepops = at.nltepops.read_nltepops(modelpath, timestep=54, modelgridindex=0)
+    nltepop_fe2_level1 = dfnltepops.filter(pl.col("Z") == 26, pl.col("ion_stage") == 2, pl.col("level") == 1)["n_NLTE"]
+    excitationpops_fe2_level1 = {
+        call.args[3]
+        for call in mockexcitation.call_args_list
+        if call.args[1:3] == (26, 2) and call.kwargs["transitionkey"][0] == 1
+    }
+    # the unpack also checks that each excitation from the level has the same population
+    (excitationpop_fe2_level1,) = excitationpops_fe2_level1
+    assert np.isclose(excitationpop_fe2_level1, nltepop_fe2_level1.item(), rtol=1e-12, atol=0.0)
 
     dfstats = read_ntstats(ostatfile)
     assert dfstats["frac_excitation"].item() > 0.0
@@ -71,27 +130,6 @@ def test_spencerfano_ostat_takes_a_changing_ion_list(tmp_path: Path) -> None:
     assert dfstats["frac_sum"].to_numpy() == pytest.approx(1.0, abs=0.1)
 
 
-def test_spencerfano_vary_x_e_stays_below_the_atomic_number() -> None:
-    """The sweep must not ask for more free electrons than a nucleus can supply.
-
-    An electron fraction above atomic_number - 1 gives only the bare nucleus. The sweep multiplied the
-    start value by ten at each half step. Thus the default start of 2 went above the atomic number of iron.
-    """
-    from artistools.nonthermal.spencerfano import x_e_of_sweep_step
-
-    stepcount = 9
-    x_e_sweep = [x_e_of_sweep_step(2.0, 26, step, stepcount) for step in range(stepcount)]
-    assert x_e_sweep[0] == pytest.approx(2.0)
-    assert x_e_sweep[-1] == pytest.approx(25.0)
-
-    # the sweep is uniform in log10(x_e), thus each pair of steps has the same ratio
-    stepratios = [x_e_next / x_e for x_e, x_e_next in itertools.pairwise(x_e_sweep)]
-    assert stepratios == pytest.approx([stepratios[0]] * len(stepratios))
-
-    with pytest.raises(ValueError, match="gives no sweep"):
-        x_e_of_sweep_step(25.0, 26, 0, stepcount)
-
-
 @pytest.mark.parametrize("x_e", [0.0, 0.01, 0.5, 1.0, 1.5, 2.0, 3.7, 26.0])
 def test_ionpops_for_electronfraction(x_e: float) -> None:
     """The ion populations must average to x_e free electrons per nucleus, for x_e above one as well as below.
@@ -114,17 +152,6 @@ def test_ionpops_for_electronfraction(x_e: float) -> None:
     assert n_e / nntot == pytest.approx(x_e)
 
 
-def test_ionpops_for_electronfraction_rejects_impossible_values() -> None:
-    """An element cannot release more electrons than it has, nor a negative number."""
-    from artistools.nonthermal.spencerfano import ionpops_for_electronfraction
-
-    with pytest.raises(ValueError, match="negative"):
-        ionpops_for_electronfraction(26, -0.1, 1.0)
-
-    with pytest.raises(ValueError, match="exceeds the atomic number"):
-        ionpops_for_electronfraction(26, 26.5, 1.0)
-
-
 def test_spencerfano_makeplot_with_element_composition(tmp_path: Path) -> None:
     """--makeplot with a non-ARTIS -composition names the plot file after the element.
 
@@ -142,10 +169,19 @@ def test_spencerfano_solves_an_ion_stage_above_xx(tmp_path: Path) -> None:
     """An electron fraction above 19 gives an ion stage above XX.
 
     The table of roman numerals stopped at XX, and the statistics row named each ion with a roman numeral. Thus the
-    command stopped with an IndexError after the solution. The command also built that row without -ostat.
+    command stopped with an IndexError after the solution.
+
+    The sweep of x_e stops at atomic_number - 1, because a higher x_e gives only the bare nucleus. The sweep
+    multiplied the start value by ten at each half step, thus the default start of 2 went above 26.
     """
     # the default sweep of iron runs from x_e 2 to 25, thus its last step holds Fe XXVI alone
-    at.nonthermal.spencerfano.main(argsraw=[], composition="Fe", vary="x_e", npts=50, noexcitation=True)
+    sweepstatfile = tmp_path / "sweepstats.txt"
+    at.nonthermal.spencerfano.main(
+        argsraw=[], composition="Fe", vary="x_e", npts=50, noexcitation=True, ostat=str(sweepstatfile)
+    )
+    x_e_sweep = read_ntstats(sweepstatfile)["x_e"]
+    assert x_e_sweep[0] == pytest.approx(2.0)
+    assert x_e_sweep[-1] == pytest.approx(25.0)
 
     ostatfile = tmp_path / "ntstats.txt"
     at.nonthermal.spencerfano.main(
@@ -155,6 +191,20 @@ def test_spencerfano_solves_an_ion_stage_above_xx(tmp_path: Path) -> None:
     dfstats = read_ntstats(ostatfile)
     assert dfstats["frac_ionization_FeXXII"].item() > 0.0
     assert at.nonthermal.spencerfano.get_ion_column_name(26, 27) == "FeXXVII"
+
+
+def test_spencerfano_skips_a_bare_nucleus(tmp_path: Path) -> None:
+    """A bare nucleus has no bound electron, thus the solver holds no ionisation of it, as in ARTIS.
+
+    pynonthermal raises a ValueError for a bare nucleus, thus -composition He with x_e above 1 stopped.
+    """
+    ostatfile = tmp_path / "ntstats.txt"
+    at.nonthermal.spencerfano.main(
+        argsraw=[], composition="He", x_e=1.5, npts=50, noexcitation=True, ostat=str(ostatfile)
+    )
+    dfstats = read_ntstats(ostatfile)
+    assert dfstats["frac_ionization_HeIII"].item() == pytest.approx(0.0)
+    assert dfstats["frac_ionization_HeII"].item() > 0.0
 
 
 def test_ntlepton_deposition_rate_density_follows_artis() -> None:
@@ -200,23 +250,6 @@ def test_spencerfano_stops_with_a_message_for_a_cell_of_no_deposition(capsys: py
         at.nonthermal.spencerfano.main(argsraw=[], modelpath=modelpath, timestep=0, npts=50, noexcitation=True)
 
     assert "deposition rate of 0.0 erg/s/cm3 at timestep 0" in capsys.readouterr().err
-
-
-def test_spencerfano_needs_no_nlte_populations(tmp_path: Path) -> None:
-    """The solution takes the ion populations of the estimators, thus a model with no NLTE output can be solved.
-
-    The command stopped with FileNotFoundError when the model folder held no nlte_*.out file.
-    """
-    for filepath in modelpath.iterdir():
-        if not filepath.name.startswith("nlte_"):
-            (tmp_path / filepath.name).symlink_to(filepath)
-
-    ostatfile = tmp_path / "ntstats.txt"
-    at.nonthermal.spencerfano.main(
-        argsraw=[], modelpath=tmp_path, timedays=300, npts=50, noexcitation=True, ostat=str(ostatfile)
-    )
-
-    assert read_ntstats(ostatfile).height == 1
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)

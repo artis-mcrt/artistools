@@ -388,8 +388,14 @@ def get_next_cell_with_estimators_text(modelpath: Path | str, timestep: int, mod
     return f"No cell after cell {modelgridindex} has estimators"
 
 
-def get_opacity_atomic_data(modelpath: Path | str, ionlist: tuple[tuple[int, int], ...] | None = None) -> pl.DataFrame:
-    """Return the levels that ARTIS keeps and the transitions of each ion, with the columns that the opacities need.
+def get_opacity_atomic_data(
+    modelpath: Path | str,
+    ionlist: tuple[tuple[int, int], ...] | None = None,
+    derived_transitions_columns: tuple[str, ...] = ("lambda_angstroms", "lower_g", "upper_g"),
+) -> pl.DataFrame:
+    """Return the levels that ARTIS keeps and the transitions of each ion, with the derived columns of the transitions.
+
+    The default columns are those that the opacities need.
 
     ARTIS keeps the first nlevelsmax_readin levels of each ion from compositiondata.txt, or all the levels for a
     negative value. With the option SINGLE_LEVEL_TOP_ION, ARTIS keeps only the first level of the top ion of each
@@ -399,7 +405,7 @@ def get_opacity_atomic_data(modelpath: Path | str, ionlist: tuple[tuple[int, int
     # get_opacity_lines() needs the statistical weights as well as the wavelength, and
     # add_transition_columns() drops each derived column that this call does not request
     adata = get_levels(
-        modelpath, ionlist, get_transitions=True, derived_transitions_columns=["lambda_angstroms", "lower_g", "upper_g"]
+        modelpath, ionlist, get_transitions=True, derived_transitions_columns=derived_transitions_columns
     )
 
     keptlevelcount_of_element = get_kept_level_counts(modelpath)
@@ -412,7 +418,45 @@ def get_opacity_atomic_data(modelpath: Path | str, ionlist: tuple[tuple[int, int
         else get_kept_levels(dflevels, keptlevelcount_of_element.get(Z))
         for Z, ion_stage, dflevels in zip(adata["Z"], adata["ion_stage"], adata["levels"], strict=True)
     ]
-    return adata.with_columns(pl.Series("levels", keptlevels, dtype=pl.Object))
+    mergedtransitions = [merge_transitions_of_level_pairs(dftransitions) for dftransitions in adata["transitions"]]
+    repeatedrowcounts = pl.collect_all([
+        dftransitions.lazy().select(pl.struct("lower", "upper").is_duplicated().sum())
+        for dftransitions in adata["transitions"]
+        if {"lower", "upper"} <= set(dftransitions.lazy().collect_schema().names())
+    ])
+    repeatedrowcount = sum(dfcount.item() for dfcount in repeatedrowcounts)
+    if repeatedrowcount:
+        print(
+            f"  {repeatedrowcount} rows of transitiondata.txt share a pair of levels with a different row. Each such"
+            " group is one line with the sum of the A values, as in ARTIS (input.cc)"
+        )
+    return adata.with_columns(
+        pl.Series("levels", keptlevels, dtype=pl.Object), pl.Series("transitions", mergedtransitions, dtype=pl.Object)
+    )
+
+
+def merge_transitions_of_level_pairs(dftransitions: pl.DataFrame | pl.LazyFrame) -> pl.LazyFrame:
+    """Return the transitions of an ion with one row for each pair of levels, as ARTIS has them.
+
+    transitiondata.txt can hold more than one row for a pair of levels. ARTIS sums the A values of such rows, takes
+    their largest collision strength, and keeps the forbidden flag of the first row (input.cc). Thus a line has the
+    optical depth of the summed A, and the rows do not each add an escape probability.
+    """
+    lztransitions = dftransitions.lazy()
+    columns = lztransitions.collect_schema().names()
+    if not {"lower", "upper", "A"} <= set(columns):
+        return lztransitions
+    otherexprs = [
+        pl.col(col).max() if col == "collstr" else pl.col(col).first()
+        for col in columns
+        if col not in {"lower", "upper", "A"}
+    ]
+    return (
+        lztransitions
+        .group_by("lower", "upper", maintain_order=True)
+        .agg(pl.col("A").sum(), *otherexprs)
+        .select(columns)
+    )
 
 
 def get_cell_batches(dfestimators: pl.DataFrame, numbins: int) -> list[pl.DataFrame]:

@@ -5,6 +5,7 @@ import math
 import typing as t
 from collections.abc import Mapping
 from collections.abc import Sequence
+from itertools import starmap
 from pathlib import Path
 
 import numpy as np
@@ -17,12 +18,14 @@ from artistools.atomic import get_ion_tuple
 from artistools.atomic import get_ionstring
 from artistools.atomic import get_levels
 from artistools.constants import EV_to_erg
+from artistools.constants import K_B_ev_per_K
 from artistools.constants import km_to_cm
 from artistools.estimators import get_deposition_channels
 from artistools.estimators import read_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
 from artistools.inputmodel import get_mgi_of_velocity_kms
 from artistools.inputmodel import scan_modeldata
+from artistools.lines import get_opacity_atomic_data
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
 from artistools.misc import addarg_legend
@@ -34,6 +37,7 @@ from artistools.misc import addarg_timedays
 from artistools.misc import addarg_timestep
 from artistools.misc import exit_with_error
 from artistools.misc import format_frame_path
+from artistools.misc import get_artis_options
 from artistools.misc import get_selected_timestep
 from artistools.misc import get_single_modelgridindex
 from artistools.misc import get_timestep_time
@@ -42,13 +46,22 @@ from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import print_product
 from artistools.misc import print_warning
+from artistools.misc import read_rank_outputfiles
 from artistools.misc import read_wsv
+from artistools.nltepops import read_nltepops
 from artistools.plottools import addarg_cellvelocity
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
 
+if t.TYPE_CHECKING:
+    import pynonthermal as pynt
+
 minionfraction = 0.0  # minimum number fraction of the total population to include in SF solution
+
+# the values of ARTIS: SF_EMIN and SF_EMAX in nonthermal.cc, SFPTS in nonthermal.h, and MIN_ION_OVER_NNTOT
+ARTIS_SF_GRID = (0.1, 16000.0, 4096)
+ARTIS_MIN_ION_OVER_NNTOT = 1e-8
 
 defaultoutputfile = "spencerfano_cell{cell:05d}_ts{timestep:03d}_{timedays:.2f}d.pdf"
 
@@ -190,15 +203,23 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     addarg_cellvelocity(parser)
 
-    parser.add_argument("-npts", type=int, default=4096, help="The number of points in the energy grid")
+    gridhelp = " Default: the value in nonthermalspec_*.out for the cell of an ARTIS model, else the ARTIS value of"
+    parser.add_argument(
+        "-npts", type=int, default=None, help=f"The number of points in the energy grid.{gridhelp} 4096"
+    )
 
-    parser.add_argument("-emin", type=float, default=0.1, help="Minimum energy in eV of Spencer-Fano solution")
+    parser.add_argument(
+        "-emin", type=float, default=None, help=f"The minimum energy [eV] of the Spencer-Fano solution.{gridhelp} 0.1"
+    )
 
     parser.add_argument(
         "-emax",
         type=float,
-        default=16000,
-        help="Maximum energy in eV of Spencer-Fano solution (approx where energy is injected)",
+        default=None,
+        help=(
+            "The maximum energy [eV] of the Spencer-Fano solution, which is approximately the injection energy."
+            f"{gridhelp} 16000"
+        ),
     )
 
     # the help lists the choices, because the comma of emax,npts made the default list of choices unclear
@@ -258,14 +279,34 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
+class ArtisCellData(t.NamedTuple):
+    """The data of an ARTIS cell that the solver needs to repeat the Spencer-Fano solution of ARTIS."""
+
+    topionstages: dict[int, int]
+    """The ion stage of the top ion of each element, which ARTIS does not ionise."""
+
+    dfnltepops: pl.DataFrame | None
+    """The rows of nlte_*.out for the cell and the timestep, or None if the model has no such file."""
+
+    T_exc: float
+    """The excitation temperature of a level with a Boltzmann population [K]."""
+
+    maxnlevelslower: int
+    """The value of NTEXCITATION_MAXNLEVELS_LOWER. An excitation has a lower level below this number."""
+
+    maxnlevelsupper: int
+    """The value of NTEXCITATION_MAXNLEVELS_UPPER. An excitation has an upper level below this number."""
+
+
 class PlasmaConditions(t.NamedTuple):
     """The conditions of one Spencer-Fano solution."""
 
     nntot: float
-    x_e: float
+    nne: float
     T_e: float
     deposition_density_ev: float
     ionpopdict: dict[tuple[int, int] | int, float]
+    artiscell: ArtisCellData | None
 
 
 def get_ntlepton_deposition_rate_density(estim: Mapping[str, t.Any]) -> float | None:
@@ -319,18 +360,104 @@ def get_artis_conditions(args: argparse.Namespace, modelpath: Path) -> PlasmaCon
         )
 
     nntot = estim["nntot"]
-    print_warning("Use LTE pops at Te for now")
 
     velocity_kmps = modeldata["vel_r_mid"][args.modelgridindex] / km_to_cm
     args.timedays = get_timestep_time(modelpath, args.timestep)
     print(f"Timestep {args.timestep} cell {args.modelgridindex} (v={velocity_kmps:.1f} km/s at {args.timedays:.1f}d)")
 
+    nne = estim["nne"]
+    print(
+        f"  The free electron density is the nne of the ARTIS estimators, {nne:.4e} cm^-3. ARTIS takes this value for"
+        " its Spencer-Fano solution of the cell (nonthermal.cc)"
+    )
+
+    ionpopdict: dict[tuple[int, int] | int, float] = {
+        get_ion_tuple(k): v for k, v in estim.items() if k.startswith(("nnion_", "nnelement_"))
+    }
     return PlasmaConditions(
         nntot=nntot,
-        x_e=estim["nne"] / nntot,
+        nne=nne,
         T_e=estim["Te"],
         deposition_density_ev=deposition_erg / EV_to_erg,
-        ionpopdict={get_ion_tuple(k): v for k, v in estim.items() if k.startswith(("nnion_", "nnelement_"))},
+        ionpopdict=ionpopdict,
+        artiscell=get_artis_cell_data(modelpath, args.timestep, args.modelgridindex, estim, ionpopdict),
+    )
+
+
+def get_artis_cell_data(
+    modelpath: Path,
+    timestep: int,
+    modelgridindex: int,
+    estim: Mapping[str, t.Any],
+    ionpopdict: Mapping[tuple[int, int] | int, float],
+) -> ArtisCellData:
+    """Return the data that the solver needs to repeat the Spencer-Fano solution of ARTIS for a cell.
+
+    The estimators list each ion of the run, thus the last ion of each element is the top ion of the run.
+    compositiondata.txt can hold a different list from the run.
+    """
+    topionstages: dict[int, int] = {}
+    for key in ionpopdict:
+        if isinstance(key, tuple):
+            topionstages[key[0]] = max(key[1], topionstages.get(key[0], key[1]))
+    print(
+        "  ARTIS does not ionise the top ion of each element (nonthermal.cc): "
+        + ", ".join(starmap(get_ionstring, sorted(topionstages.items())))
+    )
+
+    try:
+        dfnltepops: pl.DataFrame | None = read_nltepops(modelpath, timestep=timestep, modelgridindex=modelgridindex)
+    except FileNotFoundError:
+        dfnltepops = None
+    if dfnltepops is not None and dfnltepops.is_empty():
+        dfnltepops = None
+
+    artisoptions = get_artis_options(modelpath)
+    usetj = artisoptions.get("LTEPOP_EXCITATION_USE_TJ")
+    T_exc = float(estim["TJ"]) if usetj == "true" else float(estim["Te"])
+    print(
+        f"  A level with a Boltzmann population has the excitation temperature {T_exc:.1f} K, which is "
+        + ("TJ" if usetj == "true" else "Te")
+        + (
+            " (LTEPOP_EXCITATION_USE_TJ in artisoptions.h)"
+            if usetj is not None
+            else ", because the model has no artisoptions.h with LTEPOP_EXCITATION_USE_TJ"
+        )
+    )
+    if dfnltepops is None:
+        print_warning(
+            f"The model has no nlte_*.out row for cell {modelgridindex} at timestep {timestep}, thus the"
+            " excitation takes the LTE populations at the excitation temperature"
+        )
+    else:
+        print(
+            "  The excitation takes the level populations of nlte_*.out (ltepop.cc). An ion with no row there has LTE"
+            " populations at the excitation temperature"
+        )
+
+    maxnlevelsoptions = (
+        artisoptions.get("NTEXCITATION_MAXNLEVELS_LOWER"),
+        artisoptions.get("NTEXCITATION_MAXNLEVELS_UPPER"),
+    )
+    maxnlevelslower = int(maxnlevelsoptions[0] or "5")
+    maxnlevelsupper = int(maxnlevelsoptions[1] or "250")
+    maxnlevelssource = (
+        "NTEXCITATION_MAXNLEVELS_LOWER and NTEXCITATION_MAXNLEVELS_UPPER in artisoptions.h"
+        if None not in maxnlevelsoptions
+        else "the ARTIS defaults, because artisoptions.h does not define NTEXCITATION_MAXNLEVELS_LOWER and"
+        " NTEXCITATION_MAXNLEVELS_UPPER"
+    )
+    print(
+        f"  An excitation has a lower level below {maxnlevelslower} and an upper level below {maxnlevelsupper}"
+        f" ({maxnlevelssource})"
+    )
+
+    return ArtisCellData(
+        topionstages=topionstages,
+        dfnltepops=dfnltepops,
+        T_exc=T_exc,
+        maxnlevelslower=maxnlevelslower,
+        maxnlevelsupper=maxnlevelsupper,
     )
 
 
@@ -343,24 +470,20 @@ def get_element_conditions(args: argparse.Namespace, step: int, stepcount: int) 
         ionpops_for_electronfraction(compelement_atomicnumber, x_e, nntot)
     )
 
-    return PlasmaConditions(nntot=nntot, x_e=x_e, T_e=3000, deposition_density_ev=5.0e3, ionpopdict=ionpopdict)
+    print(f"  The free electron density is x_e n_tot, with x_e = {x_e:.4g}")
+
+    return PlasmaConditions(
+        nntot=nntot, nne=x_e * nntot, T_e=3000, deposition_density_ev=5.0e3, ionpopdict=ionpopdict, artiscell=None
+    )
 
 
 def get_sweep_parameters(args: argparse.Namespace, step: int) -> tuple[float, float, int]:
     """Return the emin, the emax, and the npts of the energy grid at one step of a --vary sweep."""
-    emin = args.emin
-    emax = args.emax
-    npts = args.npts
-    if args.vary == "emax":
-        emax *= 2**step
-    elif args.vary == "emax,npts":
-        npts *= 2**step
-        emax *= 2**step
-    elif args.vary == "emin":
-        emin *= 2**step
-    elif args.vary == "npts":
-        npts *= 2**step
-
+    # --vary emax,npts doubles the two values together
+    varied = str(args.vary).split(",")
+    emin = args.emin * 2**step if "emin" in varied else args.emin
+    emax = args.emax * 2**step if "emax" in varied else args.emax
+    npts = args.npts * 2**step if "npts" in varied else args.npts
     return emin, emax, npts
 
 
@@ -382,6 +505,211 @@ def get_plot_filename(args: argparse.Namespace, step: int) -> str:
     return outputfilename
 
 
+def add_ions_to_solver(
+    sf: "pynt.SpencerFanoSolver",
+    args: argparse.Namespace,
+    modelpath: Path,
+    conditions: PlasmaConditions,
+    ions: Sequence[tuple[int, int]],
+) -> set[tuple[int, int]]:
+    """Add the ionisation and the excitation of each ion to the solver, and return the ions with an ionisation.
+
+    For an ARTIS cell, the solver takes the atomic data, the level populations, and the ions as ARTIS does.
+    """
+    artiscell = conditions.artiscell
+    if args.noexcitation:
+        adata = None
+    elif artiscell is not None:
+        adata = get_artis_excitation_atomic_data(modelpath, ions)
+    else:
+        # the excitation cross sections read epsilon_trans_ev, lower_g, and upper_g from each transition
+        adata = get_levels(
+            modelpath,
+            get_transitions=True,
+            ionlist=tuple(ions),
+            derived_transitions_columns=("epsilon_trans_ev", "lower_g", "upper_g"),
+        )
+
+    if adata is not None:
+        if artiscell is not None:
+            sf.set_temperature(artiscell.T_exc)
+            sf.set_atomic_data(
+                adata_polars=adata, maxnlevelslower=artiscell.maxnlevelslower, maxnlevelsupper=artiscell.maxnlevelsupper
+            )
+        else:
+            # the excitation takes the LTE populations of the levels at T_e, and the level data of the model
+            sf.set_temperature(conditions.T_e)
+            sf.set_atomic_data(adata_polars=adata)
+
+    ionisedions: set[tuple[int, int]] = set()
+    for Z, ion_stage in ions:
+        nnion = conditions.ionpopdict[Z, ion_stage]
+        if nnion == 0.0:
+            print(f"   Z={Z} ion_stage {ion_stage} has nnion={nnion:.1e}, thus the solver skips it")
+            continue
+        if ion_stage > Z:
+            # a bare nucleus has no bound electron to ionise or to excite, and ARTIS skips it (nonthermal.cc)
+            print(f"   Z={Z} ion_stage {ion_stage} is a bare nucleus with no bound electron, thus the solver skips it")
+            continue
+
+        if artiscell is None or artiscell.topionstages.get(Z) != ion_stage:
+            sf.add_ionisation(Z, ion_stage, nnion)
+            ionisedions.add((Z, ion_stage))
+
+        if adata is not None:
+            ionrow = adata.filter(pl.col("Z") == Z, pl.col("ion_stage") == ion_stage)
+            levelpops = (
+                get_artis_lower_level_pops(artiscell, ionrow["levels"].item(), Z, ion_stage)
+                if artiscell is not None and not ionrow.is_empty()
+                else None
+            )
+            if levelpops is None:
+                sf.add_ion_excitation(Z, ion_stage, nnion)
+            else:
+                assert artiscell is not None
+                add_ion_excitation_with_level_pops(
+                    sf, ionrow["transitions"].item(), Z, ion_stage, levelpops, artiscell.maxnlevelsupper
+                )
+
+    return ionisedions
+
+
+def get_artis_excitation_atomic_data(modelpath: Path, ions: Sequence[tuple[int, int]]) -> pl.DataFrame:
+    """Return the levels and the transitions of each ion as ARTIS holds them, with the columns of the excitation.
+
+    ARTIS keeps some of the levels, and it merges the transitions of one pair of levels (input.cc). A transition to a
+    level that ARTIS does not keep has no excitation.
+    """
+    adata = get_opacity_atomic_data(
+        modelpath, tuple(ions), derived_transitions_columns=("epsilon_trans_ev", "lower_g", "upper_g")
+    )
+    kepttransitions = [
+        dftransitions.lazy().filter(pl.col("upper") < dflevels.height)
+        for dflevels, dftransitions in zip(adata["levels"], adata["transitions"], strict=True)
+    ]
+    return adata.with_columns(pl.Series("transitions", kepttransitions, dtype=pl.Object))
+
+
+def get_artis_lower_level_pops(
+    artiscell: ArtisCellData, dflevels: pl.DataFrame, Z: int, ion_stage: int
+) -> dict[int, float] | None:
+    """Return the population [cm^-3] of each lower level of the excitations of an ion, as ARTIS calculates it.
+
+    calculate_levelpop_nominpop in ltepop.cc gives a level of nlte_*.out its NLTE population. A level in the
+    superlevel gets the part of the superlevel population that its Boltzmann factor at T_exc gives
+    (superlevel_boltzmann in nltepop.cc). A different level gets the Boltzmann population relative to the ground level.
+    Return None for an ion with no row in nlte_*.out. ARTIS then gives the ion LTE populations at T_exc.
+    """
+    if artiscell.dfnltepops is None:
+        return None
+    dfion = artiscell.dfnltepops.filter(pl.col("Z") == Z, pl.col("ion_stage") == ion_stage)
+    if dfion.is_empty():
+        return None
+
+    nltepops = dict(zip(dfion["level"].to_list(), dfion["n_NLTE"].to_list(), strict=True))
+    # nlte_*.out gives the superlevel the level number -1, after the NLTE levels
+    lastnltelevel = max(level for level in nltepops if level >= 0)
+    energies_ev = dflevels["energy_ev"].to_numpy()
+    statweights = dflevels["g"].to_numpy()
+
+    def get_boltzmann_factor(level: int, reflevel: int) -> float:
+        return float(
+            statweights[level]
+            / statweights[reflevel]
+            * np.exp(-(energies_ev[level] - energies_ev[reflevel]) / K_B_ev_per_K / artiscell.T_exc)
+        )
+
+    superlevelstart = lastnltelevel + 1
+    superlevelpartfunc = sum(
+        get_boltzmann_factor(level, superlevelstart) for level in range(superlevelstart, len(energies_ev))
+    )
+    levelpops: dict[int, float] = {}
+    for level in range(min(artiscell.maxnlevelslower, len(energies_ev))):
+        if level in nltepops:
+            levelpops[level] = nltepops[level]
+        elif -1 in nltepops and superlevelpartfunc > 0.0:
+            levelpops[level] = nltepops[-1] * get_boltzmann_factor(level, superlevelstart) / superlevelpartfunc
+        else:
+            levelpops[level] = nltepops[0] * get_boltzmann_factor(level, 0)
+    return levelpops
+
+
+def add_ion_excitation_with_level_pops(
+    sf: "pynt.SpencerFanoSolver",
+    dftransitions: pl.LazyFrame,
+    Z: int,
+    ion_stage: int,
+    levelpops: Mapping[int, float],
+    maxnlevelsupper: int,
+) -> None:
+    """Add the excitations of an ion with the given populations of the lower levels, as ARTIS does (nonthermal.cc).
+
+    The transitions and the cross sections are those of add_ion_excitation in pynonthermal, which agree with
+    has_xs_excitation and xs_excitation of ARTIS.
+    """
+    pynt = import_optional("pynonthermal")
+    dfexcitations = (
+        dftransitions
+        .filter(
+            pl.col("lower").is_in(list(levelpops)),
+            pl.col("upper") < maxnlevelsupper,
+            (pl.col("collstr") >= 0) | (pl.col("forbidden") == 0),
+            pl.col("epsilon_trans_ev").is_between(float(sf.engrid[0]), float(sf.engrid[-1])),
+        )
+        .sort("lower", "upper", maintain_order=True)
+        .collect()
+    )
+    for transition in dfexcitations.iter_rows(named=True):
+        sf.add_excitation(
+            Z,
+            ion_stage,
+            levelpops[transition["lower"]],
+            pynt.excitation.get_xs_excitation_vector(sf.engrid, transition),
+            float(transition["epsilon_trans_ev"]),
+            transitionkey=(transition["lower"], transition["upper"]),
+        )
+
+
+def get_run_energy_grid(modelpath: Path, timestep: int, modelgridindex: int) -> tuple[float, float, int] | None:
+    """Return the emin, the emax, and the npts of the energy grid in nonthermalspec_*.out, or None with no such file.
+
+    An older ARTIS wrote the solution of each cell in nonthermalspec_*.out. Its grid can differ from the grid of the
+    current ARTIS.
+    """
+    try:
+        dfspec = read_rank_outputfiles(
+            modelpath, "nonthermalspec_{mpirank:04d}.out", timestep=timestep, modelgridindex=modelgridindex
+        )
+    except FileNotFoundError:
+        return None
+    if dfspec.is_empty():
+        return None
+    energies_ev = dfspec["energy_ev"].to_numpy()
+    return float(energies_ev.min()), float(energies_ev.max()), len(energies_ev)
+
+
+def resolve_energy_grid(args: argparse.Namespace, modelpath: Path) -> None:
+    """Set each value of the energy grid that the user does not give, and log the source of the grid."""
+    if None not in {args.emin, args.emax, args.npts}:
+        return
+    rungrid = (
+        get_run_energy_grid(modelpath, args.timestep, args.modelgridindex) if args.composition == "artis" else None
+    )
+    defaultgrid = rungrid or ARTIS_SF_GRID
+    args.emin = defaultgrid[0] if args.emin is None else args.emin
+    args.emax = defaultgrid[1] if args.emax is None else args.emax
+    args.npts = defaultgrid[2] if args.npts is None else args.npts
+    gridsource = (
+        "the grid of nonthermalspec_*.out of the run"
+        if rungrid is not None
+        else "the grid of ARTIS (SF_EMIN and SF_EMAX in nonthermal.cc, SFPTS in nonthermal.h)"
+    )
+    print(
+        f"  The energy grid has {args.npts} points from {args.emin} to {args.emax} eV. A value that the command does"
+        f" not give comes from {gridsource}"
+    )
+
+
 def solve_step(
     args: argparse.Namespace, modelpath: Path, conditions: PlasmaConditions, step: int
 ) -> dict[str, float] | None:
@@ -393,41 +721,23 @@ def solve_step(
     emin, emax, npts = get_sweep_parameters(args, step)
     ionpopdict = conditions.ionpopdict
 
-    # keep only the ion populations, not element or total populations
+    # ARTIS does not include an ion with a population below MIN_ION_OVER_NNTOT times nntot (nonthermal.cc)
+    ionfractionlimit = ARTIS_MIN_ION_OVER_NNTOT if conditions.artiscell is not None else minionfraction
+    # keep only the populations of the ions, and not the populations of the elements or the total population
     ions = sorted(
-        key for key in ionpopdict if isinstance(key, tuple) and ionpopdict[key] / conditions.nntot >= minionfraction
+        key for key in ionpopdict if isinstance(key, tuple) and ionpopdict[key] / conditions.nntot >= ionfractionlimit
     )
 
-    if args.noexcitation:
-        adata = None
-    else:
-        # the excitation cross sections read epsilon_trans_ev, lower_g, and upper_g from each transition
-        adata = get_levels(
-            modelpath,
-            get_transitions=True,
-            ionlist=tuple(ions),
-            derived_transitions_columns=("epsilon_trans_ev", "lower_g", "upper_g"),
-        )
-
     with pynt.SpencerFanoSolver(emin_ev=emin, emax_ev=emax, npts=npts, verbose=True, use_ar1985=args.ar1985) as sf:
-        if not args.noexcitation:
-            # the excitation takes the LTE populations of the levels at T_e, and the level data of the model
-            sf.set_temperature(conditions.T_e)
-            sf.set_atomic_data(adata_polars=adata)
+        ionisedions = add_ions_to_solver(sf, args, modelpath, conditions, ions)
 
-        for Z, ion_stage in ions:
-            nnion = ionpopdict[Z, ion_stage]
-            if nnion == 0.0:
-                print(f"   Skipping Z={Z} ion_stage {ion_stage} due to nnion={nnion:.1e}")
-                continue
-
-            sf.add_ionisation(Z, ion_stage, nnion)
-            if not args.noexcitation:
-                sf.add_ion_excitation(Z, ion_stage, nnion)
+        # the solver otherwise sums n_e from the charges of the ions that it holds, which leaves out a skipped ion
+        sf.override_n_e(conditions.nne)
 
         sf.solve(deposition_ev_per_s_per_cm3=conditions.deposition_density_ev)
 
         sf.analyse_ntspectrum()
+        x_e = conditions.nne / conditions.nntot
 
         if args.makeplot:
             sf.plot_spec_channels(outputfilename=get_plot_filename(args, step))
@@ -436,7 +746,7 @@ def solve_step(
         # analysis as progress messages
         print_product(
             args,
-            f"emin {emin} emax {emax} npts {npts} x_e {conditions.x_e:.4g}:"
+            f"emin {emin} emax {emax} npts {npts} x_e {x_e:.4g}:"
             f" frac_heating {sf.get_frac_heating():.4f} frac_ionization {sf.get_frac_ionisation_tot():.4f}"
             f" frac_excitation {sf.get_frac_excitation_tot():.4f} frac_sum {sf.get_frac_sum():.4f}",
         )
@@ -448,7 +758,7 @@ def solve_step(
             "emin": emin,
             "emax": emax,
             "npts": npts,
-            "x_e": conditions.x_e,
+            "x_e": x_e,
             "frac_sum": sf.get_frac_sum(),
             "frac_excitation": sf.get_frac_excitation_tot(),
             "frac_ionization": sf.get_frac_ionisation_tot(),
@@ -456,7 +766,7 @@ def solve_step(
         } | {
             f"frac_ionization_{get_ion_column_name(atomic_number, ion_stage)}": (
                 sf.get_frac_ionisation_ion(atomic_number, ion_stage)
-                if ionpopdict[atomic_number, ion_stage] > 0.0
+                if (atomic_number, ion_stage) in ionisedions
                 else 0.0
             )
             for atomic_number, ion_stage in ions
@@ -487,6 +797,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     modelpath = Path(args.modelpath)
     artisconditions = get_artis_conditions(args, modelpath) if args.composition == "artis" else None
+    resolve_energy_grid(args, modelpath)
 
     stepcount = 9 if args.vary else 1
     ostatrows: list[dict[str, float]] = []

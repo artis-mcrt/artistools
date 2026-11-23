@@ -48,12 +48,12 @@ from artistools.viewertools.menus import get_dark_plot_colours
 from artistools.viewertools.menus import set_window_document
 from artistools.viewertools.menus import show_figure_in_canvas
 from artistools.viewertools.sections import make_figscale_box
-from artistools.viewertools.widgets import add_command_section
 from artistools.viewertools.widgets import add_copy_box
 from artistools.viewertools.widgets import add_row
 from artistools.viewertools.widgets import add_section
 from artistools.viewertools.widgets import align_section_labels
 from artistools.viewertools.widgets import fit_canvas
+from artistools.viewertools.widgets import get_menu_shortcut_texts
 from artistools.viewertools.widgets import make_option_table
 from artistools.viewertools.widgets import make_plot_area
 from artistools.viewertools.widgets import make_sidebar
@@ -232,7 +232,9 @@ def add_command_sections(
     hiddendests, rows, on_rows = table
     optiontable, set_option_rows = make_option_table(window, parser, hiddendests, rows, on_rows)
     optiongrid.addWidget(optiontable, 0, 0, 1, 2)
-    commandtext, copybutton = add_command_section(panellayout)
+    commandtext, copybutton = add_copy_box(
+        panellayout, "Command", f"Copy the command to the clipboard ({get_menu_shortcut_texts()['Copy Command']})"
+    )
     pythontext, pythoncopybutton = add_copy_box(
         panellayout, "Python", "Copy the Python code that draws the plot to the clipboard", maxlines=20, wraplines=False
     )

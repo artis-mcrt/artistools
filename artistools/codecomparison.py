@@ -105,9 +105,6 @@ def read_reference_estimators(modelpath: str | Path) -> dict[tuple[int, int], t.
                 timedays = float(row[1])
                 assert np.isclose(timedays, arr_timedays[cur_timestep], rtol=0.01)
 
-            elif row[0] == "#NVEL:":
-                _ = int(row[1])
-
             elif not line.lstrip().startswith("#"):
                 cur_modelgridindex += 1
 
@@ -149,9 +146,6 @@ def read_reference_estimators(modelpath: str | Path) -> dict[tuple[int, int], t.
                     cur_modelgridindex = -1
                     timedays = float(row[1])
                     assert np.isclose(timedays, arr_timedays[cur_timestep], rtol=0.01)
-
-                elif row[0] == "#NVEL:":
-                    _nvel = int(row[1])
 
                 elif row[0] == "#vel_mid[km/s]":
                     # a column name of some codes holds a space, e.g. "Fe 2", thus a double space

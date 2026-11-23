@@ -10,6 +10,7 @@ from collections.abc import Mapping
 from collections.abc import Sequence
 from contextlib import suppress
 from functools import lru_cache
+from functools import partial
 from pathlib import Path
 from types import MappingProxyType
 
@@ -44,21 +45,24 @@ from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import drop_trailing_null_column
 from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
+from artistools.misc import folder_is_artis_model
 from artistools.misc import get_auto_velocity_unit
 from artistools.misc import get_average_group_dirbins
 from artistools.misc import get_bin_index_expr
 from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_dirbins
+from artistools.misc import get_file_copies
 from artistools.misc import get_file_state
 from artistools.misc import get_metadata_path
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_nprocs
 from artistools.misc import get_nu_grid
+from artistools.misc import get_run_subfolders
+from artistools.misc import get_time_range
 from artistools.misc import get_timestep_times
 from artistools.misc import get_vpkt_config
 from artistools.misc import get_xunit
-from artistools.misc import match_closest_time
 from artistools.misc import modelpath_cache
 from artistools.misc import on_model_host
 from artistools.misc import parse_metadata_redshift
@@ -75,10 +79,12 @@ from artistools.misc import read_wsv
 from artistools.misc import resolve_modelpath
 from artistools.misc import split_multitable_dataframe
 from artistools.misc import warn_direction_bin_noise
+from artistools.misc import write_file_atomic
 from artistools.misc import XUnit
 from artistools.packets import filter_packets_dirbin
 from artistools.packets import get_emission_velocity_expr
 from artistools.packets import get_emission_velocity_lineofsight_expr
+from artistools.packets import get_escape_time_cmf_days_expr
 from artistools.packets import get_modelgridindex_expr
 from artistools.packets import get_modelgridindex_from_velocity_expr
 from artistools.packets import get_packets_column_names
@@ -111,18 +117,15 @@ class FluxContributionTuple(t.NamedTuple):
     color: "mplt.ColorType | None" = None
 
 
-def timeshift_fluxscale_co56law(scaletoreftime: float | None, spectime: float) -> float:
-    """Return the factor that scales a spectrum to scaletoreftime with the Co56 decay law, or 1.0 for None.
+def timeshift_fluxscale_co56law(scaletoreftime: float, spectime: float) -> float:
+    """Return the factor that scales a spectrum to scaletoreftime with the Co56 decay law.
 
     The flux follows exp(-t / tau), where tau is the mean life of Co56. This applies after the decay of Ni56, thus
     the time of the spectrum must be more than 150 days.
     """
-    if scaletoreftime is not None:
-        assert spectime > 150
-        co56_meanlife_days = constants.co56_halflife_days / math.log(2)
-        return math.exp((spectime - scaletoreftime) / co56_meanlife_days)
-
-    return 1.0
+    assert spectime > 150
+    co56_meanlife_days = constants.co56_halflife_days / math.log(2)
+    return math.exp((spectime - scaletoreftime) / co56_meanlife_days)
 
 
 def get_dfspectrum_x_y_with_units(
@@ -441,27 +444,13 @@ def scan_spectrum_at_time(
     )[dirbin]
 
 
-@lru_cache(maxsize=4)
-def get_binned_lambda_frame_cached(lambda_bin_edges_bytes: bytes, count: int) -> pl.DataFrame:
-    """Return the wavelength bin frame for the given packed bin edges.
-
-    The bytes key makes the arguments hashable for the lru_cache.
-    """
-    lambda_bin_edges = np.frombuffer(lambda_bin_edges_bytes, dtype=np.float64, count=count)
-    return pl.DataFrame({
-        "lambda_angstroms": 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:]),
-        "delta_lambda": lambda_bin_edges[1:] - lambda_bin_edges[:-1],
-    }).with_columns(nu=(constants.c_ang_per_s / pl.col("lambda_angstroms")))
-
-
 def get_binned_lambda_frame(lambda_bin_edges: npt.NDArray[np.floating]) -> pl.DataFrame:
-    """Return the centre, the width and the frequency of each wavelength bin.
-
-    The result is in a cache, because the code bins each emission contribution and each absorption contribution
-    separately. Without the cache, the code makes this frame again for each contribution.
-    """
-    edges = np.ascontiguousarray(lambda_bin_edges, dtype=np.float64)
-    return get_binned_lambda_frame_cached(edges.tobytes(), edges.size)
+    """Return the centre, the width and the frequency of each wavelength bin."""
+    edges = np.asarray(lambda_bin_edges, dtype=np.float64)
+    return pl.DataFrame({
+        "lambda_angstroms": 0.5 * (edges[:-1] + edges[1:]),
+        "delta_lambda": edges[1:] - edges[:-1],
+    }).with_columns(nu=(constants.c_ang_per_s / pl.col("lambda_angstroms")))
 
 
 def select_dirbins(alldirbins: list[int], requested: Sequence[int] | None) -> list[int]:
@@ -476,22 +465,8 @@ def select_dirbins(alldirbins: list[int], requested: Sequence[int] | None) -> li
     return list(requested)
 
 
-@modelpath_cache(maxsize=16)
-def get_escape_surface_gamma(modelpath: Path) -> float:
-    """Return sqrt(1 - beta^2) at the outer model boundary, which is the inverse of the Lorentz factor.
-
-    The cache takes the absolute path, thus a change of the working folder gives the new model.
-    """
-    from artistools.inputmodel import scan_modeldata
-
-    _, modelmeta = scan_modeldata(modelpath, printwarningsonly=True)
-    vmax_beta = float(modelmeta["vmax_cmps"]) / C_cm_per_s
-    return math.sqrt(1 - vmax_beta**2)
-
-
 def filter_packets_by_time(
     dfpackets: pl.LazyFrame,
-    modelpath: Path | str,
     timelowdays: float,
     timehighdays: float,
     use_time: t.Literal["arrival", "emission", "escape"],
@@ -502,10 +477,11 @@ def filter_packets_by_time(
         return dfpackets.filter(pl.col("t_arrive_d").is_between(timelowdays, timehighdays))
 
     if use_time == "escape":
-        escapesurfacegamma = get_escape_surface_gamma(modelpath)
-        return dfpackets.filter(
-            (pl.col("escape_time") * escapesurfacegamma / day_to_s).is_between(timelowdays, timehighdays)
+        print(
+            "  The escape time of each packet is its comoving-frame time sqrt(t_esc^2 - r^2 / c^2) at its escape"
+            " position r, as ARTIS bins its comoving light curve (spectrum_lightcurve.cc)"
         )
+        return dfpackets.filter(get_escape_time_cmf_days_expr().is_between(timelowdays, timehighdays))
 
     col_emit_time = "tdecay" if gamma else "em_time"
     mean_correction = (pl.col(col_emit_time) - pl.col("t_arrive_d") * day_to_s).mean()
@@ -623,9 +599,9 @@ def scan_spectra_from_packets(
     else:
         alldirbins = [-1, *get_dirbins(average_over_phi=average_over_phi, average_over_theta=average_over_theta)]
         energy_column = "e_cmf" if use_time == "escape" else "e_rf"
-        dfpackets = filter_packets_by_time(
-            dfpackets, modelpath, timelowdays, timehighdays, use_time, gamma
-        ).with_columns(lambda_angstroms_rf=constants.c_ang_per_s / pl.col("nu_rf"))
+        dfpackets = filter_packets_by_time(dfpackets, timelowdays, timehighdays, use_time, gamma).with_columns(
+            lambda_angstroms_rf=constants.c_ang_per_s / pl.col("nu_rf")
+        )
 
         dirbinsums = sum_packets_by_dirbin(
             dfpackets,
@@ -749,7 +725,8 @@ def scan_spec(modelpath: Path, gamma: bool = False) -> pl.LazyFrame:
 def scan_spec_res(modelpath: Path, gamma: bool = False) -> dict[int, pl.LazyFrame]:
     """Return a dict of LazyFrames of time-series spectra keyed to the viewing direction bin.
 
-    The cache takes the absolute path, thus a change of the working folder gives the new model.
+    specpol_res.out also holds the Stokes Q and U spectra, and the frames hold only the Stokes I spectra. The cache
+    takes the absolute path, thus a change of the working folder gives the new model.
 
     Callers must not mutate the returned dict, which is shared between calls.
     """
@@ -759,36 +736,10 @@ def scan_spec_res(modelpath: Path, gamma: bool = False) -> dict[int, pl.LazyFram
     )
 
     print(f"Reading {specfilename} (in scan_spec_res)")
-    res_specdata_in = drop_trailing_null_column(
-        pl.read_csv(polars_source(specfilename), separator=" ", has_header=False, infer_schema=False, glob=False).lazy()
-    )
-
-    res_specdata = split_multitable_dataframe(res_specdata_in)
-
-    for dirbin in res_specdata:
-        # the column names are not stored as dataframe.columns yet, but exist in the first row of the DataFrame
-        newcolnames = [str(x) for x in res_specdata[dirbin].select(pl.all().slice(0, 1)).collect().row(0)]
-        newcolnames[0] = "nu"
-
-        newcolnames_unique = set(newcolnames)
-        oldcolnames = res_specdata[dirbin].collect_schema().names()
-        if len(newcolnames) > len(newcolnames_unique):
-            # for POL_ON, the time columns repeat for the Q and U stokes parameters.
-            # here, we keep the first set (I) and drop the rest of the columns.
-            # the layout is one nu column plus an exact multiple of the unique time columns
-            assert (len(newcolnames) - 1) % (len(newcolnames_unique) - 1) == 0
-            newcolnames = newcolnames[: len(newcolnames_unique)]
-            oldcolnames = oldcolnames[: len(newcolnames_unique)]
-            res_specdata[dirbin] = res_specdata[dirbin].select(oldcolnames)
-
-        res_specdata[dirbin] = (
-            res_specdata[dirbin]
-            .select(pl.all().slice(offset=1))  # drop the first row that contains time headers
-            .with_columns(pl.all().cast(pl.Float64))
-            .rename(dict(zip(oldcolnames, newcolnames, strict=True)))
-        )
-
-    return res_specdata
+    return {
+        dirbin: split_dataframe_stokesparams(table)["I"]
+        for dirbin, table in scan_dirbin_time_tables(specfilename).items()
+    }
 
 
 def read_emission_absorption_file(emabsfilename: Path) -> pl.DataFrame:
@@ -813,6 +764,32 @@ def read_emission_absorption_file_cached(emabsfilename: Path, filestate: tuple[i
     ).with_columns(pl.all().cast(pl.Float32, strict=True))
 
     return drop_trailing_null_column(dfemabs).collect()
+
+
+def get_weighted_mean_spectrum(
+    dftimes: pl.LazyFrame,
+    timesteps: range,
+    weights: Sequence[float],
+    fluxfilterfunc: Callable[[npt.NDArray[np.floating] | pl.Series], npt.NDArray[np.floating]] | None,
+    sortcolumn: str,
+) -> pl.LazyFrame:
+    """Return nu, the weighted mean f_nu of the time columns of the timesteps, lambda_angstroms, and f_lambda.
+
+    The first column of dftimes holds nu, and the column of each timestep follows. The filter changes f_nu before the
+    calculation of f_lambda.
+    """
+    dfspectrum = dftimes.select(
+        pl.col("nu"),
+        (
+            pl.sum_horizontal(cs.by_index(timestep + 1) * weights[timestep] for timestep in timesteps)
+            / sum(weights[timesteps.start : timesteps.stop])
+        ).alias("f_nu"),
+    ).with_columns(lambda_angstroms=constants.c_ang_per_s / pl.col("nu"))
+
+    if fluxfilterfunc:
+        dfspectrum = dfspectrum.with_columns(pl.col("f_nu").map_batches(fluxfilterfunc, return_dtype=pl.self_dtype()))
+
+    return dfspectrum.with_columns(f_lambda=pl.col("f_nu") * pl.col("nu") / pl.col("lambda_angstroms")).sort(sortcolumn)
 
 
 @on_model_host
@@ -909,29 +886,13 @@ def scan_spectra(
             )
             raise ValueError(msg)
 
-        dfspectrum = (
-            specdata_alltimesteps[dirbin]
-            .select(
-                pl.col("nu"),
-                (
-                    pl.sum_horizontal(
-                        cs.by_index(timestep + 1) * arr_tdelta[timestep]
-                        for timestep in range(timestepmin, timestepmax + 1)
-                    )
-                    / sum(arr_tdelta[timestepmin : timestepmax + 1])
-                ).alias("f_nu"),
-            )
-            .with_columns(lambda_angstroms=constants.c_ang_per_s / pl.col("nu"))
+        specdataout[dirbin] = get_weighted_mean_spectrum(
+            specdata_alltimesteps[dirbin],
+            range(timestepmin, timestepmax + 1),
+            arr_tdelta,
+            fluxfilterfunc,
+            sortcolumn="nu" if gamma else "lambda_angstroms",
         )
-
-        if fluxfilterfunc:
-            dfspectrum = dfspectrum.with_columns(
-                cs.starts_with("f_nu").map_batches(fluxfilterfunc, return_dtype=pl.self_dtype())
-            )
-
-        specdataout[dirbin] = dfspectrum.with_columns(
-            f_lambda=pl.col("f_nu") * pl.col("nu") / pl.col("lambda_angstroms")
-        ).sort(by="nu" if gamma else "lambda_angstroms")
 
     if fluxfilterfunc:
         print("Applying filter to ARTIS spectrum")
@@ -953,10 +914,7 @@ def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
     # one running sum for each observer, thus the frames of every rank do not stay in memory together
     fluxsum_of_spec: dict[int, npt.NDArray[np.floating]] = {}
     firstrank_of_spec: dict[int, pl.DataFrame] = {}
-    for mpirank in range(nprocs):
-        vspecpolpath = firstexisting(
-            [f"vspecpol_{mpirank:04d}.out", f"vspecpol_{mpirank}-0.out"], folder=modelpath, tryzipped=True
-        )
+    for mpirank, vspecpolpath in enumerate(get_vspecpol_rank_files(modelpath)):
         print(f"Reading rank {mpirank} filename {vspecpolpath}")
 
         vspecpol_data_alldirs = drop_trailing_null_column(
@@ -982,8 +940,62 @@ def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
         dfvspecpol = pl.concat([dffirst[0], dfflux])
 
         outfile = Path(modelpath, f"vspecpol_total-{spec_index}.out")
-        dfvspecpol.write_csv(outfile, separator=" ", include_header=False)
+        # a write that stops early must not leave a short file, which a later read takes with no error
+        write_file_atomic(outfile, partial(dfvspecpol.write_csv, separator=" ", include_header=False))
+        for oldfile in get_file_copies(outfile):
+            if oldfile != outfile and oldfile.is_file():
+                oldfile.unlink()
         print_saved(outfile)
+
+
+def get_vspecpol_rank_files(modelpath: Path | str) -> list[Path]:
+    """Return the file of the virtual packet spectra of each MPI rank, which make_virtual_spectra_summed_file sums.
+
+    A restarted run reads the sums of the run before it, thus the newest run folder with a file for each rank holds
+    the complete sums. The search covers the model folder, then the run folders from the newest. It also covers the
+    folder vspecpol in each of them, where ARTIS writes the files since 2026-09-27. A subfolder with an input.txt is
+    a different model.
+    """
+    modelfolder = Path(modelpath)
+    subfolders_newest_first = [
+        folder for folder in reversed(get_run_subfolders(modelfolder)[:-1]) if not folder_is_artis_model(folder)
+    ]
+    # a dict keeps the first place of the folder vspecpol of the model folder, which is also a subfolder
+    searchfolders = dict.fromkeys(
+        searchfolder
+        for folder in (modelfolder, *subfolders_newest_first)
+        for searchfolder in (folder, folder / "vspecpol")
+    )
+    nprocs = get_nprocs(modelfolder)
+    for folder in searchfolders:
+        rankfiles = [
+            rankfile
+            for mpirank in range(nprocs)
+            if (
+                rankfile := firstexisting_or_none(
+                    [f"vspecpol_{mpirank:04d}.out", f"vspecpol_{mpirank}-0.out"], folder=folder, search_subfolders=False
+                )
+            )
+            is not None
+        ]
+        if len(rankfiles) == nprocs:
+            return rankfiles
+    msg = f"No run folder of {modelfolder} holds a vspecpol_NNNN.out file for each of the {nprocs} MPI ranks"
+    raise FileNotFoundError(msg)
+
+
+def vspecpol_total_is_older_than_its_rank_files(modelpath: Path, totalfile: Path) -> bool:
+    """Return True if a rank file of the virtual packet spectra is newer than a vspecpol_total file.
+
+    A continued run, e.g. after an increase of timestep_finish, writes the rank files again. The old sum then has no
+    flux after the first stop. A model folder with no rank files, e.g. a copy with the totals alone, keeps them.
+    """
+    try:
+        rankfiles = get_vspecpol_rank_files(modelpath)
+    except (FileNotFoundError, IndexError, ValueError):
+        return False
+    totalmtime = totalfile.stat().st_mtime
+    return any(rankfile.stat().st_mtime > totalmtime for rankfile in rankfiles)
 
 
 def make_averaged_vspecfiles(modelpaths: Sequence[Path]) -> None:
@@ -1045,26 +1057,17 @@ def name_repeated_columns(colnames: Sequence[str]) -> list[str]:
     return newcolnames
 
 
-# maxsize is small because each entry holds a whole specpol_res.out file. A caller reads one direction
-# bin at a time, thus a cache miss on each call would parse the file again for every bin.
-@clear_at_reload("output")
-@modelpath_cache(maxsize=2)
-def scan_specpol_res(modelpath: Path) -> dict[int, pl.LazyFrame]:
-    """Return the table of each direction bin of specpol_res.out, with the times as the column names.
+def scan_dirbin_time_tables(specfilename: Path) -> dict[int, pl.LazyFrame]:
+    """Return the table of each direction bin of spec_res.out or specpol_res.out, with the times as the column names.
 
-    The cache takes the absolute path, thus a change of the working folder gives the new model.
-
-    This function collects the scan one time, because each collect call of a lazy frame reads the
-    file again. A caller collects the I, the Q, and the U frame of each direction bin. Do not change
-    a frame of the returned dict. Every caller shares the same object.
+    The first row of each table holds the times. specpol_res.out repeats them for the Q and the U block, and
+    name_repeated_columns gives each repeat the suffix that split_dataframe_stokesparams reads. The function collects
+    the file one time, because each collect call of a lazy frame reads the file again.
     """
-    specfilename = firstexisting("specpol_res.out", folder=modelpath, tryzipped=True)
-    print(f"Reading {specfilename}")
-    alldata = read_complete_spectrum_table(specfilename, has_header=False)
-
     dirbintables: dict[int, pl.LazyFrame] = {}
-    for dirbin, table in split_multitable_dataframe(alldata).items():
-        # the first row of each table holds the times, which the file repeats for the Q and the U block
+    for dirbin, table in split_multitable_dataframe(
+        read_complete_spectrum_table(specfilename, has_header=False)
+    ).items():
         oldcolnames = table.collect_schema().names()
         timerow = [str(value) for value in table.select(pl.all().slice(0, 1)).collect().row(0)]
         dirbintables[dirbin] = (
@@ -1075,6 +1078,22 @@ def scan_specpol_res(modelpath: Path) -> dict[int, pl.LazyFrame]:
         )
 
     return dirbintables
+
+
+# maxsize is small because each entry holds a whole specpol_res.out file. A caller reads one direction
+# bin at a time, thus a cache miss on each call would parse the file again for every bin.
+@clear_at_reload("output")
+@modelpath_cache(maxsize=2)
+def scan_specpol_res(modelpath: Path) -> dict[int, pl.LazyFrame]:
+    """Return the table of each direction bin of specpol_res.out, with the times as the column names.
+
+    The cache takes the absolute path, thus a change of the working folder gives the new model. A caller collects the
+    I, the Q, and the U frame of each direction bin. Do not change a frame of the returned dict. Every caller shares
+    the same object.
+    """
+    specfilename = firstexisting("specpol_res.out", folder=modelpath, tryzipped=True)
+    print(f"Reading {specfilename}")
+    return scan_dirbin_time_tables(specfilename)
 
 
 @on_model_host
@@ -1109,14 +1128,19 @@ def scan_vspecpol_data(modelpath: Path, vspecindex: int) -> dict[str, pl.LazyFra
 
     Do not change the returned dict. Every caller shares it.
     """
-    # alternatively use f'vspecpol_averaged-{angle}.out' ?
-
-    try:
-        specfilename = firstexisting(f"vspecpol_total-{vspecindex}.out", folder=modelpath, tryzipped=True)
-    except FileNotFoundError:
-        print(f"vspecpol_total-{vspecindex}.out does not exist. Generating all-rank summed vspec files..")
+    # the totals are in the model folder. A subfolder can hold the totals of a different model
+    totalname = f"vspecpol_total-{vspecindex}.out"
+    specfilename = firstexisting_or_none(totalname, folder=modelpath, tryzipped=True, search_subfolders=False)
+    if specfilename is None:
+        print(f"{totalname} does not exist. Generating all-rank summed vspec files..")
         make_virtual_spectra_summed_file(modelpath=modelpath)
-        specfilename = firstexisting(f"vspecpol_total-{vspecindex}.out", folder=modelpath, tryzipped=True)
+    elif vspecpol_total_is_older_than_its_rank_files(Path(modelpath), specfilename):
+        print_warning(
+            f"{specfilename} is older than a rank file of the virtual packets,"
+            " thus the command sums the rank files again"
+        )
+        make_virtual_spectra_summed_file(modelpath=modelpath)
+    specfilename = firstexisting(totalname, folder=modelpath, tryzipped=True, search_subfolders=False)
 
     print(f"Reading {specfilename}")
     specdata = pl.read_csv(polars_source(specfilename), separator=" ", has_header=True, glob=False)
@@ -1141,21 +1165,82 @@ def split_dataframe_stokesparams(specdata: pl.DataFrame | pl.LazyFrame) -> dict[
     }
 
 
+# the file gives the middle times of the virtual packet spectra with 6 significant figures, thus the rebuilt edges
+# have a relative error of about 1e-5. Two adjacent edges differ by much more than 1e-4
+VSPECPOL_TIME_RTOL = 1e-4
+
+
+def get_vspecpol_time_bin_edges(timemids: Sequence[float]) -> npt.NDArray[np.float64] | None:
+    """Return the edges of the time bins of the virtual packet spectra [d], from the middle times of the bins.
+
+    ARTIS gives the virtual packet spectra logarithmic time bins, and the file gives the arithmetic middle of each bin
+    (vpkt.cc). A bin from t to r t has the middle t (1 + r) / 2, which is above its geometric centre. Thus the
+    nearest middle time does not always give the bin that holds a time. One middle time gives no ratio r, and the
+    function then gives None.
+    """
+    if len(timemids) < 2:
+        return None
+    middletimes = np.asarray(timemids, dtype=np.float64)
+    ratio = (middletimes[-1] / middletimes[0]) ** (1.0 / (len(middletimes) - 1))
+    loweredges = 2.0 * middletimes / (1.0 + ratio)
+    return np.append(loweredges, loweredges[-1] * ratio)
+
+
+def get_vspecpol_time_bin_index(timemids: Sequence[float], time_days: float, side: t.Literal["left", "right"]) -> int:
+    """Return the index of the time bin of the virtual packet spectra that holds time_days.
+
+    side="right" gives a time on an edge to the later bin. side="left" gives it to the earlier bin, e.g. for the end
+    of a range. A time outside the bins gives the first or the last bin. A time near an edge counts as on the edge,
+    because the rebuilt edges carry the error of the rounded middle times.
+    """
+    edges = get_vspecpol_time_bin_edges(timemids)
+    if edges is None:
+        return 0
+    nearestedge = float(edges[np.argmin(np.abs(edges - time_days))])
+    if math.isclose(nearestedge, time_days, rel_tol=VSPECPOL_TIME_RTOL):
+        time_days = nearestedge
+    return int(np.clip(np.searchsorted(edges, time_days, side=side) - 1, 0, len(timemids) - 1))
+
+
+def get_vspecpol_bins_inside_vpkt_window(timemids: Sequence[float], vpkt_config: Mapping[str, t.Any]) -> list[int]:
+    """Return the indices of the time bins of the virtual packet spectra that lie fully inside the window of vpkt.txt.
+
+    ARTIS writes a virtual packet only for an arrival time inside the window (vpkt.cc). It divides the flux of a bin by
+    the full width of the bin. Thus a bin outside the window has no flux, and a bin across an edge of the window
+    has a flux that is too low. With no time override, vpkt.txt takes the window of the constants of the ARTIS build,
+    and each bin stays.
+    """
+    if not vpkt_config["time_limits_enabled"]:
+        return list(range(len(timemids)))
+    windowstart, windowend = float(vpkt_config["initial_time"]), float(vpkt_config["final_time"])
+    edges = get_vspecpol_time_bin_edges(timemids)
+    if edges is None:
+        return [index for index, timemid in enumerate(timemids) if windowstart <= timemid <= windowend]
+    return [
+        index
+        for index in range(len(timemids))
+        if edges[index] >= windowstart * (1.0 - VSPECPOL_TIME_RTOL)
+        and edges[index + 1] <= windowend * (1.0 + VSPECPOL_TIME_RTOL)
+    ]
+
+
 def check_time_range_overlaps_time_bins(
     timemids: Sequence[float], timemin: float, timemax: float, filedescription: str
 ) -> None:
     """Stop if no time bin of a spectrum file overlaps the time range. Warn if the time range goes past the bins.
 
-    The file gives the middle time of each bin. The first bin and the last bin reach half the distance to the next
-    middle time beyond their own middle time. A caller takes the bin with the nearest middle time, thus a time outside
-    every bin gave the spectrum of the first or the last bin, and the label gave the requested time.
+    The file gives the middle time of each bin, and get_vspecpol_time_bin_edges gives the edges. A caller takes the
+    bin that holds a time, or the first or the last bin for a time outside every bin. Thus such a time gave the
+    spectrum of that bin, and the label gave the requested time.
     """
-    if len(timemids) < 2:
+    edges = get_vspecpol_time_bin_edges(timemids)
+    if edges is None:
         # one middle time gives no width of the bin
         return
 
-    firstbinstart = timemids[0] - (timemids[1] - timemids[0]) / 2.0
-    lastbinend = timemids[-1] + (timemids[-1] - timemids[-2]) / 2.0
+    # the rebuilt outer edges carry the error of the rounded middle times, thus a time on an outer edge stays inside
+    firstbinstart = float(edges[0]) * (1.0 - VSPECPOL_TIME_RTOL)
+    lastbinend = float(edges[-1]) * (1.0 + VSPECPOL_TIME_RTOL)
     rangetext = f"{timemin:.2f} days" if timemin == timemax else f"{timemin:.2f} to {timemax:.2f} days"
     if timemax < firstbinstart or timemin > lastbinend:
         msg = (
@@ -1169,6 +1254,33 @@ def check_time_range_overlaps_time_bins(
             f"The time bins of {filedescription} cover {firstbinstart:.2f} to {lastbinend:.2f} days, thus the spectrum"
             f" holds only a part of {rangetext}"
         )
+
+
+def get_vspecpol_bin_range_inside_vpkt_window(
+    modelpath: Path, timemids: Sequence[float], timestepmin: int, timestepmax: int
+) -> tuple[int, int]:
+    """Return the first and the last selected time bin of the virtual packet spectra inside the window of vpkt.txt.
+
+    The function leaves out a bin at an end of the range that is not fully inside the window, and it warns about it.
+    It raises a ValueError if no selected bin is fully inside the window.
+    """
+    vpkt_config = get_vpkt_config(modelpath)
+    insidebins = set(get_vspecpol_bins_inside_vpkt_window(timemids, vpkt_config))
+    selectedbins = [index for index in range(timestepmin, timestepmax + 1) if index in insidebins]
+    if not selectedbins:
+        msg = (
+            f"The time bins from {timemids[timestepmin]} to {timemids[timestepmax]} days are"
+            f" outside the virtual packets, which cover {vpkt_config['initial_time']} to {vpkt_config['final_time']}"
+            " days. ARTIS writes a virtual packet only inside the time window of vpkt.txt"
+        )
+        raise ValueError(msg)
+    if len(selectedbins) < timestepmax - timestepmin + 1:
+        print_warning(
+            f"The virtual spectrum leaves out {timestepmax - timestepmin + 1 - len(selectedbins)} time bins, because"
+            f" they are not fully inside the time window {vpkt_config['initial_time']} to"
+            f" {vpkt_config['final_time']} days of vpkt.txt"
+        )
+    return selectedbins[0], selectedbins[-1]
 
 
 def scan_vspecpol_spectrum(
@@ -1195,15 +1307,16 @@ def scan_vspecpol_spectrum(
     check_time_range_overlaps_time_bins(
         arr_tmid, timerangelow, timerangehigh, f"vspecpol_total-{angle}.out of {modelpath}"
     )
-    # the vspecpol files hold only the arrival times inside the time window of vpkt.txt
-    check_time_range_inside_vpkt_window(get_vpkt_config(Path(modelpath)), timerangelow, timerangehigh)
-
     if timemin is not None and timemax is not None:
-        timestepmin = arr_tmid.index(match_closest_time(timemin, arr_tmid))
-        timestepmax = arr_tmid.index(match_closest_time(timemax, arr_tmid))
+        timestepmin = get_vspecpol_time_bin_index(arr_tmid, timemin, side="right")
+        # a range that ends on the lower edge of a bin does not hold that bin
+        timestepmax = max(timestepmin, get_vspecpol_time_bin_index(arr_tmid, timemax, side="left"))
     else:
-        timestepmin = arr_tmid.index(match_closest_time(timeavg, arr_tmid))
+        timestepmin = get_vspecpol_time_bin_index(arr_tmid, timeavg, side="right")
         timestepmax = timestepmin
+    timestepmin, timestepmax = get_vspecpol_bin_range_inside_vpkt_window(
+        Path(modelpath), arr_tmid, timestepmin, timestepmax
+    )
 
     timelower = arr_tmid[timestepmin]
     timeupper = arr_tmid[timestepmax]
@@ -1211,25 +1324,12 @@ def scan_vspecpol_spectrum(
     if timestepmax > timestepmin:
         print("  The mean weights each virtual spectrum by the width of its logarithmic time bin (ARTIS vpkt.cc)")
 
-    # ARTIS gives the virtual spectra logarithmic time bins (vpkt.cc), thus the width of each bin is proportional to
-    # its middle time, and the middle times are the weights of the mean
-    dfout = vspecdata.select(
-        f_nu=(
-            pl.sum_horizontal(
-                pl.col(vspecdata.collect_schema().names()[timestep + 1]) * arr_tmid[timestep]
-                for timestep in range(timestepmin, timestepmax + 1)
-            )
-            / sum(arr_tmid[timestepmin : timestepmax + 1])
-        ),
-        nu=pl.col("nu"),
-    ).with_columns(lambda_angstroms=constants.c_ang_per_s / pl.col("nu"))
-
     if fluxfilterfunc:
         print("Applying filter to ARTIS spectrum")
-        dfout = dfout.with_columns(cs.starts_with("f_nu").map_batches(fluxfilterfunc, return_dtype=pl.self_dtype()))
-
-    return dfout.with_columns(f_lambda=pl.col("f_nu") * pl.col("nu") / pl.col("lambda_angstroms")).sort(
-        by="lambda_angstroms"
+    # ARTIS gives the virtual spectra logarithmic time bins (vpkt.cc), thus the width of each bin is proportional to
+    # its middle time, and the middle times are the weights of the mean
+    return get_weighted_mean_spectrum(
+        vspecdata, range(timestepmin, timestepmax + 1), arr_tmid, fluxfilterfunc, sortcolumn="lambda_angstroms"
     )
 
 
@@ -1399,76 +1499,61 @@ def get_flux_contributions_cached(
             directionbin, average_over_phi=average_over_phi, average_over_theta=average_over_theta
         )
 
-    emissiondata: dict[int, pl.DataFrame] = {}
-    absorptiondata: dict[int, pl.DataFrame] = {}
-    maxion: int | None = None
-    polarisation_notified = False
-
     def read_emabs_for_dirbin(filenames: list[str], dbin: int) -> pl.DataFrame:
         """Return the emission or absorption dataframe of one direction bin, after a check of its count of rows."""
-        nonlocal polarisation_notified
         if dbin != -1:
             filenames = [x.replace(".out", f"_res_{dbin:02d}.out") for x in filenames]
 
         emabsfilename = firstexisting(filenames, folder=modelpath, tryzipped=True)
         # the cache takes the absolute path, thus a change of the working folder gives the new model
         dfemabs = read_emission_absorption_file(Path(emabsfilename).absolute())
-        ntimeblocks = get_emabs_timeblock_count(dfemabs, len(arraynu_full), len(arr_tmid), str(emabsfilename))
-
-        if ntimeblocks > len(arr_tmid) and not polarisation_notified:
-            print("This ARTIS model contains polarisation data")
-            polarisation_notified = True
-
+        get_emabs_timeblock_count(dfemabs, len(arraynu_full), len(arr_tmid), str(emabsfilename))
         return dfemabs
 
-    def check_maxion(maxion_float: float, source: str) -> None:
-        """Record MAXION from the first file. Check that each later file gives the same value."""
-        nonlocal maxion
-        assert maxion_float.is_integer()
-        if maxion is None:
-            maxion = int(maxion_float)
-            print(
-                f" Inferred MAXION = {maxion} from the {source} file with nelements = {nelements}"
-                " from compositiondata.txt"
-            )
-        else:
-            assert maxion == int(maxion_float)
+    emissionfilenames = ["emission.out", "emissionpol.out"] if use_lastemissiontype else ["emissiontrue.out"]
+    emissiondata = {dbin: read_emabs_for_dirbin(emissionfilenames, dbin) for dbin in dbinlist} if getemission else {}
+    absorptiondata = (
+        {dbin: read_emabs_for_dirbin(["absorption.out", "absorptionpol.out"], dbin) for dbin in dbinlist}
+        if getabsorption
+        else {}
+    )
+    if any(df.height > len(arraynu_full) * len(arr_tmid) for df in [*emissiondata.values(), *absorptiondata.values()]):
+        print("This ARTIS model contains polarisation data")
 
-    for dbin in dbinlist:
-        if getemission:
-            emissionfilenames = ["emission.out", "emissionpol.out"] if use_lastemissiontype else ["emissiontrue.out"]
-            emissiondata[dbin] = read_emabs_for_dirbin(emissionfilenames, dbin)
-            # the column count is one plus twice MAXION times the element count (MIONS in ARTIS sn3d.h)
-            check_maxion((emissiondata[dbin].width - 1) / 2.0 / nelements, "emission")
+    # an emission file has one column plus twice MAXION times the element count (MIONS in ARTIS sn3d.h). An
+    # absorption file has MAXION times the element count
+    maxionvalues = {(df.width - 1) / 2.0 / nelements for df in emissiondata.values()} | {
+        df.width / nelements for df in absorptiondata.values()
+    }
+    assert len(maxionvalues) == 1
+    maxion_float = maxionvalues.pop()
+    assert maxion_float.is_integer()
+    maxion = int(maxion_float)
+    print(f" Inferred MAXION = {maxion} from the column count of the files, with nelements = {nelements}")
 
-        if getabsorption:
-            absorptiondata[dbin] = read_emabs_for_dirbin(["absorption.out", "absorptionpol.out"], dbin)
-            check_maxion(absorptiondata[dbin].width / nelements, "absorption")
-
-    assert maxion is not None
     timesteps = range(timestepmin, timestepmax + 1)
     fnu_emission_of_column = (
         get_emabs_average(emissiondata, timesteps, arr_tdelta, len(arraynu_full))[nu_select] if getemission else None
     )
     fnu_absorption_of_column = (
         get_emabs_average(absorptiondata, timesteps, arr_tdelta, len(arraynu_full))[nu_select]
-        if absorptiondata
+        if getabsorption
         else None
     )
     series: list[FluxSeries] = []
     for elementindex in range(nelements):
-        nions = elementlist["nions"][elementindex]
-        for ion in range(nions):
-            ion_stage = ion + elementlist["lowermost_ion_stage"][elementindex]
-            ionserieslist: list[tuple[int, str]] = [
-                (elementindex * maxion + ion, "bound-bound"),
-                (nelements * maxion + elementindex * maxion + ion, "bound-free"),
+        for ion in range(elementlist["nions"][elementindex]):
+            ionstr = get_ionstring(
+                elementlist["Z"][elementindex], ion + elementlist["lowermost_ion_stage"][elementindex]
+            )
+            ionserieslist = [
+                (elementindex * maxion + ion, ionstr),
+                (nelements * maxion + elementindex * maxion + ion, f"{ionstr} bound-free"),
             ]
-
             if elementindex == ion == 0:
                 ionserieslist.append((2 * nelements * maxion, "free-free"))
 
-            for selectedcolumn, emissiontypeclass in ionserieslist:
+            for selectedcolumn, linelabel in ionserieslist:
                 array_fnu_emission = (
                     fnu_emission_of_column[:, selectedcolumn]
                     if fnu_emission_of_column is not None
@@ -1480,14 +1565,6 @@ def get_flux_contributions_cached(
                     if fnu_absorption_of_column is not None and selectedcolumn < nelements * maxion
                     else None
                 )
-
-                if emissiontypeclass == "bound-bound":
-                    linelabel = get_ionstring(elementlist["Z"][elementindex], ion_stage)
-                elif emissiontypeclass == "free-free":
-                    linelabel = "free-free"
-                else:
-                    linelabel = f"{get_ionstring(elementlist['Z'][elementindex], ion_stage)} {emissiontypeclass}"
-
                 series.append((linelabel, array_fnu_emission, array_fnu_absorption))
 
     if getemission and not use_lastemissiontype:
@@ -2187,7 +2264,7 @@ def get_flux_contributions_from_packets(
                     lzdfpackets, modelpath, shellgrouping, usethermal=usethermal and getemission
                 )
 
-        lzdfpackets = filter_packets_by_time(lzdfpackets, modelpath, timelowdays, timehighdays, use_time, gamma)
+        lzdfpackets = filter_packets_by_time(lzdfpackets, timelowdays, timehighdays, use_time, gamma)
         if gamma and (groupby in SHELLCOLUMNS or velocityranges):
             check_gamma_emission_record(lzdfpackets)
 
@@ -2261,11 +2338,10 @@ def get_flux_contributions_from_packets(
             shellexprs["absorptionshell"] = get_shell_index_expr(SHELLCOLUMNS[groupby][0], shelledges, shellunit)
         dfpackets = dfpackets.with_columns(**shellexprs).drop(*SHELLCOLUMNS[groupby], "absorption_type", strict=False)
         shellcolumns = pl.col(list(shellexprs))
-        counts = dfpackets.select(
+        noutside, nnotset = dfpackets.select(
             noutside=pl.all_horizontal(shellcolumns.is_null()).sum(),
             nnotset=pl.any_horizontal(shellcolumns == SHELL_NOT_SET).sum(),
         ).row(0)
-        noutside, nnotset = counts
         if nnotset > 0:
             print_warning(
                 f"{nnotset} packets have no thermal emission record, thus the series NOT SET holds them."
@@ -2460,17 +2536,12 @@ def get_flux_contributions_from_packets(
             for groupname, spectrum in spectra.items():
                 spectra[groupname] = np.asarray(filterfunc(spectrum), dtype=np.float64)
 
-    array_flambda_emission_total = None
+    array_flambda_emission_total = np.zeros_like(array_lambda, dtype=float)
     contribution_list = []
     for groupname in allgroupnames:
         array_flambda_emission = emission_spectra.get(groupname, np.zeros_like(array_lambda, dtype=float))
         array_flambda_absorption = absorption_spectra.get(groupname, np.zeros_like(array_lambda, dtype=float))
-
-        if groupname in emission_spectra:
-            if array_flambda_emission_total is None:
-                array_flambda_emission_total = array_flambda_emission.copy()
-            else:
-                array_flambda_emission_total += array_flambda_emission
+        array_flambda_emission_total += array_flambda_emission
 
         fluxcontribthisseries = abs(float(np.trapezoid(array_flambda_emission, x=array_lambda))) + abs(
             float(np.trapezoid(array_flambda_absorption, x=array_lambda))
@@ -2486,9 +2557,6 @@ def get_flux_contributions_from_packets(
                     color=None,
                 )
             )
-
-    if array_flambda_emission_total is None:
-        array_flambda_emission_total = np.zeros_like(array_lambda, dtype=float)
 
     return contribution_list, array_flambda_emission_total, array_lambda
 
@@ -2711,27 +2779,41 @@ def get_spatial_scale_deltalogx(
     return velocity / C_cm_per_s, note, method
 
 
-def model_covers_timedays(modelpath: Path | str, timedays: str | float | None, *, quiet: bool = False) -> bool:
-    """Return False if timedays names one time outside the timesteps of the model, and print a warning unless quiet.
+def model_covers_timedays(
+    modelpath: Path | str, timedays: str | float | None, *, clamp_to_timesteps: bool = True, quiet: bool = False
+) -> bool:
+    """Return False if timedays names a time or a range outside the timesteps of the model, and warn unless quiet.
 
-    A --timemin and --timemax range outside a model skips that model with a warning, thus one time does the same. A
-    range of --timedays and a text that is no number give True, because get_time_range gives their messages.
+    A --timemin and --timemax range outside a model skips that model with a warning, thus a time or a range of
+    --timedays does the same. A range must also hold a timestep that get_time_range selects, e.g. a timestep
+    midpoint. A text that is not a number gives True, because get_time_range gives its message.
     """
-    if timedays is None or parse_timedays_range(timedays) is not None:
+    if timedays is None:
         return True
-    try:
-        timedays_float = float(str(timedays).rstrip("d"))
-    except ValueError:
-        return True
+    dayrange = parse_timedays_range(timedays)
+    if dayrange is None:
+        try:
+            timedays_float = float(str(timedays).rstrip("d"))
+        except ValueError:
+            return True
+        dayrange = (timedays_float, timedays_float)
 
     tstart_first = get_timestep_times(modelpath, loc="start")[0]
     tend_last = get_timestep_times(modelpath, loc="end")[-1]
-    if tstart_first <= timedays_float <= tend_last:
+    rangelow, rangehigh = dayrange
+    if rangehigh >= tstart_first and rangelow <= tend_last:
+        try:
+            get_time_range(modelpath, timedays_range_str=timedays, clamp_to_timesteps=clamp_to_timesteps)
+        except ValueError as exc:
+            if not quiet:
+                print_warning(f"{get_model_logname(modelpath)}: {exc}. The plot skips this model at this time")
+            return False
         return True
 
     if not quiet:
+        rangetext = f"{rangelow:g} days" if rangelow == rangehigh else f"{rangelow:g} to {rangehigh:g} days"
         print_warning(
-            f"{get_model_logname(modelpath)}: no timestep covers {timedays_float:g} days, because the timesteps cover"
+            f"{get_model_logname(modelpath)}: no timestep covers {rangetext}, because the timesteps cover"
             f" {tstart_first:.2f} to {tend_last:.2f} days. The plot skips this model at this time"
         )
     return False

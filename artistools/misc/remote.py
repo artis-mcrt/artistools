@@ -11,6 +11,7 @@ restricted unpickler, because a different user can control a host that the clien
 """
 
 import argparse
+import contextlib
 import functools
 import os
 import pickle
@@ -121,7 +122,7 @@ MAX_MESSAGE_BYTES = 16 * 1024**3
 
 # increase the server protocol when a reader with the decorator on_model_host changes its arguments or its result.
 # Also increase it for a new format of a message. Then a clone with the protocol of the release needs no build on a host
-SERVER_PROTOCOL = 18
+SERVER_PROTOCOL = 19
 
 # the server writes this line before its first message. A startup file of the remote shell can write text to the
 # standard output first, thus the client ignores each line before this one
@@ -173,6 +174,10 @@ def model_path_from_text(text: str) -> Path:
     local path with a colon before its first slash becomes absolute. argparse uses this function as the type of a
     model path.
     """
+    # a shell does not expand ~ after =, e.g. in --modelpath=~/m. A user with no home folder keeps the text
+    if text.startswith("~"):
+        with contextlib.suppress(RuntimeError):
+            return Path(text).expanduser()
     path = Path(text)
     return path.absolute() if text.startswith("./") and is_remote_path(path) else path
 

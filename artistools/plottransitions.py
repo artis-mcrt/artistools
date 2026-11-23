@@ -420,28 +420,24 @@ class PlotConditions:
     dfnltepops: pl.DataFrame | None = None
 
 
-def get_ionlist() -> list[tuple[int, int]]:
-    """Return the ions that the plot shows.
-
-    The commented lines are further ions that a user can select in place of these.
-    """
-    return [
-        (26, 1),
-        (26, 2),
-        (26, 3),
-        (27, 2),
-        (27, 3),
-        (28, 2),
-        (28, 3),
-        # (45, 1),
-        # (54, 1),
-        # (54, 2),
-        # (55, 1),
-        # (55, 2),
-        # (58, 1),
-        # (79, 1),
-        # (83, 1),
-    ]
+# the ions that the plot shows, in order. The commented lines are other ions that a user can select in place of these
+IONLIST: t.Final = (
+    (26, 1),
+    (26, 2),
+    (26, 3),
+    (27, 2),
+    (27, 3),
+    (28, 2),
+    (28, 3),
+    # (45, 1),
+    # (54, 1),
+    # (54, 2),
+    # (55, 1),
+    # (55, 2),
+    # (58, 1),
+    # (79, 1),
+    # (83, 1),
+)
 
 
 def get_cell_conditions(modelpath: Path, args: argparse.Namespace) -> CellConditions:
@@ -530,16 +526,13 @@ def get_fixed_temperature_conditions(args: argparse.Namespace, ionlist: Sequence
     if not args.T:
         args.T = [2000]
 
-    vardict = {}
-    temperature_list = []
-    for index, temperature in enumerate(args.T):
-        tlabel = "Te" if index == 0 else f"Te_{index + 1}"
-        vardict[tlabel] = float(temperature)
-        temperature_list.append(tlabel)
+    vardict = {
+        "Te" if index == 0 else f"Te_{index + 1}": float(temperature) for index, temperature in enumerate(args.T)
+    }
 
     return PlotConditions(
         ionpopdict=dict.fromkeys(ionlist, 1.0),
-        temperature_list=temperature_list,
+        temperature_list=list(vardict),
         vardict=vardict,
         figure_title=f"Te = {args.T[0]:.1f}" if len(args.T) == 1 else "",
     )
@@ -812,8 +805,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     cell = get_cell_conditions(modelpath, args) if from_model else None
 
-    ionlist = get_ionlist()
-    ionlist.sort()
+    ionlist = IONLIST
 
     dftransgfall = None
     if args.atomicdatabase == "kurucz":

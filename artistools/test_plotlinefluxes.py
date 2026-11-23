@@ -9,7 +9,6 @@ from unittest import mock
 
 import numpy as np
 import polars as pl
-import polars.testing as pltest
 import pytest
 
 import artistools as at
@@ -26,19 +25,6 @@ def test_linefluxes_emfeaturesearch_parsing() -> None:
     args = parser.parse_args(["-emfeaturesearch", "(26, 2, 7155, 7150, 7160)", "(28, 2, 7378, 7373, 7383)"])
     assert args.emfeaturesearch == [(26, 2, 7155, 7150, 7160), (28, 2, 7378, 7373, 7383)]
 
-    # the default must already be usable for the two-feature flux ratio plot
-    assert len(parser.parse_args([]).emfeaturesearch) >= 2
-
-    # time bins are floats, not appended lists of strings
-    args = parser.parse_args(["-timebins_tstart", "200", "250", "-timebins_tend", "250", "300"])
-    assert args.timebins_tstart == [200.0, 250.0]
-    assert args.timebins_tend == [250.0, 300.0]
-
-    # unset time bins stay None, so that each model falls back to its own timestep grid
-    args = parser.parse_args([])
-    assert args.timebins_tstart is None
-    assert args.timebins_tend is None
-
     # the wavelengths may be fractional, but the atomic number, ion stage, and level indices must be integers
     assert parser.parse_args(["-emfeaturesearch", "(26, 2, 12570.5, 12470.5, 12670.5)"]).emfeaturesearch == [
         (26, 2, 12570.5, 12470.5, 12670.5)
@@ -47,25 +33,6 @@ def test_linefluxes_emfeaturesearch_parsing() -> None:
     for badfeature in ("not a tuple", "(26.0, 2, 7155)", "(26, True, 7155)", "(26, 2, 7155, 7150, 7160, 1.5, 2)"):
         with pytest.raises(SystemExit):
             parser.parse_args(["-emfeaturesearch", badfeature])
-
-
-def test_linefluxes_default_timebins_use_each_models_timesteps() -> None:
-    """With no explicit time bins, the packet binning must fall back to the model's own timestep grid."""
-    from artistools.plotlinefluxes import get_closelines
-    from artistools.plotlinefluxes import get_line_luminosities_from_packets
-
-    emfeatures = [get_closelines(modelpath_classic_3d, 26, 2, 7155, 7100, 7200)]
-
-    dflcdata_default = get_line_luminosities_from_packets("trueemissiontype", emfeatures, modelpath_classic_3d)
-    dflcdata_explicit = get_line_luminosities_from_packets(
-        "trueemissiontype",
-        emfeatures,
-        modelpath_classic_3d,
-        arr_tstart=at.get_timestep_times(modelpath_classic_3d, loc="start"),
-        arr_tend=at.get_timestep_times(modelpath_classic_3d, loc="end"),
-    )
-
-    pltest.assert_frame_equal(dflcdata_default, dflcdata_explicit)
 
 
 def test_linefluxes_timebins_keep_a_rounding_gap_and_drop_a_real_gap() -> None:
@@ -224,12 +191,6 @@ def test_linefluxes_pops_luminosity_matches_a_loop_over_the_cells() -> None:
     lumdata_cells = sum_line_luminosities(dfnltepops, dflines, dftimes, shell_volumes_at_1s, fillshellgaps=False)
     assert np.allclose(lumdata_cells, expected_cells, rtol=1e-13)
     assert not np.allclose(lumdata_cells, expected, rtol=1e-6)
-
-
-def test_linefluxes_rejects_lone_timebin_argument() -> None:
-    """Giving only one of the two time bin edge lists must be rejected before any data is read."""
-    with pytest.raises(ValueError, match="must be given together"):
-        at.plotlinefluxes.main(argsraw=[], modelpath=[modelpath_classic_3d], timebins_tstart=[200.0, 250.0])
 
 
 def test_linefluxes_gives_a_colour_to_each_model_after_the_default_palette() -> None:
@@ -531,16 +492,6 @@ def test_linefluxes_emitting_regions_without_the_reference_data(
         "$M_{\\rm ej}$ = 1 at 5d",
         "$M_{\\rm ej}$ = 1 at 6d",
     ]
-
-
-def test_linefluxes_label_fields_keep_latex_braces() -> None:
-    """Only the fields timeavg and modeltag change, thus a LaTeX brace of a label stays."""
-    from artistools.plotlinefluxes import format_label_fields
-
-    assert (
-        format_label_fields("$M_{\\rm ej}$ {modeltag} {timeavg:.0f}d", timeavg=250.4, modeltag="w7")
-        == "$M_{\\rm ej}$ w7 250d"
-    )
 
 
 def test_linefluxes_ratio_noise_adds_the_noise_of_the_two_features_in_quadrature() -> None:

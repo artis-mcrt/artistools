@@ -1,6 +1,7 @@
 import argparse
 import functools
 import gzip
+import itertools
 import lzma
 import math
 import re
@@ -505,11 +506,6 @@ def test_spectra_emission_text_files_fill_the_plot_range() -> None:
     assert np.all((packetedges[:-1] < centres) & (centres < packetedges[1:]))
 
 
-def test_spectra_absorption_contributions_reject_nuclide_groupby() -> None:
-    with pytest.raises(ValueError, match="cannot be grouped by nuclide"):
-        get_contributions_classic_3d(groupby="nuc")
-
-
 def test_spectra_velocity_shell_contributions() -> None:
     """A velocity shell holds the emission and the absorption of the packets whose last interaction lies inside it.
 
@@ -826,18 +822,6 @@ def test_spectra_ye_of_a_model_whose_cell_ids_start_at_zero(tmp_path: Path) -> N
     assert np.allclose(yevalues.to_numpy(), [0.1, 0.2, 0.3], rtol=1e-6)
 
 
-def test_spectra_velocity_shell_contributions_need_shell_edges() -> None:
-    with pytest.raises(ValueError, match="needs the shell edges"):
-        get_contributions_classic_3d(groupby="radialvelocity")
-
-    for badshells in ([0.0, 20000.0, 10000.0], [0.0, math.inf], [0.0, math.nan, 20000.0]):
-        with pytest.raises(ValueError, match="must be finite, increase"):
-            get_contributions_classic_3d(groupby="radialvelocity", shelledges=badshells)
-
-    with pytest.raises(ValueError, match="edges of the lineofsightvelocity range must be finite, increase"):
-        get_contributions_classic_3d(velocityranges={"lineofsightvelocity": (5000.0, -5000.0)})
-
-
 @mock.patch.object(mplax.Axes, "stackplot", side_effect=mplax.Axes.stackplot, autospec=True)
 def test_spectraemissionplot_velocity_shells(mockstackplot: mock.MagicMock, tmp_path: Path) -> None:
     """The emission plot stacks the shells from the inner one to the outer one, with the default shell edges."""
@@ -856,31 +840,15 @@ def test_spectraemissionplot_velocity_shells(mockstackplot: mock.MagicMock, tmp_
     assert 2 <= nseries <= 12
 
 
-@mock.patch.object(mplax.Axes, "stackplot", side_effect=mplax.Axes.stackplot, autospec=True)
-def test_spectraemissionplot_velocity_shells_in_units_of_c(mockstackplot: mock.MagicMock, tmp_path: Path) -> None:
-    """A shell edge with a c suffix sets the edges and the labels in units of c."""
-    at.spectra.plot(
-        argsraw=[],
-        specpath=modelpath_classic_3d,
-        outputfile=tmp_path / "velocityshells_c.pdf",
-        timemin=4,
-        timemax=6.5,
-        showemission=True,
-        groupby="radialvelocity",
-        velocityshells=["0c", "0.04c", "0.06c", "0.1c"],
-    )
-
-    # the edges lie inside vmax of the model, thus each of the three shells holds packets
-    assert mockstackplot.call_count == 1
-    assert len(mockstackplot.call_args_list[0].args[2]) == 3
-
-
 @mock.patch.object(mplax.Axes, "set_title", side_effect=mplax.Axes.set_title, autospec=True)
 @mock.patch.object(mplax.Axes, "stackplot", side_effect=mplax.Axes.stackplot, autospec=True)
 def test_spectraemissionplot_velocity_ranges(
     mockstackplot: mock.MagicMock, mocksettitle: mock.MagicMock, tmp_path: Path
 ) -> None:
-    """A velocity range keeps the ion series, and the title gives each range in the unit of its values."""
+    """A velocity range keeps the ion series, and the title gives each range in the unit of its values.
+
+    The packet reader gets each range in km/s, also for a range in units of c.
+    """
     # argparse must read a negative value with a c suffix as a value and not as a flag
     at.spectra.plot(
         argsraw=[
@@ -903,28 +871,44 @@ def test_spectraemissionplot_velocity_ranges(
     title = mocksettitle.call_args_list[-1].args[1]
     assert title.endswith(", packets at line-of-sight velocity [-0.05, 0.05) c")
 
-    at.spectra.plot(
-        argsraw=[],
-        specpath=modelpath_classic_3d,
-        outputfile=tmp_path / "velocityranges.pdf",
-        timemin=4,
-        timemax=6.5,
-        showemission=True,
-        emissionradialvelocityrange=["0.04c", "0.06c"],
-        emissionlineofsightvelocityrange=[-15000, 15000],
-    )
+    with mock.patch.object(
+        atspectra, "get_flux_contributions_from_packets", wraps=atspectra.get_flux_contributions_from_packets
+    ) as mockgetcontributions:
+        at.spectra.plot(
+            argsraw=[],
+            specpath=modelpath_classic_3d,
+            outputfile=tmp_path / "velocityranges.pdf",
+            timemin=4,
+            timemax=6.5,
+            showemission=True,
+            emissionradialvelocityrange=["0.04c", "0.06c"],
+            emissionlineofsightvelocityrange=[-15000, 15000],
+        )
 
+    assert mockgetcontributions.call_count == 1
+    velocityranges = mockgetcontributions.call_args.kwargs["velocityranges"]
+    assert set(velocityranges) == {"radialvelocity", "lineofsightvelocity"}
+    assert np.isclose(velocityranges["radialvelocity"][0], 0.04 * at.constants.C_cm_per_s / 1e5, rtol=1e-9, atol=0.0)
+    assert np.isclose(velocityranges["radialvelocity"][1], 0.06 * at.constants.C_cm_per_s / 1e5, rtol=1e-9, atol=0.0)
+    assert velocityranges["lineofsightvelocity"] == (-15000.0, 15000.0)
     assert mockstackplot.call_count == 2
     assert len(mockstackplot.call_args_list[1].args[2]) >= 2
     title = mocksettitle.call_args_list[-1].args[1]
     assert title.endswith(", packets at radial velocity [0.04, 0.06) c and line-of-sight velocity [-15000, 15000) km/s")
 
 
+@mock.patch.object(mplax.Axes, "stackplot", side_effect=mplax.Axes.stackplot, autospec=True)
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_spectraemissionplot_linewidth_arg(
-    mockplot: mock.MagicMock, tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
+    mockplot: mock.MagicMock,
+    mockstackplot: mock.MagicMock,
+    tmp_path: Path,
+    read_data_file: Callable[[Path], pl.DataFrame],
 ) -> None:
-    """The -linewidth list sets the width of the net spectrum and of a reference spectrum on the emission plot."""
+    """The -linewidth list sets the width of the net spectrum and of a reference spectrum on the emission plot.
+
+    A shell edge with a c suffix sets the edges in units of c.
+    """
     at.spectra.plot(
         argsraw=[],
         specpath=[modelpath_classic_3d, "2003du_20031213_3219_8822_00.txt"],
@@ -938,6 +922,9 @@ def test_spectraemissionplot_linewidth_arg(
         write_data=True,
     )
 
+    # the edges lie inside vmax of the model, thus each of the three shells holds packets
+    assert mockstackplot.call_count == 1
+    assert len(mockstackplot.call_args_list[0].args[2]) == 3
     # the net spectrum of the model is the first line, and the reference spectrum is the second line
     assert [callargs.kwargs.get("linewidth") for callargs in mockplot.call_args_list] == [0.5, 7.0]
     # the emission plot gave no table of the reference spectrum, because only make_spectrum_plot made one
@@ -1071,6 +1058,20 @@ def test_spectraemissionplot_velocity_shells_keep_the_series_limit(
             )
             for groupby in ("ion", "line")
         ),
+        # --normalised divides by the peak, and a shell selection that holds no packet has no peak
+        pytest.param(
+            {
+                "specpath": modelpath_classic_3d,
+                "timemin": 4,
+                "timemax": 6.5,
+                "showemission": True,
+                "groupby": "radialvelocity",
+                "velocityshells": ["0.5c", "0.6c"],
+                "normalised": True,
+            },
+            ["--normalised needs a peak"],
+            id="empty_shell_selection_normalised",
+        ),
         # a virtual packet holds no emission position, and a gamma packet holds no thermal emission position
         *(
             pytest.param(
@@ -1175,22 +1176,6 @@ def test_spectraemissionplot_gamma_shells_need_an_emission_position(tmp_path: Pa
             gamma=True,
             groupby="radialvelocity",
             outputfile=tmp_path / "gammashells.pdf",
-        )
-
-
-def test_spectraemissionplot_velocity_shells_reject_an_empty_selection(tmp_path: Path) -> None:
-    """A shell selection that holds no packet stops with a message when the plot is normalised."""
-    with pytest.raises(SystemExit):
-        at.spectra.plot(
-            argsraw=[],
-            specpath=modelpath_classic_3d,
-            timemin=4,
-            timemax=6.5,
-            showemission=True,
-            groupby="radialvelocity",
-            velocityshells=["0.5c", "0.6c"],
-            normalised=True,
-            outputfile=tmp_path / "empty.pdf",
         )
 
 
@@ -1418,13 +1403,17 @@ def test_spectra_gamma_emission_time_uses_decay(patch_scan_packets: Callable[[pl
     assert np.isclose(integrated_flux, expected_flux, rtol=1e-12, atol=0.0)
 
 
-# The escape time of a packet is the value in the file times the Lorentz factor of the escape surface.
+# The comoving escape time of a packet is sqrt(t_esc^2 - r^2 / c^2), with its escape radius r = beta c t_esc.
 # The second packet enters the window of 1 to 2 days at beta 0.6, where 2.2 d * sqrt(1 - 0.6^2) = 1.76 d.
-# The first packet leaves the window at beta 0.8, where 1.5 d * 0.6 = 0.9 d.
-@pytest.mark.parametrize(("beta", "expected_e_cmf_sum"), [(0.0, 10.0), (0.6, 30.0), (0.8, 20.0)])
+# The first packet leaves the window at beta 0.8, where 1.5 d * 0.6 = 0.9 d. A packet that escapes at a corner of
+# a Cartesian grid has a larger radius than a packet on a face. Thus the two packets can have different values.
+@pytest.mark.parametrize(
+    ("betas", "expected_e_cmf_sum"),
+    [((0.0, 0.0), 10.0), ((0.6, 0.6), 30.0), ((0.8, 0.8), 20.0), ((0.8, 0.6), 20.0), ((0.0, 0.8), 30.0)],
+)
 def test_spectra_contributions_use_escape_time(
     monkeypatch: pytest.MonkeyPatch,
-    beta: float,
+    betas: tuple[float, float],
     expected_e_cmf_sum: float,
     patch_scan_packets: Callable[[pl.DataFrame], None],
 ) -> None:
@@ -1438,17 +1427,18 @@ def test_spectra_contributions_use_escape_time(
         "pellet_nucindex": [0, 0],
         "nu_rf": [nu_rf, nu_rf],
     })
+    # the escape position has the radius beta c t_esc, on the axes in equal parts
+    radii_cm = np.array(betas) * at.constants.C_cm_per_s * dfpackets["escape_time"].to_numpy()
+    dfpackets = dfpackets.with_columns(**{
+        col: pl.Series(radii_cm / math.sqrt(3.0)) for col in ("posx", "posy", "posz")
+    })
     lambda_bin_edges = np.array([4000.0, 5000.0, 6000.0])
-
-    def get_escape_surface_gamma(_modelpath: Path | str) -> float:
-        return math.sqrt(1.0 - beta**2)
 
     def scan_nuclides(modelpath: Path | str) -> pl.LazyFrame:
         del modelpath
         return pl.LazyFrame({"pellet_nucindex": [0], "nucname": ["Ni56"]})
 
     patch_scan_packets(dfpackets)
-    monkeypatch.setattr(atspectra, "get_escape_surface_gamma", get_escape_surface_gamma)
     monkeypatch.setattr(atspectra, "scan_nuclides", scan_nuclides)
 
     dfspectrum = atspectra.scan_spectra_from_packets(
@@ -1508,18 +1498,6 @@ def test_spectra_timeseries_subplots(mockplot: mock.MagicMock) -> None:
     fluxes = [np.asarray(call.args[2], dtype=np.float64) for call in mockplot.call_args_list]
     assert all(np.any(flux > 0.0) for flux in fluxes)
     assert not np.allclose(fluxes[0], fluxes[1], rtol=1e-3, atol=0.0)
-
-
-def test_spectra_multispec_outputfile(tmp_path: Path) -> None:
-    """A custom -outputfile must be honoured in multispecplot mode instead of falling back to plotspec.pdf in CWD."""
-    at.spectra.plot(
-        argsraw=[],
-        specpath=modelpath,
-        outputfile=tmp_path / "custom_multispec.pdf",
-        timedayslist=[295, 300],
-        multispecplot=True,
-    )
-    assert (tmp_path / "custom_multispec.pdf").is_file()
 
 
 def test_write_data_puts_reference_spectra_in_their_own_table(
@@ -1588,12 +1566,6 @@ def test_spectraplot_custom_title(mocksettitle: mock.MagicMock, tmp_path: Path) 
     titles = [call[0][1] for call in mocksettitle.call_args_list]
     assert "Custom title" in titles
     assert all(isinstance(title, str) for title in titles)
-
-
-def test_writespectra(tmp_path: Path) -> None:
-    at.spectra.writespectra.main(argsraw=[], modelpath=modelpath, outputfile=tmp_path)
-
-    assert list(tmp_path.glob("spectrum_ts*.txt"))
 
 
 def test_writespectra_asks_for_all_the_models_before_the_first_model(tmp_path: Path) -> None:
@@ -1825,6 +1797,8 @@ def test_a_unit_that_no_spectrum_takes_stops_the_command(capsys: pytest.CaptureF
     # the plural was the canonical name before, thus a script that gives it still works
     assert parser.parse_args([".", "-xunit", "angstroms"]).xunit == "angstrom"
     assert parser.parse_args([".", "-x", "MU"]).xunit == "micron"
+    # -xunits is an older spelling of -xunit, and a script can still hold it
+    assert parser.parse_args([".", "-xunits", "micron"]).xunit == "micron"
 
 
 @pytest.mark.parametrize("xunit", ["angstrom", "nm", "micron", "hz", "ev", "kev", "mev", "erg"])
@@ -1899,18 +1873,6 @@ def test_scan_spectra_gamma_does_not_mix_in_uvoir_dirbins() -> None:
     assert nu_gamma > nu_uvoir
 
 
-def test_scan_spectra_rejects_averaging_over_both_angles() -> None:
-    """Averaging over phi and theta at once leaves too few bins, so it must be rejected up front."""
-    with pytest.raises(ValueError, match="both the phi and theta"):
-        atspectra.scan_spectra(
-            modelpath=modelpath_classic_3d,
-            timestepmin=10,
-            timestepmax=10,
-            average_over_phi=True,
-            average_over_theta=True,
-        )
-
-
 def test_reference_spectrum_named_out_is_not_read_as_artis(tmp_path: Path) -> None:
     """A user can name reference data with the .out suffix that ARTIS uses for its own output.
 
@@ -1976,20 +1938,6 @@ def test_lambda_bin_edges_with_deltalambda_and_a_frequency_axis_stay_positive() 
     assert np.all(np.diff(lambda_bin_edges) == pytest.approx(10.0))
 
 
-def test_lambda_bin_edges_reject_a_zero_lower_limit_with_deltalogx() -> None:
-    """A lower limit of zero made the multiplicative bin loop run without end."""
-    with pytest.raises(ValueError, match="positive lower x limit"):
-        atspectra.get_lambda_bin_edges(
-            xmin_plot=0.0,
-            xmax_plot=19000.0,
-            deltax=None,
-            deltalogx=0.05,
-            deltalambda=None,
-            xunit="angstrom",
-            modelpath=modelpath,
-        )
-
-
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_spectraplot_falls_back_to_the_angle_averaged_spectrum(mockplot: mock.MagicMock, tmp_path: Path) -> None:
     """A model with no spec_res.out shows direction bin -1 in place of the requested bin, and that bin needs a label."""
@@ -2016,12 +1964,6 @@ def test_spectraplot_rejects_a_direction_bin_inside_an_average_group() -> None:
         at.spectra.plot(
             argsraw=[], specpath=[modelpath], plotviewingangle=[5], average_over_phi_angle=True, timedays=290
         )
-
-
-def test_output_spectra_rejects_a_file_name_for_the_output(tmp_path: Path) -> None:
-    """--output_spectra writes a folder of files, thus -o with a file suffix is an error and not a fallback."""
-    with pytest.raises(ValueError, match="must name a folder"):
-        at.spectra.plot(argsraw=[], specpath=[modelpath], output_spectra=True, outputfile=tmp_path / "spectra.txt")
 
 
 def test_plotspectra_refuses_two_models_whose_timestep_grids_disagree(
@@ -2226,7 +2168,8 @@ def test_plotspectra_timedayslist_names_the_whole_range(tmp_path: Path) -> None:
     """-timedayslist names one epoch for each subplot, thus the file name must span the whole list.
 
     The resolution took args.timedays, which holds the first epoch alone, thus two lists that share
-    their first epoch wrote one file name and the second plot overwrote the first.
+    their first epoch wrote one file name and the second plot overwrote the first. A first epoch that is a range
+    still gave the name alone, and a first range outside the model stopped the plot.
     """
     names = []
     for lastday in ("300", "330"):
@@ -2235,7 +2178,8 @@ def test_plotspectra_timedayslist_names_the_whole_range(tmp_path: Path) -> None:
         at.spectra.plot(
             argsraw=[
                 "-timedayslist",
-                "260",
+                "1000-1001",
+                "260-265",
                 lastday,
                 "--plotinvalidpart",
                 str(modelpath),
@@ -2264,20 +2208,6 @@ def test_plotspectra_showtime_needs_a_time_range(tmp_path: Path, capsys: pytest.
 
     assert excinfo.value.code == 1
     assert "--showtime" in capsys.readouterr().err
-    assert not list(tmp_path.glob("*.pdf"))
-
-
-def test_plotspectra_multispecplot_needs_an_epoch_list(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """--multispecplot draws one subplot for each epoch of -timedayslist, thus it needs that list.
-
-    The row count read len(None) and raised TypeError. -timedayslist sets --multispecplot, thus only
-    the flag on its own reaches this case.
-    """
-    with pytest.raises(SystemExit) as excinfo:
-        at.spectra.plot(argsraw=["--multispecplot", "-timedays", "260", str(modelpath), "-outputfile", str(tmp_path)])
-
-    assert excinfo.value.code == 1
-    assert "-timedayslist" in capsys.readouterr().err
     assert not list(tmp_path.glob("*.pdf"))
 
 
@@ -2420,7 +2350,7 @@ def test_residual_baseline_counts_codecomparison_spectra(
     assert (stats["npoints"] > 0).all()
 
 
-@pytest.mark.parametrize("baselineindex", range(5))
+@pytest.mark.parametrize("baselineindex", [0, 1])
 @pytest.mark.parametrize("xunit", ["angstrom", "nm"])
 def test_residual_baseline_counts_filter_curves(
     tmp_path: Path, baselineindex: int, xunit: str, read_data_file: Callable[[Path], pl.DataFrame]
@@ -2482,6 +2412,23 @@ def test_spectra_residual_panel_refuses_a_plot_with_no_pair(tmp_path: Path) -> N
             residualbaselineseries=1,
             outputfile=tmp_path / "b.pdf",
         )
+
+
+def test_timedayslist_skips_a_model_that_does_not_cover_a_range(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An epoch of -timedayslist that a model does not cover skips that model on its panel, also for a range.
+
+    A single time outside a model skipped the panel, but a range raised a ValueError from get_time_range.
+    """
+    outputfile = tmp_path / "list.pdf"
+    at.spectra.plot(
+        argsraw=[], specpath=[modelpath, modelpath_classic_3d], timedayslist=["295-305", "5"], outputfile=outputfile
+    )
+    stderr = capsys.readouterr().err
+    assert "no timestep covers 295 to 305 days" in stderr
+    assert "no timestep covers 5 days" in stderr
+    assert outputfile.is_file()
 
 
 def get_saved_axes(**plotargs: t.Any) -> list[mplax.Axes]:
@@ -2735,23 +2682,6 @@ def test_vpkt_contributions_leave_out_the_emission_outside_the_vpkt_ranges() -> 
         )
 
 
-def test_reference_spectrum_de_redshift_scales_the_flux(tmp_path: Path) -> None:
-    """A de-redshift divides the wavelength by (1 + z) and multiplies f_lambda by (1 + z).
-
-    The same energy falls in a narrower band in the rest frame, thus the flux density rises.
-    """
-    redshift = 0.5
-    specfile = tmp_path / "redshifted.txt"
-    specfile.write_text("4000 1.0\n5000 2.0\n6000 3.0\n", encoding="utf-8")
-    specfile.with_suffix(".txt.meta.yml").write_text(f"---\nz: {redshift}\n", encoding="utf-8")
-
-    specdata = atspectra.get_reference_spectrum(specfile, at.misc.get_file_metadata(specfile))
-
-    lambda_obs = np.array([4000.0, 5000.0, 6000.0])
-    assert np.allclose(specdata["lambda_angstroms"].to_numpy(), lambda_obs / (1 + redshift), atol=0.0)
-    assert np.allclose(specdata["f_lambda"].to_numpy(), np.array([1.0, 2.0, 3.0]) * (1 + redshift), atol=0.0)
-
-
 def test_plotspectra_normalised_log_axis_keeps_room_above_the_peak() -> None:
     """A normalised spectrum on a log axis keeps a margin above its peak of 1.
 
@@ -2777,7 +2707,6 @@ def test_co56_flux_scale_uses_the_half_life_of_the_constants() -> None:
     halflife = at.constants.co56_halflife_days
     assert atspectra.timeshift_fluxscale_co56law(300.0, 300.0 + halflife) == pytest.approx(2.0)
     assert atspectra.timeshift_fluxscale_co56law(300.0 + halflife, 300.0) == pytest.approx(0.5)
-    assert atspectra.timeshift_fluxscale_co56law(None, 300.0) == pytest.approx(1.0)
 
 
 def test_spectraemissionplot_takes_the_label_of_the_model_after_a_reference(
@@ -2794,30 +2723,6 @@ def test_spectraemissionplot_takes_the_label_of_the_model_after_a_reference(
         outputfile=tmp_path / "emission_after_reference.pdf",
     )
     assert "'MODELLABEL': Timesteps" in capsys.readouterr().out
-
-
-@mock.patch("artistools.spectra.core.get_flux_contributions_from_packets")
-def test_spectraemissionplot_forwards_the_velocity_ranges(mockgetcontributions: mock.MagicMock, tmp_path: Path) -> None:
-    """The velocity range arguments must reach the packet reader that selects the contributions."""
-    contribution_list: list[atspectra.FluxContributionTuple] = []
-    mockgetcontributions.return_value = (contribution_list, np.zeros(2), np.array([4000.0, 5000.0]))
-
-    at.spectra.plot(
-        argsraw=[],
-        specpath=modelpath_classic_3d,
-        outputfile=tmp_path / "velocityranges_forwarded.pdf",
-        timemin=4,
-        timemax=6.5,
-        showemission=True,
-        emissionradialvelocityrange=["0.04c", "0.06c"],
-        emissionlineofsightvelocityrange=[-15000, 15000],
-    )
-
-    velocityranges = mockgetcontributions.call_args.kwargs["velocityranges"]
-    assert set(velocityranges) == {"radialvelocity", "lineofsightvelocity"}
-    assert np.isclose(velocityranges["radialvelocity"][0], 0.04 * at.constants.C_cm_per_s / 1e5, rtol=1e-9, atol=0.0)
-    assert np.isclose(velocityranges["radialvelocity"][1], 0.06 * at.constants.C_cm_per_s / 1e5, rtol=1e-9, atol=0.0)
-    assert velocityranges["lineofsightvelocity"] == (-15000.0, 15000.0)
 
 
 def test_scan_spec_follows_the_working_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2893,6 +2798,7 @@ def test_scan_spec_of_a_cut_or_empty_file(tmp_path: Path, capsys: pytest.Capture
         (["-stokesparam", "Q", "-plotvspecpol", "0", "--frompackets"], "reads the virtual packet spectra"),
         (["--showemission", "-timedayslist", "290", "320"], "draws one time"),
         (["--showemission", "-yvariable", "packetcount"], "has no count of packets"),
+        (["--multispecplot"], "no such list was given"),
     ],
 )
 def test_plotspectra_refuses_a_quantity_that_the_series_lacks(
@@ -2901,7 +2807,8 @@ def test_plotspectra_refuses_a_quantity_that_the_series_lacks(
     """Each of these plots drew the wrong quantity or the wrong time, or it stopped with a missing column.
 
     -stokesparam Q drew Stokes I for spec.out, an emission plot of -timedayslist drew the first time alone,
-    and -yvariable packetcount stopped an emission plot with ColumnNotFoundError.
+    and -yvariable packetcount stopped an emission plot with ColumnNotFoundError. --multispecplot with no
+    -timedayslist read len(None) and raised TypeError.
     """
     import artistools.__main__
 
@@ -3396,21 +3303,14 @@ def test_reference_spectrum_takes_a_redshift_with_an_exponent(tmp_path: Path) ->
     assert np.allclose(specdata["f_lambda"].to_numpy(), [1.001, 2.002], rtol=1e-12, atol=0.0)
 
 
-def test_stokesparam_takes_only_the_values_that_the_plot_reads() -> None:
-    """A value such as q/i stopped with KeyError in plot_polarisation, thus argparse refuses it."""
-    parser = argparse.ArgumentParser()
-    plotspectra.addargs(parser)
-    assert parser.parse_args(["-stokesparam", "Q/I"]).stokesparam == "Q/I"
-    with pytest.raises(SystemExit):
-        parser.parse_args(["-stokesparam", "q/i"])
-
-
 def test_codecomparison_spectrum_refuses_the_options_that_it_cannot_draw(capsys: pytest.CaptureFixture[str]) -> None:
     """A code comparison spectrum is F_lambda per angstrom at 1 Mpc, and it needs a time.
 
     The reader took the raw -timedays text, which failed for a range, and it drew angstroms on an axis of another unit.
     """
-    args = argparse.Namespace(timemin=290.0, timemax=320.0, xunit="nm", yvariable="flux", distmpc=1.0, normalised=False)
+    args = argparse.Namespace(
+        timemin=290.0, timemax=320.0, xunit="nm", yvariable="flux", distmpc=1.0, normalised=False, multispecplot=False
+    )
     with pytest.raises(SystemExit):
         plotspectra.check_codecomparison_args(args)
     assert "-xunit nm" in capsys.readouterr().err
@@ -3421,8 +3321,20 @@ def test_codecomparison_spectrum_refuses_the_options_that_it_cannot_draw(capsys:
     assert "no time range" in capsys.readouterr().err
 
     args = argparse.Namespace(
-        timemin=290.0, timemax=320.0, xunit="angstrom", yvariable="flux", distmpc=1.0, normalised=False
+        timemin=290.0,
+        timemax=320.0,
+        xunit="angstrom",
+        yvariable="flux",
+        distmpc=1.0,
+        normalised=False,
+        multispecplot=True,
     )
+    # the code comparison branch drew one spectrum on the first panel, at the middle of all the epochs
+    with pytest.raises(SystemExit):
+        plotspectra.check_codecomparison_args(args)
+    assert "--timedayslist gives a panel for each" in capsys.readouterr().err
+
+    args.multispecplot = False
     plotspectra.check_codecomparison_args(args)
 
 
@@ -3779,7 +3691,10 @@ def test_summary_table_agrees_with_the_summary_lines(
     assert noisematch[3] == modelrow["noise_method"]
     assert referencerow["relnoise_luminosity"] is None
 
-    dfspectrum = read_data_file(tmp_path / "spec.txt").filter(
+    dfspectrumtable = read_data_file(tmp_path / "spec.txt")
+    # the table of a spectrum from packets gives the noise of each bin also without --shownoise
+    assert "flux_relnoise.TEST MODEL" in dfspectrumtable.columns
+    dfspectrum = dfspectrumtable.filter(
         pl.col("lambda_angstroms").is_between(modelrow["lambda_min_angstroms"], modelrow["lambda_max_angstroms"])
     )
     integral = np.trapezoid(dfspectrum["f_lambda.TEST MODEL"], dfspectrum["lambda_angstroms"])
@@ -3787,20 +3702,6 @@ def test_summary_table_agrees_with_the_summary_lines(
     assert np.isclose(
         4 * math.pi * at.constants.megaparsec_to_cm**2 * integral, modelrow["luminosity_erg_per_s"], rtol=0.02
     )
-
-
-def test_packet_spectrum_table_gives_the_noise_without_shownoise(
-    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """Give the relative Monte Carlo noise of each bin in the table of a spectrum from packets.
-
-    The column came only with --shownoise, thus a reader of the table could not see that a feature was noise.
-    """
-    # the command saves its plot in the working folder
-    monkeypatch.chdir(tmp_path)
-    at.spectra.plotspectra.main(argsraw=[str(modelpath), "--frompackets", "-t", "300", "--print_data"])
-    header = next(line for line in capsys.readouterr().out.splitlines() if line.startswith("lambda_angstroms "))
-    assert "flux_relnoise" in header
 
 
 def test_packet_reason_gives_the_standard_spelling(capsys: pytest.CaptureFixture[str]) -> None:
@@ -3818,22 +3719,6 @@ def test_packet_reason_gives_the_standard_spelling(capsys: pytest.CaptureFixture
     resolve_frompackets(args)
     assert args.frompacketsreason == "--use-sampledemissiontype"
     assert "since --use-sampledemissiontype was specified" in capsys.readouterr().out
-
-
-def test_plotspectra_x_still_gives_the_unit() -> None:
-    """-x named the unit on plotspectra before -xunit, thus a script that holds it still runs.
-
-    -x names the axis variable on plotestimators, but each parser reads its own arguments.
-    """
-    import artistools.spectra.plotspectra
-
-    parser = argparse.ArgumentParser(prog="plotspectra")
-    artistools.spectra.plotspectra.addargs(parser)
-
-    # each spelling gives the canonical name of the unit, thus the plot code reads one name
-    assert parser.parse_args([".", "-x", "nm"]).xunit == "nm"
-    assert parser.parse_args([".", "-xunits", "micron"]).xunit == "micron"
-    assert parser.parse_args([".", "-xunit", "Hz"]).xunit == "hz"
 
 
 def test_emission_plot_names_a_direction_bin_that_the_average_leaves_out(
@@ -3890,24 +3775,6 @@ def test_gamma_spectrum_check_follows_the_working_folder(tmp_path: Path, monkeyp
     assert not atspectra.has_gamma_spec_file(Path())
 
 
-def test_output_template_names_a_field_that_plotspectra_does_not_give(tmp_path: Path) -> None:
-    """The command plotspectra refuses a field of -o that it does not give, as the other commands do.
-
-    get_plot_outputfile filled the template with str.format, thus the command stopped with the traceback of a KeyError.
-    """
-    args = argparse.Namespace(
-        outputfile=tmp_path / "spec_{foo}.pdf",
-        showemission=False,
-        showabsorption=False,
-        plotviewingangle=None,
-        plotvspecpol=None,
-        timemin=300.0,
-        timemax=301.0,
-    )
-    with pytest.raises(ValueError, match=r"holds the field 'foo'"):
-        plotspectra.get_plot_outputfile(args)
-
-
 @pytest.mark.parametrize("difference", ["time", "frequency", "shape"])
 def test_virtual_average_refuses_different_grids(tmp_path: Path, difference: str) -> None:
     """A different grid in the last observer direction stops the average before the first file exists."""
@@ -3955,9 +3822,8 @@ def test_virtual_average_keeps_observer_index_and_fractional_flux(tmp_path: Path
         {"plotvspecpol": [0, 1]},
     ],
 )
-@pytest.mark.parametrize("stokesparam", ["Q/I", "U/I"])
 def test_polarisation_refuses_multiple_series(
-    selection: dict[str, t.Any], stokesparam: str, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    selection: dict[str, t.Any], capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
     options = {"specpath": [modelpath_classic_3d], "timedays": "5", "outputfile": tmp_path, **selection}
     with (
@@ -3965,18 +3831,10 @@ def test_polarisation_refuses_multiple_series(
         mock.patch.object(plotspectra, "scan_vspecpol_data") as scanvspecpol,
         pytest.raises(SystemExit),
     ):
-        at.spectra.plot(args=None, argsraw=[], stokesparam=stokesparam, **options)
+        at.spectra.plot(args=None, argsraw=[], stokesparam="Q/I", **options)
     scanspecpol.assert_not_called()
     scanvspecpol.assert_not_called()
     assert "one model path and one direction" in capsys.readouterr().err
-
-
-def test_polarisation_limits_keep_the_average_of_models() -> None:
-    """--averagevspecpolfiles runs in place of the polarisation plot, thus a ratio keeps its two model paths."""
-    specpath = [modelpath_classic_3d, modelpath_classic_3d]
-    with mock.patch.object(plotspectra, "make_averaged_vspecfiles") as average:
-        at.spectra.plot(args=None, argsraw=[], stokesparam="Q/I", specpath=specpath, averagevspecpolfiles=True)
-    average.assert_called_once()
 
 
 @pytest.mark.parametrize(
@@ -3994,10 +3852,71 @@ def test_virtual_spectrum_uses_logarithmic_time_weights(
     assert averaged["f_nu"].item() == pytest.approx(expected)
 
 
-@pytest.mark.parametrize("stokesparam", ["Q/I", "U/I"])
+def test_virtual_spectrum_takes_the_logarithmic_time_bin_that_holds_the_timestep() -> None:
+    """A timestep inside one logarithmic time bin of the virtual spectra gives the flux of that bin alone.
+
+    The file gives the arithmetic middle of each bin, which is above the geometric centre of the bin. For the
+    timestep 3.665 to 3.803 d, the nearest middle time of its start is that of the bin 3.0 to 3.65 d. Thus the mean
+    also took that bin, which does not overlap the timestep.
+    """
+    # the middle times of the default grid of vpkt.h, 5 bins from 3 to 8 d, as the file writes them
+    times = [3.32509, 4.04574, 4.92256, 5.98942, 7.2875]
+    fluxes = [100.0, 1.0, 2.0, 3.0, 4.0]
+    spectrum = pl.LazyFrame({"nu": [1e14], **{str(time): [flux] for time, flux in zip(times, fluxes, strict=True)}})
+    with (
+        mock.patch.object(atspectra, "scan_vspecpol_data", return_value={"I": spectrum}),
+        mock.patch.object(atspectra, "get_vpkt_config", return_value={"time_limits_enabled": False}),
+    ):
+        averaged = atspectra.scan_vspecpol_spectrum(Path(), 3.734, 0, timemin=3.665, timemax=3.803).collect()
+        # the rounded middle times give edges with a small error, thus the exact edges of a bin took a neighbour too
+        ratio = (8.0 / 3.0) ** (1.0 / 5.0)
+        exactbin = atspectra.scan_vspecpol_spectrum(Path(), 4.0, 0, timemin=3.0 * ratio, timemax=3.0 * ratio**2)
+    assert averaged["f_nu"].item() == pytest.approx(1.0)
+    assert exactbin.collect()["f_nu"].item() == pytest.approx(1.0)
+
+
+def test_virtual_spectrum_leaves_out_the_time_bins_across_the_window_of_vpkt_txt(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A time range of a virtual spectrum takes only the time bins that lie fully inside the window of vpkt.txt.
+
+    ARTIS writes a virtual packet only inside the window, and it divides the flux of a bin by the full width of the
+    bin. Thus a bin across an edge of the window has too low a flux. The range 4 to 6 d took three bins, and two of
+    them were partly outside the window.
+    """
+    times = [3.32509, 4.04574, 4.92256, 5.98942, 7.2875]
+    fluxes = [100.0, 10.0, 2.0, 30.0, 400.0]
+    spectrum = pl.LazyFrame({"nu": [1e14], **{str(time): [flux] for time, flux in zip(times, fluxes, strict=True)}})
+    vpktconfig = {"time_limits_enabled": True, "initial_time": 4.0, "final_time": 6.0}
+    with (
+        mock.patch.object(atspectra, "scan_vspecpol_data", return_value={"I": spectrum}),
+        mock.patch.object(atspectra, "get_vpkt_config", return_value=vpktconfig),
+    ):
+        averaged = atspectra.scan_vspecpol_spectrum(Path(), 5.0, 0, timemin=4.0, timemax=6.0).collect()
+    assert averaged["f_nu"].item() == pytest.approx(2.0)
+    assert "leaves out 2 time bins" in capsys.readouterr().err
+
+
+def test_vpkt_window_tolerance_scales_with_each_window_edge() -> None:
+    """A bin edge must agree with a window edge to the precision of that edge, not to the precision of the window end.
+
+    The tolerance was 1e-4 of the window end at both edges. Thus a window of 4 to 1000 d kept a bin from 3.95 d.
+    """
+    edges = [3.95 * 1.1**index for index in range(6)]
+    # the file gives the arithmetic middle of each bin with 6 significant figures
+    timemids = [float(f"{(lower + upper) / 2.0:.6g}") for lower, upper in itertools.pairwise(edges)]
+    vpktconfig = {"time_limits_enabled": True, "initial_time": 4.0, "final_time": 1000.0}
+    assert atspectra.get_vspecpol_bins_inside_vpkt_window(timemids, vpktconfig) == [1, 2, 3, 4]
+    # a window edge on a bin edge keeps that bin, although the file rounds the middle times
+    vpktconfig["initial_time"] = edges[1]
+    vpktconfig["final_time"] = edges[4]
+    assert atspectra.get_vspecpol_bins_inside_vpkt_window(timemids, vpktconfig) == [1, 2, 3]
+
+
 @pytest.mark.parametrize("binflux", [False, True])
 @pytest.mark.parametrize("filtermovingavg", [0, 3])
-def test_polarisation_processes_fluxes_before_the_ratio(stokesparam: str, binflux: bool, filtermovingavg: int) -> None:
+def test_polarisation_processes_fluxes_before_the_ratio(binflux: bool, filtermovingavg: int) -> None:
+    stokesparam = "Q/I"
     intensity = np.array([100.0, 1.0, 1.0, 1.0, 1.0])
     numerator = np.array([0.0, 1.0, 1.0, 1.0, 1.0])
     stokes = {

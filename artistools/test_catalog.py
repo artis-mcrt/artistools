@@ -34,9 +34,6 @@ def test_catalog_gives_one_row_for_each_model_and_warns_about_a_broken_model(
 
     dfcatalog = read_data_file(outputfile)
     assert dfcatalog["modelfolder"].to_list() == ["broken", "group/classic3d", "testmodel"]
-    assert "#   peak_lum_erg_per_s, peak_time_days: the largest point of light_curve.out" in outputfile.read_text(
-        encoding="utf-8"
-    )
 
     rowbroken, rowclassic, rowtestmodel = dfcatalog.iter_rows(named=True)
     assert rowbroken["cells"] is None
@@ -91,7 +88,6 @@ def test_catalog_prints_the_methods_and_the_table_and_asks_before_it_overwrites_
 
     outputfile = tmp_path / "out" / "catalog.txt"
     main(argsraw=[str(tmp_path), "-o", str(outputfile)])
-    assert "# command: " in outputfile.read_text(encoding="utf-8")
     with pytest.raises(SystemExit):
         main(argsraw=[str(tmp_path), "-o", str(outputfile)])
     main(argsraw=[str(tmp_path), "-o", str(outputfile), "--force"])

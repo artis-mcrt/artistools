@@ -39,7 +39,9 @@ from artistools.spectra.plotspectra import DEFAULT_MAXSERIESCOUNT
 from artistools.spectra.plotspectra import DELTALOGX_SCALES
 from artistools.spectra.plotspectra import draw_plot
 from artistools.spectra.plotspectra import find_reference_spectrum_file_or_none
+from artistools.spectra.plotspectra import get_default_groupby
 from artistools.spectra.plotspectra import get_default_xlimits
+from artistools.spectra.plotspectra import get_default_xunit
 from artistools.spectra.plotspectra import get_emission_event
 from artistools.spectra.plotspectra import main as plotspectra_main
 from artistools.spectra.plotspectra import make_plot_figure
@@ -60,6 +62,7 @@ from artistools.viewertools.core import get_nearest_range_start
 from artistools.viewertools.core import get_option_row_tokens
 from artistools.viewertools.core import get_option_tokens
 from artistools.viewertools.core import get_resized_range
+from artistools.viewertools.core import get_row_values
 from artistools.viewertools.core import get_stepped_range
 from artistools.viewertools.core import keep_figwidthscale
 from artistools.viewertools.core import make_command_tokens
@@ -266,21 +269,6 @@ class ControlValues:
     otheroptions: OptionRows
 
 
-def get_default_xunit(*, gamma: bool) -> str:
-    """Return the x unit that plotspectra takes when the command gives no --xunit."""
-    return "kev" if gamma else "angstrom"
-
-
-def get_text_source_conflict(values: "ControlValues", plotargs: argparse.Namespace) -> str | None:
-    """Return why the plot needs the packets files when the user selected the text files, or None."""
-    if values.datasource == "text" and plotargs.frompacketsreason is not None:
-        return (
-            f"{plotargs.frompacketsreason} needs the packets files, and the data source is Text files. Select Auto"
-            " or Packets files"
-        )
-    return None
-
-
 def get_packets_reason(tokens: "Sequence[str]") -> str | None:
     """Return the option that makes plotspectra read the packets files, or None if the text files serve the plot.
 
@@ -329,11 +317,6 @@ def drop_hidden_emission_event(values: "ControlValues") -> "ControlValues":
     return dc.replace(values, emissionevent="last")
 
 
-def get_default_groupby(*, gamma: bool) -> str:
-    """Return the --groupby that plotspectra takes for an emission plot when the command gives none."""
-    return "nuc" if gamma else "ion"
-
-
 def set_packet_type(values: ControlValues, *, gamma: bool) -> ControlValues:
     """Return the values for the spectrum of the r-packets, or of the gamma packets if gamma is True.
 
@@ -344,7 +327,7 @@ def set_packet_type(values: ControlValues, *, gamma: bool) -> ControlValues:
     """
     xunit = get_default_xunit(gamma=gamma)
     xmin, xmax = get_default_xlimits(xunit, gamma=gamma)
-    return dc.replace(
+    newvalues = dc.replace(
         values,
         gamma=gamma,
         emissionevent="last" if gamma else values.emissionevent,
@@ -355,9 +338,10 @@ def set_packet_type(values: ControlValues, *, gamma: bool) -> ControlValues:
         ymin="",
         ymax="",
         groupby=None,
-        fixedionlist=(),
-        countfromlist=False,
     )
+    # the ion list of one packet type does not apply to the other. remove_series_lock also gives back the default
+    # count of the series in place of a count that came only from the length of the list
+    return remove_series_lock(newvalues)
 
 
 def has_gamma_spectrum(modelfolders: "Sequence[Path]") -> bool:
@@ -404,8 +388,13 @@ class TimestepGrid(t.NamedTuple):
     validtmids: tuple[float, ...]
     hasgammaspectrum: bool
     directionkinds: tuple[str, ...]
-    # the spectra and the time grid of the load
-    loadkey: tuple[tuple[str, ...], str]
+    # the spectra, the time grid, and --plotinvalidpart of the load
+    loadkey: tuple[tuple[str, ...], str, bool]
+
+
+def values_give_plotinvalidpart(values: ControlValues) -> bool:
+    """Return True if the option table of the values holds --plotinvalidpart."""
+    return get_row_values(values.otheroptions, "--plotinvalidpart") is not None
 
 
 def get_grid_selection(grid: TimestepGrid, values: ControlValues) -> tuple[int, int]:
@@ -675,7 +664,7 @@ def read_timestep_grid(spectra: "Sequence[str | Path]", timegrid: str, *, plotin
         hasgammaspectrum=has_gamma_spectrum(modelfolders),
         # the direction controls read the first model, e.g. for the observers of -plotvspecpol
         directionkinds=tuple(get_direction_kinds(modelfolders[0])),
-        loadkey=(tuple(str(path) for path in spectra), timegrid),
+        loadkey=(tuple(str(path) for path in spectra), timegrid, plotinvalidpart),
     )
 
 
@@ -812,17 +801,22 @@ class SpectrumViewer:
         self.drawndeltalogx: float | None = None
         self.deltalogxnote = ""
 
-    def load_models(self, spectra: "Sequence[str | Path]", timegrid: str = "") -> None:
+    def load_models(
+        self, spectra: "Sequence[str | Path]", timegrid: str = "", plotinvalidpart: bool | None = None
+    ) -> None:
         """Read the ARTIS models of the spectra again, and clear the results of the tests of the choices.
 
         The files of the model folders give the results of the tests of the choices, e.g. a new gamma_spec.out
-        after Reload Data. Thus each read of the model folders clears those results.
+        after Reload Data. Thus each read of the model folders clears those results. If plotinvalidpart is None, the
+        function takes --plotinvalidpart from the option table of the current values.
         """
         self.rejections.clear()
         self.autoreasons.clear()
+        if plotinvalidpart is None:
+            plotinvalidpart = values_give_plotinvalidpart(self.values)
         # the worker thread makes the command from the grid while the window reads the models again, e.g. for a new
         # model. One assignment of the complete grid keeps the grid of one load together
-        self.grid = read_timestep_grid(spectra, timegrid, plotinvalidpart=bool(self.args.plotinvalidpart))
+        self.grid = read_timestep_grid(spectra, timegrid, plotinvalidpart=plotinvalidpart)
 
     def snap(self, values: ControlValues, first: int, last: int) -> ControlValues:
         """Return the values for a time range from the middle of the first timestep to the middle of the last."""
@@ -921,11 +915,10 @@ class SpectrumViewer:
         A snapped range reads whole timesteps from spec.out. A continuous range reads the packets that arrive inside
         it, thus the text gives its days and its width and no timestep.
         """
-        # a path does not start with "-", and the -t of the controls comes before each other option
-        plottokens = self.get_plot_tokens()
-        timedays = plottokens[plottokens.index("-t") + 1]
         timestepmin, timestepmax, daysmin, daysmax = get_time_range(
-            self.grid.gridfolder, timedays_range_str=timedays, clamp_to_timesteps=not self.values.notimeclamp
+            self.grid.gridfolder,
+            timedays_range_str=get_timedays_token(self, self.values),
+            clamp_to_timesteps=not self.values.notimeclamp,
         )
         return get_time_range_text(timestepmin, timestepmax, daysmin, daysmax, clamped=not self.values.notimeclamp)
 
@@ -982,16 +975,24 @@ class SpectrumViewer:
         This parses and checks the arguments and draws no plot, thus the window can test each choice of a control.
         A missing input file stops a plot later, and this test does not find it.
         """
+        return run_command_step(lambda: self.parse_plot_args(values)[1], echo=False)
 
-        def check() -> str | None:
-            plotargs = parse_cli_args(addargs, None, None, self.get_plot_tokens(values))
-            resolve_plot_args(plotargs)
-            check_viewer_args(plotargs)
-            if (plotargs.showemission, plotargs.showabsorption) != (values.showemission, values.showabsorption):
-                return "A different option of the command keeps the emission plot on"
-            return get_text_source_conflict(values, plotargs)
+    def parse_plot_args(self, values: ControlValues) -> tuple[argparse.Namespace, str | None]:
+        """Return the resolved plotspectra arguments of the values, and why the window rejects them, or None.
 
-        return run_command_step(check, echo=False)
+        A bad combination of arguments stops plotspectra, thus the caller must catch that stop.
+        """
+        plotargs = parse_cli_args(addargs, None, None, self.get_plot_tokens(values))
+        resolve_plot_args(plotargs)
+        check_viewer_args(plotargs)
+        if (plotargs.showemission, plotargs.showabsorption) != (values.showemission, values.showabsorption):
+            return plotargs, "A different option of the command keeps the emission plot on"
+        if values.datasource == "text" and plotargs.frompacketsreason is not None:
+            return plotargs, (
+                f"{plotargs.frompacketsreason} needs the packets files, and the data source is Text files. Select Auto"
+                " or Packets files"
+            )
+        return plotargs, None
 
     def render(self, values: ControlValues, *, quiet: bool = True) -> "Callable[[], str | None]":
         """Draw the plot of the values on a new figure, and return the function that shows it in the canvas.
@@ -1002,13 +1003,9 @@ class SpectrumViewer:
         """
 
         def draw(fig: mplfig.Figure) -> RenderedSpectrum | str:
-            plotargs = parse_cli_args(addargs, None, None, self.get_plot_tokens(values))
-            resolve_plot_args(plotargs)
-            check_viewer_args(plotargs)
-            if (conflict := get_text_source_conflict(values, plotargs)) is not None:
-                return conflict
-            if (plotargs.showemission, plotargs.showabsorption) != (values.showemission, values.showabsorption):
-                return "A different option of the command keeps the emission plot on"
+            plotargs, rejection = self.parse_plot_args(values)
+            if rejection is not None:
+                return rejection
             _, axes, residualaxis = make_plot_figure(plotargs, fig=fig)
             dfalldata = draw_plot(plotargs, axes, residualaxis)[""]
             return RenderedSpectrum(
@@ -1200,6 +1197,7 @@ def get_binmode(values: ControlValues) -> str:
 
 def get_timedays_token(viewer: SpectrumViewer, values: ControlValues) -> str:
     """Return the --timedays value of the command of the values."""
+    # a path does not start with "-", and the -t of the controls comes before each other option
     tokens = viewer.get_plot_tokens(values)
     return tokens[tokens.index("-t") + 1]
 
@@ -1586,7 +1584,14 @@ def open_window(
     add_row(spectragrid, 2, [QtWidgets.QLabel("--frompackets"), datasourcebox])
 
     def on_option_rows(rows: OptionRows, undoable: bool = True) -> None:
-        apply(dc.replace(viewer.values, otheroptions=rows), undoable=undoable)
+        values = dc.replace(viewer.values, otheroptions=rows)
+        # --plotinvalidpart changes the valid timesteps of the time controls, and apply clamps the time to the grid
+        plotinvalidpart = values_give_plotinvalidpart(values)
+        if plotinvalidpart != viewer.grid.loadkey[2]:
+            viewer.load_models(values.spectra, values.timegrid, plotinvalidpart=plotinvalidpart)
+            if not values.notimeclamp:
+                values = viewer.snap(values, *get_grid_selection(viewer.grid, values))
+        apply(values, undoable=undoable)
 
     commandsections, figscalebox, show_figscale = add_command_sections_with_figscale(
         viewerwindow, viewer, helptexts, CONTROLLED_DESTS | TABLE_EXCLUDED_DESTS, on_option_rows
@@ -1674,7 +1679,7 @@ def open_window(
     # the time sliders have one position for each valid timestep, or SLIDER_STEPS positions for a continuous time
     slidermode: bool | None = None
     # the spectra and the time grid of the models that give the ranges of the time controls
-    shownmodels: tuple[tuple[str, ...], str] | None = None
+    shownmodels: tuple[tuple[str, ...], str, bool] | None = None
 
     def show_model_ranges() -> None:
         """Set the ranges of the time controls and the direction bins from the models of the plot, e.g. after Add Model.
@@ -1792,7 +1797,7 @@ def open_window(
         with blocked_signals(signalwidgets):
             values = viewer.values
             # Undo or a rejected change can give a different list of spectra, and its models have different times
-            if (values.spectra, values.timegrid) != viewer.grid.loadkey:
+            if (values.spectra, values.timegrid, values_give_plotinvalidpart(values)) != viewer.grid.loadkey:
                 viewer.load_models(values.spectra, values.timegrid)
             grid = viewer.grid
             if grid.loadkey != shownmodels:

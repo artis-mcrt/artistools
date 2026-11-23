@@ -23,7 +23,6 @@ from artistools.viewertools.widgets import make_step_button
 from artistools.viewertools.widgets import make_timer
 from artistools.viewertools.widgets import set_edit_text
 from artistools.viewertools.widgets import set_spin_value
-from artistools.viewertools.widgets import start_play_timer
 
 if t.TYPE_CHECKING:
     import argparse
@@ -67,9 +66,14 @@ def get_direction_bins(modelfolder: Path | str, kind: str, *, usedegrees: bool) 
     return [(ALL_DIRECTIONS_BIN, alltext), *get_direction_choices(Path(modelfolder), kind, usedegrees=usedegrees)]
 
 
+def get_checked_bins(choice: DirectionChoice) -> tuple[int, ...]:
+    """Return the bins of the list that a choice checks. All the directions alone check the average (bin -1)."""
+    return choice.bins if choice.kind else (ALL_DIRECTIONS_BIN,)
+
+
 def get_direction_summary(choice: DirectionChoice, labels: "Mapping[int, str]") -> str:
     """Return the text of the button of the direction list, e.g. "All directions" or "3 directions: All, 0, 5"."""
-    bins = choice.bins if choice.kind else (ALL_DIRECTIONS_BIN,)
+    bins = get_checked_bins(choice)
     if len(bins) == 1:
         label = labels.get(bins[0], "")
         return label if bins[0] == ALL_DIRECTIONS_BIN else f"{bins[0]}: {label}"
@@ -250,7 +254,7 @@ def add_direction_section(
                 else "The model and the data source give no plot of a direction bin, thus no average over an angle"
             )
         isnewlist = show_bins(listkind, choice.usedegrees, onebin)
-        checkedbins = choice.bins if choice.kind else (ALL_DIRECTIONS_BIN,)
+        checkedbins = get_checked_bins(choice)
         for dirbin, check in binchecks.items():
             with QtCore.QSignalBlocker(check):
                 check.setChecked(dirbin in checkedbins)
@@ -265,16 +269,17 @@ def add_direction_section(
         # a long label of a bin must not widen the sidebar, thus the button shows the start and the end of the text
         binbutton.setText(binbutton.fontMetrics().elidedText(summary, QtCore.Qt.TextElideMode.ElideMiddle, 320))
         binbutton.setToolTip(summary)
-        # a new list scrolls to the first checked bin, which can be far down a list of 100 bins
-        if isnewlist and (firstcheck := binchecks.get(checkedbins[0])):
+        if isnewlist:
+            scroll_to_first_check(choice)
+
+    def scroll_to_first_check(choice: DirectionChoice) -> None:
+        # the first checked bin can be far down a list of 100 bins
+        if firstcheck := binchecks.get(get_checked_bins(choice)[0]):
             QtCore.QTimer.singleShot(0, binbox, partial(binbox.ensureWidgetVisible, firstcheck))
 
     def on_show_menu() -> None:
         binbox.setFixedWidth(max(binbutton.width(), 280))
-        choice, _ = get_choice()
-        checkedbins = choice.bins if choice.kind else (ALL_DIRECTIONS_BIN,)
-        if firstcheck := binchecks.get(checkedbins[0]):
-            QtCore.QTimer.singleShot(0, binbox, partial(binbox.ensureWidgetVisible, firstcheck))
+        scroll_to_first_check(get_choice()[0])
 
     def on_bin_click() -> None:
         current, onebin = get_choice()
@@ -283,8 +288,7 @@ def add_direction_section(
             show_error("The plot needs one direction at least")
             show()
             return
-        currentbins = current.bins if current.kind else (ALL_DIRECTIONS_BIN,)
-        newbins = tuple(dirbin for dirbin in bins if dirbin not in currentbins)
+        newbins = tuple(dirbin for dirbin in bins if dirbin not in get_checked_bins(current))
         choice = get_new_direction_choice(
             get_shown_kind(), bins, newbins, usedegrees=usedegreescheck.isChecked(), onebin=onebin
         )
@@ -697,8 +701,9 @@ def connect_play[ValuesT](
         if message is not None:
             playbutton.setChecked(False)
         elif playbutton.isChecked():
-            # a plot that Play did not start also restarts the timer, thus one chain of steps stays
-            start_play_timer(playtimer, queue.plotseconds, fpsbox.value())
+            # a plot that Play did not start also restarts the timer, thus one chain of steps stays. The old plot stays
+            # in view while the worker draws the next one, thus the pause is the rest of the 1/fps seconds of a step
+            playtimer.start(max(0, round(1000.0 / fpsbox.value() - queue.plotseconds * 1000.0)))
 
     playtimer.timeout.connect(play_step)
     playbutton.toggled.connect(on_play)

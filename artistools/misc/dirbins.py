@@ -459,44 +459,31 @@ def check_dirbin(
     With averageoverphi, as with --average-over-phi-angle of plotspectra, dirbin must be the first bin of its costheta
     bin. With averageovertheta, dirbin must be the bin of its ϕ range in the first costheta bin.
     """
+    if allowall and dirbin == -1:
+        return
     # the caller can give the declared spelling, and the message gives the spelling of the help
     optionname = get_standard_flag(optionname)
+    nphibins = get_viewingdirection_phibincount()
+    ndirbins = get_viewingdirectionbincount()
+    isdirbin = 0 <= dirbin < ndirbins
+    alltext = "-1 for all the directions, or " if allowall else ""
     if averageoverphi:
-        check_costheta_dirbin(dirbin, optionname, allowall=allowall)
-        return
-    if averageovertheta:
-        nphibins = get_viewingdirection_phibincount()
-        if (allowall and dirbin == -1) or 0 <= dirbin < nphibins:
+        if isdirbin and dirbin % nphibins == 0:
             return
-        alltext = "-1 for all the directions, or " if allowall else ""
-        exampletext = (
-            f", e.g. {dirbin % nphibins} for the ϕ range of {dirbin}"
-            if 0 <= dirbin < get_viewingdirectionbincount()
-            else ""
+        exit_with_error(
+            f"{optionname} {dirbin} is not the first direction bin of a costheta bin",
+            f"Give {alltext}a multiple of {nphibins} from 0 to {ndirbins - nphibins}, e.g. 90 for the pole at +z",
         )
+    if averageovertheta:
+        if 0 <= dirbin < nphibins:
+            return
+        exampletext = f", e.g. {dirbin % nphibins} for the ϕ range of {dirbin}" if isdirbin else ""
         exit_with_error(
             f"{optionname} {dirbin} is not the first direction bin of a phi bin",
             f"Give {alltext}a bin from 0 to {nphibins - 1}{exampletext}",
         )
-    ndirbins = get_viewingdirectionbincount()
-    if (allowall and dirbin == -1) or 0 <= dirbin < ndirbins:
-        return
-    alltext = "-1 for all the directions, or " if allowall else ""
-    exit_with_error(f"{optionname} {dirbin} is no direction bin", f"Give {alltext}a bin from 0 to {ndirbins - 1}")
-
-
-def check_costheta_dirbin(dirbin: int, optionname: str, *, allowall: bool) -> None:
-    """Exit with an error if dirbin is not the first direction bin of a costheta bin, or -1 when allowall is true."""
-    optionname = get_standard_flag(optionname)
-    nphibins = get_viewingdirection_phibincount()
-    ndirbins = get_viewingdirectionbincount()
-    if (allowall and dirbin == -1) or (0 <= dirbin < ndirbins and dirbin % nphibins == 0):
-        return
-    alltext = "-1 for all the directions, or " if allowall else ""
-    exit_with_error(
-        f"{optionname} {dirbin} is not the first direction bin of a costheta bin",
-        f"Give {alltext}a multiple of {nphibins} from 0 to {ndirbins - nphibins}, e.g. 90 for the pole at +z",
-    )
+    if not isdirbin:
+        exit_with_error(f"{optionname} {dirbin} is no direction bin", f"Give {alltext}a bin from 0 to {ndirbins - 1}")
 
 
 def get_costhetabin_expr(costheta: pl.Expr, ncosthetabins: int | None = None) -> pl.Expr:

@@ -384,87 +384,66 @@ def scan_modelfile_text(
                 dict(zip(columns[1:4], ("inputpos_a", "inputpos_b", "inputpos_c"), strict=True)), strict=False
             )
 
-            def vectormatch(vec1: Sequence[float], vec2: Sequence[float]) -> bool:
-                xclose = np.isclose(vec1[0], vec2[0], atol=wid_init_x * 0.05)
-                yclose = np.isclose(vec1[1], vec2[1], atol=wid_init_y * 0.05)
-                zclose = np.isclose(vec1[2], vec2[2], atol=wid_init_z * 0.05)
-
-                return all([xclose, yclose, zclose])
-
-            # candidate coordinate column orderings: key -> (message, column renames)
-            posordercandidates = {
-                "xyz_min": (
-                    "  model cell positions are consistent with x-y-z min corner columns",
-                    {"inputpos_a": "pos_x_min", "inputpos_b": "pos_y_min", "inputpos_c": "pos_z_min"},
-                ),
-                "zyx_min": (
-                    "  cell positions are consistent with z-y-x min corner columns",
-                    {"inputpos_a": "pos_z_min", "inputpos_b": "pos_y_min", "inputpos_c": "pos_x_min"},
-                ),
-                "xyz_mid": (
-                    "  model cell positions are consistent with x-y-z midpoint columns",
-                    {"inputpos_a": "pos_x_mid", "inputpos_b": "pos_y_mid", "inputpos_c": "pos_z_mid"},
-                ),
-                "zyx_mid": (
-                    "  cell positions are consistent with z-y-x midpoint columns",
-                    {"inputpos_a": "pos_z_mid", "inputpos_b": "pos_y_mid", "inputpos_c": "pos_x_mid"},
-                ),
-            }
-            matched = dict.fromkeys(posordercandidates, True)
-            # important cell numbers to check for coordinate column order
-            indexlist = [
+            # the cells at these indices give each order of the axes and each place in the cell a different position
+            gridindices = np.array([
                 0,
                 ncoordgridx - 1,
                 ncoordgridx,
                 (ncoordgridx - 1) * (ncoordgridy - 1),
                 (ncoordgridx - 1) * ncoordgridy,
                 (ncoordgridx - 1) * (ncoordgridy - 1) * (ncoordgridz - 1),
-            ]
-
-            pos3_in_list = (
+            ])
+            axisindices = {
+                "x": gridindices % ncoordgridx,
+                "y": (gridindices // ncoordgridx) % ncoordgridy,
+                "z": (gridindices // (ncoordgridx * ncoordgridy)) % ncoordgridz,
+            }
+            cellwidths = {"x": wid_init_x, "y": wid_init_y, "z": wid_init_z}
+            filepositions = (
                 dfmodel
                 .select(
-                    cs.by_name("inputpos_a", "inputpos_b", "inputpos_c").gather(indexlist).explode(empty_as_null=False)
+                    cs
+                    .by_name("inputpos_a", "inputpos_b", "inputpos_c")
+                    .gather(gridindices.tolist())
+                    .explode(empty_as_null=False)
                 )
                 .collect()
-                .iter_rows()
+                .to_numpy()
             )
-            for modelgridindex, pos3_in in zip(indexlist, pos3_in_list, strict=True):
-                xindex = modelgridindex % ncoordgridx
-                yindex = (modelgridindex // ncoordgridx) % ncoordgridy
-                zindex = (modelgridindex // (ncoordgridx * ncoordgridy)) % ncoordgridz
-                pos_x_min = -xmax_tmodel + xindex * wid_init_x
-                pos_y_min = -xmax_tmodel + yindex * wid_init_y
-                pos_z_min = -xmax_tmodel + zindex * wid_init_z
-                pos_x_mid = -xmax_tmodel + (xindex + 0.5) * wid_init_x
-                pos_y_mid = -xmax_tmodel + (yindex + 0.5) * wid_init_y
-                pos_z_mid = -xmax_tmodel + (zindex + 0.5) * wid_init_z
-
-                targets = {
-                    "xyz_min": (pos_x_min, pos_y_min, pos_z_min),
-                    "zyx_min": (pos_z_min, pos_y_min, pos_x_min),
-                    "xyz_mid": (pos_x_mid, pos_y_mid, pos_z_mid),
-                    "zyx_mid": (pos_z_mid, pos_y_mid, pos_x_mid),
-                }
-                for key, target in targets.items():
-                    if not vectormatch(pos3_in, target):
-                        matched[key] = False
-
-            if sum(matched.values()) != 1:
+            # each match is an order of the axes, and min for the lower corner or mid for the centre of a cell
+            matchedorders = [
+                (axesorder, place)
+                for axesorder in (("x", "y", "z"), ("z", "y", "x"))
+                for place, celloffset in (("min", 0.0), ("mid", 0.5))
+                if np.isclose(
+                    filepositions,
+                    np.column_stack([
+                        -xmax_tmodel + (axisindices[axis] + celloffset) * cellwidths[axis] for axis in axesorder
+                    ]),
+                    atol=np.array([cellwidths[axis] * 0.05 for axis in axesorder]),
+                ).all()
+            ]
+            if len(matchedorders) != 1:
                 msg = (
                     f"{filename}: the cell positions agree with no order of the position columns. "
                     "Make vmax consistent with the cell positions."
                 )
                 raise ValueError(msg)
 
-            matchedkey = next(key for key, ismatch in matched.items() if ismatch)
-            message, colrenames = posordercandidates[matchedkey]
+            ((axesorder, place),) = matchedorders
             if not printwarningsonly:
-                print(message)
+                placetext = "min corner" if place == "min" else "midpoint"
+                print(f"  model cell positions are consistent with {'-'.join(axesorder)} {placetext} columns")
 
-            dfmodel = dfmodel.rename(colrenames, strict=False)
+            dfmodel = dfmodel.rename(
+                {
+                    filecol: f"pos_{axis}_{place}"
+                    for filecol, axis in zip(("inputpos_a", "inputpos_b", "inputpos_c"), axesorder, strict=True)
+                },
+                strict=False,
+            )
 
-            if matchedkey in {"xyz_mid", "zyx_mid"}:
+            if place == "mid":
                 dfmodel = dfmodel.with_columns(
                     pos_x_min=(pl.col("pos_x_mid") - modelmeta["wid_init_x"] / 2.0),
                     pos_y_min=(pl.col("pos_y_mid") - modelmeta["wid_init_y"] / 2.0),
@@ -806,22 +785,19 @@ def scan_local_modeldata(
     modelpath: Path, get_elemabundances: bool = False, printwarningsonly: bool = False
 ) -> tuple[pl.LazyFrame, dict[t.Any, t.Any]]:
     """Read model.txt, and abundances.txt with get_elemabundances, for a local path that scan_modeldata resolved."""
-    inputpath = modelpath
-
-    if inputpath.is_dir():
-        modelpath = inputpath
-        textfilepath = firstexisting("model.txt", folder=inputpath, tryzipped=True)
+    modelfolder = modelpath
+    if modelpath.is_dir():
+        textfilepath = firstexisting("model.txt", folder=modelpath, tryzipped=True)
     elif (
         # a file name, e.g. model_1d.txt, also names its compressed copy, e.g. model_1d.txt.zst
-        namedfile := firstexisting_or_none(inputpath.name, folder=inputpath.parent, search_subfolders=False)
+        namedfile := firstexisting_or_none(modelpath.name, folder=modelpath.parent, search_subfolders=False)
     ) is not None:
         textfilepath = namedfile
-        modelpath = inputpath.parent
-    elif path_is_codecomparison(inputpath):
-        modelpath = inputpath
-        textfilepath = Path(get_model_text_folder(inputpath), "model.txt")
+        modelfolder = modelpath.parent
+    elif path_is_codecomparison(modelpath):
+        textfilepath = Path(get_model_text_folder(modelpath), "model.txt")
     else:
-        raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), inputpath)
+        raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), modelpath)
 
     def read_text() -> tuple[pl.LazyFrame, dict[str, str]]:
         dfmodel, modelmeta = scan_modelfile_text(filename=textfilepath, printwarningsonly=printwarningsonly)
@@ -847,7 +823,7 @@ def scan_local_modeldata(
     firstinputcellid = dfmodel.select(pl.col("inputcellid").first()).collect().item()
 
     if get_elemabundances:
-        abundancedata = scan_initelemabundances(modelpath, printwarningsonly=printwarningsonly)
+        abundancedata = scan_initelemabundances(modelfolder, printwarningsonly=printwarningsonly)
         # an inner join drops a cell that abundances.txt does not give, and each mass then leaves that cell out
         missingcellcount = dfmodel.join(abundancedata, how="anti", on="inputcellid").select(pl.len()).collect().item()
         if missingcellcount:

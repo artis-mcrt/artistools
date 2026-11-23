@@ -155,8 +155,6 @@ def plot_celltimestep(
     fig, axesgrid = make_frame_figure(args)
     axis = axesgrid[0][0]
 
-    assert isinstance(axis, mplax.Axes)
-
     xlist, yvalues = get_fullspecfittedfield(radfielddata, xmin, xmax, modelgridindex=modelgridindex, timestep=timestep)
 
     label = r"Dilute blackbody model "
@@ -337,12 +335,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     modelpath = args.modelpath
 
     pdf_list: list[str] = []
-    modelgridindexlist: list[int] = []
-
-    if args.velocity_kmps is not None:
-        modelgridindexlist = [get_mgi_of_velocity_kms(modelpath, args.velocity_kmps)]
-    else:
-        modelgridindexlist = args.modelgridindex or [0]
+    modelgridindexlist: list[int] = (
+        [get_mgi_of_velocity_kms(modelpath, args.velocity_kmps)]
+        if args.velocity_kmps is not None
+        else args.modelgridindex or [0]
+    )
 
     # read_radfield parses a rank file on each call, thus one read of all the cells serves each cell and timestep
     radfielddata_allcells = read_radfield(modelpath, modelgridindex=modelgridindexlist)
@@ -384,7 +381,6 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     )
 
     for modelgridindex in modelgridindexlist:
-        assert modelgridindex is not None
         radfielddata_cell = radfielddata_allcells.filter(pl.col("modelgridindex") == modelgridindex)
         for timestep in timesteplist:
             outputfile = format_frame_path(frameset.frametemplate, cell=modelgridindex, timestep=timestep)

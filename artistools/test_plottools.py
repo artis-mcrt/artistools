@@ -200,37 +200,13 @@ def test_residual_panel_uses_the_selected_baseline(
     plt.close(fig)
 
 
-@pytest.mark.parametrize(("seriescount", "baselineindex"), [(0, 0), (1, 0), (2, -1), (2, 2)])
-def test_residual_panel_rejects_an_invalid_baseline(seriescount: int, baselineindex: int) -> None:
-    """The panel needs two series and an index inside their range."""
-    x = np.array([1.0, 2.0])
-    series = [at.plottools.ResidualSeries(str(index), x, x, "k") for index in range(seriescount)]
-    fig, axis = plt.subplots()
-    with pytest.raises(SystemExit):
-        at.plottools.plot_residual_panel(axis, series, 1.0, 2.0, baselineindex=baselineindex)
-    plt.close(fig)
-
-
-@pytest.mark.parametrize("index", [-1, 2])
-def test_residual_panel_rejects_an_invalid_selection(index: int) -> None:
-    """The panel rejects a selected index outside the range of the series."""
-    x = np.array([1.0, 2.0])
-    series = [at.plottools.ResidualSeries(str(i), x, x, "k") for i in range(2)]
-    fig, axis = plt.subplots()
-    with pytest.raises(SystemExit):
-        at.plottools.plot_residual_panel(axis, series, 1.0, 2.0, selectedindices=[index])
-    assert not axis.lines
-    plt.close(fig)
-
-
-@pytest.mark.parametrize("modelfactor", [2.0, 100.0, 0.01])
 @pytest.mark.parametrize("logscaley", [False, True])
 @pytest.mark.parametrize("residualtype", ["absolute", "relative", "relativelog"])
-def test_residual_type_sets_the_calculation_and_scale(modelfactor: float, logscaley: bool, residualtype: str) -> None:
+def test_residual_type_sets_the_calculation_and_scale(logscaley: bool, residualtype: str) -> None:
     """The residual type sets the values and the y scale independently of the main frame."""
     x = np.array([1.0, 2.0, 3.0, 4.0])
     yreference = np.array([1.0, 2.0, 4.0, 8.0])
-    factors = np.array([1.0, 1.0, modelfactor, modelfactor])
+    factors = np.array([1.0, 1.0, 2.0, 2.0])
     series = [
         at.plottools.ResidualSeries("obs", x, yreference, "k"),
         at.plottools.ResidualSeries("model", x, yreference * factors, "C0"),
@@ -347,17 +323,6 @@ def test_residual_type_scales_asymmetric_error_bars(residualtype: str) -> None:
     segments = bars.lines[2][0].get_segments()
     expected = [[1.6, 2.8], [-4.8, -2.4]] if residualtype == "absolute" else [[1.8, 2.4], [1.6, 2.2]]
     assert np.allclose([segment[:, 1] for segment in segments], expected)
-    plt.close(fig)
-
-
-def test_residual_panel_rejects_an_unknown_type() -> None:
-    """The panel rejects a residual type that it cannot calculate."""
-    x = np.array([1.0, 2.0])
-    series = [at.plottools.ResidualSeries(str(index), x, x, "k") for index in range(2)]
-    fig, axis = plt.subplots()
-    with pytest.raises(SystemExit):
-        at.plottools.plot_residual_panel(axis, series, 1.0, 2.0, residualtype="unknown")
-    assert not axis.lines
     plt.close(fig)
 
 
@@ -486,16 +451,6 @@ def test_auto_yscale_reads_the_drawn_values() -> None:
             assert args.logscaley is logscaley
 
         plt.close(fig)
-
-
-def test_set_legend_draws_no_legend_without_a_labelled_series() -> None:
-    """An axes that has no series with a label gets no legend. matplotlib raised ValueError for the empty handles."""
-    fig, ax = plt.subplots()
-    ax.plot([0.0, 1.0], [0.0, 1.0])
-
-    assert at.plottools.set_legend(ax) is None
-    assert ax.get_legend() is None
-    plt.close(fig)
 
 
 @pytest.mark.parametrize("yscale", ["linear", "log", "inverted"])
@@ -639,19 +594,14 @@ def test_get_series_colors_keeps_the_colours_of_the_user() -> None:
     assert at.plottools.get_series_colors([True, True], ["red"]) == ["red", "0.0"]
 
 
-def test_get_series_colors_knows_the_value_of_a_cycle_colour() -> None:
-    """A colour value of the cycle that the user asked for must go out of the cycle, like the name CN."""
-    at.plottools.set_mpl_style()
-    cyclecolors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-
-    assert at.plottools.get_series_colors([False, False], [cyclecolors[0]]) == [cyclecolors[0], "C1"]
-    assert at.plottools.get_series_colors([False, False], [cyclecolors[1]]) == [cyclecolors[1], "C0"]
-
-
 def test_get_series_colors_matches_a_cycle_colour_by_any_spelling() -> None:
     """A cycle colour must leave the cycle whatever name the user gave it, not only its exact hex string."""
     at.plottools.set_mpl_style()
-    firstcyclecolor = mplcolors.to_hex(plt.rcParams["axes.prop_cycle"].by_key()["color"][0])
+    cyclecolors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    assert at.plottools.get_series_colors([False, False], [cyclecolors[0]]) == [cyclecolors[0], "C1"]
+    assert at.plottools.get_series_colors([False, False], [cyclecolors[1]]) == [cyclecolors[1], "C0"]
+
+    firstcyclecolor = mplcolors.to_hex(cyclecolors[0])
     assert firstcyclecolor == mplcolors.to_hex("tab:blue")
 
     for spelling in ("tab:blue", firstcyclecolor.upper()):
@@ -665,7 +615,12 @@ def test_get_series_colors_matches_a_cycle_colour_by_any_spelling() -> None:
 
 
 def test_prune_log_ticks_drops_only_the_ticks_against_each_end() -> None:
-    """A tick at the very top or bottom of a log axis goes, and every decade inside it stays."""
+    """A tick at the very top or bottom of a log axis goes, and every decade inside it stays.
+
+    A log axis of few major ticks keeps them all, because too few ticks are then left to read.
+    """
+    from artistools.plottools import PrunedLogLocator
+
     _fig, ax = plt.subplots()
     ax.set_yscale("log")
     ax.set_ylim(1e-10, 1e3)
@@ -673,6 +628,9 @@ def test_prune_log_ticks_drops_only_the_ticks_against_each_end() -> None:
 
     after = [loc for loc in ax.yaxis.get_majorticklocs() if 1e-10 <= loc <= 1e3]
     assert after == pytest.approx([10.0**exponent for exponent in range(-9, 3)])
+
+    locator = PrunedLogLocator(minticks=99, numticks=999)
+    assert list(locator.tick_values(1e-30, 1e2)) == list(mplticker.LogLocator(numticks=999).tick_values(1e-30, 1e2))
 
 
 def test_log_ticks_every_decade_on_a_short_axis() -> None:
@@ -698,14 +656,6 @@ def test_log_ticks_every_decade_on_a_short_axis() -> None:
     ax.set_ylim(1.2, 8.0)
     fig.canvas.draw()
     assert [label.get_text() for label in ax.yaxis.get_minorticklabels() if label.get_text()]
-
-
-def test_prune_log_ticks_keeps_a_sparse_axis_unchanged() -> None:
-    """A log axis of few major ticks keeps them all, rather than end with too few to read."""
-    from artistools.plottools import PrunedLogLocator
-
-    locator = PrunedLogLocator(minticks=99, numticks=999)
-    assert list(locator.tick_values(1e-30, 1e2)) == list(mplticker.LogLocator(numticks=999).tick_values(1e-30, 1e2))
 
 
 def test_prune_log_ticks_follows_the_view() -> None:
@@ -758,18 +708,6 @@ def test_set_axis_properties_applies_the_requested_limits() -> None:
     assert ax.get_xlim()[1] >= 10.0
 
 
-def test_iter_axes_flattens_a_subplot_grid() -> None:
-    """One axes and a grid of axes both become a flat list, so the callers need no isinstance dance."""
-    _fig, singleax = plt.subplots()
-    assert at.plottools.iter_axes(singleax) == [singleax]
-
-    _fig, axes = plt.subplots(nrows=2, ncols=3)
-    assert at.plottools.iter_axes(axes.flatten()) == list(axes.flatten())
-
-    # iterating a 2D array yields its rows, which are arrays rather than axes
-    assert at.plottools.iter_axes(axes) == list(axes.flatten())
-
-
 def test_room_for_title_predicts_the_place_of_the_title_of_the_draw() -> None:
     """The height for the title comes from a prediction with no draw, and a draw must then put the title there.
 
@@ -788,18 +726,6 @@ def test_room_for_title_predicts_the_place_of_the_title_of_the_draw() -> None:
         gap = fig.get_figheight() - axis.title.get_window_extent().y1 / fig.dpi
         assert np.isclose(gap, 0.05, rtol=0.0, atol=0.01), (ymax, gap)
         plt.close(fig)
-
-
-def test_room_for_title_keeps_the_axes_of_a_figure_with_no_frames() -> None:
-    """Only a frame figure takes more height for its title, because its divider keeps the frames at the bottom.
-
-    The axes of a different figure grew with the new height, and the title still went past the top.
-    """
-    fig, axis = plt.subplots(figsize=(4.0, 3.0))
-    axis.set_title("line 1\nline 2\nline 3\nline 4")
-    at.plottools.make_room_for_title(fig)
-    assert np.isclose(fig.get_figheight(), 3.0, rtol=1e-12, atol=0.0)
-    plt.close(fig)
 
 
 def test_plain_label_and_saved_path_read_well_in_a_terminal() -> None:

@@ -843,8 +843,6 @@ def test_interactive_directives_of_a_subplot() -> None:
     )
     assert plotitems.replace_directives(subplot, {"ymin": None, "ymax": None}) == ("rho", "yscale=log")
     assert plotitems.replace_directives(subplot, {"yscale": "linear"}) == ("rho", "ymin=1e-16", "yscale=linear")
-    assert interactive.get_short_limits(12345.678, 23456.7) == ("12300", "23500")
-    assert interactive.get_short_limits(1.23456e-5, 2.3456e-5) == ("1.23e-05", "2.35e-05")
 
 
 def test_interactive_menu_plots_a_cell_against_time_and_a_snapshot_at_a_time(

@@ -9,6 +9,7 @@ from artistools.lightcurve.core import find_lightcurve_file as find_lightcurve_f
 from artistools.lightcurve.core import generate_band_lightcurve_data as generate_band_lightcurve_data
 from artistools.lightcurve.core import get_band_lightcurve as get_band_lightcurve
 from artistools.lightcurve.core import get_colour_delta_mag as get_colour_delta_mag
+from artistools.lightcurve.core import get_filename_part as get_filename_part
 from artistools.lightcurve.core import get_filter_data as get_filter_data
 from artistools.lightcurve.core import get_from_packets as get_from_packets
 from artistools.lightcurve.core import get_katz_integral as get_katz_integral

@@ -261,13 +261,9 @@ def parallel_map[IterableType, ResultType](
 
     progressclass = get_progress_class()
 
-    use_multiprocessing = True
-    if not sys._is_gil_enabled():  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
-        # return a thread pool if we have no GIL (free threading)
-        use_multiprocessing = False
-
     executor: Executor
-    if use_multiprocessing:
+    # a free-threaded build runs the threads of a pool in parallel
+    if sys._is_gil_enabled():  # ruff:ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
         import multiprocessing as mp
 
         # the lock of the progress bar comes from a spawn context, thus the pool must live in one as
@@ -361,15 +357,10 @@ def makelist(x: Sequence[t.Any] | str | Path | None) -> list[t.Any]:
 
 def trim_or_pad(requiredlength: int, *listoflistin: t.Any) -> Sequence[Sequence[t.Any]]:
     """Make lists equal in length to requiredlength either by padding with None or truncating."""
-    list_sequence = []
-    for listin in listoflistin:
-        listin_makelist = makelist(listin)
-
-        listout = [listin_makelist[i] if i < len(listin_makelist) else None for i in range(requiredlength)]
-
-        assert len(listout) == requiredlength
-        list_sequence.append(listout)
-    return list_sequence
+    return [
+        [*items[:requiredlength], *[None] * (requiredlength - len(items))]
+        for items in (makelist(listin) for listin in listoflistin)
+    ]
 
 
 def flatten_list(listin: list[t.Any]) -> list[t.Any]:

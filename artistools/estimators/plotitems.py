@@ -74,16 +74,11 @@ def get_iontuple(ionstr: str) -> tuple[int, str | int]:
     # an ion, thus a name that holds one goes to the fallback below and the caller then rejects it
     if not ionstr.startswith(("X_", "nnelement_", "nnion_")):
         with contextlib.suppress(ValueError):
-            return get_element_or_ion_tuple(ionstr)
+            iontuple = get_ion_tuple(ionstr)
+            return (iontuple, "ALL") if isinstance(iontuple, int) else iontuple
 
     # a name that is no ion at all, e.g. a mistyped variable. The caller tests the atomic number
     return (get_atomic_number(ionstr.split("_", maxsplit=1)[0]), ionstr)
-
-
-def get_element_or_ion_tuple(ionstr: str) -> tuple[int, str | int]:
-    """Return the atomic number and the ion stage of a name that get_ion_tuple reads, or "ALL" for an element."""
-    iontuple = get_ion_tuple(ionstr)
-    return (iontuple, "ALL") if isinstance(iontuple, int) else iontuple
 
 
 def is_valid_ion(ionstr: str) -> bool:
@@ -262,7 +257,10 @@ def get_series_style_problem(key: str, value: str) -> str | None:
             else f"is not a line style. The line styles are {', '.join(SERIES_LINESTYLES)}"
         )
     if key == "linealpha":
-        alpha = float(value) if is_float(value) else math.nan
+        try:
+            alpha = float(value)
+        except ValueError:
+            alpha = math.nan
         return None if 0.0 <= alpha <= 1.0 else "is not an opacity from 0 (clear) to 1 (opaque)"
     convert = {"color": color_arg, "dashes": dashes_arg, "linewidth": positive_float_arg}.get(key)
     try:
@@ -271,15 +269,6 @@ def get_series_style_problem(key: str, value: str) -> str | None:
     except argparse.ArgumentTypeError as exc:
         return f"is not valid: {exc}"
     return None
-
-
-def is_float(text: str) -> bool:
-    """Return True if float() reads the text."""
-    try:
-        float(text)
-    except ValueError:
-        return False
-    return True
 
 
 def read_series_style(item: str) -> tuple[str, dict[str, str]]:
@@ -318,14 +307,6 @@ def read_series_style(item: str) -> tuple[str, dict[str, str]]:
             msg = f"The {key} '{value}' of the plot item '{item}' {problem}"
             raise ValueError(msg)
     return name, style
-
-
-def split_series_style(item: str) -> tuple[str, dict[str, str]]:
-    """Return the name and the style of a plot item, or stop the command if the style is not valid."""
-    try:
-        return read_series_style(item)
-    except ValueError as exc:
-        exit_with_error(str(exc))
 
 
 def join_series_style(name: str, style: Mapping[str, str | None]) -> str:
@@ -382,7 +363,10 @@ def split_plotitem_styles(plotitems: t.Any) -> tuple[list[t.Any], dict[str, dict
     def strip_style(item: t.Any) -> t.Any:
         if not isinstance(item, str):
             return item
-        name, style = split_series_style(item)
+        try:
+            name, style = read_series_style(item)
+        except ValueError as exc:
+            exit_with_error(str(exc))
         if style:
             styles[VARIABLE_ALIASES.get(name, name)] = style
         return name

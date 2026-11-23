@@ -10,6 +10,8 @@ import polars as pl
 import polars.selectors as cs
 
 from artistools.constants import c_ang_per_s
+from artistools.lightcurve import get_filename_part
+from artistools.lightcurve.viewingangleanalysis import get_viewing_angle_data_filename
 from artistools.lightcurve.writebollightcurvedata import get_bol_lc_from_lightcurveout
 from artistools.misc import addarg_action
 from artistools.misc import addarg_darkmode
@@ -31,6 +33,7 @@ from artistools.misc import get_vpkt_config
 from artistools.misc import match_closest_time
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
+from artistools.misc import print_warning
 from artistools.misc import read_wsv
 from artistools.misc import require_action
 from artistools.misc import resolve_outputfile
@@ -38,11 +41,12 @@ from artistools.misc import split_multitable_dataframe
 from artistools.plottools import make_frame_figure
 from artistools.plottools import save_figure
 from artistools.plottools import set_legend
+from artistools.spectra import get_vspecpol_bins_inside_vpkt_window
 from artistools.spectra import scan_vspecpol_data
 
 
-def plot_hesma_spectrum(timeavg: float, axes: Sequence[mplax.Axes], hesmafile: Path | str) -> pl.DataFrame:
-    """Plot a HESMA reference spectrum at the time closest to timeavg onto each of axes, and return the plotted data."""
+def plot_hesma_spectrum(timeavg: float, axis: mplax.Axes, hesmafile: Path | str) -> pl.DataFrame:
+    """Plot a HESMA reference spectrum at the time closest to timeavg, and return the plotted data."""
     hesma_spec = read_wsv(hesmafile, comment_prefix="#").cast(pl.Float64)
 
     # the header names each column with its time, in a format that the file sets. Thus the lookup takes the
@@ -58,8 +62,7 @@ def plot_hesma_spectrum(timeavg: float, axes: Sequence[mplax.Axes], hesmafile: P
     hesma_spec = hesma_spec.with_columns(pl.col(timecolumn) * dist_mpc**2)  # refspecditance Mpc / 1 Mpc ** 2
 
     label = f"HESMA {Path(hesmafile).stem}"
-    for ax in axes:
-        ax.plot(hesma_spec[lambdacolumn], hesma_spec[timecolumn], label=label)
+    axis.plot(hesma_spec[lambdacolumn], hesma_spec[timecolumn], label=label)
 
     return hesma_spec.select(
         pl.lit(label).alias("label"),
@@ -68,9 +71,7 @@ def plot_hesma_spectrum(timeavg: float, axes: Sequence[mplax.Axes], hesmafile: P
     )
 
 
-def plothesmaresspec(
-    ax: mplax.Axes, specfiles: Sequence[Path | str], timedays: float, args: argparse.Namespace
-) -> pl.DataFrame:
+def plothesmaresspec(ax: mplax.Axes, specfiles: Sequence[Path | str], timedays: float) -> pl.DataFrame:
     """Plot each direction bin of each HESMA direction-resolved spectrum file at the time closest to timedays.
 
     A file holds one table for each direction bin. The first row of each table gives the time of each spectrum
@@ -97,18 +98,15 @@ def plothesmaresspec(
                 pl.DataFrame({"lambda_angstroms": wavelengths, "f_lambda": fluxes}).with_columns(label=pl.lit(label))
             )
 
-    set_legend(ax, args)
     return pl.concat(plottedtables)
 
 
-def make_hesma_vspecfiles(modelpath: Path, outpath: Path | None = None) -> None:
+def make_hesma_vspecfiles(modelpath: Path, outpath: Path) -> None:
     """Write the first five virtual packet spectra of a model in HESMA format.
 
     vpkt.txt names one observer direction for each group of nspectraperobs spectra. The spectra of one
     observer differ in the opacity that ARTIS excluded, thus the label names both indexes.
     """
-    if not outpath:
-        outpath = modelpath
     modelname = get_model_name(modelpath)
     vpkt_config = get_vpkt_config(modelpath)
     nspectraperobs = vpkt_config["nspectraperobs"]
@@ -121,6 +119,25 @@ def make_hesma_vspecfiles(modelpath: Path, outpath: Path | None = None) -> None:
             angle_name += f", opacity choice {opacchoiceindex}"
         angle_names.append(angle_name)
 
+    # a bin outside the window of vpkt.txt has no flux, and a bin across an edge has too low a flux. The test comes
+    # before the file opens, thus a stop leaves an existing file as it was
+    insidebintimes = []
+    for vspecindex, angle_name in zip(vspecindexes, angle_names, strict=True):
+        allbintimes = scan_vspecpol_data(vspecindex=vspecindex, modelpath=modelpath)["I"].collect_schema().names()[1:]
+        insidebins = get_vspecpol_bins_inside_vpkt_window([float(time) for time in allbintimes], vpkt_config)
+        if not insidebins:
+            exit_with_error(
+                f"No time bin of the virtual packets of {angle_name} lies fully inside the time window"
+                f" {vpkt_config['initial_time']} to {vpkt_config['final_time']} days of vpkt.txt",
+                "Make the time window of vpkt.txt wider than one time bin",
+            )
+        if len(insidebins) < len(allbintimes):
+            print_warning(
+                f"The file leaves out {len(allbintimes) - len(insidebins)} time bins of {angle_name}, because they"
+                " are not fully inside the time window of vpkt.txt"
+            )
+        insidebintimes.append([allbintimes[index] for index in insidebins])
+
     with (outpath / f"{modelname}_vspec_res.dat").open("w", encoding="utf-8") as fout:
         fout.write(
             f"# File contains spectra at observer angles {angle_names} for Model {modelname}.\n# A header line"
@@ -129,11 +146,9 @@ def make_hesma_vspecfiles(modelpath: Path, outpath: Path | None = None) -> None:
             "\n"
         )
 
-        for vspecindex, angle_name in zip(vspecindexes, angle_names, strict=True):
+        for vspecindex, angle_name, timearray in zip(vspecindexes, angle_names, insidebintimes, strict=True):
             print(angle_name)
             vspecdata = scan_vspecpol_data(vspecindex=vspecindex, modelpath=modelpath)["I"].collect()
-
-            timearray = vspecdata.columns[1:]
             vspecdata = (
                 vspecdata
                 .sort("nu", descending=True)
@@ -161,6 +176,11 @@ def make_hesma_bol_lightcurve(modelpath: Path, outpath: Path, timemin: float, ti
     lightcurvedataframe.write_csv(outpath / outfilename, separator=" ", include_header=False)
 
 
+def get_width_luminosity_filename(modelname: str) -> str:
+    """Return the name of the width-luminosity file of a model, with a _ in place of each / of the model name."""
+    return f"{get_filename_part(modelname)}_width-luminosity.dat"
+
+
 def make_hesma_peakmag_dm15_dm40(
     band: str, pathtofiles: Path, modelname: str, outpath: Path, dm40: bool = False
 ) -> None:
@@ -170,7 +190,8 @@ def make_hesma_peakmag_dm15_dm40(
     peak_mag_polyfit, risetime_polyfit, and deltam15_polyfit. --include-delta-m40 adds the column
     deltam40_polyfit to that same file.
     """
-    viewinganglefilename = f"{band}band_{modelname}_viewing_angle_data.txt"
+    # plotlightcurves writes the file under this name, with a _ in place of each / of the band and of the model name
+    viewinganglefilename = get_viewing_angle_data_filename(band, modelname)
     dfviewingangle = read_wsv(pathtofiles / viewinganglefilename, comment_prefix="#")
     columns = dfviewingangle.columns
 
@@ -201,7 +222,7 @@ def make_hesma_peakmag_dm15_dm40(
         outdata["dm40"] = dfviewingangle["deltam40_polyfit"]
 
     outdataframe = pl.DataFrame(outdata).with_columns(cs.float().round(4))
-    outdataframe.write_csv(outpath / f"{modelname}_width-luminosity.dat", separator=" ")
+    outdataframe.write_csv(outpath / get_width_luminosity_filename(modelname), separator=" ")
 
 
 def plot_hesma_peakmag_dm15_dm40(pathtofiles: Path | str, args: argparse.Namespace, outputfile: Path | str) -> None:
@@ -320,7 +341,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     elif args.action == "widthluminosity":
         modelname = require(args.modelname, "-modelname", args.action)
-        confirm_overwrite([outputpath], (f"{modelname}_width-luminosity.dat",), force=args.force)
+        confirm_overwrite([outputpath], (get_width_luminosity_filename(modelname),), force=args.force)
         make_hesma_peakmag_dm15_dm40(
             args.band, require(args.pathtofiles, "-pathtofiles", args.action), modelname, outputpath, dm40=args.dm40
         )
@@ -328,26 +349,16 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     elif args.action == "plotwidthluminosity":
         plot_hesma_peakmag_dm15_dm40(require(args.pathtofiles, "-pathtofiles", args.action), args, plotfile)
 
-    elif args.action == "plotspectrum":
-        fig, axesgrid = make_frame_figure()
-        axis = axesgrid[0][0]
-        timedays = require(args.timedays, "-timedays", args.action)
-        plottedtables = [
-            plot_hesma_spectrum(timedays, [axis], hesmafile)
-            for hesmafile in require(args.hesmafile, "-hesmafile", args.action)
-        ]
-        set_legend(axis, args)
-        output_data(args, {"": pl.concat(plottedtables)}, plotfile)
-        save_figure(fig, plotfile, args=args)
-
     else:
+        hesmafiles = require(args.hesmafile, "-hesmafile", args.action)
+        timedays = require(args.timedays, "-timedays", args.action)
         fig, axesgrid = make_frame_figure()
         axis = axesgrid[0][0]
-        plotteddata = plothesmaresspec(
-            axis,
-            require(args.hesmafile, "-hesmafile", args.action),
-            require(args.timedays, "-timedays", args.action),
-            args,
+        plotteddata = (
+            pl.concat([plot_hesma_spectrum(timedays, axis, hesmafile) for hesmafile in hesmafiles])
+            if args.action == "plotspectrum"
+            else plothesmaresspec(axis, hesmafiles, timedays)
         )
+        set_legend(axis, args)
         output_data(args, {"": plotteddata}, plotfile)
         save_figure(fig, plotfile, args=args)

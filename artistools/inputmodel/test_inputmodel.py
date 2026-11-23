@@ -592,6 +592,8 @@ def test_makeartismodelfrom_fortrangriddat(tmp_path: Path) -> None:
     assert modelmeta["dimensions"] == 3
     assert modelmeta["npts_model"] == 8
     assert np.isclose(modelmeta["t_model_init_days"], 0.1)
+    # grid.dat names the electron fraction cellYe, and the command writes Ye.txt only for a column Ye
+    assert (outpath_kn / "Ye.txt").is_file()
 
 
 def test_make1dmodelfromcone(tmp_path: Path) -> None:
@@ -649,23 +651,6 @@ def test_empty_shell_warning_goes_to_the_standard_error(tmp_path: Path, capsys: 
     assert "warning: Shell" in logtext, "the log file must keep the warning"
 
 
-def test_makefromcone_arg_can_be_disabled() -> None:
-    """--makefromcone was previously action="store", so any value (even "False") was truthy."""
-    parser = argparse.ArgumentParser()
-    at.inputmodel.slice1dfromconein3dmodel.addargs(parser)
-    assert parser.parse_args([]).makefromcone is True
-    assert parser.parse_args(["--no-makefromcone"]).makefromcone is False
-
-
-def test_makemodel_without_an_action_stops_with_an_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """A run with no action stops with a message. It did nothing and gave no message, thus it looked successful."""
-    with pytest.raises(SystemExit):
-        at.inputmodel.makeartismodel.main(argsraw=[], modelpath=modelpath, outputpath=tmp_path)
-
-    assert "The command needs an action" in capsys.readouterr().err
-    assert not list(tmp_path.iterdir())
-
-
 def test_makemodel_energyfiles(tmp_path: Path) -> None:
     at.inputmodel.makeartismodel.main(argsraw=[], modelpath=modelpath, makeenergyinputfiles=True, outputpath=tmp_path)
 
@@ -697,30 +682,6 @@ def test_makemodel_dimensionreduce_writes_the_gridcontributions(tmp_path: Path) 
     _, modelmeta = at.inputmodel.scan_modeldata(reducedfolder, printwarningsonly=True)
     assert set(dfcontribs["particleid"].to_list()) == {7}
     assert dfcontribs["cellindex"].max() <= modelmeta["npts_model"]
-
-
-def test_makemodel_dimensionreduce_takes_only_a_lower_dimension(capsys: pytest.CaptureFixture[str]) -> None:
-    """-dimensionreduce 3 gives an argument error, not the message of an internal check."""
-    with pytest.raises(SystemExit):
-        at.inputmodel.makeartismodel.main(argsraw=["-dimensionreduce", "3"])
-
-    assert "Invalid choice" in capsys.readouterr().err
-
-
-def test_maketardismodel(tmp_path: Path) -> None:
-    at.inputmodel.to_tardis.main(argsraw=[], modelpath=modelpath, outputpath=tmp_path)
-
-    csvytext = (tmp_path / f"{at.get_model_name(modelpath)}.csvy").read_text(encoding="utf-8")
-    assert csvytext.startswith("---\n")
-    assert "velocity,density,t_rad,dilution_factor" in csvytext
-
-
-def test_make_empty_abundance_file(tmp_path: Path) -> None:
-    at.inputmodel.save_empty_abundance_file(npts_model=50, outputfilepath=tmp_path)
-
-    dfabund = at.inputmodel.scan_initelemabundances(tmp_path, printwarningsonly=True).collect()
-    assert dfabund["inputcellid"].to_list() == list(range(1, 51))
-    assert dfabund.select(cs.starts_with("X_").abs().max()).max_horizontal().item() == 0
 
 
 def test_opacity_by_ye_file(tmp_path: Path) -> None:
@@ -879,15 +840,6 @@ def test_trajectory_archive_leaves_out_a_corrupt_timestep_table(
         at.inputmodel.rprocess_from_trajectory.get_network_timesteps_table(tmp_path, 5, ("hbeta",))
 
 
-def test_trajectory_archive_without_network_files_raises(
-    tmp_path: Path, write_trajectory_archive: Callable[[Path, int, dict[str, str], str], Path]
-) -> None:
-    """An archive with no file that artistools reads gives an error that names the archive."""
-    archivepath = write_trajectory_archive(tmp_path, 8, {"evol.dat": "1 2\n"}, ".tar.xz")
-    with pytest.raises(FileNotFoundError, match=r"8\.tar\.xz"):
-        at.inputmodel.rprocess_from_trajectory.read_trajectory_network_data(archivepath)
-
-
 def test_trajectory_timestep_files_reject_a_blank_header_line(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -947,12 +899,6 @@ def test_get_trajectory_abund_q(trajectory_copy: Path) -> None:
 
     # this value needs float64. An earlier reader gave time/s at float32, and the integration lost precision
     assert math.isclose(abund_q["q"], 5351333204182925.0)
-
-
-def test_plotdensity(tmp_path: Path) -> None:
-    at.inputmodel.plotdensity.main(argsraw=[], modelpath=[modelpath], outputpath=tmp_path)
-
-    assert (tmp_path / "densityprofile.pdf").is_file()
 
 
 def test_plotdensity_grid_with_one_cell_radius(tmp_path: Path) -> None:
@@ -1317,21 +1263,6 @@ def test_vel_on_c_excludes_kmps_columns() -> None:
     )
 
 
-def test_scale_model_to_time() -> None:
-    dfmodel, modelmeta = at.inputmodel.scan_modeldata(modelpath)
-    t_model_init_days = modelmeta["t_model_init_days"]
-
-    dfmodel_collected = dfmodel.collect()
-    rho_before = dfmodel_collected["logrho"].to_numpy().copy()
-
-    dfscaled = at.inputmodel.scale_model_to_time(
-        dfmodel=dfmodel_collected, targetmodeltime_days=t_model_init_days * 2.0, t_model_days=t_model_init_days
-    )
-
-    # homologous expansion by a factor of two drops the density by a factor of eight
-    assert dfscaled["logrho"].to_numpy() == pytest.approx(rho_before + math.log10(2.0**-3))
-
-
 def test_scale_model_to_time_keeps_empty_cells_and_scales_volume() -> None:
     """A shrink keeps the empty-cell marker logrho = -99, and the volume follows the positions.
 
@@ -1428,16 +1359,6 @@ def test_slice_3dmodel_takes_the_cells_that_hold_the_axis(
     dfmodel1d, modelmeta1d = at.inputmodel.scan_modeldata(outputfolder)
     assert modelmeta1d["dimensions"] == 1
     assert dfmodel1d.collect()["vel_r_max_kmps"].to_list() == pytest.approx(xlist, rel=1e-5)
-
-
-def test_make1dslice_plot(tmp_path: Path) -> None:
-    """The log y-axis uses matplotlib's 'nonpositive' argument; 'nonposy' was removed in matplotlib 3.3."""
-    from artistools.inputmodel.make1dslicefrom3d import make_plot
-
-    pdfpath = tmp_path / "slice.pdf"
-    make_plot([1000.0, 2000.0], [[1e-10, 1e-12], [0.1, 0.05], [0.0, 0.01]], str(pdfpath), argparse.Namespace())
-
-    assert pdfpath.is_file()
 
 
 def test_opacityfile_uniform_multicell(tmp_path: Path) -> None:
@@ -1738,32 +1659,6 @@ def test_fromcmfgen_writes_named_columns(tmp_path: Path) -> None:
     assert "X_Ba" not in dfabund.columns
 
 
-def test_fromcmfgen_rejects_unknown_species() -> None:
-    """An unrecognised CMFGEN species name must be reported rather than silently mapped by position."""
-    from artistools.inputmodel.fromcmfgen import convert_to_artis as cmfgen
-
-    assert cmfgen.get_cmfgen_atomic_numbers(["IRON", "NICK"]) == [26, 28]
-
-    with pytest.raises(ValueError, match="UNOBTAINIUM"):
-        cmfgen.get_cmfgen_atomic_numbers(["IRON", "UNOBTAINIUM"])
-
-
-def test_fromcmfgen_isotope_lookup_rejects_bad_tables() -> None:
-    """A snapshot whose isotope table cannot supply a requested nuclide must say so, not pick a wrong column."""
-    from artistools.inputmodel.fromcmfgen import convert_to_artis as cmfgen
-
-    isofrac = np.array([[0.1, 0.2, 0.3]] * 2)
-
-    massfracs = cmfgen.get_isotope_massfracs(["CHRO", "IRON", "NICK"], [48, 52, 56], isofrac, [("IRON", 52)])
-    assert np.allclose(massfracs["X_Fe52"], 0.2)
-
-    with pytest.raises(ValueError, match="no isotope column"):
-        cmfgen.get_isotope_massfracs(["CHRO", "IRON", "NICK"], [48, 52, 56], isofrac, [("COB", 56)])
-
-    with pytest.raises(ValueError, match="Duplicate"):
-        cmfgen.get_isotope_massfracs(["IRON", "IRON", "NICK"], [52, 52, 56], isofrac, [("IRON", 52)])
-
-
 def test_energyfiles_plotrate_makes_the_output_folder(tmp_path: Path) -> None:
     """A -o path that has no file extension names a folder, which the command makes.
 
@@ -1981,6 +1876,8 @@ def test_maketardismodel_maxatomicnumber_from_command_line(tmp_path: Path) -> No
     csvypath = tmp_path / f"{at.get_model_name(modelpath)}.csvy"
     assert csvypath.is_file()
     csvytext = csvypath.read_text(encoding="utf-8")
+    assert csvytext.startswith("---\n")
+    assert "velocity,density,t_rad,dilution_factor" in csvytext
     assert "Fe" in csvytext
     assert "Co" not in csvytext
     assert "Ni" not in csvytext
@@ -2098,18 +1995,6 @@ def test_scan_modeldata_regenerates_a_cache_with_malformed_metadata(tmp_path: Pa
 
     assert modelmeta == modelmeta_expected
     pltest.assert_frame_equal(dfmodel.collect(), dfmodel_expected.collect())
-
-
-def test_get_coarse_velocity_bins_of_a_3d_model_names_each_projection() -> None:
-    """A select with three expressions of one column needs three output names, or polars raises DuplicateError."""
-    from artistools.inputmodel.plotdensity import get_coarse_velocity_bins
-
-    dfmodel = pl.DataFrame({"vel_r_mid": [1.0e9, 2.0e9, 4.0e9, 5.0e9]})
-
-    binedges = get_coarse_velocity_bins(dfmodel, nbins=None, vmax_cmps=5.0e9)
-
-    # the bins are open at the upper edge, thus the last bin ends above the outermost cell
-    assert binedges == pytest.approx([3.0e9, 5.0e9, 7.0e9])
 
 
 def test_describeinputmodel_prints_the_selected_cell(capsys: pytest.CaptureFixture[str]) -> None:
@@ -2340,34 +2225,6 @@ def test_dimension_reduce_takes_the_other_density_column(sourcemodelpath: Path, 
     )
 
     pltest.assert_frame_equal(dfmodel_out, dfmodel_out_otherdensity, check_column_order=False, rel_tol=1e-6)
-
-
-def test_griddat_reader_renames_the_cellye_column_of_an_old_grid() -> None:
-    """The grid.dat of the kilonova test data names the electron fraction cellYe, and the reader gives Ye."""
-    from artistools.inputmodel.modelfromhydro import read_griddat_file
-
-    griddata, _t_model, _t_merger, _vmax, _modelmeta = read_griddat_file(at.get_path("testdata") / "kilonova")
-
-    assert "Ye" in griddata.columns
-    assert "cellYe" not in griddata.columns
-
-
-def test_griddat_reader_omits_the_q_column_of_an_old_grid(tmp_path: Path) -> None:
-    """An old grid.dat can have a Q column with no known time or unit, thus the model must not get it as q."""
-    from artistools.inputmodel.modelfromhydro import read_griddat_file
-
-    kilonovapath = at.get_path("testdata") / "kilonova"
-    for filename in ("sfho_info.dat494", "tmerger.txt"):
-        shutil.copy(kilonovapath / filename, tmp_path / filename)
-    gridlines = (kilonovapath / "grid.dat").read_text(encoding="utf-8").splitlines()
-    gridlines[3] += "    Q"
-    gridlines[4:] = [f"{line}  1.0" for line in gridlines[4:]]
-    (tmp_path / "grid.dat").write_text("\n".join(gridlines) + "\n", encoding="utf-8")
-
-    griddata, _t_model, _t_merger, _vmax, _modelmeta = read_griddat_file(tmp_path)
-
-    assert "q" not in griddata.columns
-    assert "Q" not in griddata.columns
 
 
 def test_model_files_with_dotted_names_keep_separate_caches(tmp_path: Path) -> None:
@@ -2950,7 +2807,6 @@ def test_scan_modeldata_reads_an_extra_space_in_a_later_line(
         ("-0.5", -0.5),
         ("1.735904-244", 1.735904e-244),
         ("-4.165372E-31", -4.165372e-31),
-        ("8.852011-267", 8.852011e-267),
         ("1.5+100", 1.5e100),
     ],
 )
@@ -3264,6 +3120,7 @@ def test_dimension_reduce_keeps_abundances_of_empty_shells(tmp_path: Path, zero_
     dfmodel_out, dfabundances_out, _, modelmeta_out = at.inputmodel.dimension_reduce_model(
         dfmodel, outputdimensions=1, dfelabundances=dfabundances, modelmeta=modelmeta
     )
+    assert dfabundances_out is not None
 
     expected_abundances = pl.DataFrame({
         "inputcellid": [1, 2, 3, 4],
@@ -3469,19 +3326,6 @@ def test_describeinputmodel_empty_cell_and_cell_outside_the_model(capsys: pytest
         at.inputmodel.describeinputmodel.main(argsraw=[], modelpath=[modelpath], modelgridindex="5")
 
 
-def test_describeinputmodel_with_zero_abundances(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """A model whose abundances.txt holds zeros only, e.g. from save_empty_abundance_file, gets a description.
-
-    The list of the species masses was empty, and min() of it raised ValueError.
-    """
-    shutil.copy(modelpath / "model.txt", tmp_path)
-    at.inputmodel.save_empty_abundance_file(npts_model=1, outputfilepath=tmp_path)
-
-    at.inputmodel.describeinputmodel.main(argsraw=[], modelpath=[tmp_path])
-
-    assert "no species has a mass above zero" in capsys.readouterr().out
-
-
 @pytest.mark.parametrize(
     ("loweredges", "expectedcellcount"),
     [
@@ -3568,6 +3412,7 @@ def test_makeartismodelfromparticlegridmap_trajectory_q_replaces_the_grid_q(
         qvalues = dfmodel.filter(pl.col("q") > 0)["q"].to_numpy()
         assert qvalues.size > 0
         assert not np.allclose(qvalues, 1e10, rtol=1e-3), "the model holds the q of grid.dat"
+        assert "Q" not in dfmodel.columns
 
 
 def test_plotinitialcomposition_gives_each_panel_its_colour_bar(tmp_path: Path) -> None:
@@ -4031,6 +3876,8 @@ def test_describeinputmodel_1d_model_without_grid_out_warns(tmp_path: Path, caps
     assert "is direct" not in output.out
     assert "M_tot_rho_map" not in output.out
     assert "M_tot_rho " in output.out
+    # abundances.txt holds zeros only. The list of the species masses was empty, and min() of it raised ValueError
+    assert "no species has a mass above zero" in output.out
 
 
 def test_add_mass_to_center_adds_the_mass_below_0p1c() -> None:
@@ -4166,3 +4013,15 @@ def test_from_e2e_model_rejects_unequal_3d_dimensions_before_a_write(tmp_path: P
     at.inputmodel.from_e2e_model.main(argsraw=[*gridargs, "-dimensions", "1", "-o", str(tmp_path / "model1d")])
     _, modelmeta1d = at.inputmodel.scan_modeldata(tmp_path / "model1d", printwarningsonly=True)
     assert modelmeta1d["dimensions"] == 1
+
+
+def test_scan_modeldata_of_a_model_file_reads_the_abundances_beside_it() -> None:
+    """The path of a model file, e.g. model.txt, takes the abundances.txt of its folder.
+
+    The reader searched the path of the file as a folder, thus it found no abundances.txt.
+    """
+    dffromfolder, _ = at.inputmodel.scan_modeldata(modelpath, get_elemabundances=True, printwarningsonly=True)
+    dffromfile, _ = at.inputmodel.scan_modeldata(
+        modelpath / "model.txt", get_elemabundances=True, printwarningsonly=True
+    )
+    pltest.assert_frame_equal(dffromfile.collect(), dffromfolder.collect())

@@ -7,6 +7,7 @@ and threads that the log gives. The command reads only the sn3d logs, and not th
 
 import argparse
 import json
+import re
 import typing as t
 from collections.abc import Sequence
 from datetime import datetime
@@ -120,8 +121,10 @@ def get_run_core_hours(loglines: Sequence[str]) -> RunCoreHours:
             ntasks = procs_threads[0] * procs_threads[1]
     elif "core hours" in last_line:
         core_hours = float(last_line.split("core hours")[0].split()[-1])
-        if " wallclock hours" in last_line:
-            wallclock_hours = float(last_line.split(" wallclock hours")[0].split()[-1])
+        # ARTIS v2024.04 to v2025.02 wrote "wallclock hours 45.90", and a later version writes "45.90 wallclock hours"
+        wallclockmatch = re.search(r"(\d+(?:\.\d*)?) wallclock hours|wallclock hours (\d+(?:\.\d*)?)", last_line)
+        if wallclockmatch is not None:
+            wallclock_hours = float(wallclockmatch.group(1) or wallclockmatch.group(2))
         if " processes " in last_line and " threads " in last_line:
             ntasks = int(last_line.split(" processes")[0].split()[-1]) * int(last_line.split(" threads")[0].split()[-1])
     else:

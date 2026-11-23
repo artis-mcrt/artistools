@@ -148,8 +148,9 @@ def confirm_overwrite_of_files(existingfiles: Sequence[Path], force: bool) -> No
 
 def confirm_deletion(files: Sequence[Path], force: bool) -> None:
     """List the files, and stop the command if the user does not agree to delete them, as rm -i does."""
+    # --quiet hides the standard output, and the list of a question goes with the question on the standard error
     for path in files:
-        print_detail(path)
+        print(" ", path, file=sys.stdout if force else sys.stderr)
     if not force and not user_agrees(f"Delete the {len(files)} files?"):
         exit_with_error("The command stopped, and it did not delete the files", "Give -f or --force to delete them")
 
@@ -157,12 +158,13 @@ def confirm_deletion(files: Sequence[Path], force: bool) -> None:
 def user_agrees(question: str) -> bool:
     """Ask a question of the form (y/n) on the terminal, and return True for the answer yes.
 
-    Nobody can answer when stdin is not a terminal, thus the answer is then no.
+    Nobody can answer when stdin is not a terminal, thus the answer is then no. input() writes the question to the
+    standard output, which --quiet hides, thus the question goes to the standard error.
     """
     reply = ""
     if sys.stdin.isatty():
         # the end of the input, e.g. from Ctrl-D, is the answer "no"
-        with contextlib.suppress(EOFError):
+        with contextlib.suppress(EOFError), contextlib.redirect_stdout(sys.stderr):
             reply = input(f"{question} (y/n) ")
     return reply.strip().lower() in {"y", "yes"}
 

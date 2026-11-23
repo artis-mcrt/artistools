@@ -46,6 +46,7 @@ from artistools.misc import get_timestep_times
 from artistools.misc import get_viewingdirection_costhetabincount
 from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import get_viewingdirectionbincount
+from artistools.misc import get_weighted_quantile_expr
 from artistools.misc import make_cache_folder
 from artistools.misc import modelpath_cache
 from artistools.misc import natural_sort_key
@@ -120,51 +121,48 @@ columns_full: t.Final = (
 @modelpath_cache(maxsize=16)
 def get_column_names_artiscode(modelpath: Path) -> list[str] | None:
     """Return the packet column names parsed from the ARTIS source in the model folder, or None if it is absent."""
-    if Path(modelpath, "artis").is_dir():
-        print("Detected artis code directory")
-        packet_properties: list[str] = []
-        inputfilename = firstexisting(["packet_init.cc", "packet_init.c"], folder=modelpath / "artis")
-        print(f"Found {inputfilename}: getting packet column names from artis code:")
-        with inputfilename.open(encoding="utf-8") as inputfile:
-            packet_print_lines = [line.split(",") for line in inputfile if "fprintf(packets_file," in line]
-            for line in packet_print_lines:
-                packet_properties.extend(element for element in line if "pkt[i]." in element)
-        for i, element in enumerate(packet_properties):
-            packet_properties[i] = element.split(".")[1].split(")")[0]
+    if not Path(modelpath, "artis").is_dir():
+        return None
 
-        replacements_dict = {
-            "type": "type_id",
-            "pos[0]": "posx",
-            "pos[1]": "posy",
-            "pos[2]": "posz",
-            "dir[0]": "dirx",
-            "dir[1]": "diry",
-            "dir[2]": "dirz",
-            "escape_type": "escape_type_id",
-            "em_pos[0]": "em_posx",
-            "em_pos[1]": "em_posy",
-            "em_pos[2]": "em_posz",
-            "absorptiontype": "absorption_type",
-            "absorptionfreq": "absorption_freq",
-            "absorptiondir[0]": "absorptiondirx",
-            "absorptiondir[1]": "absorptiondiry",
-            "absorptiondir[2]": "absorptiondirz",
-            "stokes[0]": "stokes_i",
-            "stokes[1]": "stokes_q",
-            "stokes[2]": "stokes_u",
-            "pol_dir[0]": "pol_dirx",
-            "pol_dir[1]": "pol_diry",
-            "pol_dir[2]": "pol_dirz",
-            "trueemissionvelocity": "true_emission_velocity",
-        }
+    print("Detected artis code directory")
+    inputfilename = firstexisting(["packet_init.cc", "packet_init.c"], folder=modelpath / "artis")
+    print(f"Found {inputfilename}: getting packet column names from artis code:")
+    with inputfilename.open(encoding="utf-8") as inputfile:
+        printedelements = [
+            element
+            for line in inputfile
+            if "fprintf(packets_file," in line
+            for element in line.split(",")
+            if "pkt[i]." in element
+        ]
 
-        for i, column_name in enumerate(packet_properties):
-            if column_name in replacements_dict:
-                packet_properties[i] = replacements_dict[column_name]
-
-        return packet_properties
-
-    return None
+    replacements_dict = {
+        "type": "type_id",
+        "pos[0]": "posx",
+        "pos[1]": "posy",
+        "pos[2]": "posz",
+        "dir[0]": "dirx",
+        "dir[1]": "diry",
+        "dir[2]": "dirz",
+        "escape_type": "escape_type_id",
+        "em_pos[0]": "em_posx",
+        "em_pos[1]": "em_posy",
+        "em_pos[2]": "em_posz",
+        "absorptiontype": "absorption_type",
+        "absorptionfreq": "absorption_freq",
+        "absorptiondir[0]": "absorptiondirx",
+        "absorptiondir[1]": "absorptiondiry",
+        "absorptiondir[2]": "absorptiondirz",
+        "stokes[0]": "stokes_i",
+        "stokes[1]": "stokes_q",
+        "stokes[2]": "stokes_u",
+        "pol_dir[0]": "pol_dirx",
+        "pol_dir[1]": "pol_diry",
+        "pol_dir[2]": "pol_dirz",
+        "trueemissionvelocity": "true_emission_velocity",
+    }
+    column_names = (element.split(".")[1].split(")")[0] for element in printedelements)
+    return [replacements_dict.get(column_name, column_name) for column_name in column_names]
 
 
 def has_emission_record_expr(position: t.Literal["em", "trueem"]) -> pl.Expr:
@@ -185,27 +183,28 @@ def get_emission_time_expr(position: t.Literal["em", "trueem"]) -> pl.Expr:
     return pl.when(has_emission_record_expr(position)).then(pl.col(f"{position}_time")).otherwise(math.nan)
 
 
+def get_escape_time_cmf_days_expr() -> pl.Expr:
+    """Return the comoving-frame escape time of each escaped packet [d], as ARTIS bins its comoving light curve.
+
+    ARTIS takes sqrt(t_esc^2 - |r|^2 / c^2), with the rest-frame escape time t_esc and the escape position r of each
+    packet (spectrum_lightcurve.cc, since a15329b6). A packet on a Cartesian or a cylindrical grid escapes at the
+    surface of the grid. That surface is up to sqrt(3) or sqrt(2) vmax t from the centre, thus one factor of vmax is
+    wrong for such a packet.
+    """
+    escapetime_s = pl.col("escape_time").cast(pl.Float64)
+    radiussquared_cm2 = (
+        pl.col("posx").cast(pl.Float64) ** 2
+        + pl.col("posy").cast(pl.Float64) ** 2
+        + pl.col("posz").cast(pl.Float64) ** 2
+    )
+    return (escapetime_s**2 - radiussquared_cm2 / CLIGHT**2).clip(lower_bound=0.0).sqrt() / day_to_s
+
+
 def get_emission_velocity_expr(position: t.Literal["em", "trueem"]) -> pl.Expr:
     """Return the radial velocity [cm/s] of the last interaction (em) or of the last thermal emission (trueem)."""
     return (
         pl.col(f"{position}_posx") ** 2 + pl.col(f"{position}_posy") ** 2 + pl.col(f"{position}_posz") ** 2
     ).sqrt() / get_emission_time_expr(position)
-
-
-def get_emission_velocity_of_columns_expr(position: t.Literal["em", "trueem"], packetcolumns: Sequence[str]) -> pl.Expr:
-    """Return the radial velocity [cm/s] of get_emission_velocity_expr() from the columns that the packets hold.
-
-    An old packets file holds true_emission_velocity and no position of the thermal emission. For a packet with no
-    record, scan_packets gives that velocity a value of NaN, as get_emission_velocity_expr() does.
-    """
-    if position == "trueem" and "trueem_posx" not in packetcolumns:
-        if "true_emission_velocity" not in packetcolumns:
-            msg = (
-                "The packets hold no position and no velocity of the thermal emission. Remove --use-thermalemissiontype"
-            )
-            raise ValueError(msg)
-        return pl.col("true_emission_velocity")
-    return get_emission_velocity_expr(position)
 
 
 def print_last_interaction_convention(modelpath: Path | str) -> None:
@@ -314,15 +313,45 @@ def addarg_velocitykind(parser: argparse.ArgumentParser) -> None:
 def get_last_interaction_velocity_expr(
     position: t.Literal["em", "trueem"], velocitykind: t.Literal["radial", "lineofsight"], packetcolumns: Sequence[str]
 ) -> pl.Expr:
-    """Return the radial or the line-of-sight velocity [cm/s] of the last interaction or the last thermal emission."""
-    if velocitykind == "radial":
-        return get_emission_velocity_of_columns_expr(position, packetcolumns)
-    if f"{position}_posx" not in packetcolumns:
-        msg = (
-            f"The packets hold no {position}_pos, thus they give no line-of-sight velocity. Give --velocitykind radial"
+    """Return the radial or the line-of-sight velocity [cm/s] of the last interaction or the last thermal emission.
+
+    An old packets file holds true_emission_velocity and no position of the thermal emission. For a packet with no
+    record, scan_packets gives that velocity a value of NaN, as get_emission_velocity_expr() does.
+    """
+    if velocitykind == "lineofsight":
+        if f"{position}_posx" not in packetcolumns:
+            msg = (
+                f"The packets hold no {position}_pos, thus they give no line-of-sight velocity."
+                " Give --velocitykind radial"
+            )
+            raise ValueError(msg)
+        return get_emission_velocity_lineofsight_expr(position)
+    if position == "trueem" and "trueem_posx" not in packetcolumns:
+        if "true_emission_velocity" not in packetcolumns:
+            msg = (
+                "The packets hold no position and no velocity of the thermal emission. Remove --use-thermalemissiontype"
+            )
+            raise ValueError(msg)
+        return pl.col("true_emission_velocity")
+    return get_emission_velocity_expr(position)
+
+
+def get_velocity_axis_label(
+    position: t.Literal["em", "trueem"], velocitykind: t.Literal["radial", "lineofsight"]
+) -> str:
+    """Return the axis label of the velocity of the last interaction or of the last thermal emission, with no unit."""
+    velocityname = "Radial velocity" if velocitykind == "radial" else "Line-of-sight velocity (towards the observer)"
+    return f"{velocityname} of the last {'thermal emission' if position == 'trueem' else 'interaction'}"
+
+
+def get_velocity_quartile_exprs() -> dict[str, pl.Expr]:
+    """Return the quartiles of the column velocity_kmps, with the energy e_rf of each packet as the weight."""
+    return {
+        f"velocity_luminosity_q{round(quantile * 100)}_kmps": get_weighted_quantile_expr(
+            "velocity_kmps", "e_rf", quantile
         )
-        raise ValueError(msg)
-    return get_emission_velocity_lineofsight_expr(position)
+        for quantile in (0.25, 0.5, 0.75)
+    }
 
 
 def print_velocity_method(
@@ -389,26 +418,19 @@ def get_modelgridindex_expr(
     return coord["z"] * ncoordgrid["y"] * ncoordgrid["x"] + coord["y"] * ncoordgrid["x"] + coord["x"]
 
 
-def get_timestep_expr(time: pl.Expr, timebins: Sequence[float]) -> pl.Expr:
-    """Return the timestep of a time [s], from the start times of the timesteps and the end time of the last one.
-
-    A time before the first timestep gives -1, and a time after the last timestep gives the timestep count.
-    """
-    # an ARTIS timestep holds its start time and not its end time
-    return get_bin_index_expr(time, timebins)
-
-
 def add_derived_columns_lazy(dfpackets: pl.LazyFrame | pl.DataFrame, modelpath: Path | str) -> pl.LazyFrame:
     """Add columns to a packets DataFrame that are derived from the values that are stored in the packets files.
 
     The function adds all the columns, because a LazyFrame calculates a column only when a query uses it.
     """
     dfmodel, modelmeta = scan_modeldata(modelpath=modelpath)
+    # an ARTIS timestep holds its start time and not its end time. A time before the first timestep gives the timestep
+    # -1, and a time after the last timestep gives the timestep count
     timebins = [tstart * day_to_s for tstart in get_timestep_times(modelpath, loc="start")] + [
         get_timestep_times(modelpath, loc="end")[-1] * day_to_s
     ]
     dfpackets = dfpackets.lazy().with_columns(
-        em_timestep=get_timestep_expr(pl.col("em_time"), timebins),
+        em_timestep=get_bin_index_expr(pl.col("em_time"), timebins),
         emission_velocity=get_emission_velocity_expr("em"),
         emission_velocity_lineofsight=get_emission_velocity_lineofsight_expr("em"),
         em_modelgridindex=get_modelgridindex_expr("em", modelmeta, dfmodel),
@@ -430,7 +452,7 @@ def add_derived_columns_lazy(dfpackets: pl.LazyFrame | pl.DataFrame, modelpath: 
     # the timestep and the cell of the thermal emission select the estimators of that emission together. Thus a file
     # with no cell gets no timestep, e.g. a 2D or 3D model with no position of the thermal emission
     if "trueem_time" in packetcolumns and "emtrue_modelgridindex" in dfpackets.collect_schema().names():
-        dfpackets = dfpackets.with_columns(emtrue_timestep=get_timestep_expr(pl.col("trueem_time"), timebins))
+        dfpackets = dfpackets.with_columns(emtrue_timestep=get_bin_index_expr(pl.col("trueem_time"), timebins))
 
     return dfpackets
 
@@ -616,6 +638,16 @@ RANKS_PER_BATCH: t.Final = 100
 PACKET_READ_THREADS: t.Final = 8
 
 
+def get_folder_listing(
+    folder: Path, folderlistings: dict[Path, dict[str, os.DirEntry[str]]]
+) -> dict[str, os.DirEntry[str]]:
+    """Return the entries of a folder by name, with a scan only for a folder that folderlistings does not hold."""
+    if folder not in folderlistings:
+        with os.scandir(folder) as entries:
+            folderlistings[folder] = {entry.name: entry for entry in entries}
+    return folderlistings[folder]
+
+
 def find_packets_textsources(
     modelpath: Path, filenames: Sequence[str], folderlistings: dict[Path, dict[str, os.DirEntry[str]]] | None = None
 ) -> dict[str, os.DirEntry[str]]:
@@ -628,20 +660,15 @@ def find_packets_textsources(
     if folderlistings is None:
         folderlistings = {}
 
-    def get_listing(folder: Path) -> dict[str, os.DirEntry[str]]:
-        if folder not in folderlistings:
-            with os.scandir(folder) as entries:
-                folderlistings[folder] = {entry.name: entry for entry in entries}
-        return folderlistings[folder]
-
     found: dict[str, os.DirEntry[str]] = {}
     # firstexisting searches the subfolders in their natural order, e.g. by job number, and the
     # conversion reads the file that it finds. A different order stamps the cache from another file
     subfolders = sorted(
-        (Path(entry.path) for entry in get_listing(modelpath).values() if entry.is_dir()), key=natural_sort_key
+        (Path(entry.path) for entry in get_folder_listing(modelpath, folderlistings).values() if entry.is_dir()),
+        key=natural_sort_key,
     )
     for folder in (modelpath, *subfolders):
-        entries = get_listing(folder)
+        entries = get_folder_listing(folder, folderlistings)
         for filename in filenames:
             if filename in found:
                 continue
@@ -699,15 +726,11 @@ def count_packets_textfiles(modelpath: Path) -> tuple[int, int]:
     readcount = len(find_packets_textsources(modelpath, filenames, folderlistings))
     # the search stops at the first folder that holds every rank, thus the files of an earlier run need a scan here
     subfolders = [Path(entry.path) for entry in folderlistings[modelpath].values() if entry.is_dir()]
-    for folder in subfolders:
-        if folder not in folderlistings:
-            with os.scandir(folder) as entries:
-                folderlistings[folder] = {entry.name: entry for entry in entries}
     # two earlier runs can each leave a file of one rank, thus the count takes each pair of folder and rank
     otherrankfiles = {
         (folder, int(namematch.group(1)))
         for folder in (modelpath, *subfolders)
-        for name in folderlistings[folder]
+        for name in get_folder_listing(folder, folderlistings)
         if (namematch := re.fullmatch(r"packets00_(\d+)\.out(?:\.gz|\.xz|\.zst)?", name)) is not None
         and int(namematch.group(1)) >= nprocs
     }
@@ -864,8 +887,6 @@ def get_packets_rankbatch_parquetfile(
                 ),
                 how="vertical",
             )
-
-        assert pldf_batch is not None
 
         if virtual:
             pldf_batch = pldf_batch.sort(by=["dir0_t_arrive_d"])
@@ -1094,10 +1115,11 @@ def scan_packets(
     On a large model, this takes many minutes. get_packets_column_names gives the columns and writes no cache. The
     reader stops with an error for a remote model. docs/data.md gives each column.
     """
+    if escape_type not in {None, "TYPE_RPKT", "TYPE_GAMMA"}:
+        msg = f"Unknown escape type {escape_type}"
+        raise ValueError(msg)
     if escape_type is not None:
         assert packet_type in {None, "TYPE_ESCAPE"}
-        if packet_type is None:
-            packet_type = "TYPE_ESCAPE"
 
     nprocs_read, packetsparquetfiles = get_packets_batch_parquet_paths(modelpath, maxpacketfiles)
 
@@ -1125,10 +1147,6 @@ def scan_packets(
     print(f"  Files contain {npkts_total:.2e} packets from {nprocs_read} ranks")
 
     if escape_type is not None:
-        if escape_type not in {"TYPE_RPKT", "TYPE_GAMMA"}:
-            msg = f"Unknown escape type {escape_type}"
-            raise ValueError(msg)
-        assert packet_type is None or packet_type == "TYPE_ESCAPE"
         pldfpackets = pldfpackets.filter(
             (pl.col("type_id") == type_ids["TYPE_ESCAPE"]) & (pl.col("escape_type_id") == type_ids[escape_type])
         )
@@ -1141,7 +1159,7 @@ def scan_packets(
                 " no gamma-ray spectrum"
             )
             raise ValueError(msg)
-    elif packet_type is not None and packet_type:
+    elif packet_type:
         pldfpackets = pldfpackets.filter(pl.col("type_id") == type_ids[packet_type])
 
     return nprocs_read, pldfpackets

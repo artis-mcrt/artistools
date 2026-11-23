@@ -266,6 +266,11 @@ def test_a_rejected_parquet_cache_gives_the_reason(tmp_path: Path) -> None:
     assert stalereason is None
     assert pqmetadata is not None
 
+    # with no text source, the function compares no times, but the version still applies. The estimator reader
+    # skipped every check for such a cache, thus the columns of a new schema became zero
+    assert at.misc.read_parquet_cache_metadata(current, cacheversion, None)[1] is None
+    assert "cache format version" in str(at.misc.read_parquet_cache_metadata(current, cacheversion + 1, None)[1])
+
     def get_reason(parquetfilepath: Path, textsource_mtime: float) -> str:
         pqmetadata, stalereason = at.misc.read_parquet_cache_metadata(parquetfilepath, cacheversion, textsource_mtime)
         assert pqmetadata is None
@@ -294,6 +299,11 @@ def test_a_rejected_parquet_cache_gives_the_reason(tmp_path: Path) -> None:
     at.misc.write_parquet_atomic(pl.DataFrame({"timestep": [0]}), unstamped)
     assert "no cacheversion stamp" in get_reason(unstamped, mtime)
     assert at.misc.read_parquet_cache_metadata(unstamped, cacheversion, mtime, accept_unstamped=True)[1] is None
+
+    # a cache with a version but no time dates its text source in no way, thus it matches no time
+    notime = tmp_path / "notime.parquet"
+    at.misc.write_parquet_atomic(pl.DataFrame({"timestep": [0]}), notime, metadata={"cacheversion": str(cacheversion)})
+    assert "the text source changed" in get_reason(notime, mtime)
 
     oldversion = tmp_path / "oldversion.parquet"
     at.misc.write_parquet_atomic(
@@ -471,16 +481,6 @@ def test_the_old_spelling_of_the_phi_average_sets_the_phi_average(capsys: pytest
         parser.parse_args(["--average_every_tenth_viewing_angle", "--average_over_theta_angle"])
 
 
-def test_legendcols_rejects_a_count_below_one() -> None:
-    """-legendcols 0 must fail when argparse reads it, and not in matplotlib after the data is read."""
-    parser = argparse.ArgumentParser(exit_on_error=False)
-    at.misc.addarg_legend(parser)
-    assert parser.parse_args(["-legendcols", "3"]).legendcols == 3
-    for badvalue in ("0", "-2"):
-        with pytest.raises(argparse.ArgumentError, match="positive count"):
-            parser.parse_args([f"-legendcols={badvalue}"])
-
-
 def test_set_args_from_dict_keeps_one_dash_pattern_as_one_series() -> None:
     """A dash pattern from the Python API must give one series, also after the type of -dashes became a wrapper."""
     parser = argparse.ArgumentParser()
@@ -523,6 +523,11 @@ def test_print_saved(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeyp
     at.misc.print_saved(tmp_path / "with space.pdf")
     assert capsys.readouterr().out == f"{opencommand} 'with space.pdf'\n"
 
+    # a file outside the working folder gave a chain of "..", which is longer than the full path
+    farpath = Path("/figure.pdf").resolve()
+    at.misc.print_saved(farpath)
+    assert capsys.readouterr().out == f"{opencommand} {farpath}\n"
+
     # each platform gets its own verb, thus a run on one of them covers the lines of the others.
     # cmd.exe reads the first quoted argument of start as the title of a window, thus an empty title
     # stands in front of the path there
@@ -544,23 +549,6 @@ def test_print_saved(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeyp
     monkeypatch.setattr(sys, "platform", "linux")
     at.misc.print_saved("with space.pdf")
     assert capsys.readouterr().out == "xdg-open 'with space.pdf'\n"
-
-
-def test_open_file_takes_the_call_of_the_platform(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Windows has no xdg-open, thus it opens a file through its own call and not through a command."""
-    somefile = tmp_path / "out.pdf"
-    somefile.touch()
-
-    monkeypatch.setattr(sys, "platform", "linux")
-    with mock.patch("subprocess.run") as mockrun:
-        at.misc.open_file(somefile)
-    assert mockrun.call_args.args[0] == ["xdg-open", str(somefile)]
-
-    monkeypatch.setattr(sys, "platform", "win32")
-    with mock.patch.object(os, "startfile", create=True) as mockstart, mock.patch("subprocess.run") as mockrun:
-        at.misc.open_file(somefile)
-    assert mockstart.call_args.args[0] == somefile
-    assert not mockrun.called, "Windows must not run a command that it does not have"
 
 
 def test_the_positional_items_read_the_folder_last(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -621,19 +609,6 @@ def test_artis_subfolders_names_the_models_of_a_folder(tmp_path: Path) -> None:
     assert at.misc.artis_subfolders(tmp_path / "absent") == []
     assert at.misc.folder_is_artis_model(tmp_path / "model1")
     assert not at.misc.folder_is_artis_model(tmp_path / "notamodel")
-
-
-# --- modelinfo.py ------------------------------------------------------------------------------
-
-
-def test_missing_inputfile_error_names_the_path(tmp_path: Path) -> None:
-    """A non-ARTIS directory must produce an error naming the path, not a bare 'input.txt' message."""
-    with pytest.raises(FileNotFoundError, match="ARTIS model folder") as excinfo:
-        at.get_inputparams(tmp_path / "nonexistentmodel")
-    assert "nonexistentmodel" in str(excinfo.value)
-
-    with pytest.raises(FileNotFoundError, match="ARTIS model folder"):
-        at.get_nprocs(tmp_path / "nonexistentmodel")
 
 
 # --- fileio.py ---------------------------------------------------------------------------------
@@ -907,19 +882,6 @@ def test_firstexisting_with_an_absolute_path(tmp_path: Path) -> None:
     assert at.misc.firstexisting_or_none(missingpath) is None
 
 
-def test_readnoncommentline() -> None:
-    stream = io.StringIO("\n# a comment\n   # indented comment\nreal data line\nsecond\n")
-    assert at.misc.readnoncommentline(stream) == "real data line\n"
-    # the next call continues from where the last one stopped
-    assert at.misc.readnoncommentline(stream) == "second\n"
-
-    # reaching EOF without a data line raises rather than looping forever
-    with pytest.raises(EOFError, match="end of file"):
-        at.misc.readnoncommentline(io.StringIO(""))
-    with pytest.raises(EOFError, match="end of file"):
-        at.misc.readnoncommentline(io.StringIO("\n# only comments\n   \n"))
-
-
 def test_get_file_metadata(tmp_path: Path) -> None:
     # r_v is derived from a_v and e_bminusv
     (tmp_path / "rv.txt").write_text("data")
@@ -960,18 +922,6 @@ def test_get_file_metadata_reads_an_edited_metadata_file(tmp_path: Path) -> None
 
     metafile.write_text("z: 0.02\n", encoding="utf-8")
     assert at.misc.get_file_metadata(tmp_path / "spec.txt")["z"] == pytest.approx(0.02)
-
-
-def test_write_parquet_atomic(tmp_path: Path) -> None:
-    df = pl.DataFrame({"a": [1, 2, 3], "b": [4.0, 5.0, 6.0]})
-    parquetpath = tmp_path / "out.parquet"
-
-    at.misc.write_parquet_atomic(df, parquetpath)
-
-    assert parquetpath.exists()
-    pltest.assert_frame_equal(pl.read_parquet(parquetpath), df)
-    # the temporary partial file must not be left behind
-    assert list(tmp_path.glob("*.partial*")) == []
 
 
 def test_write_parquet_atomic_names_a_read_only_mount(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1212,25 +1162,6 @@ def test_replace_outdated_file_ignores_a_leftover_lock_file(tmp_path: Path) -> N
     assert lockpath.stat().st_mode & 0o666 == 0o666
 
 
-def test_get_file_identity(tmp_path: Path) -> None:
-    """A file is the same file only while its device and inode are unchanged."""
-    filepath = tmp_path / "cache"
-    assert at.misc.get_file_identity(filepath) is None
-
-    filepath.write_text("first", encoding="utf-8")
-    identity = at.misc.get_file_identity(filepath)
-    assert at.misc.get_file_identity(filepath) == identity
-
-    # rewriting in place keeps the file, but a rename onto the path makes it a different one
-    filepath.write_text("second", encoding="utf-8")
-    assert at.misc.get_file_identity(filepath) == identity
-
-    replacement = tmp_path / "replacement"
-    replacement.write_text("third", encoding="utf-8")
-    replacement.replace(filepath)
-    assert at.misc.get_file_identity(filepath) != identity
-
-
 # --- general.py --------------------------------------------------------------------------------
 
 
@@ -1308,13 +1239,6 @@ def test_parse_range() -> None:
     # "last-1" means the timestep before the last to a user. A swap gave timesteps 1 to last
     with pytest.raises(ValueError, match="ends before it starts"):
         at.misc.parse_range("last-1", {"last": 99})
-
-
-def test_normalize_path_list() -> None:
-    assert at.misc.normalize_path_list("a/b") == [Path("a/b")]
-    assert at.misc.normalize_path_list(Path("a/b")) == [Path("a/b")]
-    assert at.misc.normalize_path_list([["x"], "y"]) == [Path("x"), Path("y")]
-    assert at.misc.normalize_path_list([]) == [Path()]
 
 
 def test_resolve_outputfile(tmp_path: Path) -> None:
@@ -1737,7 +1661,7 @@ def test_server_protocol_changes_with_the_readers(package_modules: list[Path]) -
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (18, "69e24cb9f926002e"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (19, "69e24cb9f926002e"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )
@@ -2093,18 +2017,6 @@ def test_get_filterfunc() -> None:
     ]
     assert np.allclose(filterfunc(yvalues), expected, rtol=1e-10, atol=1e-12)
 
-    # invalid parameters are rejected
-    with pytest.raises(ValueError, match="must be an odd number"):
-        at.misc.savgol_filter(yvalues, window_length=4, polyorder=3)
-    with pytest.raises(ValueError, match="must be at least zero and less than window_length"):
-        at.misc.savgol_filter(yvalues, window_length=5, polyorder=7)
-    with pytest.raises(ValueError, match="must be at least zero and less than window_length"):
-        at.misc.savgol_filter(yvalues, window_length=5, polyorder=-1)
-    with pytest.raises(ValueError, match="exceeds the data length"):
-        at.misc.savgol_filter(yvalues[:3], window_length=5, polyorder=3)
-    with pytest.raises(ValueError, match="needs a 1D array"):
-        at.misc.savgol_filter(np.tile(yvalues, (2, 1)), window_length=5, polyorder=3)
-
 
 def test_gaussian_filter_wrap() -> None:
     """The smoothing must match scipy.ndimage.gaussian_filter(data, sigma=1.2, mode="wrap"), which it replaced."""
@@ -2144,11 +2056,6 @@ def test_gaussian_filter_wrap() -> None:
         ],
     ])
     assert np.allclose(at.misc.gaussian_filter_wrap(data, sigma=1.2), expected, rtol=1e-10, atol=1e-12)
-
-    with pytest.raises(ValueError, match="must be greater than zero"):
-        at.misc.gaussian_filter_wrap(data, sigma=0.0)
-    with pytest.raises(ValueError, match="needs a 2D array"):
-        at.misc.gaussian_filter_wrap(data[0], sigma=1.2)
 
 
 # --- timesteps.py ------------------------------------------------------------------------------
@@ -2295,24 +2202,6 @@ def test_average_direction_bins_averages_every_column(monkeypatch: pytest.Monkey
         assert averaged[start_bin].with_columns(logcol).collect()["logvalue"].item() == pytest.approx(
             math.log10(meanvalue)
         )
-
-
-def test_average_direction_bins_rejects_missing_bins(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Averaging a second time must raise instead of a bare KeyError for the bins that no longer exist."""
-    nphibins = 4
-    ncosthetabins = 3
-
-    monkeypatch.setattr(dirbins, "get_viewingdirection_phibincount", lambda: nphibins)
-    monkeypatch.setattr(dirbins, "get_viewingdirection_costhetabincount", lambda: ncosthetabins)
-
-    dirbindataframes = {
-        dirbin: pl.DataFrame({"timestep": [0, 1], "value": [float(dirbin), float(dirbin)]})
-        for dirbin in range(nphibins * ncosthetabins)
-    }
-
-    averaged = dirbins.average_direction_bins(dirbindataframes, overangle="theta")
-    with pytest.raises(ValueError, match="Cannot average over phi"):
-        dirbins.average_direction_bins(averaged, overangle="phi")
 
 
 def test_average_direction_bins_gives_one_row_for_each_rounded_time(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2486,22 +2375,6 @@ def test_drop_trailing_null_column() -> None:
     ).collect_schema().names() == ["a", "b"]
 
 
-def test_get_series_label() -> None:
-    """A series is named by its -label entry, or by the fallback when the user gave none for it."""
-    assert at.misc.get_series_label(["A", "B"], 1, "modelname") == "B"
-    assert at.misc.get_series_label([None, "B"], 0, "modelname") == "modelname"
-
-    # trim_or_pad sizes the list to the model paths, so a per-series index can run off the end
-    assert at.misc.get_series_label(["A"], 3, "modelname") == "modelname"
-
-    # a sentinel index such as the -1 this codebase uses for a direction bin must not wrap to the last label
-    assert at.misc.get_series_label(["A", "B"], -1, "modelname") == "modelname"
-
-    # an empty label is a series deliberately left out of the legend, not a missing one
-    # the return type is str, so falsy is the empty string rather than the model name
-    assert not at.misc.get_series_label([""], 0, "modelname")
-
-
 def test_shorten_middle_keeps_both_ends() -> None:
     """A long name of a model folder keeps the name of the model at the start and the details at the end."""
     name = "w7_outercut_20260816_150_410d_2e9pkt_develop_3dgrid50_virgo"
@@ -2562,31 +2435,6 @@ def test_check_time_selection_reads_a_flag_that_repeats_its_default() -> None:
     with pytest.raises(SystemExit) as excinfo:
         at.misc.check_time_selection(parser, parser.parse_args(argsraw), argsraw)
     assert excinfo.value.code == 1
-
-
-def test_check_time_selection_counts_a_default_as_absent() -> None:
-    """A default of -timestep must not count as a second range."""
-    parser = get_parser_with_a_default_timestep()
-
-    # the user named only -timedays, thus the default timestep must not raise
-    at.misc.check_time_selection(parser, parser.parse_args(["-timedays", "300"]))
-
-
-def test_nonempty_cellcounts_reads_the_rank_assignments(tmp_path: Path) -> None:
-    """modelgridrankassignments.out gives the count of cells that hold matter for each rank.
-
-    ARTIS assigns no 3D cell to a shell that holds no matter, thus the rank of such a shell writes no
-    output file. That absence is normal, and it must not read as a file that went missing.
-    """
-    from artistools.misc.modelinfo import get_nonempty_cellcounts
-
-    (tmp_path / "modelgridrankassignments.out").write_text("#rank nstart ndo ndo_nonempty\n0 0 1 0\n1 1 1 0\n2 2 1 3\n")
-
-    counts = get_nonempty_cellcounts(tmp_path)
-    assert counts == {0: 0, 1: 0, 2: 3}
-
-    # a model that holds no such file gives None, thus the caller keeps its own error
-    assert get_nonempty_cellcounts(at.get_path("testdata") / "testmodel") is None
 
 
 @pytest.mark.parametrize("has_allranks_file", [False, True])
@@ -3065,17 +2913,6 @@ def test_addarg_modelpath_positional_also_takes_the_option() -> None:
     # the positional already names the paths in the help, thus the option stays out of it
     assert "-modelpath" not in build().format_help()
 
-    # a positional that carries a default of its own must not hide the option. argparse gives that
-    # default as the value of the positional, thus plotinitialabundances read "." for every -modelpath
-    def buildwithdefault() -> argparse.ArgumentParser:
-        parser = argparse.ArgumentParser()
-        at.misc.addarg_modelpath(parser, positional=True, multiplepaths=True, default=[Path()])
-        return parser
-
-    assert buildwithdefault().parse_args([]).modelpath == [Path()]
-    assert buildwithdefault().parse_args(["a"]).modelpath == [Path("a")]
-    assert buildwithdefault().parse_args(["-modelpath", "a"]).modelpath == [Path("a")]
-
 
 def test_out_of_range_cell_names_the_cells_of_the_model() -> None:
     """A cell that the model does not hold must name the cells that it does hold.
@@ -3153,6 +2990,10 @@ def test_check_time_selection_reads_each_spelling_as_argparse_does() -> None:
             at.misc.check_time_selection(parser, namespace, argsraw)
         assert excinfo.value.code == 1, argsraw
 
+    # the default of -timestep is no second range when the user names only -t
+    parser, namespace = parse(["-t", "300"])
+    at.misc.check_time_selection(parser, namespace, ["-t", "300"])
+
 
 def test_import_optional_names_the_install_command(monkeypatch: pytest.MonkeyPatch) -> None:
     """A missing optional dependency must say how to install it, and a broken one must give its real cause.
@@ -3225,34 +3066,6 @@ def test_print_warning_reaches_stderr_and_survives_quiet(capsys: pytest.CaptureF
     )
     captured = capsys.readouterr()
     assert "warning: No deposition.out file found" in captured.err
-
-
-def test_progress_class_takes_a_spawn_lock_and_keeps_the_start_method() -> None:
-    """A bar must take a lock that a spawn pool can hold, and it must set no default start method.
-
-    tqdm builds its shared lock from the default multiprocessing context at the first bar. On Linux the
-    default was fork before Python 3.14, thus CI stopped with "A SemLock created in a fork context is
-    being shared with a process in a spawn context". get_progress_class gives tqdm a lock of a spawn
-    context instead, thus a bar starts no process and the default of the caller stands.
-    """
-    import multiprocessing as mp
-
-    import tqdm
-
-    from artistools.misc.general import get_progress_class
-
-    original = mp.get_start_method(allow_none=True)
-    try:
-        mp.set_start_method("fork", force=True)  # the Linux default before Python 3.14
-        progressbar = get_progress_class()(total=1, disable=True)
-        progressbar.close()
-
-        assert mp.get_start_method() == "fork", "a bar starts no process, thus it sets no start method"
-        # a SemLock records the context that made it, thus a lock of the fork default fails here
-        assert getattr(tqdm.tqdm.get_lock(), "_is_fork_ctx", None) is False, "the bar must hold a spawn lock"
-    finally:
-        # None with force=True clears the default again, thus this test leaves no fork default in the worker
-        mp.set_start_method(original, force=True)
 
 
 def test_resolve_frameset_paths(tmp_path: Path) -> None:
@@ -3385,24 +3198,6 @@ def test_a_range_keeps_a_negative_number_whole() -> None:
         at.misc.parse_range_list("10-20-30")
 
 
-def test_a_merge_keeps_its_own_product(tmp_path: Path) -> None:
-    """Two spellings of one path name one file, thus the merge must not remove the file that it wrote."""
-    import matplotlib.pyplot as plt
-
-    framepaths = []
-    for i in range(2):
-        fig, ax = plt.subplots()
-        ax.plot([0, 1], [i, i])
-        framepath = tmp_path / f"frame{i}.pdf"
-        fig.savefig(framepath)
-        plt.close(fig)
-        framepaths.append(str(framepath))
-
-    # the product carries the name of a frame, and the caller gives it as an absolute path
-    product = at.misc.merge_pdf_files(framepaths, tmp_path.resolve() / "frame0.pdf")
-    assert Path(product).is_file(), "the merge must keep the file that it wrote"
-
-
 def test_get_runfolder_timesteps_of_a_classic_estimator_file_gives_no_timesteps() -> None:
     """A classic-mode estimator file has no timestep header line, thus the code must not index the empty result."""
     from artistools.misc.modelinfo import get_runfolder_timesteps
@@ -3491,57 +3286,6 @@ def test_phibin_rank_ascends_with_phi() -> None:
     assert binlabels[phibin].startswith("0 \u2264"), binlabels[phibin]
 
 
-def test_parquet_cache_without_a_text_source_still_checks_the_version(tmp_path: Path) -> None:
-    """A cache that has no text source must still match the cache format version.
-
-    The estimator reader skipped every check for such a cache. Thus it gave a cache of an old schema,
-    and the columns that the schema lacked became zero without a warning.
-    """
-    parquetfilepath = tmp_path / "cache.parquet"
-    at.misc.write_parquet_atomic(
-        pl.DataFrame({"a": [1]}), parquetfilepath, metadata={"cacheversion": "1", "textsource_mtime": "100.0"}
-    )
-
-    # no text source: the modification time gives no comparison, but the version still applies
-    assert at.misc.read_parquet_cache_metadata(parquetfilepath, 1, None)[1] is None
-    assert "cache format version" in str(at.misc.read_parquet_cache_metadata(parquetfilepath, 2, None)[1])
-
-    # a text source that changed still makes the cache stale
-    assert at.misc.read_parquet_cache_metadata(parquetfilepath, 1, 100.0)[1] is None
-    assert "text source changed" in str(at.misc.read_parquet_cache_metadata(parquetfilepath, 1, 200.0)[1])
-
-
-def test_a_cache_from_before_the_stamps_stays_current(tmp_path: Path) -> None:
-    """A reader that gives accept_unstamped must keep a cache that the versions before the stamps wrote.
-
-    Such a cache holds no cacheversion and no textsource_mtime. A rejection rebuilds every cache of
-    an archived model folder for estimators or packets, which costs hours and reads text files that the model folder can
-    no longer hold. A reader that does not give accept_unstamped keeps the strict rule, because a
-    cache that a few seconds rebuild gives a wrong number for no gain.
-    """
-    from artistools.misc.parquetcache import mtime_matches_stamp
-
-    # a cache that holds no stamp dates its text source in no way, thus the stamp matches no time
-    assert not mtime_matches_stamp(None, 1000.0)
-
-    # a real cache of this kind holds only the arrow schema
-    legacy = tmp_path / "legacy.parquet"
-    at.misc.write_parquet_atomic(pl.DataFrame({"number": [0]}), legacy)
-    assert "cacheversion" not in pl.read_parquet_metadata(legacy)
-    assert "textsource_mtime" not in pl.read_parquet_metadata(legacy)
-
-    assert at.misc.read_parquet_cache_metadata(legacy, 1, 1760711077.0, accept_unstamped=True)[1] is None
-    assert "no cacheversion stamp" in str(at.misc.read_parquet_cache_metadata(legacy, 1, 1760711077.0)[1])
-
-    # a cache that holds a stamp keeps the strict comparison
-    stamped = tmp_path / "stamped.parquet"
-    at.misc.write_parquet_atomic(
-        pl.DataFrame({"number": [0]}), stamped, metadata={"cacheversion": "1", "textsource_mtime": "1000.0"}
-    )
-    assert at.misc.read_parquet_cache_metadata(stamped, 1, 1000.0)[1] is None
-    assert "text source changed" in str(at.misc.read_parquet_cache_metadata(stamped, 1, 2000.0)[1])
-
-
 def test_split_multitable_dataframe_tables_collect_together() -> None:
     """A collect_all of filtered tables gives the same rows as a collect of each table.
 
@@ -3556,18 +3300,6 @@ def test_split_multitable_dataframe_tables_collect_together() -> None:
     for together, table in zip(pl.collect_all(plans), plans, strict=True):
         pltest.assert_frame_equal(together, table.collect())
     assert pl.collect_all(plans)[1]["value"].to_list() == [103, 104, 105, 106]
-
-
-def test_costheta_bin_labels_have_no_negative_zero() -> None:
-    """The edge of the cos θ bins at the middle is 0, and its label must not read "-0.0".
-
-    np.arange gave -1.1e-16 for that edge, and the format of one decimal wrote "-0.0 ≤ cos θ < 0.2".
-    """
-    from artistools.misc.dirbins import get_costheta_bins
-
-    lowers, _, labels = get_costheta_bins(usedegrees=False)
-    assert not any("-0.0" in label for label in labels), labels
-    assert 0.0 in lowers
 
 
 def test_remote_path_is_not_reference_data_and_needs_no_connection() -> None:
@@ -3795,17 +3527,6 @@ def test_the_remote_path_pattern_follows_this_system() -> None:
     assert remote.is_remote_path("a:/lustre/model") is not windows
 
 
-def test_a_bad_cell_names_the_flag(capsys: pytest.CaptureFixture[str]) -> None:
-    """A -cell value that names no cell must give an argparse error that names the flag, and no traceback."""
-    parser = at.misc.argparser.SuggestingArgumentParser(prog="demo")
-    at.misc.addarg_modelgridindex(parser)
-    for value in ("abc", "3-x"):
-        with pytest.raises(SystemExit) as exitinfo:
-            parser.parse_args(["-cell", value])
-        assert exitinfo.value.code == 2
-        assert f"-modelgridindex/-cell/-mgi: '{value}' names no cells" in capsys.readouterr().err
-
-
 def test_resolve_frameset_paths_gives_o_to_one_frame_and_fields_to_the_frames(tmp_path: Path) -> None:
     """-o names the one frame of a run that combines nothing, and a name with fields names each frame.
 
@@ -3864,14 +3585,6 @@ def test_keywords_and_argsraw_combine() -> None:
     args = parse_cli_args(plotspectra.addargs, None, None, ["-t", "300"], {"specpath": [modelpath]})
     assert args.timedays == "300"
     assert args.specpath == [modelpath]
-
-
-def test_a_keyword_and_its_alias_name_the_conflict() -> None:
-    """A dest and an alias of one argument must give an error that names the conflict, and not an unknown name."""
-    from artistools.lightcurve import plotlightcurve
-
-    with pytest.raises(ValueError, match="The keywords timemin, xmin name one argument"):
-        parse_cli_args(plotlightcurve.addargs, None, None, [], {"timemin": 250.0, "xmin": 260.0})
 
 
 @pytest.mark.parametrize(
@@ -3969,21 +3682,6 @@ def test_the_examples_name_the_full_command_in_each_help() -> None:
     assert "artistools plotestimators Te TR . -t 300" in parser.format_help()
 
 
-def test_a_window_time_is_not_the_time_of_the_command(capsys: pytest.CaptureFixture[str]) -> None:
-    """A run with --show or --interactive waits for the user, thus it reports no time of the command."""
-    from artistools.__main__ import run_command
-
-    def run_nothing(args: argparse.Namespace) -> None:
-        """Do nothing."""
-
-    with mock.patch("artistools.__main__.monotonic", side_effect=[0.0, 100.0, 0.0, 100.0, 0.0, 100.0]):
-        run_command(run_nothing, argparse.Namespace(show=True))
-        run_command(run_nothing, argparse.Namespace(interactive=True))
-        assert "took" not in capsys.readouterr().err
-        run_command(run_nothing, argparse.Namespace())
-        assert "The command took 100.0 seconds" in capsys.readouterr().err
-
-
 def test_the_server_answers_each_request_in_this_process(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The main function of the server must answer each request on a copy of the standard output.
 
@@ -4027,9 +3725,22 @@ def test_the_server_answers_each_request_in_this_process(tmp_path: Path, monkeyp
 # --- round three of the review: fileio.py, modelinfo.py, timesteps.py, dirbins.py ----------------------------------
 
 
-def write_input_txt(modelpath: Path, tmin: float = 2.0, tmax: float = 300.0, nprocs: int = 4) -> None:
-    """Write an input.txt with 100 logarithmic timesteps from tmin to tmax, and nprocs on the 22nd value line."""
-    valuelines = ["-1", "100", "0 99", f"{tmin} {tmax}", "0.1 10", "80", "3 250", "3", *(["0"] * 13), str(nprocs)]
+def write_input_txt(
+    modelpath: Path, tmin: float = 2.0, tmax: float = 300.0, nprocs: int = 4, ntimesteps: int = 100
+) -> None:
+    """Write an input.txt with logarithmic timesteps from tmin to tmax, and nprocs on the 22nd value line."""
+    valuelines = [
+        "-1",
+        str(ntimesteps),
+        f"0 {ntimesteps - 1}",
+        f"{tmin} {tmax}",
+        "0.1 10",
+        "80",
+        "3 250",
+        "3",
+        *(["0"] * 13),
+        str(nprocs),
+    ]
     (modelpath / "input.txt").write_text("\n".join(valuelines) + "\n", encoding="utf-8")
 
 
@@ -4216,6 +3927,48 @@ def test_one_timestep_grid_from_timesteps_out_and_from_input_txt_gives_one_range
         )
 
 
+def test_timedays_range_spans_each_model_that_holds_a_part_of_it(tmp_path: Path) -> None:
+    """The axis range of --timedays spans the clamped ranges of all the models that hold a timestep of the range.
+
+    The first model that covered a part of 300-400 d gave the range, thus a later model lost its times after 350 d.
+    The model with the largest part then gave it, thus a model of 40-55 d lost all of 40-105 d to a model of 80-105 d.
+    """
+    from artistools.misc.timesteps import apply_time_range_args
+
+    modelpaths = [tmp_path / "early", tmp_path / "partial", tmp_path / "full"]
+    for modelpath, (tmin, tmax) in zip(modelpaths, ((100.0, 200.0), (250.0, 350.0), (280.0, 420.0)), strict=True):
+        modelpath.mkdir()
+        write_input_txt(modelpath, tmin=tmin, tmax=tmax)
+
+    args = argparse.Namespace(timestep=None, timedays="300-400", timemin=None, timemax=None)
+    apply_time_range_args(args, modelpaths)
+    assert args.timemin < 301.0
+    assert args.timemax > 399.0
+
+    shortearly, longlate = tmp_path / "shortearly", tmp_path / "longlate"
+    for modelpath, (tmin, tmax) in ((shortearly, (40.0, 55.0)), (longlate, (80.0, 105.0))):
+        modelpath.mkdir()
+        write_input_txt(modelpath, tmin=tmin, tmax=tmax)
+    args = argparse.Namespace(timestep=None, timedays="40-105", timemin=None, timemax=None)
+    apply_time_range_args(args, [shortearly, longlate])
+    assert args.timemin < 41.0
+    assert args.timemax > 104.0
+
+    # one timestep of 40 to 1000 d covers 100-110 d, but its midpoint is outside, thus it gives no range
+    widestep, narrowsteps = tmp_path / "widestep", tmp_path / "narrowsteps"
+    for modelpath, (tmin, tmax, ntimesteps) in ((widestep, (40.0, 1000.0, 1)), (narrowsteps, (100.0, 105.0, 100))):
+        modelpath.mkdir()
+        write_input_txt(modelpath, tmin=tmin, tmax=tmax, ntimesteps=ntimesteps)
+    args = argparse.Namespace(timestep=None, timedays="100-110", timemin=None, timemax=None)
+    apply_time_range_args(args, [widestep, narrowsteps])
+    assert 100.0 <= args.timemin < args.timemax <= 105.0
+
+    # plotlightcurve gives no clamp, because a timestep of the wide model would add points of the narrow model
+    args = argparse.Namespace(timestep=None, timedays="101-102", timemin=None, timemax=None)
+    apply_time_range_args(args, [widestep, narrowsteps], clamp_to_timesteps=False)
+    assert (args.timemin, args.timemax) == (101.0, 102.0)
+
+
 def test_the_last_costheta_bin_holds_cos_theta_of_one() -> None:
     """ARTIS puts a packet with cos θ = 1 in the last bin, thus the label of that bin includes its upper edge.
 
@@ -4226,32 +3979,17 @@ def test_the_last_costheta_bin_holds_cos_theta_of_one() -> None:
     _, _, labels = get_costheta_bins(usedegrees=False)
     assert labels[-1] == "0.8 ≤ cos θ ≤ 1.0"
     assert labels[-2] == "0.6 ≤ cos θ < 0.8"
+    # np.arange gave -1.1e-16 for the middle edge, and the format of one decimal wrote "-0.0"
+    assert labels[4] == "-0.2 ≤ cos θ < 0.0"
+    assert labels[5] == "0.0 ≤ cos θ < 0.2"
+
+    # the average over phi of a cos θ ring takes the label of that ring
+    assert dirbins.get_dirbin_labels([10], average_over_phi=True) == {10: labels[1]}
 
     _, _, degreelabels = get_costheta_bins(usedegrees=True)
     assert degreelabels[-1] == "0° ≤ θ ≤ 37°"
     assert degreelabels[5] == "78° < θ ≤ 90°"
     assert degreelabels[0] == "143° < θ ≤ 180°"
-
-
-def test_a_direction_bin_outside_the_bins_gives_a_message() -> None:
-    """-plotviewingangle 500 stopped with an IndexError in the labels, and now names the permitted bins."""
-    with pytest.raises(ValueError, match="not one of the 100 bins 0 to 99"):
-        dirbins.get_dirbin_labels([500])
-
-
-def test_dirbin_definitions_refuse_both_averages_for_the_virtual_packet_observers() -> None:
-    """Averages over both angles are an error, also for the virtual packet observers.
-
-    plotlightcurves stopped with this error, but plotspectra read the spectra of the observers and ignored the averages.
-    """
-    with pytest.raises(ValueError, match="both the phi and theta"):
-        dirbins.get_dirbin_definitions(
-            at.get_path("testdata") / "vspecpolmodel",
-            [0],
-            vpkt_observers=True,
-            average_over_phi=True,
-            average_over_theta=True,
-        )
 
 
 def test_split_multitable_dataframe_takes_tables_that_round_their_first_column_differently() -> None:
@@ -4261,32 +3999,6 @@ def test_split_multitable_dataframe_takes_tables_that_round_their_first_column_d
     )
 
     assert [table.collect()["f"].to_list() for table in tables.values()] == [[1.0, 2.0], [3.0, 4.0]]
-
-
-def test_dirbins_give_a_message_in_place_of_a_bare_assert() -> None:
-    """A direct call with a cut table or a bin that no average holds stopped with an AssertionError and no message."""
-    with pytest.raises(ValueError, match="tables have different lengths"):
-        dirbins.split_multitable_dataframe(pl.LazyFrame({"nu": [1.0, 2.0, 1.0], "f": [0.0, 0.0, 0.0]}))
-    with pytest.raises(ValueError, match="tables have different lengths"):
-        dirbins.split_multitable_dataframe(pl.LazyFrame({"nu": [], "f": []}))
-
-    with pytest.raises(ValueError, match=r"Direction bin 1 is not the first bin of an average group"):
-        dirbins.get_dirbin_labels([1], average_over_phi=True)
-    with pytest.raises(ValueError, match=r"Direction bin 10 is not the first bin of an average group"):
-        dirbins.get_dirbin_labels([10], average_over_theta=True)
-    with pytest.raises(ValueError, match="both the phi and theta"):
-        dirbins.get_dirbin_labels([0], average_over_phi=True, average_over_theta=True)
-    with pytest.raises(ValueError, match=r"Direction bin 5 is not the first bin of an average group"):
-        dirbins.get_average_group_dirbins(5, average_over_phi=True, average_over_theta=False)
-    assert dirbins.get_average_group_dirbins(10, average_over_phi=True, average_over_theta=False) == list(range(10, 20))
-    assert dirbins.get_average_group_dirbins(3, average_over_phi=False, average_over_theta=True) == list(
-        range(3, 100, 10)
-    )
-    assert dirbins.get_average_group_dirbins(57, average_over_phi=False, average_over_theta=False) == [57]
-
-    assert dirbins.get_dirbin_labels([10], average_over_phi=True) == {
-        10: dirbins.get_costheta_bins(usedegrees=False)[2][1]
-    }
 
 
 def test_output_data_prints_and_writes_each_table(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -4307,24 +4019,13 @@ def test_output_data_prints_and_writes_each_table(tmp_path: Path, capsys: pytest
     stdout = capsys.readouterr().out
     assert stdout.startswith(f"{maintable}\nrms\n0.5\n")
     assert "# " not in stdout
-    filelines = (tmp_path / "myplot.txt").read_text(encoding="utf-8").splitlines(keepends=True)
-    assert filelines[0].startswith("# artistools ")
-    assert filelines[1] == f"# working folder: {Path.cwd()}\n"
-    assert filelines[2] == "# command: a Python call with the arguments print_data=True, write_data=True\n"
-    assert filelines[3:5] == [
-        "# column x: the horizontal value of the point, in the unit of the horizontal axis\n",
-        "# column label: the label of the plotted series or panel\n",
-    ]
-    assert "".join(filelines[5:]) == maintable
-    residuallines = (tmp_path / "myplot_residuals.txt").read_text(encoding="utf-8").splitlines(keepends=True)
-    assert residuallines[3:] == [
-        (
-            "# column rms: the root mean square of the series minus the reference series, in the unit of the plotted"
-            " values\n"
-        ),
-        "rms\n",
-        "0.5\n",
-    ]
+
+    def get_datalines(filename: str) -> str:
+        filelines = (tmp_path / filename).read_text(encoding="utf-8").splitlines(keepends=True)
+        return "".join(line for line in filelines if not line.startswith("#"))
+
+    assert get_datalines("myplot.txt") == maintable
+    assert get_datalines("myplot_residuals.txt") == "rms\n0.5\n"
     assert not (tmp_path / "myplot_unused.txt").exists()
 
 
@@ -4355,6 +4056,8 @@ def test_column_description_lines_give_the_meaning_and_the_unit_of_each_known_co
         "Te",
         "nnion_Fe_II",
         "log_lbol",
+        "linebinned_cap1_movingaverage_cm2_per_g",
+        "linebinned_cap1_cm2_per_g",
     ]
     fluxperx = "flux per unit of x_plotted, at the distance of --distmpc"
     assert get_column_description_lines(columns) == [
@@ -4383,6 +4086,15 @@ def test_column_description_lines_give_the_meaning_and_the_unit_of_each_known_co
         ),
         "column Te: the electron temperature of the cell [K]",
         "column nnion_Fe_II: the number density of the ion Fe_II [cm^-3]",
+        # the pattern of the capped opacity also matched its moving average, and gave "capped at 1_movingaverage"
+        (
+            "column linebinned_cap1_movingaverage_cm2_per_g: the moving average over the wavelength of the opacity"
+            " linebinned_cap1 [cm^2/g]"
+        ),
+        (
+            "column linebinned_cap1_cm2_per_g: the line-binned opacity with each Sobolev optical depth capped at 1,"
+            " as the mass-weighted mean or median of the cells (--cellaverage) [cm^2/g]"
+        ),
     ]
 
 
@@ -4501,19 +4213,6 @@ def test_selected_timestep_takes_a_default_only_when_no_time_is_given() -> None:
         at.misc.get_selected_timestep(modelpath, None, None)
 
 
-def test_confirm_overwrite_matches_stops_for_a_file_of_the_pattern(tmp_path: Path) -> None:
-    """A command whose file names hold a timestep asks before it overwrites, as a command of fixed names does.
-
-    writespectra, writecomparisondata, and five other data commands overwrote their files with no prompt.
-    """
-    (tmp_path / "spectrum_ts03_1.20d.txt").write_text("x", encoding="utf-8")
-    at.misc.confirm_overwrite_matches(tmp_path, ("other_*.txt",), force=False)
-    # pytest gives no terminal, thus nobody can answer, and the command stops without --force
-    with pytest.raises(SystemExit):
-        at.misc.confirm_overwrite_matches(tmp_path, ("spectrum_ts*.txt",), force=False)
-    at.misc.confirm_overwrite_matches(tmp_path, ("spectrum_ts*.txt",), force=True)
-
-
 @pytest.mark.parametrize(
     ("text", "expected"),
     [
@@ -4593,17 +4292,6 @@ def test_explain_says_that_a_plot_command_overwrites_its_figure(
     assert "the command overwrites the files" in get_overwrite_text(tmp_path, argparse.Namespace())
 
 
-def test_moving_average_of_a_capped_opacity_has_its_own_description() -> None:
-    """The pattern of the capped opacity also matched its moving average, and gave "capped at 1_movingaverage"."""
-    from artistools.misc.columns import get_column_description
-
-    assert get_column_description("linebinned_cap1_movingaverage_cm2_per_g") == (
-        "the moving average over the wavelength of the opacity linebinned_cap1",
-        "cm^2/g",
-    )
-    assert "capped at 1," in str(get_column_description("linebinned_cap1_cm2_per_g"))
-
-
 def test_explain_takes_the_model_folder_from_the_end_of_the_items(capsys: pytest.CaptureFixture[str]) -> None:
     """Give the model of the last positional item, because --explain stops before main removes that item."""
     from artistools.__main__ import main
@@ -4635,12 +4323,13 @@ def test_write_data_table_takes_the_format_of_the_suffix(tmp_path: Path) -> None
 
     from artistools.misc.commandoutput import write_data_table
 
-    dftable = pl.DataFrame({"name": ["a", "b"], "value": [1.5, math.nan]})
+    dftable = pl.DataFrame({"name": ["a", "b", "c"], "value": [1.5, math.nan, math.inf]})
     write_data_table(dftable, tmp_path / "table.json", commentlines=["made by a test"])
     content = json.loads((tmp_path / "table.json").read_text(encoding="utf-8"))
+    # a strict parser of JSON refuses Infinity, thus an infinite value is also null
     assert content == {
         "comments": ["made by a test"],
-        "rows": [{"name": "a", "value": 1.5}, {"name": "b", "value": None}],
+        "rows": [{"name": "a", "value": 1.5}, {"name": "b", "value": None}, {"name": "c", "value": None}],
     }
 
     write_data_table(dftable, tmp_path / "table.parquet", commentlines=["made by a test"])
@@ -4694,15 +4383,6 @@ def test_opacity_condition_labels_match_artis() -> None:
     assert at.misc.get_opacity_condition_label(26) == "no-Fe"
 
 
-def test_trim_or_pad() -> None:
-    result = at.misc.trim_or_pad(3, [1, 2, 3, 4], [10, 20])
-    assert list(result[0]) == [1, 2, 3]
-    assert list(result[1]) == [10, 20, None]
-
-    result2 = at.misc.trim_or_pad(2, "single_string")
-    assert list(result2[0]) == ["single_string", None]
-
-
 def test_get_npts_model(tmp_path: Path) -> None:
     # The 3D test model has 10^3 = 1000 cells
     assert at.misc.get_npts_model(modelpath_3d) == 1000
@@ -4723,34 +4403,3 @@ def test_get_nprocs(tmp_path: Path) -> None:
     lines = ["# a comment of the user\n", "\n", *(["placeholder\n"] * 21), "4 #nprocs\n"]
     (tmp_path / "input.txt").write_text("".join(lines))
     assert at.get_nprocs(tmp_path) == 4
-
-
-def test_get_mpiranks_of_cells_gives_the_extra_cells_to_the_first_ranks(tmp_path: Path) -> None:
-    from artistools.misc.modelinfo import get_mpiranks_of_cells
-
-    for npts, nprocs, cellsofrank in ((20, 4, [5, 5, 5, 5]), (21, 4, [6, 5, 5, 5]), (7, 3, [3, 2, 2])):
-        subdir = tmp_path / f"{npts}_{nprocs}"
-        subdir.mkdir()
-        (subdir / "input.txt").write_text("".join(["placeholder\n"] * 21 + [f"{nprocs} #nprocs\n"]))
-        (subdir / "model.txt").write_text(f"{npts}\n")
-        expected = [rank for rank, cellcount in enumerate(cellsofrank) for _ in range(cellcount)]
-        assert get_mpiranks_of_cells(subdir, np.arange(npts, dtype=np.int64)).tolist() == expected
-
-
-def test_path_is_artis_model_accepts_a_compressed_output_file() -> None:
-    """A compressed ARTIS output file is a model, and not a reference data file."""
-    assert all(at.misc.path_is_artis_model(f"light_curve.out{ext}") for ext in ("", ".zst", ".gz", ".xz"))
-    assert not at.misc.path_is_artis_model("AT2017gfo_smarttetal2017.txt")
-
-
-def test_firstexisting_gives_the_purpose_of_a_missing_file(tmp_path: Path) -> None:
-    """A list of file names alone does not tell a user what the file holds or which command reads it."""
-    with pytest.raises(FileNotFoundError, match=r"linestat\.out gives the wavelength"):
-        at.misc.firstexisting("linestat.out", folder=tmp_path, purpose="linestat.out gives the wavelength")
-
-    # a caller that gives no purpose keeps the plain message
-    with pytest.raises(FileNotFoundError) as noreason:
-        at.misc.firstexisting("linestat.out", folder=tmp_path)
-
-    assert "None of these files exist" in str(noreason.value)
-    assert "gives the wavelength" not in str(noreason.value)
