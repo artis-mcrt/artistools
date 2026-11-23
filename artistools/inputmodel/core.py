@@ -528,6 +528,15 @@ def scan_modelfile_text(
             if negativeqcount.item():
                 msg = f"{filename}: {negativeqcount.item()} cells with density have a negative q. sn3d stops for it"
                 raise ValueError(msg)
+        if "tracercount" in dfmodel.collect_schema().names():
+            dfinvalidcount = dfmodel.filter(~IS_VALID_TRACERCOUNT).select("inputcellid", "tracercount").collect()
+            if dfinvalidcount.height:
+                msg = (
+                    f"{filename}: the cell {dfinvalidcount['inputcellid'].item(0)} has the tracercount"
+                    f" {dfinvalidcount['tracercount'].item(0)!r}. A count of trajectories must be a whole number of 0"
+                    " or more"
+                )
+                raise ValueError(msg)
         if "Ye" in dfmodel.collect_schema().names():
             # sn3d stops for a Ye that is not finite in each cell, and it checks the range in a cell with density only
             dfinvalidye = (
@@ -764,6 +773,12 @@ def scan_modelfile_text(
 # the electron fraction is the number of electrons for each nucleon, thus it is from 0 to 1
 # a null Ye is a value that is not known, and the writer gives a null as 0
 IS_VALID_YE = (pl.col("Ye").is_finite() & pl.col("Ye").is_between(0.0, 1.0)).fill_null(value=False)
+# a tracercount is the count of the trajectories of a cell. A null is a value that is not known
+IS_VALID_TRACERCOUNT = (
+    pl.col("tracercount").cast(pl.Float64).is_finite()
+    & (pl.col("tracercount") >= 0)
+    & (pl.col("tracercount").cast(pl.Float64) == pl.col("tracercount").cast(pl.Float64).round())
+).fill_null(value=False)
 # sn3d reads the id of a cell as an integer, and a cast to an integer truncates a value such as 1.5
 IS_WHOLE_INPUTCELLID = (
     pl.col("inputcellid").is_finite() & (pl.col("inputcellid") == pl.col("inputcellid").round())
@@ -775,7 +790,8 @@ IS_WHOLE_INPUTCELLID = (
 # cell ids of model.txt, and it puts the second line of a cell beside the first line in the order of the file.
 # Version 3 gives the key coordinates in the metadata of each model. Version 4 gives the key formatversion.
 # Version 5 checks more values of format version 2, as sn3d does. Version 6 gives tracercount as Int64.
-CACHEVERSION = 6
+# Version 7 checks tracercount in format version 2.
+CACHEVERSION = 7
 
 
 def scan_parquet_cache(
@@ -2759,19 +2775,27 @@ def save_modeldata(
             )
             raise ValueError(msg)
         # the writer gives a NaN as 0 in the mass fractions only, and sn3d stops for a value that is not finite
+        # A null is a value that is not known, and the writer would give it as 0. .any() takes no account of a null,
+        # thus a null becomes True
         othervaluecols = [
-            col for col in customcols if not col.startswith("X_") and col != "Ye" and dfmodel.schema[col].is_float()
+            col for col in customcols if not col.startswith("X_") and col != "Ye" and dfmodel.schema[col].is_numeric()
         ]
-        isnotfinite = dfmodel.select((~pl.col(othervaluecols).is_finite() & hasdensity).any())
+        isnotfinite = dfmodel.select(
+            ((~pl.col(col).cast(pl.Float64).is_finite()).fill_null(value=True) & hasdensity).any().alias(col)
+            for col in othervaluecols
+        )
         nonfinitecolumns = [col for col in isnotfinite.columns if isnotfinite[col].item()]
         if nonfinitecolumns:
             msg = (
-                f"The columns {', '.join(nonfinitecolumns)} hold a value that is not finite in a cell with density."
-                " Each value of format version 2 must be a finite number"
+                f"The columns {', '.join(nonfinitecolumns)} hold a value that is not finite or is null in a cell with"
+                " density. Each value of format version 2 must be a finite number"
             )
             raise ValueError(msg)
         if "q" in dfmodel.columns and dfmodel.filter(hasdensity & (pl.col("q") < 0.0)).height:
             msg = "A cell with density has a negative q, and sn3d stops for it"
+            raise ValueError(msg)
+        if "tracercount" in dfmodel.columns and dfmodel.filter(hasdensity & ~IS_VALID_TRACERCOUNT).height:
+            msg = "A cell with density has a tracercount that is negative or is not a whole number"
             raise ValueError(msg)
         # sn3d sums the nuclide columns and the otherstable columns of each element with Z of 1 or more
         elementcolsofmodel = [col for cols in get_element_columns_of_model(dfmodel.columns).values() for col in cols]

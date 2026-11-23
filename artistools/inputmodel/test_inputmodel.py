@@ -4735,6 +4735,22 @@ def test_model_reader_keeps_each_digit_of_a_tracer_count(tmp_path: Path, formatv
     assert dfread.schema["tracercount"] == pl.Int64
 
 
+@pytest.mark.parametrize("countvalue", ["-1", "1.5"])
+def test_spherical_model_reader_stops_for_a_tracer_count_that_is_not_valid(tmp_path: Path, countvalue: str) -> None:
+    """A count of trajectories is a whole number of 0 or more. The reader kept -1 and 1.5 as Float64."""
+    countlines = [
+        "columns inputcellid rho X_Fegroup tracercount"
+        if line.startswith("columns ")
+        else f"{line} {countvalue if line.startswith('3 ') else '2'}"
+        if line[:1].isdigit()
+        else line
+        for line in SPHERICAL2D_MODEL_LINES
+    ]
+    (tmp_path / "model.txt").write_text("\n".join(countlines) + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="A count of trajectories must be a whole number of 0 or more"):
+        at.inputmodel.scan_modeldata(tmp_path)
+
+
 @pytest.mark.parametrize(
     ("qvalue", "match"), [("nan", "the columns q hold a value that is not finite"), ("-5", "have a negative q")]
 )
@@ -5372,6 +5388,9 @@ def test_abundances_and_old_ye_files_follow_the_search_of_sn3d(tmp_path: Path) -
         ({"X_Ni56": [1.0005, 0.0]}, "The columns X_Ni56 hold a mass fraction above 1"),
         ({"q": [1e10, float("nan")]}, "The columns q hold a value that is not finite"),
         ({"q": [1e10, -5.0]}, "A cell with density has a negative q"),
+        # .any() took no account of a null, and the writer gave the null as 0.0
+        ({"q": [1e10, None]}, "The columns q hold a value that is not finite or is null"),
+        ({"tracercount": [1, -1]}, "a tracercount that is negative or is not a whole number"),
     ],
 )
 def test_version_2_writer_stops_for_a_value_that_the_reader_rejects(
