@@ -54,7 +54,12 @@ command `artistools plotradfield` plots the field of a cell.
 
 - The estimators give the non-thermal ionisation rates (`gamma_NT_`) and the deposition (`deposition_`).
 - `artistools spencerfano` solves the Spencer-Fano equation again for one cell. It gives the fractions of the
-  deposited energy that go into heating, ionisation, and excitation. It needs the package `pynonthermal`.
+  deposited energy that go into heating, ionisation, and excitation. It needs the package `pynonthermal`. With
+  `--composition artis`, it takes these values of the run, as ARTIS does:
+  - the energy grid;
+  - the ions;
+  - `nne`;
+  - the level populations.
 - An older ARTIS wrote `nonthermalspec_*.out`, the spectrum of the non-thermal electrons. Read it with
   `at.misc.read_rank_outputfiles(modelpath, "nonthermalspec_{mpirank:04d}.out")`.
 
