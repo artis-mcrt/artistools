@@ -15,6 +15,7 @@ from artistools.constants import day_to_s
 from artistools.inputmodel.core import find_ye_file_to_merge
 from artistools.inputmodel.core import get_model_input_folder
 from artistools.inputmodel.core import require_no_ye_file_of_earlier_model
+from artistools.inputmodel.core import require_no_ye_file_of_version_2_model
 from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.core import scan_initelemabundances
 from artistools.inputmodel.core import scan_modeldata
@@ -93,6 +94,7 @@ def make_downscaled_3d_grid(
         require_no_ye_file_of_earlier_model(outputfolder, modelpath)
     sourcefolder = get_model_input_folder(modelpath)
     yefilepath = find_ye_file_to_merge(sourcefolder, outputfolder, formatversion)
+    require_no_ye_file_of_version_2_model(yefilepath, modelmeta, sourcefolder)
     if yefilepath is not None:
         # Ye.txt has the cells of the source model, thus the small model gets its values in the column Ye of model.txt
         pldfmodel = with_ye_of_yefile(pldfmodel.collect(), yefilepath).lazy()

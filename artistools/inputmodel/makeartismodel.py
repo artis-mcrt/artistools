@@ -22,6 +22,7 @@ from artistools.inputmodel.core import get_modelmeta
 from artistools.inputmodel.core import MODEL_FILE_NAMES
 from artistools.inputmodel.core import remove_parquet_cache
 from artistools.inputmodel.core import require_no_ye_file_of_earlier_model
+from artistools.inputmodel.core import require_no_ye_file_of_version_2_model
 from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.core import scan_abundance_file
 from artistools.inputmodel.core import scan_initelemabundances
@@ -201,11 +202,7 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
             "sn3d reads model.txt, and the other copy can hold different values. Delete one copy",
         )
     yefilepath = find_ye_file_to_merge(sourcefolder, outputfolder, formatversion)
-    if yefilepath is not None and modelmeta["formatversion"] == 2:
-        exit_with_error(
-            f"sn3d reads {yefilepath}, but the model.txt of {sourcefolder} has format version 2",
-            "sn3d stops for such a model. The column Ye of model.txt gives the electron fraction. Delete Ye.txt",
-        )
+    require_no_ye_file_of_version_2_model(yefilepath, modelmeta, sourcefolder)
     opacityfilepath = firstexisting_or_none("opacity.txt", folder=sourcefolder, tryzipped=True, search_subfolders=False)
     if formatversion == 2 and opacityfilepath is not None:
         # the values of opacity.txt have no column in model.txt, thus the command does not delete the file
@@ -479,6 +476,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             dfgridcontributions = get_gridparticlecontributions_or_none(sourcefolder)
             outputformatversion = get_output_format_version(args, modelpath)
             yefilepath = find_ye_file_to_merge(sourcefolder, outdir, outputformatversion)
+            require_no_ye_file_of_version_2_model(yefilepath, modelmeta, sourcefolder)
             if yefilepath is not None:
                 # sn3d takes the electron fractions of Ye.txt for the source model. Ye.txt has the cells of the source
                 # model, thus the reduced model gets these values in its column Ye, also in version 1

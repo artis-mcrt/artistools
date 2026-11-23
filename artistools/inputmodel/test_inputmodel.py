@@ -5332,7 +5332,9 @@ def test_reduction_and_downscale_take_the_elements_of_the_selected_model_file(tm
         at.inputmodel.scan_initelemabundances(version1folder).collect()
 
 
-def test_reduction_and_downscale_write_the_format_version_of_the_prompt(tmp_path: Path) -> None:
+def test_reduction_and_downscale_write_the_format_version_of_the_prompt(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """A reduction and a downscale write the format version that the (y/n) prompt took, and version 2 takes Ye.txt.
 
     A downscale with --format-version wrote the version of the source model, thus it deleted a Ye.txt that the
@@ -5402,6 +5404,19 @@ def test_reduction_and_downscale_write_the_format_version_of_the_prompt(tmp_path
         yevalues = dfversion1.filter(pl.col("Ye") > 0).collect()["Ye"].to_numpy()
         assert yevalues.size > 0
         assert np.allclose(yevalues, 0.49, rtol=1e-6, atol=0.0)
+
+    # sn3d stops for a Ye.txt beside a model.txt of version 2, thus the file is not of the model. The reduction and
+    # the downscale gave its values to the new model
+    (version2folder / "Ye.txt").write_text("1\n0 0.9\n", encoding="utf-8")
+    staleyecommands: list[dict[str, t.Any]] = [
+        {"argsraw": [], "dimensionreduce": 1, "outputfile": tmp_path / "reducedfromstale", "force": True},
+        {**downscaleargs, "outputfile": tmp_path / "smallfromstale"},
+    ]
+    for commandargs in staleyecommands:
+        with pytest.raises(SystemExit):
+            at.inputmodel.makeartismodel.main(**commandargs, modelpath=[version2folder], format_version=2)
+        assert "but the model.txt of" in capsys.readouterr().err
+    (version2folder / "Ye.txt").unlink()
 
     # a Ye.txt in the output folder of a small model of version 1 is of a different model, thus the command stops
     (tmp_path / "small1" / "Ye.txt").write_text("1\n1 0.9\n", encoding="utf-8")

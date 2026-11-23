@@ -968,6 +968,21 @@ def with_ye_of_yefile(dfmodel: pl.DataFrame, yefilepath: Path) -> pl.DataFrame:
     return dfmodel.with_columns(pl.col("Ye").fill_null(0.0))
 
 
+def require_no_ye_file_of_version_2_model(
+    yefilepath: Path | None, modelmeta: dict[str, t.Any], sourcefolder: Path
+) -> None:
+    """Stop for a Ye.txt that sn3d reads for a source model.txt of format version 2.
+
+    sn3d stops for such a model, thus the file is not of the model. Its values can be of an earlier model, and a
+    command must not give them to a new model.
+    """
+    if yefilepath is not None and modelmeta.get("formatversion", 1) == 2:
+        exit_with_error(
+            f"sn3d reads {yefilepath}, but the model.txt of {sourcefolder} has format version 2",
+            "sn3d stops for such a model. The column Ye of model.txt gives the electron fraction. Delete Ye.txt",
+        )
+
+
 def require_no_ye_file_of_earlier_model(outputfolder: Path, modelpath: Path | str) -> None:
     """Stop before a write of a version 1 model.txt into a folder that holds the Ye.txt of an earlier model.
 
