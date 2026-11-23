@@ -757,10 +757,39 @@ def test_spectra_default_velocity_shells_take_units_of_c_for_a_fast_model() -> N
     assert np.isclose(edges[10], 28920.2, rtol=1e-4)
 
     fastmeta = {"vmax_cmps": 0.3 * 2.99792458e10, "dimensions": 1}
-    with mock.patch("artistools.inputmodel.scan_modeldata", return_value=(pl.LazyFrame(), fastmeta)):
+    with (
+        mock.patch("artistools.inputmodel.scan_modeldata", return_value=(pl.LazyFrame(), fastmeta)),
+        # the model of this test runs on its own spherical grid, which ends at vmax
+        mock.patch.object(
+            atspectra, "get_valid_range_radial_velocities_cmps", return_value=(fastmeta["vmax_cmps"],) * 2
+        ),
+    ):
         edges, unit = atspectra.get_default_radialvelocity_shells("fastmodel", nshells=3)
     assert unit == "c"
     assert atspectra.get_shell_labels(edges, unit) == ["[0, 0.1) c", "[0.1, 0.2) c", "[0.2, 0.3) c"]
+
+
+def test_spectra_default_shells_of_a_spherical_model_on_a_cartesian_grid_end_at_its_corner(tmp_path: Path) -> None:
+    """A spherical model on a Cartesian propagation grid has matter outside vmax, and the last shell holds it.
+
+    The default shells of a spherical model ended at vmax, thus the packets of the corner cells had no shell.
+    """
+    modellines = [
+        "format_version 2",
+        "coordinates spherical2d",
+        "t_model_init_days 1.0",
+        "vel_r_edges_kmps 0 1000 3000",
+        f"theta_edges_radians 0 1.5 {math.pi!r}",
+        "columns inputcellid rho",
+        "0 1e-12",
+    ]
+    (tmp_path / "model.txt").write_text("\n".join(modellines) + "\n", encoding="utf-8")
+    (tmp_path / "artisoptions.h").write_text(
+        "constexpr std::optional<GridType> GRID_TYPE_OVERRIDE = GridType::CARTESIAN3D;\n", encoding="utf-8"
+    )
+    edges, _ = atspectra.get_default_radialvelocity_shells(tmp_path, nshells=3)
+    assert edges[-1] == pytest.approx(3000.0 * math.sqrt(3.0), rel=1e-9)
+    assert len(edges) == 5
 
 
 def test_spectra_losvelocity_shell_contributions() -> None:

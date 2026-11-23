@@ -189,6 +189,7 @@ from artistools.misc.modelinfo import get_ranks_of_cells_in_layout as get_ranks_
 from artistools.misc.modelinfo import get_run_subfolders as get_run_subfolders
 from artistools.misc.modelinfo import get_runfolder_timesteps as get_runfolder_timesteps
 from artistools.misc.modelinfo import get_runfolders as get_runfolders
+from artistools.misc.modelinfo import get_valid_range_radial_velocities_cmps as get_valid_range_radial_velocities_cmps
 from artistools.misc.modelinfo import get_vpkt_config as get_vpkt_config
 from artistools.misc.modelinfo import has_mirror_plane as has_mirror_plane
 from artistools.misc.modelinfo import MODEL_EDGE_KEYS as MODEL_EDGE_KEYS

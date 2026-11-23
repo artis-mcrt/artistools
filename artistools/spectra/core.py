@@ -53,9 +53,9 @@ from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_dirbins
 from artistools.misc import get_file_copies
 from artistools.misc import get_file_state
-from artistools.misc import get_grid_max_radial_velocity_cmps
 from artistools.misc import get_metadata_path
 from artistools.misc import get_model_coordinates
+from artistools.misc import get_model_folder
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_nprocs
@@ -63,6 +63,7 @@ from artistools.misc import get_nu_grid
 from artistools.misc import get_run_subfolders
 from artistools.misc import get_time_range
 from artistools.misc import get_timestep_times
+from artistools.misc import get_valid_range_radial_velocities_cmps
 from artistools.misc import get_vpkt_config
 from artistools.misc import get_xunit
 from artistools.misc import modelpath_cache
@@ -1873,21 +1874,22 @@ DEFAULT_YE_SHELLS: t.Final[tuple[float, ...]] = (*(index * 0.05 for index in ran
 def get_default_radialvelocity_shells(
     modelpath: Path | str, nshells: int = 10
 ) -> tuple[list[float], t.Literal["kmps", "c"]]:
-    """Return the edges [km/s] of nshells equal shells up to vmax, plus one shell to the grid corner, and the unit.
+    """Return the edges [km/s] of nshells equal shells up to vmax, plus one shell to the escape surface, and the unit.
 
-    A cell in the corner of a 2D grid or a 3D grid lies outside vmax. The last shell holds the
-    packets from these cells. The labels take the unit of get_auto_velocity_unit(), e.g. c for a kilonova and km/s for a
-    supernova.
+    A cell in the corner of a 2D grid or a 3D grid lies outside vmax, and a Cartesian propagation grid of a 1D or a
+    spherical model has matter outside vmax. The last shell holds the packets from these cells. It ends at the escape
+    surface of the run, which no packet passes. The labels take the unit of get_auto_velocity_unit(), e.g. c for a
+    kilonova and km/s for a supernova.
     """
     from artistools.inputmodel import scan_modeldata
 
     _, modelmeta = scan_modeldata(modelpath, printwarningsonly=True)
     vmax_kmps = modelmeta["vmax_cmps"] / km_to_cm
     edges = [vmax_kmps * i / nshells for i in range(nshells + 1)]
-    # a grid with spherical edges ends at vmax, thus it gets no shell to a corner
-    cornervelocity_kmps = get_grid_max_radial_velocity_cmps(modelmeta) / km_to_cm
-    if cornervelocity_kmps > vmax_kmps:
-        edges.append(cornervelocity_kmps)
+    # a spherical grid ends at vmax, thus it gets no outer shell
+    escapevelocity_kmps = get_valid_range_radial_velocities_cmps(get_model_folder(modelpath), modelmeta)[1] / km_to_cm
+    if escapevelocity_kmps > vmax_kmps:
+        edges.append(escapevelocity_kmps)
 
     return edges, get_auto_velocity_unit(modelmeta["vmax_cmps"])
 
