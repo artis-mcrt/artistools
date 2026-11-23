@@ -1856,6 +1856,24 @@ def clamped_nuclide_massfrac(col: str) -> pl.Expr:
     return pl.col(col).cast(pl.Float64).clip(lower_bound=0.0)
 
 
+def raise_if_element_sum_above_limit(elementsums: pl.DataFrame, reason: str) -> None:
+    """Stop if the element mass fractions of a cell sum to more than ELEMENT_MASSFRAC_SUM_LIMIT, as sn3d does.
+
+    elementsums has the columns inputcellid and elementsum of the cells with density. The reason names the cause of
+    such a sum, and the message gives it.
+    """
+    abovelimit = elementsums.filter(pl.col("elementsum") > ELEMENT_MASSFRAC_SUM_LIMIT)
+    if not abovelimit.is_empty():
+        msg = (
+            f"The element mass fractions of {abovelimit.height} cells sum to more than {ELEMENT_MASSFRAC_SUM_LIMIT:g},"
+            f" up to {abovelimit['elementsum'].max():.6g} in the cell with inputcellid"
+            f" {abovelimit.sort('elementsum')['inputcellid'][-1]}. In format version 2, the mass fraction of an"
+            f" element is the sum of its nuclide columns and its otherstable column. {reason} sn3d stops for such a"
+            " cell"
+        )
+        raise ValueError(msg)
+
+
 def with_otherstable_columns(dfmodel: pl.DataFrame, dfelabundances: pl.DataFrame) -> pl.DataFrame:
     """Return the cells of a model with the columns X_<element>_otherstable that give the element mass fractions.
 
@@ -1948,17 +1966,11 @@ def with_otherstable_columns(dfmodel: pl.DataFrame, dfelabundances: pl.DataFrame
                 else 0.0
             )
         )
-        .filter(pl.col("hasdensity") & (pl.col("elementsum") > ELEMENT_MASSFRAC_SUM_LIMIT))
+        .filter(pl.col("hasdensity"))
     )
-    if not elementsums.is_empty():
-        msg = (
-            f"The element mass fractions of {elementsums.height} cells sum to more than {ELEMENT_MASSFRAC_SUM_LIMIT:g},"
-            f" up to {elementsums['elementsum'].max():.6g} in the cell with inputcellid"
-            f" {elementsums.sort('elementsum')['inputcellid'][-1]}. In format version 2, the mass fraction of an"
-            " element is the sum of its nuclide columns and its otherstable column, and the nuclide columns of an"
-            " element hold more than its mass fraction in the element abundances. sn3d stops for such a cell"
-        )
-        raise ValueError(msg)
+    raise_if_element_sum_above_limit(
+        elementsums, "The nuclide columns of an element hold more than its mass fraction in the element abundances."
+    )
     if not remainders:
         # the nuclide columns alone give each element
         print("  0 elements get an otherstable column, because the element abundances have no element column.")
@@ -2480,6 +2492,18 @@ def save_modeldata(
                 " fraction of format version 2 must be a finite number"
             )
             raise ValueError(msg)
+        # sn3d sums the nuclide columns and the otherstable columns of each element with Z of 1 or more. The writer
+        # gives a NaN as 0, and polars puts a NaN above each number
+        elementcolsofmodel = [col for cols in get_element_columns_of_model(dfmodel.columns).values() for col in cols]
+        raise_if_element_sum_above_limit(
+            dfmodel.filter(hasdensity).select(
+                "inputcellid",
+                elementsum=pl.sum_horizontal(
+                    [clamped_nuclide_massfrac(col).fill_nan(0.0) for col in elementcolsofmodel] or [pl.lit(0.0)]
+                ),
+            ),
+            "The columns of the model give this sum.",
+        )
         if "Ye" in dfmodel.columns:
             dfinvalidye = dfmodel.filter(hasdensity & ~IS_VALID_YE)
             if dfinvalidye.height:

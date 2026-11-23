@@ -284,9 +284,9 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
             )
             if sourcefile is not None:
                 shutil.copy2(sourcefile, stagingfolder / sourcefile.name)
-            elif filename == "gridcontributions.txt":
-                # the particle contributions of an earlier model do not go with the cells of the new model.txt. The
-                # command stopped above for a Ye.txt of an earlier model, and sn3d does not read opacity.txt
+            else:
+                # the file of an earlier model in the output folder does not go with the cells of the new model.txt.
+                # The command stopped above for a Ye.txt of an earlier model
                 obsoletefilenames.append(filename)
 
         for stagedfile in sorted(stagingfolder.iterdir()):

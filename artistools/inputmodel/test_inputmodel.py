@@ -4895,6 +4895,14 @@ def test_conversion_reads_the_folder_of_a_file_path_and_changes_no_file_before_i
         )
     assert get_folder_text(version1folder) == {"Ye.txt": b"1\n1 0.9\n"}
 
+    # the opacity.txt of an earlier model does not go with the cells of the new model, and the source has none
+    (version1folder / "Ye.txt").unlink()
+    (version1folder / "opacity.txt").write_text("1\n1 0.5\n", encoding="utf-8")
+    at.inputmodel.makeartismodel.main(
+        argsraw=[], modelpath=[sourcefolder], format_version=1, outputfile=version1folder, force=True
+    )
+    assert not (version1folder / "opacity.txt").exists()
+
     # The nuclide column of nickel holds more than the element, within the tolerance of sn3d. Thus the otherstable
     # value of nickel is 0, and the elements of version 2 sum to 0.11 + 0.899, which is more than 1.001
     (sourcefolder / "model.txt.zst").unlink()
@@ -5175,6 +5183,8 @@ def test_abundances_and_old_ye_files_follow_the_search_of_sn3d(tmp_path: Path) -
         ({"rho": [1e-12, -1e-12]}, "1 cells have a density that is not finite or is below 0"),
         ({"rho": [1e-12, float("inf")]}, "1 cells have a density that is not finite or is below 0"),
         ({"X_Ni56": [0.5, float("inf")]}, "The columns X_Ni56 hold an infinite value in a cell with density"),
+        # sn3d stops for this sum, and the writer with no element abundances did not check it
+        ({"X_Ni56": [0.6, 0.0], "X_Fe52": [0.6, 0.0]}, r"sum to more than 1\.001, up to 1\.2 in the cell with"),
     ],
 )
 def test_version_2_writer_stops_for_a_value_that_the_reader_rejects(
