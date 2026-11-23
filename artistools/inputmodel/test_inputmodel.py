@@ -5173,6 +5173,22 @@ def test_abundances_and_old_ye_files_follow_the_search_of_sn3d(tmp_path: Path) -
     with pytest.raises(SystemExit):
         require_no_ye_file_of_earlier_model(modelfolder, tmp_path / "source")
 
+    # sn3d stops for this data/Ye.txt with a model.txt of version 2, and the writer kept it
+    (modelfolder / "abundances.txt").unlink()
+    with pytest.raises(ValueError, match=r"sn3d would read .*data/Ye\.txt for the new model\.txt of format version 2"):
+        at.inputmodel.save_modeldata(
+            pl.DataFrame({"inputcellid": [0, 1], "rho": [1e-12, 1e-12]}),
+            outpath=modelfolder,
+            modelmeta={
+                "coordinates": "spherical2d",
+                "t_model_init_days": 1.0,
+                "vel_r_edges_kmps": [0.0, 1000.0, 2000.0],
+                "theta_edges_radians": [0.0, math.pi],
+            },
+            deletecellidfiles=True,
+        )
+    assert not list(modelfolder.glob("model.txt*"))
+
 
 @pytest.mark.parametrize(
     ("change", "match"),

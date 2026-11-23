@@ -2426,6 +2426,23 @@ def save_modeldata(
             " the file"
         )
         raise ValueError(msg)
+    # sn3d also reads Ye.txt and abundances.txt from data/ and artis/data/, and it stops for them with version 2. A
+    # data/ can link to a folder that other models share, thus the writer does not delete such a file
+    readfilesinsubfolders = [
+        path
+        for filename in ("Ye.txt", "abundances.txt")
+        for path in get_sn3d_file_copies(get_sn3d_model_folder(outputfolder), filename)
+        if formatversion == 2
+        and writesmodeltxt
+        and path.name in {filename, f"{filename}.zst"}
+        and path.parent.resolve() != outputfolder.resolve()
+    ]
+    if readfilesinsubfolders:
+        msg = (
+            f"sn3d would read {readfilesinsubfolders[0]} for the new model.txt of format version 2, and it stops for"
+            " such a file. Delete the file, or give a different output folder"
+        )
+        raise ValueError(msg)
     if formatversion == 2:
         if dfelabundances is not None:
             dfmodel = with_otherstable_columns(dfmodel.lazy().collect(), dfelabundances.lazy().collect())
