@@ -1521,9 +1521,9 @@ def get_spherical_image_cell_indices(
 
     A plot of such a model has no cell with straight edges on the axes of an image. Thus the image is a grid of
     points with equal steps, as the image of a 1D model is. Each point takes the value of the cell that holds it.
-    The count of the points from 0 to vmax is 200, or 2 n_r for a model with more than 100 radial shells. The plane of
-    the image cuts the outer edge of the innermost shell that it cuts in a circle, and each other circle is larger. To
-    a maximum of MAX_REFINED_IMAGE_POINTS, the count also gives two points across these widths:
+    The count of the points from 0 to vmax is 200 or more. The plane of the image cuts the outer edge of the innermost
+    shell that it cuts in a circle, and each other circle is larger. To a maximum of MAX_REFINED_IMAGE_POINTS, the
+    count gives two points for each radial shell, and two points across these widths:
 
     - the radius of that circle;
     - the narrowest angular cell on that circle;
@@ -1554,11 +1554,9 @@ def get_spherical_image_cell_indices(
     iscutshell = r_edges_on_vmax[1:] > planedistance_on_vmax
     cutshellwidths_on_vmax = np.diff(r_edges_on_vmax)[iscutshell]
     radialpointcount = math.ceil(2.0 / float(cutshellwidths_on_vmax.min())) if cutshellwidths_on_vmax.size else 0
+    # the memory of the cell search increases with the square of the count, thus each term has the maximum
     pointcount = max(
-        200,
-        2 * (len(r_edges_on_vmax) - 1),
-        min(innerpointcount, MAX_REFINED_IMAGE_POINTS),
-        min(radialpointcount, MAX_REFINED_IMAGE_POINTS),
+        200, min(max(2 * (len(r_edges_on_vmax) - 1), innerpointcount, radialpointcount), MAX_REFINED_IMAGE_POINTS)
     )
     if innerpointcount > pointcount:
         resolvedradius_on_vmax = 2.0 / (narrowerwidth * pointcount)

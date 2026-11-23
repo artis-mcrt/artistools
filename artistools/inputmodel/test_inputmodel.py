@@ -4544,6 +4544,16 @@ def test_spherical_image_has_a_point_in_a_narrow_shell_or_gives_a_warning(capsys
         haswarning = "1 radial shells that the plane cuts have no point" in captured.out + captured.err
         assert haswarning == (not haspoint)
 
+    # the term of two points for each shell had no maximum, thus 1000 shells gave an image of 4000 x 2000 points
+    manyshellsmeta = {
+        "coordinates": "spherical2d",
+        "vmax_cmps": 1e9,
+        "vel_r_edges_kmps": np.linspace(0.0, 10000.0, 1001).tolist(),
+        "theta_edges_radians": [0.0, math.pi],
+    }
+    cellindices = at.inputmodel.get_spherical_image_cell_indices(manyshellsmeta, sliceaxis=None)
+    assert max(cellindices.shape) <= 2 * at.inputmodel.core.MAX_REFINED_IMAGE_POINTS
+
 
 def test_spherical_cell_search_of_an_image_agrees_with_the_cell_search_of_the_packets() -> None:
     """The cell of a velocity vector is the same for the points of an image and for the packets.
