@@ -4,6 +4,7 @@ import argparse
 import datetime as dt
 import errno
 import gc
+import itertools
 import json
 import math
 import os
@@ -1510,6 +1511,51 @@ def get_spherical_slice_velocity_cmps(slicevelocity_cmps: float, vmax_cmps: floa
     return planeabove_cmps if planeabove_cmps < vmax_cmps else slicevelocity_cmps
 
 
+def get_cut_angle_ranges(
+    sliceaxis: str | None, planevelocity_on_vmax: float, mirrored: bool
+) -> dict[str, list[tuple[float, float]]]:
+    """Return the ranges of theta and of phi [rad] that the plane of an image covers inside the sphere of vmax.
+
+    A plane that covers one angle only, e.g. phi = 0 for the half-plane of an image with no sliceaxis, gives no range
+    for that angle. Such a plane holds the boundary of two cells and cuts no cell. A mirrored model folds theta
+    above pi / 2 into its mirror angle.
+    """
+    distance = abs(planevelocity_on_vmax)
+    if sliceaxis is not None and distance >= 1.0:
+        return {"theta": [], "phi": []}
+    thetaranges: list[tuple[float, float]] = []
+    phiranges: list[tuple[float, float]] = []
+    if sliceaxis is None:
+        thetaranges = [(0.0, math.pi)]
+    elif sliceaxis == "z":
+        phiranges = [(0.0, 2.0 * math.pi)]
+        if planevelocity_on_vmax > 0.0:
+            thetaranges = [(0.0, math.acos(distance))]
+        elif planevelocity_on_vmax < 0.0:
+            thetaranges = [(math.acos(-distance), math.pi)]
+    else:
+        thetaranges = [(math.asin(distance), math.pi - math.asin(distance))]
+        if distance > 0.0:
+            # the half-angle of the arc of phi that the plane covers, seen from the z axis
+            halfangle = math.atan2(math.sqrt(1.0 - distance**2), distance)
+            centre = (0.0 if sliceaxis == "x" else math.pi / 2) + (0.0 if planevelocity_on_vmax > 0.0 else math.pi)
+            lowphi, highphi = centre - halfangle, centre + halfangle
+            phiranges = (
+                [(lowphi + 2.0 * math.pi, 2.0 * math.pi), (0.0, highphi)] if lowphi < 0.0 else [(lowphi, highphi)]
+            )
+
+    def fold_into_upper_half(low: float, high: float) -> tuple[float, float]:
+        if high <= math.pi / 2:
+            return low, high
+        if low >= math.pi / 2:
+            return math.pi - high, math.pi - low
+        return min(low, math.pi - high), math.pi / 2
+
+    if mirrored:
+        thetaranges = list(itertools.starmap(fold_into_upper_half, thetaranges))
+    return {"theta": thetaranges, "phi": phiranges}
+
+
 # an image of 2000 x 2000 points takes approximately 130 MB for the cell search
 MAX_REFINED_IMAGE_POINTS = 1000
 
@@ -1529,7 +1575,8 @@ def get_spherical_image_cell_indices(
     - the narrowest angular cell on that circle;
     - the narrowest shell that the plane cuts.
 
-    The function gives a warning for a narrow angular cell above the maximum, and for each cut shell with no point.
+    The function gives a warning for a narrow angular cell above the maximum. It also gives a warning for each radial
+    shell, polar cell, and azimuthal cell that the plane cuts and that has no point.
 
     Without a sliceaxis, the image has the cylindrical radius from 0 to vmax and z from -vmax to vmax as its axes.
     The points are in the half-plane y = 0 with x > 0. With a sliceaxis, the points are in the plane normal to that
@@ -1593,6 +1640,35 @@ def get_spherical_image_cell_indices(
             f" points from 0 to vmax, e.g. the shell from {r_edges_on_vmax[firstemptyshell]:.6g} to"
             f" {r_edges_on_vmax[firstemptyshell + 1]:.6g} vmax. The image does not show such a shell"
         )
+
+    # the width of an angular cell in a plane away from the centre can be much less than its arc on a circle
+    cutangleranges = get_cut_angle_ranges(
+        sliceaxis, slicevelocity_cmps / vmax_cmps if sliceaxis is not None else 0.0, has_mirror_plane(modelmeta)
+    )
+    ncoordgridtheta = len(modelmeta["theta_edges_radians"]) - 1
+    pointcellindices = cellindices[cellindices >= 0]
+    angularindiceswithpoint = {
+        "theta": np.unique((pointcellindices // ncoordgridr) % ncoordgridtheta),
+        "phi": np.unique(pointcellindices // (ncoordgridr * ncoordgridtheta)),
+    }
+    for angle, edgekey, cellname in (
+        ("theta", "theta_edges_radians", "polar"),
+        ("phi", "phi_edges_radians", "azimuthal"),
+    ):
+        if edgekey not in modelmeta or not cutangleranges[angle]:
+            continue
+        angleedges = np.asarray(modelmeta[edgekey], dtype=np.float64)
+        iscutcell = np.zeros(len(angleedges) - 1, dtype=bool)
+        for low, high in cutangleranges[angle]:
+            iscutcell |= (angleedges[:-1] < high) & (angleedges[1:] > low)
+        emptycutcells = np.setdiff1d(np.flatnonzero(iscutcell), angularindiceswithpoint[angle])
+        if emptycutcells.size:
+            firstemptycell = int(emptycutcells[0])
+            print_warning(
+                f"{emptycutcells.size} {cellname} cells that the plane cuts have no point in the image of"
+                f" {pointcount} points from 0 to vmax, e.g. the cell from {angleedges[firstemptycell]:.6g} to"
+                f" {angleedges[firstemptycell + 1]:.6g} rad. The image does not show such a cell"
+            )
     return cellindices
 
 

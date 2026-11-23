@@ -4553,6 +4553,21 @@ def test_spherical_image_has_a_point_in_a_narrow_shell_or_gives_a_warning(capsys
     }
     cellindices = at.inputmodel.get_spherical_image_cell_indices(manyshellsmeta, sliceaxis=None)
     assert max(cellindices.shape) <= 2 * at.inputmodel.core.MAX_REFINED_IMAGE_POINTS
+    capsys.readouterr()
+
+    # The slice x = 0.01 vmax cuts the phi cell from 0 to 2 pi / 100 only for 0 < y < 0.00063 vmax, and the step of
+    # the points is 0.005 vmax. The image did not show such a cell, with no warning
+    phicellsmeta = {
+        "coordinates": "spherical3d",
+        "vmax_cmps": 1e9,
+        "vel_r_edges_kmps": [0.0, 10000.0],
+        "theta_edges_radians": [0.0, math.pi],
+        "phi_edges_radians": np.linspace(0.0, 2.0 * math.pi, 101).tolist(),
+    }
+    for sliceaxis, slicevelocity_cmps, haswarning in (("x", 1e7, True), ("y", -1e7, True), ("z", 5e8, False)):
+        at.inputmodel.get_spherical_image_cell_indices(phicellsmeta, sliceaxis, slicevelocity_cmps)
+        captured = capsys.readouterr()
+        assert ("azimuthal cells that the plane cuts have no point" in captured.out + captured.err) == haswarning
 
 
 def test_spherical_cell_search_of_an_image_agrees_with_the_cell_search_of_the_packets() -> None:
