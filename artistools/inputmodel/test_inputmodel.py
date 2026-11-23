@@ -5847,3 +5847,15 @@ def test_from_e2e_model_spherical_grid_agrees_with_the_cylindrical_grid(tmp_path
 
     cumulativedifference = np.cumsum(shellmassfractions["spherical"] - shellmassfractions["cylindrical"])
     assert np.abs(cumulativedifference).max() < 0.05
+
+
+def test_scan_modeldata_of_a_model_file_reads_the_abundances_beside_it() -> None:
+    """The path of a model file, e.g. model.txt, takes the abundances.txt of its folder.
+
+    The reader searched the path of the file as a folder, thus it found no abundances.txt.
+    """
+    dffromfolder, _ = at.inputmodel.scan_modeldata(modelpath, get_elemabundances=True, printwarningsonly=True)
+    dffromfile, _ = at.inputmodel.scan_modeldata(
+        modelpath / "model.txt", get_elemabundances=True, printwarningsonly=True
+    )
+    pltest.assert_frame_equal(dffromfile.collect(), dffromfolder.collect())

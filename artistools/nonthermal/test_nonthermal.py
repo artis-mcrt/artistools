@@ -29,29 +29,79 @@ def test_spencerfano(tmp_path: Path) -> None:
         if not filepath.name.startswith("nlte_"):
             (modelcopy / filepath.name).symlink_to(filepath)
 
+    pynonthermal = pytest.importorskip("pynonthermal")
     ostatfile = tmp_path / "ntstats.txt"
-    at.nonthermal.spencerfano.main(
-        argsraw=[],
-        modelpath=modelcopy,
-        timedays=300,
-        makeplot=True,
-        npts=200,
-        noexcitation=True,
-        outputfile=tmp_path,
-        ostat=str(ostatfile),
-    )
+    with mock.patch.object(
+        pynonthermal.SpencerFanoSolver,
+        "override_n_e",
+        side_effect=pynonthermal.SpencerFanoSolver.override_n_e,
+        autospec=True,
+    ) as mockoverride:
+        at.nonthermal.spencerfano.main(
+            argsraw=[],
+            modelpath=modelcopy,
+            timedays=300,
+            makeplot=True,
+            npts=200,
+            noexcitation=True,
+            outputfile=tmp_path,
+            ostat=str(ostatfile),
+        )
 
     # 300 days is in timestep 54
     assert len(list(tmp_path.glob("spencerfano_cell00000_ts054_*.pdf"))) == 1
+    # the solver takes the nne of the estimators as ARTIS does, and not the sum of the charges of the ions it holds
+    estimatornne = at.estimators.read_estimators(modelpath, timestep=54, modelgridindex=0)[54, 0]["nne"]
+    mockoverride.assert_called_once()
+    assert np.isclose(mockoverride.call_args.args[1], estimatornne, rtol=1e-12, atol=0.0)
     dfstats = read_ntstats(ostatfile)
     assert dfstats["frac_excitation"].item() == 0
     assert dfstats["frac_sum"].item() == pytest.approx(1.0, abs=0.1)
 
 
 def test_spencerfano_excitation(tmp_path: Path) -> None:
-    """Solve with the excitation path. The solver reads the derived transition columns, e.g. epsilon_trans_ev."""
+    """Solve a cell as ARTIS does, with the excitation path, and examine what the solver gets.
+
+    - The grid comes from nonthermalspec_*.out of the run, except the npts that the command gives.
+    - The top ion of each element in the estimators has no ionisation. Ni has less than 1e-8 of nntot, thus it has no
+      ionisation.
+    - A lower level of nlte_*.out has its NLTE population.
+    """
+    pynonthermal = pytest.importorskip("pynonthermal")
     ostatfile = tmp_path / "ntstats.txt"
-    at.nonthermal.spencerfano.main(argsraw=[], modelpath=modelpath, timedays=300, npts=200, ostat=str(ostatfile))
+    solverclass = pynonthermal.SpencerFanoSolver
+    with (
+        mock.patch.object(solverclass, "__init__", side_effect=solverclass.__init__, autospec=True) as mockinit,
+        mock.patch.object(
+            solverclass, "add_ionisation", side_effect=solverclass.add_ionisation, autospec=True
+        ) as mockionisation,
+        mock.patch.object(
+            solverclass, "add_excitation", side_effect=solverclass.add_excitation, autospec=True
+        ) as mockexcitation,
+    ):
+        at.nonthermal.spencerfano.main(argsraw=[], modelpath=modelpath, timedays=300, npts=200, ostat=str(ostatfile))
+
+    gridkwargs = mockinit.call_args.kwargs
+    assert (gridkwargs["emin_ev"], gridkwargs["emax_ev"], gridkwargs["npts"]) == pytest.approx((1.0, 999.512, 200))
+    assert {call.args[1:3] for call in mockionisation.call_args_list} == {
+        (26, 1),
+        (26, 2),
+        (26, 3),
+        (26, 4),
+        (27, 2),
+        (27, 3),
+    }
+
+    dfnltepops = at.nltepops.read_nltepops(modelpath, timestep=54, modelgridindex=0)
+    nltepop_fe2_level1 = dfnltepops.filter(pl.col("Z") == 26, pl.col("ion_stage") == 2, pl.col("level") == 1)["n_NLTE"]
+    excitationpops_fe2_level1 = {
+        call.args[3]
+        for call in mockexcitation.call_args_list
+        if call.args[1:3] == (26, 2) and call.kwargs["transitionkey"][0] == 1
+    }
+    # the unpack also checks that each excitation from the level has the same population
+    (excitationpop_fe2_level1,) = excitationpops_fe2_level1
+    assert np.isclose(excitationpop_fe2_level1, nltepop_fe2_level1.item(), rtol=1e-12, atol=0.0)
 
     dfstats = read_ntstats(ostatfile)
     assert dfstats["frac_excitation"].item() > 0.0

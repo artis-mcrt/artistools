@@ -239,3 +239,23 @@ def test_vpkt_frompackets_plot_refuses_a_time_range_outside_the_vpkt_window(
             timemin=125,
             timemax=135,
         )
+
+
+def test_vspecpol_rank_files_come_from_the_newest_run_folder_with_each_rank(tmp_path: Path) -> None:
+    """A restarted run reads the sums of the run before it, thus the newest complete run folder holds the sums.
+
+    The search took the oldest run folder first, thus it summed the flux of the first run alone. A newest run folder
+    with a file for only some ranks is not complete. ARTIS writes the files in the folder vspecpol of the run folder.
+    """
+    # get_nprocs reads the rank count from line 22 of input.txt
+    (tmp_path / "input.txt").write_text("\n".join(["0"] * 21 + ["2"]) + "\n", encoding="utf-8")
+    runfolders = [tmp_path / "9876543.slurm", tmp_path / "10000001.slurm" / "vspecpol", tmp_path / "10000002.slurm"]
+    for runfolder, mpiranks in zip(runfolders, ((0, 1), (0, 1), (0,)), strict=True):
+        runfolder.mkdir(parents=True)
+        for mpirank in mpiranks:
+            (runfolder / f"vspecpol_{mpirank:04d}.out").write_text("", encoding="utf-8")
+
+    assert at.spectra.core.get_vspecpol_rank_files(tmp_path) == [
+        runfolders[1] / "vspecpol_0000.out",
+        runfolders[1] / "vspecpol_0001.out",
+    ]

@@ -953,28 +953,46 @@ def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
 def get_vspecpol_rank_files(modelpath: Path | str) -> list[Path]:
     """Return the file of the virtual packet spectra of each MPI rank, which make_virtual_spectra_summed_file sums.
 
-    The search covers the model folder and its run folders. A subfolder with an input.txt is a different model,
-    thus the search skips it. A continued run writes a file that also holds the flux of the earlier runs. Thus, if
-    two folders hold a file for a rank, the newest file applies.
+    A restarted run reads the sums of the run before it, thus the newest complete set of files holds the complete
+    sums. A folder is complete if it holds a file for each rank. The search covers the model folder and the run
+    folders, and also the folder vspecpol in each of them, where ARTIS writes the files since 2026-09-27. A subfolder
+    with an input.txt is a different model. Of the complete folders, the folder with the newest file applies. If two
+    folders have the same time, the newest run folder applies.
     """
     modelfolder = Path(modelpath)
-    searchfolders = [
-        modelfolder,
-        *(folder for folder in get_run_subfolders(modelfolder)[:-1] if not folder_is_artis_model(folder)),
+    subfolders_newest_first = [
+        folder for folder in reversed(get_run_subfolders(modelfolder)[:-1]) if not folder_is_artis_model(folder)
     ]
-    rankfiles = []
-    for mpirank in range(get_nprocs(modelfolder)):
-        filenames = [f"vspecpol_{mpirank:04d}.out", f"vspecpol_{mpirank}-0.out"]
-        candidates = [
-            path
-            for folder in searchfolders
-            if (path := firstexisting_or_none(filenames, folder=folder, search_subfolders=False)) is not None
+    # a dict keeps the first place of the folder vspecpol of the model folder, which is also a subfolder
+    searchfolders = dict.fromkeys(
+        searchfolder
+        for folder in (*subfolders_newest_first, modelfolder)
+        for searchfolder in (folder, folder / "vspecpol")
+    )
+    nprocs = get_nprocs(modelfolder)
+    completerankfiles = []
+    for folder in searchfolders:
+        rankfiles = [
+            rankfile
+            for mpirank in range(nprocs)
+            if (
+                rankfile := firstexisting_or_none(
+                    [f"vspecpol_{mpirank:04d}.out", f"vspecpol_{mpirank}-0.out"], folder=folder, search_subfolders=False
+                )
+            )
+            is not None
         ]
-        if not candidates:
-            msg = f"{modelfolder} and its run folders hold no {filenames[0]} and no {filenames[1]}"
-            raise FileNotFoundError(msg)
-        rankfiles.append(max(candidates, key=lambda path: path.stat().st_mtime))
-    return rankfiles
+        if len(rankfiles) == nprocs:
+            completerankfiles.append(rankfiles)
+    if not completerankfiles:
+        msg = f"No run folder of {modelfolder} holds a vspecpol_NNNN.out file for each of the {nprocs} MPI ranks"
+        raise FileNotFoundError(msg)
+
+    def get_newest_mtime(rankfiles: list[Path]) -> float:
+        return max(rankfile.stat().st_mtime for rankfile in rankfiles)
+
+    # max takes the first of equal values, which is the newest run folder
+    return max(completerankfiles, key=get_newest_mtime)
 
 
 def vspecpol_total_is_older_than_its_rank_files(modelpath: Path, totalfile: Path) -> bool:
