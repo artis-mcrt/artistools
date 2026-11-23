@@ -99,8 +99,9 @@ def test_spencerfano_excitation(tmp_path: Path) -> None:
         for call in mockexcitation.call_args_list
         if call.args[1:3] == (26, 2) and call.kwargs["transitionkey"][0] == 1
     }
-    assert len(excitationpops_fe2_level1) == 1
-    assert np.isclose(excitationpops_fe2_level1.pop(), nltepop_fe2_level1.item(), rtol=1e-12, atol=0.0)
+    # the unpack also checks that each excitation from the level has the same population
+    (excitationpop_fe2_level1,) = excitationpops_fe2_level1
+    assert np.isclose(excitationpop_fe2_level1, nltepop_fe2_level1.item(), rtol=1e-12, atol=0.0)
 
     dfstats = read_ntstats(ostatfile)
     assert dfstats["frac_excitation"].item() > 0.0
