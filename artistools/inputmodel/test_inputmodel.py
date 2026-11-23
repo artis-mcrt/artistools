@@ -4685,14 +4685,27 @@ def test_spherical_model_reader_stops_for_a_wrong_file(
         at.inputmodel.scan_modeldata(tmp_path)
 
 
-def test_spherical_model_reader_stops_for_a_cut_last_line(tmp_path: Path) -> None:
-    """A cut inside the last value gives a valid number, e.g. 1.0 of 1.0e-12, thus only the missing line end shows it.
+def test_spherical_model_reader_stops_for_a_cut_line_or_a_large_element_sum(tmp_path: Path) -> None:
+    """The reader stops for a file that sn3d stops for, or that is not complete.
 
-    The key cell_line_count finds a lost line, and the reader accepted a file that ended inside its last line.
+    A cut inside the last value gives a valid number, e.g. 1.0 of 1.0e-12, thus only the missing line end shows it.
+    The key cell_line_count finds a lost line, and the reader accepted a file that ended inside its last line. The
+    reader also accepted a cell whose element mass fractions sum to 1.2, which sn3d stops for.
     """
     (tmp_path / "model.txt").write_text("\n".join(SPHERICAL2D_MODEL_LINES), encoding="utf-8")
-
     with pytest.raises(ValueError, match="does not end with a line end"):
+        at.inputmodel.scan_modeldata(tmp_path)
+
+    largesumlines = [
+        "columns inputcellid rho X_Fegroup X_Ni56 X_Fe52"
+        if line.startswith("columns ")
+        else f"{line} {'0.6 0.6' if line.startswith('3 ') else '0.5 0.0'}"
+        if line[:1].isdigit()
+        else line
+        for line in SPHERICAL2D_MODEL_LINES
+    ]
+    (tmp_path / "model.txt").write_text("\n".join(largesumlines) + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match=r"sum to more than 1\.001, up to 1\.2 in the cell with inputcellid 3"):
         at.inputmodel.scan_modeldata(tmp_path)
 
 
@@ -5847,6 +5860,13 @@ def test_spherical_map_and_cartesian_map_give_the_same_shell_masses(
         at.inputmodel.modelfromhydro.read_griddat_file(damagedfolder)
     captured = capsys.readouterr()
     assert "the grid indices must be 0 to" in captured.out + captured.err
+
+    # a cut inside the last line keeps a valid prefix of Ye, and the reader gave the cell no tracercount
+    cutlines = (tmp_path / "spherical" / "grid_spherical.dat").read_text(encoding="utf-8").splitlines()
+    cutlines[-1] = " ".join([*cutlines[-1].split()[:2], "0.1"])
+    (damagedfolder / "grid_spherical.dat").write_text("\n".join(cutlines), encoding="utf-8")
+    with pytest.raises(ValueError, match="does not end with a line end"):
+        at.inputmodel.modelfromhydro.read_griddat_file(damagedfolder)
 
 
 @pytest.mark.parametrize("mapto3d", [False, True])

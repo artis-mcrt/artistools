@@ -40,9 +40,11 @@ from artistools.misc import get_file_copies
 from artistools.misc import get_model_coordinates
 from artistools.misc import parse_cli_args
 from artistools.misc import print_warning
+from artistools.misc import raise_if_no_final_line_end
 from artistools.misc import read_wsv
 from artistools.misc import SPHERICAL_EDGE_COORDINATES
 from artistools.misc import validate_model_edges
+from artistools.misc import with_compressed_sibling
 from artistools.misc import zopen
 
 
@@ -202,6 +204,8 @@ def read_spherical_griddat_file(
     vel_r_edges_kmps, theta_edges_radians, phi_edges_radians = edges.values()
     vmax = vel_r_edges_kmps[-1] * km_to_cm
 
+    # a cut inside the last value gives a valid number, and the checks of the cells below do not find it
+    raise_if_no_final_line_end(with_compressed_sibling(griddatfilepath))
     griddata = read_wsv(griddatfilepath, comment_prefix="#", skip_rows=len(headerkeys)).rename({
         "gridindex": "inputcellid"
     })

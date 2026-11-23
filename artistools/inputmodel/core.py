@@ -490,6 +490,22 @@ def scan_modelfile_text(
                     f" {dfinvalidye['Ye'].item(0)!r}. Each value of the column Ye must be a finite number from 0 to 1"
                 )
                 raise ValueError(msg)
+        # sn3d sums the nuclide columns and the otherstable columns of each element with Z of 1 or more
+        elementcolsoffile = [
+            col for cols in get_element_columns_of_model(dfmodel.collect_schema().names()).values() for col in cols
+        ]
+        raise_if_element_sum_above_limit(
+            dfmodel
+            .filter(pl.col("rho") > 0.0)
+            .select(
+                "inputcellid",
+                elementsum=pl.sum_horizontal(
+                    [clamped_nuclide_massfrac(col) for col in elementcolsoffile] or [pl.lit(0.0)]
+                ),
+            )
+            .collect(),
+            f"The cell lines of {filename} give this sum.",
+        )
     if cellcount > npts_model:
         msg = (
             f"{filename}: found more than {npts_model} cells, but the cell edges of the header give {npts_model} cells"

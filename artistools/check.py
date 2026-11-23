@@ -34,6 +34,8 @@ from artistools.constants import Lsun_to_erg_per_s
 from artistools.describemodel import get_run_versions
 from artistools.estimators import get_temperature_limits
 from artistools.estimators import scan_estimators
+from artistools.inputmodel import find_abundance_file
+from artistools.inputmodel import get_model_file_path
 from artistools.lightcurve import find_lightcurve_file
 from artistools.lightcurve import get_katz_integral
 from artistools.lightcurve import scan_lightcurve
@@ -499,7 +501,8 @@ def check_input_files(modelpath: Path) -> tuple[str, str]:
     """
     inputfiles = dict(INPUTFILE_READERS)
     problems = []
-    modelfile = firstexisting_or_none("model.txt", folder=modelpath, search_subfolders=False)
+    # the reader of model.txt also opens a model.txt in a subfolder, e.g. data/model.txt
+    modelfile = get_model_file_path(modelpath)
     if modelfile is not None:
         hasversion2 = False
         # a file that the readers cannot open gets its message from the check of the readers, not from this check
@@ -515,11 +518,16 @@ def check_input_files(modelpath: Path) -> tuple[str, str]:
                         f"the model folder holds {stalefile.relative_to(modelpath)}, but model.txt has format version"
                         f" 2, which gives the {quantity} fractions. sn3d stops for this file"
                     )
-    # the readers of artistools read the files of the model folder alone
+    # the reader of abundances.txt takes the file that sn3d reads for model.txt. The other readers read the files of
+    # the model folder alone
+    foundfiles = {
+        "model.txt": modelfile,
+        "abundances.txt": find_abundance_file(modelpath if modelfile is None else modelfile.parent),
+    }
     missing = [
         f"{filename} ({readers})"
         for filename, readers in inputfiles.items()
-        if firstexisting_or_none(filename, folder=modelpath, search_subfolders=False) is None
+        if foundfiles.get(filename, firstexisting_or_none(filename, folder=modelpath, search_subfolders=False)) is None
     ]
     if missing:
         problems.append(f"the model folder holds no {'; no '.join(missing)}")
