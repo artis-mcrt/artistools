@@ -5416,6 +5416,25 @@ def test_version_2_writer_stops_for_a_value_that_the_reader_rejects(
     assert not list(tmp_path.glob("model.txt*"))
 
 
+def test_version_2_writer_gives_zeros_to_the_kept_line_of_a_model_with_no_density(tmp_path: Path) -> None:
+    """A model with no density keeps its first cell line, and the checks of the writer apply to cells with density.
+
+    The writer gave that line its tracercount of -1 and its q of NaN, and the reader then refused the file.
+    """
+    at.inputmodel.save_modeldata(
+        pl.DataFrame({"inputcellid": [0, 1], "rho": [0.0, 0.0], "tracercount": [-1, 2], "q": [float("nan"), 1.0]}),
+        outpath=tmp_path,
+        modelmeta={
+            "coordinates": "spherical2d",
+            "t_model_init_days": 1.0,
+            "vel_r_edges_kmps": [0.0, 1000.0, 2000.0],
+            "theta_edges_radians": [0.0, math.pi],
+        },
+    )
+    dfread = at.inputmodel.scan_modeldata(tmp_path, printwarningsonly=True)[0].collect()
+    assert dfread.select("tracercount", "q").row(0) == (0, 0.0)
+
+
 def test_version_2_file_with_a_different_name_keeps_the_files_of_model_txt(tmp_path: Path) -> None:
     """A version 2 file with a different name keeps abundances.txt, Ye.txt, and opacity.txt beside model.txt.
 

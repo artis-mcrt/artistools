@@ -17,6 +17,8 @@ import polars as pl
 
 from artistools.atomic import scan_linelist
 from artistools.estimators import scan_estimators
+from artistools.inputmodel import find_abundance_file
+from artistools.inputmodel import get_model_file_path
 from artistools.inputmodel import scan_initelemabundances
 from artistools.inputmodel import scan_modeldata
 from artistools.misc import addarg_action
@@ -107,10 +109,12 @@ def make_inputmodel_caches(modelfolder: Path) -> str | None:
 
     Return None for a model folder with no model.txt.
     """
-    if firstexisting_or_none("model.txt", folder=modelfolder, search_subfolders=False) is None:
+    # the readers also open a model.txt in data/, and an abundances.txt that sn3d reads, e.g. in artis/data/
+    modelfile = get_model_file_path(modelfolder)
+    if modelfile is None:
         return None
     scan_modeldata(modelfolder, printwarningsonly=True)
-    if firstexisting_or_none("abundances.txt", folder=modelfolder, search_subfolders=False) is not None:
+    if find_abundance_file(modelfile.parent) is not None:
         scan_initelemabundances(modelfolder, printwarningsonly=True)
     return "the reader keeps a cache of each input file larger than 2 MiB"
 

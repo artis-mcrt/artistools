@@ -2870,7 +2870,15 @@ def save_modeldata(
     if formatversion == 2:
         # a cell with no line is empty in version 2, thus the file needs no line for a cell with no density.
         # sn3d and scan_modeldata need one cell line, thus a model with no density keeps its first cell
+        hasnodensity = not dfmodel.select(hasdensity.any()).item()
         dfmodel = dfmodel.filter(hasdensity | (~hasdensity.any() & (pl.int_range(pl.len()) == 0)))
+        if hasnodensity:
+            # sn3d reads no value of a cell with no density, and the checks above take no account of such a cell
+            dfmodel = dfmodel.with_columns(
+                pl.lit(0).cast(dtype).alias(col)
+                for col, dtype in dfmodel.schema.items()
+                if col not in {"inputcellid", "rho"} and dtype.is_numeric()
+            )
         version2keylines.append(f"cell_line_count {dfmodel.height}")
 
     modelfilepath = with_compressed_extension(
