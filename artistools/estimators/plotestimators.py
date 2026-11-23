@@ -2419,7 +2419,8 @@ def get_spherical_image_values(
     )
     print(
         f"  The image has {cellindices.shape[1]} x {cellindices.shape[0]} points with equal steps. Each point takes"
-        f" the value of the cell that holds it, from {dfcells.height} cells or rings of cells with estimators"
+        f" the value of the cell that holds it, from {dfcells.height} cells or rings of cells with estimators. A cell"
+        " that is narrower than the step of the points can have no point in the image"
     )
     isingrid = cellindices >= 0
     grids = []

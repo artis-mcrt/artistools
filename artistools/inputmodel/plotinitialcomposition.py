@@ -96,7 +96,8 @@ def get_point_slice_through_spherical_model(
         plotaxes = (first, second)
     print(
         f"The image has {pointcount1} x {pointcount2} points with equal steps in {plotaxes[0]} and {plotaxes[1]}. Each"
-        " point takes the value of the cell that holds it."
+        " point takes the value of the cell that holds it. A cell that is narrower than the step of the points can have"
+        " no point in the image."
     )
 
     xmax_tmodel = vmax_cmps * modelmeta["t_model_init_days"] * day_to_s

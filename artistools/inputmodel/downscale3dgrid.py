@@ -12,7 +12,7 @@ import polars as pl
 import polars.selectors as cs
 
 from artistools.constants import day_to_s
-from artistools.inputmodel.core import find_ye_file_to_merge
+from artistools.inputmodel.core import find_ye_file
 from artistools.inputmodel.core import get_model_input_folder
 from artistools.inputmodel.core import require_no_ye_file_of_earlier_model
 from artistools.inputmodel.core import require_no_ye_file_of_version_2_model
@@ -93,7 +93,7 @@ def make_downscaled_3d_grid(
     if formatversion == 1:
         require_no_ye_file_of_earlier_model(outputfolder, modelpath)
     sourcefolder = get_model_input_folder(modelpath)
-    yefilepath = find_ye_file_to_merge(sourcefolder, outputfolder, formatversion)
+    yefilepath = find_ye_file(sourcefolder)
     require_no_ye_file_of_version_2_model(yefilepath, modelmeta, sourcefolder)
     if yefilepath is not None:
         # Ye.txt has the cells of the source model, thus the small model gets its values in the column Ye of model.txt

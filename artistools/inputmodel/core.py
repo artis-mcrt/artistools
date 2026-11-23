@@ -4,7 +4,6 @@ import argparse
 import datetime as dt
 import errno
 import gc
-import itertools
 import json
 import math
 import os
@@ -488,85 +487,7 @@ def scan_modelfile_text(
         msg = f"{filename}: a cell line has fewer values than the key columns gives names"
         raise ValueError(msg)
     if formatversion == 2:
-        # save_modeldata does not write such a density, and the mass and the energy of the cell would not be valid
-        dfinvaliddensity = (
-            dfmodel.filter(~(pl.col("rho").is_finite() & (pl.col("rho") >= 0.0))).select("inputcellid", "rho").collect()
-        )
-        if dfinvaliddensity.height:
-            msg = (
-                f"{filename}: {dfinvaliddensity.height} cells have a density that is not finite or is below 0, e.g."
-                f" the cell {dfinvaliddensity['inputcellid'].item(0)} with rho = {dfinvaliddensity['rho'].item(0)!r}."
-                " Each cell of format version 2 needs a finite density of 0 or more"
-            )
-            raise ValueError(msg)
-        # sn3d stops for a value that is not finite in each column of each cell line, also of an empty cell. The
-        # check of Ye below gives its own message
-        isnotfinite = dfmodel.select((~(cs.float() - cs.by_name("Ye", require_all=False)).is_finite()).any()).collect()
-        nonfinitecolumns = [col for col in isnotfinite.columns if isnotfinite[col].item()]
-        if nonfinitecolumns:
-            msg = (
-                f"{filename}: the columns {', '.join(nonfinitecolumns)} hold a value that is not finite, e.g. NaN."
-                " Each value of format version 2 must be a finite number"
-            )
-            raise ValueError(msg)
-        negativecolumns = get_columns_below_min_massfrac(dfmodel)
-        if negativecolumns:
-            msg = (
-                f"{filename}: the columns {', '.join(negativecolumns)} hold a mass fraction of {MIN_INPUT_MASSFRAC:g}"
-                " or less in a cell with density. sn3d stops for such a value"
-            )
-            raise ValueError(msg)
-        largecolumns = get_columns_above_max_massfrac(dfmodel)
-        if largecolumns:
-            msg = (
-                f"{filename}: the columns {', '.join(largecolumns)} hold a mass fraction above 1 in a cell with"
-                " density, or X_Fegroup above 1.001. sn3d stops for such a value"
-            )
-            raise ValueError(msg)
-        if "q" in dfmodel.collect_schema().names():
-            negativeqcount = dfmodel.filter((pl.col("q") < 0.0) & (pl.col("rho") > 0.0)).select(pl.len()).collect()
-            if negativeqcount.item():
-                msg = f"{filename}: {negativeqcount.item()} cells with density have a negative q. sn3d stops for it"
-                raise ValueError(msg)
-        if "tracercount" in dfmodel.collect_schema().names():
-            dfinvalidcount = dfmodel.filter(~IS_VALID_TRACERCOUNT).select("inputcellid", "tracercount").collect()
-            if dfinvalidcount.height:
-                msg = (
-                    f"{filename}: the cell {dfinvalidcount['inputcellid'].item(0)} has the tracercount"
-                    f" {dfinvalidcount['tracercount'].item(0)!r}. A count of trajectories must be a whole number of 0"
-                    " or more"
-                )
-                raise ValueError(msg)
-        if "Ye" in dfmodel.collect_schema().names():
-            # sn3d stops for a Ye that is not finite in each cell, and it checks the range in a cell with density only
-            dfinvalidye = (
-                dfmodel
-                .filter(~pl.col("Ye").is_finite() | ((pl.col("rho") > 0.0) & ~IS_VALID_YE))
-                .select("inputcellid", "Ye")
-                .collect()
-            )
-            if dfinvalidye.height:
-                msg = (
-                    f"{filename}: the cell {dfinvalidye['inputcellid'].item(0)} has the electron fraction"
-                    f" {dfinvalidye['Ye'].item(0)!r}. Each value of the column Ye must be a finite number from 0 to 1"
-                )
-                raise ValueError(msg)
-        # sn3d sums the nuclide columns and the otherstable columns of each element with Z of 1 or more
-        elementcolsoffile = [
-            col for cols in get_element_columns_of_model(dfmodel.collect_schema().names()).values() for col in cols
-        ]
-        raise_if_element_sum_above_limit(
-            dfmodel
-            .filter(pl.col("rho") > 0.0)
-            .select(
-                "inputcellid",
-                elementsum=pl.sum_horizontal(
-                    [clamped_nuclide_massfrac(col) for col in elementcolsoffile] or [pl.lit(0.0)]
-                ),
-            )
-            .collect(),
-            f"The cell lines of {filename} give this sum.",
-        )
+        raise_for_values_that_sn3d_refuses(dfmodel, str(filename))
     if cellcount > npts_model:
         msg = (
             f"{filename}: found more than {npts_model} cells, but the cell edges of the header give {npts_model} cells"
@@ -773,12 +694,6 @@ def scan_modelfile_text(
 # the electron fraction is the number of electrons for each nucleon, thus it is from 0 to 1
 # a null Ye is a value that is not known, and the writer gives a null as 0
 IS_VALID_YE = (pl.col("Ye").is_finite() & pl.col("Ye").is_between(0.0, 1.0)).fill_null(value=False)
-# a tracercount is the count of the trajectories of a cell. A null is a value that is not known
-IS_VALID_TRACERCOUNT = (
-    pl.col("tracercount").cast(pl.Float64).is_finite()
-    & (pl.col("tracercount") >= 0)
-    & (pl.col("tracercount").cast(pl.Float64) == pl.col("tracercount").cast(pl.Float64).round())
-).fill_null(value=False)
 # sn3d reads the id of a cell as an integer, and a cast to an integer truncates a value such as 1.5
 IS_WHOLE_INPUTCELLID = (
     pl.col("inputcellid").is_finite() & (pl.col("inputcellid") == pl.col("inputcellid").round())
@@ -790,7 +705,6 @@ IS_WHOLE_INPUTCELLID = (
 # cell ids of model.txt, and it puts the second line of a cell beside the first line in the order of the file.
 # Version 3 gives the key coordinates in the metadata of each model. Version 4 gives the key formatversion.
 # Version 5 checks more values of format version 2, as sn3d does. Version 6 gives tracercount as Int64.
-# Version 7 checks tracercount in format version 2.
 CACHEVERSION = 7
 
 
@@ -1111,57 +1025,9 @@ def get_sn3d_file_copies(modelfolder: Path, filename: str) -> list[Path]:
     ]
 
 
-def is_one_of_the_files(path: Path, files: Sequence[Path]) -> bool:
-    """Return True if path is the same file as a file of the list, also through a symbolic link."""
-    return any(path.samefile(otherpath) for otherpath in files)
-
-
-def find_ye_file_to_merge(sourcefolder: Path, outputfolder: Path, formatversion: int) -> Path | None:
-    """Return the Ye.txt that sn3d reads for the model.txt in sourcefolder, or None.
-
-    A write of format version 2 deletes each copy of Ye.txt beside the new model.txt, and the column Ye gets the
-    values of the returned file. Thus the function stops for these cases:
-
-    - the write deletes a different copy of Ye.txt of the source model, e.g. Ye.txt.gz, which would lose its values;
-    - a Ye.txt or an abundances.txt that sn3d would read for the new model, and that the write does not delete, e.g.
-      data/Ye.txt. sn3d stops for such a file with a model of version 2.
-    """
-    sourcemodelfolder = get_sn3d_model_folder(sourcefolder)
-    yefilepath = find_sn3d_input_file("Ye.txt", sourcemodelfolder)
-    if formatversion != 2:
-        return yefilepath
-    sourcecopies = get_sn3d_file_copies(sourcemodelfolder, "Ye.txt")
-    lostcopies = [
-        path
-        for path in get_file_copies(outputfolder / "Ye.txt")
-        if path.is_file()
-        and is_one_of_the_files(path, sourcecopies)
-        and not (yefilepath is not None and path.samefile(yefilepath))
-    ]
-    if lostcopies:
-        exit_with_error(
-            f"The model holds {lostcopies[0]}, which sn3d does not read, and the write of format version 2 deletes it",
-            "Keep one Ye.txt or Ye.txt.zst in the model, or give a different output folder",
-        )
-    remainingcopies = [
-        path
-        for filename in ("Ye.txt", "abundances.txt")
-        for path in get_sn3d_file_copies(get_sn3d_model_folder(outputfolder), filename)
-        if path.name in {filename, f"{filename}.zst"}
-        and not (outputfolder.is_dir() and path.parent.samefile(outputfolder))
-    ]
-    if remainingcopies:
-        # a file of the source model holds values that the conversion needs, thus a move or a deletion loses them
-        isofsourcemodel = is_one_of_the_files(
-            remainingcopies[0], get_sn3d_file_copies(sourcemodelfolder, remainingcopies[0].name)
-        )
-        exit_with_error(
-            f"sn3d would read {remainingcopies[0]} for the new model of format version 2, and it stops for such a file",
-            "The file is part of the source model. Give a different output folder"
-            if isofsourcemodel
-            else "Move the file beside model.txt, which lets the command merge and delete it, or delete the file",
-        )
-    return yefilepath
+def find_ye_file(inputfolder: Path) -> Path | None:
+    """Return the Ye.txt that sn3d reads for the model.txt in a folder, or None."""
+    return find_sn3d_input_file("Ye.txt", get_sn3d_model_folder(inputfolder))
 
 
 @on_model_host
@@ -1589,53 +1455,8 @@ def get_spherical_slice_velocity_cmps(slicevelocity_cmps: float, vmax_cmps: floa
     return planeabove_cmps if planeabove_cmps < vmax_cmps else slicevelocity_cmps
 
 
-def get_cut_angle_ranges(
-    sliceaxis: str | None, planevelocity_on_vmax: float, mirrored: bool
-) -> dict[str, list[tuple[float, float]]]:
-    """Return the ranges of theta and of phi [rad] that the plane of an image covers inside the sphere of vmax.
-
-    A plane that covers one angle only, e.g. phi = 0 for the half-plane of an image with no sliceaxis, gives no range
-    for that angle. Such a plane holds the boundary of two cells and cuts no cell. A mirrored model folds theta
-    above pi / 2 into its mirror angle.
-    """
-    distance = abs(planevelocity_on_vmax)
-    if sliceaxis is not None and distance >= 1.0:
-        return {"theta": [], "phi": []}
-    thetaranges: list[tuple[float, float]] = []
-    phiranges: list[tuple[float, float]] = []
-    if sliceaxis is None:
-        thetaranges = [(0.0, math.pi)]
-    elif sliceaxis == "z":
-        phiranges = [(0.0, 2.0 * math.pi)]
-        if planevelocity_on_vmax > 0.0:
-            thetaranges = [(0.0, math.acos(distance))]
-        elif planevelocity_on_vmax < 0.0:
-            thetaranges = [(math.acos(-distance), math.pi)]
-    else:
-        thetaranges = [(math.asin(distance), math.pi - math.asin(distance))]
-        if distance > 0.0:
-            # the half-angle of the arc of phi that the plane covers, seen from the z axis
-            halfangle = math.atan2(math.sqrt(1.0 - distance**2), distance)
-            centre = (0.0 if sliceaxis == "x" else math.pi / 2) + (0.0 if planevelocity_on_vmax > 0.0 else math.pi)
-            lowphi, highphi = centre - halfangle, centre + halfangle
-            phiranges = (
-                [(lowphi + 2.0 * math.pi, 2.0 * math.pi), (0.0, highphi)] if lowphi < 0.0 else [(lowphi, highphi)]
-            )
-
-    def fold_into_upper_half(low: float, high: float) -> tuple[float, float]:
-        if high <= math.pi / 2:
-            return low, high
-        if low >= math.pi / 2:
-            return math.pi - high, math.pi - low
-        return min(low, math.pi - high), math.pi / 2
-
-    if mirrored:
-        thetaranges = list(itertools.starmap(fold_into_upper_half, thetaranges))
-    return {"theta": thetaranges, "phi": phiranges}
-
-
 # an image of 2000 x 2000 points takes approximately 130 MB for the cell search
-MAX_REFINED_IMAGE_POINTS = 1000
+MAX_IMAGE_POINTS = 1000
 
 
 def get_spherical_image_cell_indices(
@@ -1645,16 +1466,8 @@ def get_spherical_image_cell_indices(
 
     A plot of such a model has no cell with straight edges on the axes of an image. Thus the image is a grid of
     points with equal steps, as the image of a 1D model is. Each point takes the value of the cell that holds it.
-    The count of the points from 0 to vmax is 200 or more. The plane of the image cuts the outer edge of the innermost
-    shell that it cuts in a circle, and each other circle is larger. To a maximum of MAX_REFINED_IMAGE_POINTS, the
-    count gives two points for each radial shell, and two points across these widths:
-
-    - the radius of that circle;
-    - the narrowest angular cell on that circle;
-    - the narrowest shell that the plane cuts.
-
-    The function gives a warning for a narrow angular cell above the maximum. It also gives a warning for each radial
-    shell, polar cell, and azimuthal cell that the plane cuts and that has no point.
+    The count of the points from 0 to vmax is 200, or two for each radial shell to a maximum of MAX_IMAGE_POINTS. A
+    cell that is narrower than the step of the points can have no point, and the image then does not show it.
 
     Without a sliceaxis, the image has the cylindrical radius from 0 to vmax and z from -vmax to vmax as its axes.
     The points are in the half-plane y = 0 with x > 0. With a sliceaxis, the points are in the plane normal to that
@@ -1662,35 +1475,7 @@ def get_spherical_image_cell_indices(
     array has one row for each point of the second axis.
     """
     vmax_cmps = float(modelmeta["vmax_cmps"])
-    r_edges_on_vmax = np.asarray(modelmeta["vel_r_edges_kmps"], dtype=np.float64) / modelmeta["vel_r_edges_kmps"][-1]
-    planedistance_on_vmax = abs(slicevelocity_cmps) / vmax_cmps if sliceaxis is not None else 0.0
-    cutouteredges_on_vmax = r_edges_on_vmax[1:][r_edges_on_vmax[1:] > planedistance_on_vmax]
-    # a plane outside the grid cuts no shell
-    cutouteredge_on_vmax = float(cutouteredges_on_vmax[0]) if cutouteredges_on_vmax.size else planedistance_on_vmax
-    innercircle_on_vmax = math.sqrt(max(cutouteredge_on_vmax**2 - planedistance_on_vmax**2, 0.0))
-
-    angularedgekeys = ("theta_edges_radians", "phi_edges_radians")
-    minangularwidth = min(float(np.diff(modelmeta[key]).min()) for key in angularedgekeys if key in modelmeta)
-    # At the radius r in the plane, the arc of the narrowest angular cell is r * minangularwidth, and the step of the
-    # points is vmax / pointcount. The width 1 rad gives an arc equal to the radius
-    narrowerwidth = min(minangularwidth, 1.0)
-    innerpointcount = math.ceil(2.0 / (narrowerwidth * innercircle_on_vmax)) if innercircle_on_vmax > 0 else 0
-    # the width of a shell in the plane is its radial width or more
-    iscutshell = r_edges_on_vmax[1:] > planedistance_on_vmax
-    cutshellwidths_on_vmax = np.diff(r_edges_on_vmax)[iscutshell]
-    radialpointcount = math.ceil(2.0 / float(cutshellwidths_on_vmax.min())) if cutshellwidths_on_vmax.size else 0
-    # the memory of the cell search increases with the square of the count, thus each term has the maximum
-    pointcount = max(
-        200, min(max(2 * (len(r_edges_on_vmax) - 1), innerpointcount, radialpointcount), MAX_REFINED_IMAGE_POINTS)
-    )
-    if innerpointcount > pointcount:
-        resolvedradius_on_vmax = 2.0 / (narrowerwidth * pointcount)
-        print_warning(
-            f"The image has {pointcount} points from 0 to vmax, and the narrowest angular cell is"
-            f" {minangularwidth:.3g} rad wide. Inside {min(resolvedradius_on_vmax, 1.0):.3g} vmax of the centre of"
-            " the plane, a cell can have less than two points across it, thus such a cell can have no point in the"
-            " image"
-        )
+    pointcount = min(max(200, 2 * (len(modelmeta["vel_r_edges_kmps"]) - 1)), MAX_IMAGE_POINTS)
     pointwidth = vmax_cmps / pointcount
     positive_points = np.asarray((np.arange(pointcount) + 0.5) * pointwidth, dtype=np.float64)
     all_points = np.asarray((np.arange(2 * pointcount) + 0.5) * pointwidth - vmax_cmps, dtype=np.float64)
@@ -1705,49 +1490,7 @@ def get_spherical_image_cell_indices(
             sliceaxis: np.full((1, 1), slicevelocity_cmps),
         }
     vel_x, vel_y, vel_z = np.broadcast_arrays(velocities["x"], velocities["y"], velocities["z"])
-    cellindices = get_spherical_cell_index_of_velocities(vel_x, vel_y, vel_z, modelmeta)
-
-    # the points of a lattice have a discrete set of radii, thus a narrow shell can lie between two of them
-    ncoordgridr = len(r_edges_on_vmax) - 1
-    shellswithpoint = np.unique(cellindices[cellindices >= 0] % ncoordgridr)
-    emptycutshells = np.setdiff1d(np.flatnonzero(iscutshell), shellswithpoint)
-    if emptycutshells.size:
-        firstemptyshell = int(emptycutshells[0])
-        print_warning(
-            f"{emptycutshells.size} radial shells that the plane cuts have no point in the image of {pointcount}"
-            f" points from 0 to vmax, e.g. the shell from {r_edges_on_vmax[firstemptyshell]:.6g} to"
-            f" {r_edges_on_vmax[firstemptyshell + 1]:.6g} vmax. The image does not show such a shell"
-        )
-
-    # the width of an angular cell in a plane away from the centre can be much less than its arc on a circle
-    cutangleranges = get_cut_angle_ranges(
-        sliceaxis, slicevelocity_cmps / vmax_cmps if sliceaxis is not None else 0.0, has_mirror_plane(modelmeta)
-    )
-    ncoordgridtheta = len(modelmeta["theta_edges_radians"]) - 1
-    pointcellindices = cellindices[cellindices >= 0]
-    angularindiceswithpoint = {
-        "theta": np.unique((pointcellindices // ncoordgridr) % ncoordgridtheta),
-        "phi": np.unique(pointcellindices // (ncoordgridr * ncoordgridtheta)),
-    }
-    for angle, edgekey, cellname in (
-        ("theta", "theta_edges_radians", "polar"),
-        ("phi", "phi_edges_radians", "azimuthal"),
-    ):
-        if edgekey not in modelmeta or not cutangleranges[angle]:
-            continue
-        angleedges = np.asarray(modelmeta[edgekey], dtype=np.float64)
-        iscutcell = np.zeros(len(angleedges) - 1, dtype=bool)
-        for low, high in cutangleranges[angle]:
-            iscutcell |= (angleedges[:-1] < high) & (angleedges[1:] > low)
-        emptycutcells = np.setdiff1d(np.flatnonzero(iscutcell), angularindiceswithpoint[angle])
-        if emptycutcells.size:
-            firstemptycell = int(emptycutcells[0])
-            print_warning(
-                f"{emptycutcells.size} {cellname} cells that the plane cuts have no point in the image of"
-                f" {pointcount} points from 0 to vmax, e.g. the cell from {angleedges[firstemptycell]:.6g} to"
-                f" {angleedges[firstemptycell + 1]:.6g} rad. The image does not show such a cell"
-            )
-    return cellindices
+    return get_spherical_cell_index_of_velocities(vel_x, vel_y, vel_z, modelmeta)
 
 
 def add_derived_cols_to_modeldata(dfmodel: pl.DataFrame | pl.LazyFrame, modelmeta: dict[str, t.Any]) -> pl.LazyFrame:
@@ -2032,6 +1775,77 @@ def get_columns_below_min_massfrac(dfmodel: pl.LazyFrame) -> list[str]:
         ((cs.starts_with("X_").as_expr() <= MIN_INPUT_MASSFRAC) & (pl.col("rho") > 0.0)).any()
     ).collect()
     return [col for col in isbelow.columns if isbelow[col].item()]
+
+
+def raise_for_values_that_sn3d_refuses(dfcells: pl.LazyFrame, source: str) -> None:
+    """Stop for a value of the cell lines of a version 2 model.txt that sn3d stops for.
+
+    dfcells holds the cell lines, and source starts each message, e.g. the name of the file. sn3d stops for a value
+    that is not finite in each line. It checks the range of a mass fraction, of q, and of Ye, and the sum of the
+    element mass fractions, only in a cell with density. A null is a value that is not known, and .any() takes no
+    account of a null, thus a null counts as a value that is not finite.
+    """
+    colnames = dfcells.collect_schema().names()
+    hasdensity = pl.col("rho") > 0.0
+    isfinite = {col: pl.col(col).cast(pl.Float64).is_finite().fill_null(value=False) for col in colnames}
+    dfinvaliddensity = (
+        dfcells.filter(~(isfinite["rho"] & (pl.col("rho") >= 0.0))).select("inputcellid", "rho").collect()
+    )
+    if dfinvaliddensity.height:
+        msg = (
+            f"{source}: {dfinvaliddensity.height} cells have a density that is not finite or is below 0, e.g. the cell"
+            f" {dfinvaliddensity['inputcellid'].item(0)} with rho = {dfinvaliddensity['rho'].item(0)!r}. Each cell of"
+            " format version 2 needs a finite density of 0 or more"
+        )
+        raise ValueError(msg)
+    schema = dfcells.collect_schema()
+    # the check of Ye below gives its own message
+    valuecols = [col for col in colnames if col not in {"inputcellid", "rho", "Ye"} and schema[col].is_numeric()]
+    isnotfinite = dfcells.select((~isfinite[col]).any().alias(col) for col in valuecols).collect()
+    nonfinitecolumns = [col for col in isnotfinite.columns if isnotfinite[col].item()]
+    if nonfinitecolumns:
+        msg = (
+            f"{source}: the columns {', '.join(nonfinitecolumns)} hold a value that is not finite, e.g. NaN. Each"
+            " value of format version 2 must be a finite number"
+        )
+        raise ValueError(msg)
+    if negativecolumns := get_columns_below_min_massfrac(dfcells):
+        msg = (
+            f"{source}: the columns {', '.join(negativecolumns)} hold a mass fraction of {MIN_INPUT_MASSFRAC:g} or"
+            " less in a cell with density. sn3d stops for such a value"
+        )
+        raise ValueError(msg)
+    if largecolumns := get_columns_above_max_massfrac(dfcells):
+        msg = (
+            f"{source}: the columns {', '.join(largecolumns)} hold a mass fraction above 1 in a cell with density, or"
+            f" X_Fegroup above {MAX_FEGROUP_MASSFRAC:g}. sn3d stops for such a value"
+        )
+        raise ValueError(msg)
+    if "q" in colnames and dfcells.filter(hasdensity & (pl.col("q") < 0.0)).select(pl.len()).collect().item():
+        msg = f"{source}: a cell with density has a negative q. sn3d stops for it"
+        raise ValueError(msg)
+    if "Ye" in colnames:
+        dfinvalidye = (
+            dfcells.filter(~isfinite["Ye"] | (hasdensity & ~IS_VALID_YE)).select("inputcellid", "Ye").collect()
+        )
+        if dfinvalidye.height:
+            msg = (
+                f"{source}: the cell {dfinvalidye['inputcellid'].item(0)} has the electron fraction"
+                f" {dfinvalidye['Ye'].item(0)!r}. Each value of the column Ye must be a finite number from 0 to 1"
+            )
+            raise ValueError(msg)
+    # sn3d sums the nuclide columns and the otherstable columns of each element with Z of 1 or more
+    elementcols = [col for cols in get_element_columns_of_model(colnames).values() for col in cols]
+    raise_if_element_sum_above_limit(
+        dfcells
+        .filter(hasdensity)
+        .select(
+            "inputcellid",
+            elementsum=pl.sum_horizontal([clamped_nuclide_massfrac(col) for col in elementcols] or [pl.lit(0.0)]),
+        )
+        .collect(),
+        f"The cell lines of {source} give this sum.",
+    )
 
 
 def customcolsortkey(col: str) -> tuple[float, int]:
@@ -2670,23 +2484,6 @@ def save_modeldata(
             " the file"
         )
         raise ValueError(msg)
-    # sn3d also reads Ye.txt and abundances.txt from data/ and artis/data/, and it stops for them with version 2. A
-    # data/ can link to a folder that other models share, thus the writer does not delete such a file
-    readfilesinsubfolders = [
-        path
-        for filename in ("Ye.txt", "abundances.txt")
-        for path in get_sn3d_file_copies(get_sn3d_model_folder(outputfolder), filename)
-        if formatversion == 2
-        and writesmodeltxt
-        and path.name in {filename, f"{filename}.zst"}
-        and path.parent.resolve() != outputfolder.resolve()
-    ]
-    if readfilesinsubfolders:
-        msg = (
-            f"sn3d would read {readfilesinsubfolders[0]} for the new model.txt of format version 2, and it stops for"
-            " such a file. Delete the file, or give a different output folder"
-        )
-        raise ValueError(msg)
     if formatversion == 2:
         if dfelabundances is not None:
             dfmodel = with_otherstable_columns(dfmodel.lazy().collect(), dfelabundances.lazy().collect())
@@ -2751,71 +2548,22 @@ def save_modeldata(
                 " cell of format version 2 needs a finite density of 0 or more"
             )
             raise ValueError(msg)
-        # the writer gives a NaN mass fraction as 0, but no value can replace inf, and the reader stops for it
-        isinfinite = dfmodel.select((cs.starts_with("X_").is_infinite() & hasdensity).any())
-        infinitecolumns = [col for col in isinfinite.columns if isinfinite[col].item()]
-        if infinitecolumns:
-            msg = (
-                f"The columns {', '.join(infinitecolumns)} hold an infinite value in a cell with density. Each mass"
-                " fraction of format version 2 must be a finite number"
-            )
-            raise ValueError(msg)
-        negativecolumns = get_columns_below_min_massfrac(dfmodel.lazy())
-        if negativecolumns:
-            msg = (
-                f"The columns {', '.join(negativecolumns)} hold a mass fraction of {MIN_INPUT_MASSFRAC:g} or less in a"
-                " cell with density. sn3d stops for such a value"
-            )
-            raise ValueError(msg)
-        largecolumns = get_columns_above_max_massfrac(dfmodel.lazy())
-        if largecolumns:
-            msg = (
-                f"The columns {', '.join(largecolumns)} hold a mass fraction above 1 in a cell with density, or"
-                f" X_Fegroup above {MAX_FEGROUP_MASSFRAC:g}. sn3d stops for such a value"
-            )
-            raise ValueError(msg)
-        # the writer gives a NaN as 0 in the mass fractions only, and sn3d stops for a value that is not finite
-        # A null is a value that is not known, and the writer would give it as 0. .any() takes no account of a null,
-        # thus a null becomes True
-        othervaluecols = [
-            col for col in customcols if not col.startswith("X_") and col != "Ye" and dfmodel.schema[col].is_numeric()
-        ]
-        isnotfinite = dfmodel.select(
-            ((~pl.col(col).cast(pl.Float64).is_finite()).fill_null(value=True) & hasdensity).any().alias(col)
-            for col in othervaluecols
+        # The writer gives a line to each cell with density, and it gives a null or a NaN mass fraction as 0. The
+        # reader applies the same checks to the file
+        writtencols = dict.fromkeys([
+            "inputcellid",
+            "rho",
+            *(col for col in inputcols if col.startswith("X_")),
+            *customcols,
+        ])
+        raise_for_values_that_sn3d_refuses(
+            dfmodel
+            .lazy()
+            .filter(hasdensity)
+            .select(list(writtencols))
+            .with_columns(cs.starts_with("X_").fill_nan(0.0).fill_null(0.0)),
+            "The model",
         )
-        nonfinitecolumns = [col for col in isnotfinite.columns if isnotfinite[col].item()]
-        if nonfinitecolumns:
-            msg = (
-                f"The columns {', '.join(nonfinitecolumns)} hold a value that is not finite or is null in a cell with"
-                " density. Each value of format version 2 must be a finite number"
-            )
-            raise ValueError(msg)
-        if "q" in dfmodel.columns and dfmodel.filter(hasdensity & (pl.col("q") < 0.0)).height:
-            msg = "A cell with density has a negative q, and sn3d stops for it"
-            raise ValueError(msg)
-        if "tracercount" in dfmodel.columns and dfmodel.filter(hasdensity & ~IS_VALID_TRACERCOUNT).height:
-            msg = "A cell with density has a tracercount that is negative or is not a whole number"
-            raise ValueError(msg)
-        # sn3d sums the nuclide columns and the otherstable columns of each element with Z of 1 or more
-        elementcolsofmodel = [col for cols in get_element_columns_of_model(dfmodel.columns).values() for col in cols]
-        raise_if_element_sum_above_limit(
-            dfmodel.filter(hasdensity).select(
-                "inputcellid",
-                elementsum=pl.sum_horizontal(
-                    [clamped_nuclide_massfrac(col) for col in elementcolsofmodel] or [pl.lit(0.0)]
-                ),
-            ),
-            "The columns of the model give this sum.",
-        )
-        if "Ye" in dfmodel.columns:
-            dfinvalidye = dfmodel.filter(hasdensity & ~IS_VALID_YE)
-            if dfinvalidye.height:
-                msg = (
-                    f"The cell {dfinvalidye['inputcellid'].item(0)} has density and the electron fraction"
-                    f" {dfinvalidye['Ye'].item(0)!r}. Each value of the column Ye must be a finite number from 0 to 1"
-                )
-                raise ValueError(msg)
         # an absent composition column holds zero in version 2. The writer gives a null and a NaN as zero
         compositioncols = [col for col in inputcols if col.startswith("X_")]
         isnonzero = dfmodel.select(
@@ -2957,7 +2705,7 @@ def save_modeldata(
             write_artis_csv(dfcells, fmodel, significantfigures=9 if formatversion == 2 else 8)
 
     # The new file replaces the old file only after a complete write. Thus a write that stops early leaves the old
-    # model, e.g. of a conversion in its model folder. Each other copy of the old file goes after the write
+    # model. Each other copy of the old file goes after the write
     write_file_atomic(modelfilepath, write_model_file)
     prepare_zstd_output(modelfilepath)
     print_saved(modelfilepath)

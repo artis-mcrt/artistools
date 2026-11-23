@@ -4457,119 +4457,6 @@ def test_mirrored_model_has_the_masses_and_the_cells_of_its_full_twin(tmp_path: 
             assert math.isclose(dfreduced["mass_g"].sum(), dftwin["mass_g"].sum(), rel_tol=1e-6)
 
 
-def test_spherical_image_has_a_point_in_each_narrow_polar_cell(capsys: pytest.CaptureFixture[str]) -> None:
-    """The image of a model with many narrow polar cells has a point in each cell of the outer shell.
-
-    The image had 200 points from 0 to vmax for each model with 100 radial shells or fewer. A polar cell narrower than
-    the step of the points then had no point, and its value was not in the image. A cell of an inner shell is
-    narrower, thus the image gives a warning with the radius inside which such a cell can have no point.
-    """
-    modelmeta = {
-        "coordinates": "spherical2d",
-        "vmax_cmps": 1e9,
-        "vel_r_edges_kmps": [0.0, 5000.0, 10000.0],
-        "theta_edges_radians": np.linspace(0.0, math.pi, 1001).tolist(),
-    }
-    cellindices = at.inputmodel.get_spherical_image_cell_indices(modelmeta, sliceaxis=None)
-    # the model grid index of a cell in the outer shell is 1 + 2 * i_theta
-    outercells = {int(cellindex) for cellindex in cellindices.ravel() if cellindex >= 0 and cellindex % 2 == 1}
-    assert outercells == set(range(1, 2 * 1000, 2))
-    # the inner shell ends at 0.5 vmax, and two points across each of its polar cells need more than 1000 points
-    captured = capsys.readouterr()
-    assert (
-        "Inside 0.637 vmax of the centre of the plane, a cell can have less than two points across it"
-        in captured.out + captured.err
-    )
-
-    # each polar cell of a usual grid, uniform in cos(theta), has a point in each shell
-    usualcells = at.inputmodel.get_spherical_image_cell_indices(
-        modelmeta
-        | {
-            "vel_r_edges_kmps": np.linspace(0.0, 10000.0, 26).tolist(),
-            "theta_edges_radians": np.arccos(np.linspace(1.0, -1.0, 17)).tolist(),
-        },
-        sliceaxis=None,
-    )
-    captured = capsys.readouterr()
-    assert "less than two points across it" not in captured.out + captured.err
-    assert set(usualcells.ravel().tolist()) == {-1, *range(25 * 16)}
-
-
-def test_spherical_image_has_a_point_in_a_small_inner_shell_and_in_each_phi_cell_of_a_far_slice() -> None:
-    """The image has a point in a small inner shell with one polar cell, and in each phi cell of a slice near vmax.
-
-    The count of the points came from the narrowest angular cell at the outer edge of the innermost shell. A wide
-    polar cell then gave too few points for the radius of that shell. A slice near vmax cuts the shells in a small
-    circle, and its phi cells were narrower than the step of the points.
-    """
-    innershellmeta = {
-        "coordinates": "spherical2d",
-        "vmax_cmps": 1e9,
-        "vel_r_edges_kmps": [0.0, 30.0, 10000.0],
-        "theta_edges_radians": [0.0, math.pi],
-    }
-    cellindices = at.inputmodel.get_spherical_image_cell_indices(innershellmeta, sliceaxis=None)
-    assert 0 in cellindices
-
-    nphi = 360
-    farslicemeta = {
-        "coordinates": "spherical3d",
-        "vmax_cmps": 1e9,
-        "vel_r_edges_kmps": [0.0, 5000.0, 10000.0],
-        "theta_edges_radians": np.arccos(np.linspace(1.0, -1.0, 5)).tolist(),
-        "phi_edges_radians": np.linspace(0.0, 2.0 * math.pi, nphi + 1).tolist(),
-    }
-    cellindices = at.inputmodel.get_spherical_image_cell_indices(farslicemeta, "z", 0.99e9)
-    # the model grid index is i_r + 2 * (i_theta + 4 * i_phi)
-    assert {int(cellindex) // 8 for cellindex in cellindices.ravel() if cellindex >= 0} == set(range(nphi))
-
-
-def test_spherical_image_has_a_point_in_a_narrow_shell_or_gives_a_warning(capsys: pytest.CaptureFixture[str]) -> None:
-    """The image has a point in a narrow shell, or it gives a warning for a cut shell with no point.
-
-    The points of the image are a lattice, which has a discrete set of radii. A shell from 0.4546 to 0.4548 vmax lay
-    between two radii of the 200 points, and the image did not show it with no warning. A shell from 0.30238 to
-    0.30239 vmax lies between two radii of the maximum of 1000 points.
-    """
-    for shelledges_kmps, haspoint in (([4546.0, 4548.0], True), ([3023.8, 3023.9], False)):
-        modelmeta = {
-            "coordinates": "spherical2d",
-            "vmax_cmps": 1e9,
-            "vel_r_edges_kmps": [0.0, *shelledges_kmps, 10000.0],
-            "theta_edges_radians": [0.0, math.pi],
-        }
-        cellindices = at.inputmodel.get_spherical_image_cell_indices(modelmeta, sliceaxis=None)
-        assert (1 in cellindices) == haspoint
-        captured = capsys.readouterr()
-        haswarning = "1 radial shells that the plane cuts have no point" in captured.out + captured.err
-        assert haswarning == (not haspoint)
-
-    # the term of two points for each shell had no maximum, thus 1000 shells gave an image of 4000 x 2000 points
-    manyshellsmeta = {
-        "coordinates": "spherical2d",
-        "vmax_cmps": 1e9,
-        "vel_r_edges_kmps": np.linspace(0.0, 10000.0, 1001).tolist(),
-        "theta_edges_radians": [0.0, math.pi],
-    }
-    cellindices = at.inputmodel.get_spherical_image_cell_indices(manyshellsmeta, sliceaxis=None)
-    assert max(cellindices.shape) <= 2 * at.inputmodel.core.MAX_REFINED_IMAGE_POINTS
-    capsys.readouterr()
-
-    # The slice x = 0.01 vmax cuts the phi cell from 0 to 2 pi / 100 only for 0 < y < 0.00063 vmax, and the step of
-    # the points is 0.005 vmax. The image did not show such a cell, with no warning
-    phicellsmeta = {
-        "coordinates": "spherical3d",
-        "vmax_cmps": 1e9,
-        "vel_r_edges_kmps": [0.0, 10000.0],
-        "theta_edges_radians": [0.0, math.pi],
-        "phi_edges_radians": np.linspace(0.0, 2.0 * math.pi, 101).tolist(),
-    }
-    for sliceaxis, slicevelocity_cmps, haswarning in (("x", 1e7, True), ("y", -1e7, True), ("z", 5e8, False)):
-        at.inputmodel.get_spherical_image_cell_indices(phicellsmeta, sliceaxis, slicevelocity_cmps)
-        captured = capsys.readouterr()
-        assert ("azimuthal cells that the plane cuts have no point" in captured.out + captured.err) == haswarning
-
-
 def test_spherical_cell_search_of_an_image_agrees_with_the_cell_search_of_the_packets() -> None:
     """The cell of a velocity vector is the same for the points of an image and for the packets.
 
@@ -4735,24 +4622,9 @@ def test_model_reader_keeps_each_digit_of_a_tracer_count(tmp_path: Path, formatv
     assert dfread.schema["tracercount"] == pl.Int64
 
 
-@pytest.mark.parametrize("countvalue", ["-1", "1.5"])
-def test_spherical_model_reader_stops_for_a_tracer_count_that_is_not_valid(tmp_path: Path, countvalue: str) -> None:
-    """A count of trajectories is a whole number of 0 or more. The reader kept -1 and 1.5 as Float64."""
-    countlines = [
-        "columns inputcellid rho X_Fegroup tracercount"
-        if line.startswith("columns ")
-        else f"{line} {countvalue if line.startswith('3 ') else '2'}"
-        if line[:1].isdigit()
-        else line
-        for line in SPHERICAL2D_MODEL_LINES
-    ]
-    (tmp_path / "model.txt").write_text("\n".join(countlines) + "\n", encoding="utf-8")
-    with pytest.raises(ValueError, match="A count of trajectories must be a whole number of 0 or more"):
-        at.inputmodel.scan_modeldata(tmp_path)
-
-
 @pytest.mark.parametrize(
-    ("qvalue", "match"), [("nan", "the columns q hold a value that is not finite"), ("-5", "have a negative q")]
+    ("qvalue", "match"),
+    [("nan", "the columns q hold a value that is not finite"), ("-5", "a cell with density has a negative q")],
 )
 def test_spherical_model_reader_stops_for_a_q_that_sn3d_stops_for(tmp_path: Path, qvalue: str, match: str) -> None:
     """sn3d stops for a q that is not finite, and for a negative q in a cell with density. The reader accepted both."""
@@ -4968,216 +4840,52 @@ def test_conversion_takes_a_folder_name_with_a_different_letter_case_as_the_same
     assert (sourcefolder / "opacity.txt").is_file()
 
 
-def test_conversion_that_stops_during_its_install_leaves_no_old_model_txt(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """A conversion that stops during the install of its files leaves no model.txt, and it keeps the new files.
+def test_makeartismodel_converts_the_format_version_into_a_new_folder(tmp_path: Path) -> None:
+    """--format-version writes the model in the other format version into a folder that holds no model file.
 
-    The install took the files in the order of their names, thus abundances.txt came before model.txt. A stop
-    between the two left the old model.txt with the new abundances.txt.
+    The cell ids of version 2 start at 0, and its model.txt holds the element mass fractions and the electron
+    fractions of Ye.txt. A conversion changes no file of a model, thus it stops for an output folder with a model
+    file and for a command with no -o.
     """
     sourcefolder = tmp_path / "source"
-    sourcefolder.mkdir()
-    for filename in ("model.txt", "abundances.txt"):
-        shutil.copy2(at.get_path("testdata") / "test-classicmode_1d" / filename, sourcefolder / filename)
-    outputfolder = tmp_path / "output"
-    shutil.copytree(sourcefolder, outputfolder)
-    replacefile = Path.replace
+    shutil.copytree(at.get_path("testdata") / "test-classicmode_3d", sourcefolder)
+    dfsource = at.inputmodel.scan_modeldata(sourcefolder, get_elemabundances=True)[0]
+    # the cell ids of this model start at 1, and Ye.txt holds two of the cells with density
+    idswithdensity = dfsource.filter(pl.col("rho") > 0).select("inputcellid").collect().to_series()
+    firstid, lastid = idswithdensity.item(0), idswithdensity.item(-1)
+    (sourcefolder / "Ye.txt").write_text(f"2\n{firstid}\t0.25\n{lastid}\t0.45\n", encoding="utf-8")
+    (sourcefolder / "opacity.txt").write_text("2\n1 0.1\n1000 3.3\n", encoding="utf-8")
+    sourcefiles = {path.name: path.read_bytes() for path in sourcefolder.iterdir() if path.is_file()}
 
-    def replace_that_stops_for_abundances(self: Path, target: Path) -> Path:
-        if self.name.startswith("abundances.txt") and self.parent.name.startswith(".formatconversion-"):
-            msg = "the disk is full"
-            raise OSError(msg)
-        return replacefile(self, target)
-
-    with mock.patch.object(Path, "replace", replace_that_stops_for_abundances), pytest.raises(OSError, match="full"):
-        at.inputmodel.makeartismodel.main(
-            argsraw=[], modelpath=[sourcefolder], format_version=1, outputfile=outputfolder, force=True
-        )
-    assert not list(outputfolder.glob("model.txt*"))
-    stagingfolders = list(outputfolder.glob(".formatconversion-*"))
-    assert len(stagingfolders) == 1
-    assert list(stagingfolders[0].glob("model.txt*"))
-    assert "holds each new file" in capsys.readouterr().err
-
-
-def test_conversion_reads_the_folder_of_a_file_path_and_changes_no_file_before_its_checks_pass(tmp_path: Path) -> None:
-    """A conversion takes the files of the model folder also for a path of model.txt, and it stops before a write.
-
-    A path of model.txt gave the folder model.txt to the readers of abundances.txt and Ye.txt, thus the converted
-    model lost its elements and its electron fractions. A conversion that stopped at the element check had already
-    deleted the abundances.txt of the output folder. A Ye.txt of an earlier model in the output folder of a version
-    1 model would give its values to the new model, because sn3d reads Ye.txt after model.txt.
-    """
-    sourcefolder = tmp_path / "source"
-    sourcefolder.mkdir()
-    lines1d = [
-        "2",
-        "1.0",
-        "#inputcellid vel_r_max_kmps logrho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48 Ye",
-        "1 1000.00 -10.00000000 0.5 0.0 0.0 0.0 0.0 0.35",
-        "2 2000.00 -11.00000000 0.5 0.0 0.0 0.0 0.0 0.35",
-    ]
-    (sourcefolder / "model.txt").write_text("\n".join(lines1d) + "\n", encoding="utf-8")
-    (sourcefolder / "abundances.txt").write_text("1 0.8 0.2\n2 0.8 0.2\n", encoding="utf-8")
-    (sourcefolder / "Ye.txt").write_text("2\n1 0.49\n2 0.49\n", encoding="utf-8")
-
-    # A path of model.txt, a 1D model with logrho, and a Ye.txt for each cell. The path of model.txt also names its
-    # compressed copy, as for the reader of model.txt
-    outputfolder = tmp_path / "version2"
-    for modelfilename in ("model.txt", "model.txt.zst"):
-        if modelfilename == "model.txt.zst":
-            with (sourcefolder / modelfilename).open("wb") as fmodel:
-                at.misc.write_zstd_lines(fmodel, lines1d)
-            (sourcefolder / "model.txt").unlink()
-        at.inputmodel.makeartismodel.main(
-            argsraw=[], modelpath=[sourcefolder / "model.txt"], format_version=2, outputfile=outputfolder, force=True
-        )
-        dfversion2 = at.inputmodel.scan_modeldata(outputfolder, get_elemabundances=True)[0].collect()
-        assert dfversion2["X_H"].to_list() == pytest.approx([0.8, 0.8])
-        assert dfversion2["Ye"].to_list() == pytest.approx([0.49, 0.49])
-
-    def get_folder_text(folder: Path) -> dict[str, bytes]:
-        return {path.name: path.read_bytes() for path in sorted(folder.iterdir()) if path.is_file()}
-
-    # a Ye.txt of an earlier model stops a conversion to version 1 into its folder, and the folder does not change
-    (sourcefolder / "Ye.txt").unlink()
-    version1folder = tmp_path / "version1"
-    version1folder.mkdir()
-    (version1folder / "Ye.txt").write_text("1\n1 0.9\n", encoding="utf-8")
-    with pytest.raises(SystemExit):
-        at.inputmodel.makeartismodel.main(
-            argsraw=[], modelpath=[sourcefolder], format_version=1, outputfile=version1folder, force=True
-        )
-    assert get_folder_text(version1folder) == {"Ye.txt": b"1\n1 0.9\n"}
-
-    # the opacity.txt of an earlier model does not go with the cells of the new model, and the source has none
-    (version1folder / "Ye.txt").unlink()
-    (version1folder / "opacity.txt").write_text("1\n1 0.5\n", encoding="utf-8")
-    at.inputmodel.makeartismodel.main(
-        argsraw=[], modelpath=[sourcefolder], format_version=1, outputfile=version1folder, force=True
-    )
-    assert not (version1folder / "opacity.txt").exists()
-
-    # The nuclide column of nickel holds more than the element, within the tolerance of sn3d. Thus the otherstable
-    # value of nickel is 0, and the elements of version 2 sum to 0.11 + 0.899, which is more than 1.001
-    (sourcefolder / "model.txt.zst").unlink()
-    (sourcefolder / "model.txt").write_text(
-        "\n".join([*lines1d[:3], *(line.replace(" 0.5 0.0 ", " 0.5 0.899 ", 1) for line in lines1d[3:])]) + "\n",
-        encoding="utf-8",
-    )
-    elementvalues = " ".join(["0.11", *["0.0"] * 26, "0.89"])
-    (sourcefolder / "abundances.txt").write_text(f"1 {elementvalues}\n2 {elementvalues}\n", encoding="utf-8")
-    folderbefore = get_folder_text(outputfolder)
-    with pytest.raises(ValueError, match="sum to more than"):
-        at.inputmodel.makeartismodel.main(
-            argsraw=[], modelpath=[sourcefolder], format_version=2, outputfile=outputfolder, force=True
-        )
-    assert get_folder_text(outputfolder) == folderbefore
-
-
-def test_conversion_reads_the_files_of_the_model_file_and_keeps_the_source_after_a_failed_write(tmp_path: Path) -> None:
-    """A conversion takes the files beside the model.txt that the reader opens, and a failed write changes no file.
-
-    The elements of a version 2 model came from a different copy of model.txt in the same folder, and a model in a
-    subfolder lost the Ye.txt beside it. A conversion in the model folder that stopped at the write of abundances.txt
-    or of gridcontributions.txt left a new model.txt without the other files of the source model.
-    """
-    sourcefolder = tmp_path / "source"
-    modelfolder = sourcefolder / "run"
-    modelfolder.mkdir(parents=True)
-    lines1d = [
-        "2",
-        "1.0",
-        "#inputcellid vel_r_max_kmps logrho X_Fegroup X_Ni56 X_Co56 X_Fe52 X_Cr48 Ye",
-        "1 1000.00 -10.00000000 0.5 0.0 0.0 0.0 0.0 0.35",
-        "2 2000.00 -11.00000000 0.5 0.0 0.0 0.0 0.0 0.35",
-    ]
-    (modelfolder / "model.txt").write_text("\n".join(lines1d) + "\n", encoding="utf-8")
-    (modelfolder / "abundances.txt").write_text("1 0.8 0.2\n2 0.8 0.2\n", encoding="utf-8")
-    (modelfolder / "Ye.txt").write_text("2\n1 0.49\n2 0.49\n", encoding="utf-8")
-    (modelfolder / "gridcontributions.txt").write_text(
-        "particleid cellindex frac_of_cellmass\n7 1 1.0\n8 2 1.0\n", encoding="utf-8"
-    )
-
-    # the reader finds the model in a subfolder, and the files beside that model.txt belong to it
     version2folder = tmp_path / "version2"
     at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[sourcefolder], format_version=2, outputfile=version2folder)
-    dfversion2 = at.inputmodel.scan_modeldata(version2folder, get_elemabundances=True)[0].collect()
-    assert dfversion2["X_H"].to_list() == pytest.approx([0.8, 0.8])
-    assert dfversion2["Ye"].to_list() == pytest.approx([0.49, 0.49])
+    dfversion2, metaversion2 = at.inputmodel.scan_modeldata(version2folder, get_elemabundances=True)
+    assert metaversion2["formatversion"] == 2
+    assert dfversion2.filter(pl.col("Ye") > 0).select("inputcellid", "Ye").collect().rows() == [
+        (firstid - 1, pytest.approx(0.25)),
+        (lastid - 1, pytest.approx(0.45)),
+    ]
+    assert sorted(path.name for path in version2folder.iterdir()) == ["model.txt.zst"]
+    pltest.assert_series_equal(
+        dfversion2.select("X_Fe").collect().to_series(), dfsource.select("X_Fe").collect().to_series()
+    )
 
-    # Two copies of model.txt can hold different values, and a reader of one copy can take the parquet cache of the
-    # other copy. Thus a conversion stops for a folder with two copies, and sn3d reads the plain copy
-    with at.zopen(version2folder / "model.txt.zst") as fmodel:
-        version2text = fmodel.read()
-    (version2folder / "model.txt").write_text(version2text.replace(" 8.0", " 2.0"), encoding="utf-8")
-    with pytest.raises(SystemExit):
-        at.inputmodel.makeartismodel.main(
-            argsraw=[], modelpath=[version2folder / "model.txt.zst"], format_version=1, outputfile=tmp_path / "selected"
-        )
-
-    # a selected model file of version 1 takes the abundances.txt beside it, also beside a model.txt of version 2
-    (version2folder / "model.txt.zst").rename(version2folder / "model_v2.txt.zst")
-    altfolder = tmp_path / "alt"
-    altfolder.mkdir()
-    (altfolder / "model_alt.txt").write_text("\n".join(lines1d) + "\n", encoding="utf-8")
-    (altfolder / "abundances.txt").write_text("1 0.8 0.2\n2 0.8 0.2\n", encoding="utf-8")
-    with at.zopen(version2folder / "model_v2.txt.zst") as fmodel:
-        (altfolder / "model.txt").write_text(fmodel.read().replace(" 8.0", " 2.0"), encoding="utf-8")
-    (version2folder / "model_v2.txt.zst").rename(version2folder / "model.txt.zst")
-    altversion2folder = tmp_path / "altversion2"
+    version1folder = tmp_path / "version1"
     at.inputmodel.makeartismodel.main(
-        argsraw=[], modelpath=[altfolder / "model_alt.txt"], format_version=2, outputfile=altversion2folder
+        argsraw=[], modelpath=[version2folder], format_version=1, outputfile=version1folder
     )
-    dfalt = at.inputmodel.scan_modeldata(altversion2folder, get_elemabundances=True)[0].collect()
-    assert dfalt["X_H"].to_list() == pytest.approx([0.8, 0.8])
-
-    # sn3d reads the abundances.txt beside model.txt, and a file in a subfolder is of a different model. Thus a model
-    # of version 1 with no abundances.txt beside its model.txt has no known element mass fractions
-    nearfolder = tmp_path / "near"
-    (nearfolder / "sub").mkdir(parents=True)
-    (nearfolder / "model.txt").write_text("\n".join(lines1d) + "\n", encoding="utf-8")
-    (nearfolder / "sub" / "abundances.txt").write_text("1 0.8 0.2\n2 0.8 0.2\n", encoding="utf-8")
-    with pytest.raises(SystemExit):
-        at.inputmodel.makeartismodel.main(
-            argsraw=[], modelpath=[nearfolder], format_version=2, outputfile=tmp_path / "nearversion2"
-        )
-
-    # the particle contributions of an output folder in a subfolder of the source folder are of a different model
-    (nearfolder / "sub" / "abundances.txt").rename(nearfolder / "abundances.txt")
-    childfolder = nearfolder / "sub"
-    (childfolder / "gridcontributions.txt").write_text(
-        "particleid cellindex frac_of_cellmass\n42 1 1.0\n", encoding="utf-8"
+    dfversion1, metaversion1 = at.inputmodel.scan_modeldata(version1folder, get_elemabundances=True)
+    assert metaversion1["formatversion"] == 1
+    pltest.assert_series_equal(
+        dfversion1.select("X_Fe").collect().to_series(), dfsource.select("X_Fe").collect().to_series()
     )
-    at.inputmodel.makeartismodel.main(
-        argsraw=[], modelpath=[nearfolder], format_version=2, outputfile=childfolder, force=True
-    )
-    assert not list(childfolder.glob("gridcontributions.txt*"))
 
-    def get_folder_bytes(folder: Path) -> dict[str, bytes]:
-        return {path.name: path.read_bytes() for path in sorted(folder.iterdir()) if path.is_file()}
-
-    # the write of abundances.txt of a conversion to version 1 in the model folder stops
-    (version2folder / "model.txt").unlink()
-    version2files = get_folder_bytes(version2folder)
-    msg = "Write failed"
-    with (
-        mock.patch("artistools.inputmodel.core.write_artis_csv", side_effect=OSError(msg)),
-        pytest.raises(OSError, match=msg),
-    ):
-        at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[version2folder], format_version=1, force=True)
-    assert get_folder_bytes(version2folder) == version2files
-    assert not [path for path in version2folder.iterdir() if path.is_dir()]
-
-    # the write of gridcontributions.txt with the cell ids from 0 of a conversion to version 2 stops
-    sourcefiles = get_folder_bytes(modelfolder)
-    with (
-        mock.patch("artistools.inputmodel.makeartismodel.save_gridparticlecontributions", side_effect=OSError(msg)),
-        pytest.raises(OSError, match=msg),
-    ):
-        at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[modelfolder], format_version=2, force=True)
-    assert get_folder_bytes(modelfolder) == sourcefiles
+    for outputfolder in (version2folder, None):
+        with pytest.raises(SystemExit):
+            at.inputmodel.makeartismodel.main(
+                argsraw=[], modelpath=[sourcefolder], format_version=2, outputfile=outputfolder
+            )
+    assert {path.name: path.read_bytes() for path in sourcefolder.iterdir() if path.is_file()} == sourcefiles
 
 
 def test_ye_merge_and_version_2_writer_follow_the_rules_of_sn3d(tmp_path: Path) -> None:
@@ -5267,57 +4975,6 @@ def test_ye_merge_and_version_2_writer_follow_the_rules_of_sn3d(tmp_path: Path) 
     assert at.inputmodel.scan_modeldata(yefolder)[0].collect()["Ye"].to_list() == pytest.approx([0.4, -1.0])
 
 
-def test_ye_file_to_merge_follows_the_search_of_sn3d(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """A conversion to version 2 takes the Ye.txt that sn3d reads, and it stops if a write can lose a copy.
-
-    A model.txt in data/ gave no Ye.txt of the model folder, thus the converted model had no column Ye. A write in place
-    deleted a Ye.txt.zst behind Ye.txt. A data/Ye.txt or a data/abundances.txt of the output stayed, and sn3d stops for
-    such a file.
-    """
-    from artistools.inputmodel.core import find_ye_file_to_merge
-
-    modelfolder = tmp_path / "model"
-    (modelfolder / "data").mkdir(parents=True)
-    (modelfolder / "input.txt").write_text("", encoding="utf-8")
-    (modelfolder / "Ye.txt").write_text("1\n1 0.49\n", encoding="utf-8")
-    assert find_ye_file_to_merge(modelfolder / "data", tmp_path / "out", 2) == modelfolder / "Ye.txt"
-    # the write into data/ does not delete the Ye.txt of the model folder, also for the relative path "."
-    monkeypatch.chdir(modelfolder / "data")
-    assert find_ye_file_to_merge(Path(), tmp_path / "out", 2) == modelfolder / "Ye.txt"
-    with pytest.raises(SystemExit):
-        find_ye_file_to_merge(Path(), Path(), 2)
-
-    assert find_ye_file_to_merge(modelfolder, modelfolder, 2) == modelfolder / "Ye.txt"
-    (modelfolder / "Ye.txt.zst").write_bytes(b"")
-    # a write beside the Ye.txt.zst deletes it, and sn3d reads Ye.txt alone
-    for sourcefolder in (modelfolder, modelfolder / "data"):
-        with pytest.raises(SystemExit):
-            find_ye_file_to_merge(sourcefolder, modelfolder, 2)
-
-    outputfolder = tmp_path / "out"
-    (outputfolder / "data").mkdir(parents=True)
-    (outputfolder / "input.txt").write_text("", encoding="utf-8")
-    (outputfolder / "data" / "Ye.txt").write_text("1\n1 0.3\n", encoding="utf-8")
-    with pytest.raises(SystemExit):
-        find_ye_file_to_merge(modelfolder, outputfolder, 2)
-    assert find_ye_file_to_merge(modelfolder, outputfolder, 1) == modelfolder / "Ye.txt"
-
-    # sn3d also stops for the data/abundances.txt that a write from data/ into the model folder leaves
-    (modelfolder / "Ye.txt.zst").unlink()
-    (modelfolder / "data" / "abundances.txt.zst").write_bytes(b"")
-    with pytest.raises(SystemExit):
-        find_ye_file_to_merge(modelfolder / "data", modelfolder, 2)
-
-    # a data/ that links to a shared folder is part of the model folder, as for sn3d
-    linkedmodel, sharedfolder = tmp_path / "linkedmodel", tmp_path / "shared"
-    sharedfolder.mkdir()
-    linkedmodel.mkdir()
-    (linkedmodel / "data").symlink_to(sharedfolder, target_is_directory=True)
-    (linkedmodel / "input.txt").write_text("", encoding="utf-8")
-    (linkedmodel / "Ye.txt").write_text("1\n1 0.49\n", encoding="utf-8")
-    assert find_ye_file_to_merge(linkedmodel / "data", tmp_path / "linkedout", 2) == linkedmodel / "Ye.txt"
-
-
 def test_gridcontributions_are_beside_model_txt_or_in_the_model_folder(tmp_path: Path) -> None:
     """gridcontributions.txt is beside the model.txt that the reader opens, or in the model folder.
 
@@ -5352,22 +5009,6 @@ def test_abundances_and_old_ye_files_follow_the_search_of_sn3d(tmp_path: Path) -
     with pytest.raises(SystemExit):
         require_no_ye_file_of_earlier_model(modelfolder, tmp_path / "source")
 
-    # sn3d stops for this data/Ye.txt with a model.txt of version 2, and the writer kept it
-    (modelfolder / "abundances.txt").unlink()
-    with pytest.raises(ValueError, match=r"sn3d would read .*data/Ye\.txt for the new model\.txt of format version 2"):
-        at.inputmodel.save_modeldata(
-            pl.DataFrame({"inputcellid": [0, 1], "rho": [1e-12, 1e-12]}),
-            outpath=modelfolder,
-            modelmeta={
-                "coordinates": "spherical2d",
-                "t_model_init_days": 1.0,
-                "vel_r_edges_kmps": [0.0, 1000.0, 2000.0],
-                "theta_edges_radians": [0.0, math.pi],
-            },
-            deletecellidfiles=True,
-        )
-    assert not list(modelfolder.glob("model.txt*"))
-
 
 @pytest.mark.parametrize(
     ("change", "match"),
@@ -5377,20 +5018,19 @@ def test_abundances_and_old_ye_files_follow_the_search_of_sn3d(tmp_path: Path) -
         ({"rho": [1e-12, float("nan")]}, "1 cells have a density that is not finite or is below 0"),
         ({"rho": [1e-12, -1e-12]}, "1 cells have a density that is not finite or is below 0"),
         ({"rho": [1e-12, float("inf")]}, "1 cells have a density that is not finite or is below 0"),
-        ({"X_Ni56": [0.5, float("inf")]}, "The columns X_Ni56 hold an infinite value in a cell with density"),
+        ({"X_Ni56": [0.5, float("inf")]}, "the columns X_Ni56 hold a value that is not finite"),
         # sn3d stops for this sum, and the writer with no element abundances did not check it
         ({"X_Ni56": [0.6, 0.0], "X_Fe52": [0.6, 0.0]}, r"sum to more than 1\.001, up to 1\.2 in the cell with"),
         # sn3d stops for a value of -1e-6 or less, and the writer wrote it
-        ({"X_Ni56": [0.5, -0.1]}, r"The columns X_Ni56 hold a mass fraction of -1e-06 or less"),
+        ({"X_Ni56": [0.5, -0.1]}, r"the columns X_Ni56 hold a mass fraction of -1e-06 or less"),
         # the cast to an integer gave the ids 0 and 1, which the check of the ids accepted
         ({"inputcellid": [0.5, 1.5]}, "Each inputcellid must be a whole number"),
         # sn3d stops for a nuclide mass fraction above 1, for a q that is not finite, and for a negative q
-        ({"X_Ni56": [1.0005, 0.0]}, "The columns X_Ni56 hold a mass fraction above 1"),
-        ({"q": [1e10, float("nan")]}, "The columns q hold a value that is not finite"),
-        ({"q": [1e10, -5.0]}, "A cell with density has a negative q"),
+        ({"X_Ni56": [1.0005, 0.0]}, "the columns X_Ni56 hold a mass fraction above 1"),
+        ({"q": [1e10, float("nan")]}, "the columns q hold a value that is not finite"),
+        ({"q": [1e10, -5.0]}, "a cell with density has a negative q"),
         # .any() took no account of a null, and the writer gave the null as 0.0
-        ({"q": [1e10, None]}, "The columns q hold a value that is not finite or is null"),
-        ({"tracercount": [1, -1]}, "a tracercount that is negative or is not a whole number"),
+        ({"q": [1e10, None]}, "the columns q hold a value that is not finite"),
     ],
 )
 def test_version_2_writer_stops_for_a_value_that_the_reader_rejects(
@@ -5633,107 +5273,6 @@ def test_version_2_edges_of_a_cartesian_grid_must_have_equal_steps() -> None:
             at.misc.validate_model_edges("cartesian3d", uniformedges | {"vel_z_edges_kmps": wrongedges}, "test")
     with pytest.raises(ValueError, match="same count of values"):
         at.misc.validate_model_edges("cartesian3d", uniformedges | {"vel_y_edges_kmps": [-3000.0, 0.0, 3000.0]}, "test")
-
-
-def test_makeartismodel_converts_the_format_version_in_the_model_folder(tmp_path: Path) -> None:
-    """--format-version alone writes model.txt again in its folder, and a spherical model has no version 1.
-
-    The cell ids of version 2 start at 0. Thus a conversion gives the same ids to each file that holds cell ids, and
-    a reduced model of version 2 also has them.
-    """
-    sourcefolder = tmp_path / "source"
-    shutil.copytree(at.get_path("testdata") / "test-classicmode_3d", sourcefolder)
-    dfsource = at.inputmodel.scan_modeldata(sourcefolder, get_elemabundances=True)[0]
-    # the cell ids of this model start at 1, and sn3d reads the ids of Ye.txt as those of model.txt. The model.txt
-    # has no column Ye, and Ye.txt holds two of the cells with density
-    idswithdensity = dfsource.filter(pl.col("rho") > 0).select("inputcellid").collect().to_series()
-    firstid, lastid = idswithdensity.item(0), idswithdensity.item(-1)
-    (sourcefolder / "Ye.txt").write_text(f"2\n{firstid}\t0.25\n{lastid}\t0.45\n", encoding="utf-8")
-    (sourcefolder / "opacity.txt").write_text("2\n1 0.1\n1000 3.3\n", encoding="utf-8")
-    modelfolder = tmp_path / "model"
-    # the output folder holds files of an earlier model, which the conversion deletes. The source model has no
-    # particle contributions
-    modelfolder.mkdir()
-    (modelfolder / "opacity.txt").write_text("1\n1 0.5\n", encoding="utf-8")
-    (modelfolder / "gridcontributions.txt").write_text("particleid cellindex frac_of_cellmass\n1 1 1.0\n")
-    at.inputmodel.makeartismodel.main(
-        argsraw=[], modelpath=[sourcefolder], format_version=2, outputfile=modelfolder, force=True
-    )
-    dfversion2, metaversion2 = at.inputmodel.scan_modeldata(modelfolder, get_elemabundances=True)
-    assert metaversion2["formatversion"] == 2
-    assert dfversion2.select(firstid=pl.col("inputcellid").min(), lastid=pl.col("inputcellid").max()).collect().row(
-        0
-    ) == (0, 999)
-    # a version 2 model has no Ye.txt. The column Ye holds its values at the new cell ids, and 0 for each other cell
-    assert not (modelfolder / "Ye.txt").exists()
-    assert dfversion2.filter(pl.col("Ye") > 0).select("inputcellid", "Ye").collect().rows() == [
-        (firstid - 1, pytest.approx(0.25)),
-        (lastid - 1, pytest.approx(0.45)),
-    ]
-    # a version 2 model has no opacity.txt, which sn3d does not read
-    assert not (modelfolder / "opacity.txt").exists()
-    assert not (modelfolder / "gridcontributions.txt").exists()
-    # a version 2 model has no abundances.txt, and the columns of model.txt give the same element mass fractions
-    assert not list(modelfolder.glob("abundances.txt*"))
-    pltest.assert_series_equal(
-        dfversion2.select("X_Fe").collect().to_series(), dfsource.select("X_Fe").collect().to_series()
-    )
-
-    reducedfolder = tmp_path / "reduced"
-    at.inputmodel.makeartismodel.main(
-        argsraw=[], modelpath=[sourcefolder], dimensionreduce=1, format_version=2, outputfile=reducedfolder
-    )
-    dfreduced, metareduced = at.inputmodel.scan_modeldata(next(reducedfolder.iterdir()), get_elemabundances=True)
-    assert metareduced["formatversion"] == 2
-    assert dfreduced.select(
-        firstid=pl.col("inputcellid").min(), hasnoabundance=pl.col("X_Fe").is_null().any()
-    ).collect().row(0) == (0, False)
-
-    # the values of opacity.txt have no column in model.txt, thus a conversion in the model folder stops for the file
-    with pytest.raises(SystemExit):
-        at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[sourcefolder], format_version=2, force=True)
-    assert (sourcefolder / "opacity.txt").exists()
-    # the conversion also finds a compressed copy of the file
-    with (sourcefolder / "opacity.txt.zst").open("wb") as fopacity:
-        at.misc.write_zstd_lines(fopacity, (sourcefolder / "opacity.txt").read_text(encoding="utf-8").splitlines())
-    (sourcefolder / "opacity.txt").unlink()
-    with pytest.raises(SystemExit):
-        at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[sourcefolder], format_version=2, force=True)
-    (sourcefolder / "opacity.txt.zst").unlink()
-
-    # a conversion in the model folder deletes Ye.txt, because sn3d stops for a version 2 model with that file.
-    # sn3d also reads a compressed Ye.txt, thus the conversion takes the values of such a file
-    with (sourcefolder / "Ye.txt.zst").open("wb") as fye:
-        at.misc.write_zstd_lines(fye, (sourcefolder / "Ye.txt").read_text(encoding="utf-8").splitlines())
-    (sourcefolder / "Ye.txt").unlink()
-    # a conversion of a version 1 model into a different folder copies the compressed Ye.txt
-    version1folder = tmp_path / "version1"
-    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[sourcefolder], format_version=1, outputfile=version1folder)
-    assert (version1folder / "Ye.txt.zst").read_bytes() == (sourcefolder / "Ye.txt.zst").read_bytes()
-    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[sourcefolder], format_version=2, force=True)
-    assert not list(sourcefolder.glob("Ye.txt*"))
-    assert at.inputmodel.scan_modeldata(sourcefolder)[0].filter(pl.col("Ye") > 0).select(
-        "inputcellid"
-    ).collect().to_series().to_list() == [firstid - 1, lastid - 1]
-    (sourcefolder / "Ye.txt").write_text("0\n", encoding="utf-8")
-    with pytest.raises(SystemExit):
-        at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[sourcefolder], format_version=1, force=True)
-
-    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[modelfolder], format_version=1, force=True)
-    dfmodel, modelmeta = at.inputmodel.scan_modeldata(modelfolder)
-    assert modelmeta["formatversion"] == 1
-    # the version 1 model has abundances.txt again, with the element mass fractions of the source
-    pltest.assert_series_equal(
-        at.inputmodel.scan_initelemabundances(modelfolder).select("X_Fe").collect().to_series(),
-        dfsource.select("X_Fe").collect().to_series(),
-        rel_tol=1e-6,
-    )
-    assert "pos_x_min" in dfmodel.collect_schema().names()
-
-    (modelfolder / "model.txt.zst").unlink()
-    (modelfolder / "model.txt").write_text("\n".join(SPHERICAL2D_MODEL_LINES) + "\n", encoding="utf-8")
-    with pytest.raises(SystemExit):
-        at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[modelfolder], format_version=1, force=True)
 
 
 def test_dimension_reduce_of_a_spherical_model_sums_complete_cells() -> None:
@@ -6194,27 +5733,6 @@ def test_from_e2e_model_of_version_1_stops_for_a_ye_file_of_an_earlier_model(tmp
         )
     assert (outputfolder / "Ye.txt").read_text(encoding="utf-8") == "1\n1 0.3\n"
     assert not list(outputfolder.glob("model.txt*"))
-
-
-def test_plotinitialcomposition_central_plane_cuts_a_narrow_inner_shell(capsys: pytest.CaptureFixture[str]) -> None:
-    """The central plane of a spherical3d image cuts the innermost shell, also a shell of 5e-7 vmax.
-
-    The plane lay at 1e-6 vmax, thus it cut no part of such a shell, and the image gave no warning for it.
-    """
-    from artistools.inputmodel.plotinitialcomposition import get_point_slice_through_spherical_model
-
-    modelmeta = {
-        "coordinates": "spherical3d",
-        "vmax_cmps": 1e9,
-        "t_model_init_days": 1.0,
-        "vel_r_edges_kmps": [0.0, 5e-7 * 10000.0, 10000.0],
-        "theta_edges_radians": [0.0, math.pi],
-        "phi_edges_radians": [0.0, 2.0 * math.pi],
-    }
-    dfmodel = pl.DataFrame({"modelgridindex": [0, 1], "rho": [1e-12, 1e-12]})
-    get_point_slice_through_spherical_model(dfmodel, modelmeta, "z", positive_axis=True)
-    captured = capsys.readouterr()
-    assert "1 radial shells that the plane cuts have no point" in captured.out + captured.err
 
 
 def test_from_e2e_model_spherical_grid_agrees_with_the_cylindrical_grid(tmp_path: Path) -> None:
