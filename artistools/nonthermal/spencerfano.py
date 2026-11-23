@@ -262,7 +262,7 @@ class PlasmaConditions(t.NamedTuple):
     """The conditions of one Spencer-Fano solution."""
 
     nntot: float
-    x_e: float
+    nne: float
     T_e: float
     deposition_density_ev: float
     ionpopdict: dict[tuple[int, int] | int, float]
@@ -325,9 +325,15 @@ def get_artis_conditions(args: argparse.Namespace, modelpath: Path) -> PlasmaCon
     args.timedays = get_timestep_time(modelpath, args.timestep)
     print(f"Timestep {args.timestep} cell {args.modelgridindex} (v={velocity_kmps:.1f} km/s at {args.timedays:.1f}d)")
 
+    nne = estim["nne"]
+    print(
+        f"  The free electron density is the nne of the ARTIS estimators, {nne:.4e} cm^-3. ARTIS takes this value for"
+        " its Spencer-Fano solution of the cell (nonthermal.cc)"
+    )
+
     return PlasmaConditions(
         nntot=nntot,
-        x_e=estim["nne"] / nntot,
+        nne=nne,
         T_e=estim["Te"],
         deposition_density_ev=deposition_erg / EV_to_erg,
         ionpopdict={get_ion_tuple(k): v for k, v in estim.items() if k.startswith(("nnion_", "nnelement_"))},
@@ -343,7 +349,9 @@ def get_element_conditions(args: argparse.Namespace, step: int, stepcount: int) 
         ionpops_for_electronfraction(compelement_atomicnumber, x_e, nntot)
     )
 
-    return PlasmaConditions(nntot=nntot, x_e=x_e, T_e=3000, deposition_density_ev=5.0e3, ionpopdict=ionpopdict)
+    print(f"  The free electron density is x_e n_tot, with x_e = {x_e:.4g}")
+
+    return PlasmaConditions(nntot=nntot, nne=x_e * nntot, T_e=3000, deposition_density_ev=5.0e3, ionpopdict=ionpopdict)
 
 
 def get_sweep_parameters(args: argparse.Namespace, step: int) -> tuple[float, float, int]:
@@ -425,13 +433,13 @@ def solve_step(
                 sf.add_ion_excitation(Z, ion_stage, nnion)
             heldions.add((Z, ion_stage))
 
-        # the solver sums n_e from the charges of the ions that it holds, and a skipped ion also has free electrons
-        print("  The free electron density is x_e n_tot. ARTIS uses this value as the nne of a model cell")
-        sf.override_n_e(conditions.x_e * conditions.nntot)
+        # the solver otherwise sums n_e from the charges of the ions that it holds, which leaves out a skipped ion
+        sf.override_n_e(conditions.nne)
 
         sf.solve(deposition_ev_per_s_per_cm3=conditions.deposition_density_ev)
 
         sf.analyse_ntspectrum()
+        x_e = conditions.nne / conditions.nntot
 
         if args.makeplot:
             sf.plot_spec_channels(outputfilename=get_plot_filename(args, step))
@@ -440,7 +448,7 @@ def solve_step(
         # analysis as progress messages
         print_product(
             args,
-            f"emin {emin} emax {emax} npts {npts} x_e {conditions.x_e:.4g}:"
+            f"emin {emin} emax {emax} npts {npts} x_e {x_e:.4g}:"
             f" frac_heating {sf.get_frac_heating():.4f} frac_ionization {sf.get_frac_ionisation_tot():.4f}"
             f" frac_excitation {sf.get_frac_excitation_tot():.4f} frac_sum {sf.get_frac_sum():.4f}",
         )
@@ -452,7 +460,7 @@ def solve_step(
             "emin": emin,
             "emax": emax,
             "npts": npts,
-            "x_e": conditions.x_e,
+            "x_e": x_e,
             "frac_sum": sf.get_frac_sum(),
             "frac_excitation": sf.get_frac_excitation_tot(),
             "frac_ionization": sf.get_frac_ionisation_tot(),

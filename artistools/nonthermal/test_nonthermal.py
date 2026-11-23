@@ -29,20 +29,31 @@ def test_spencerfano(tmp_path: Path) -> None:
         if not filepath.name.startswith("nlte_"):
             (modelcopy / filepath.name).symlink_to(filepath)
 
+    pynonthermal = pytest.importorskip("pynonthermal")
     ostatfile = tmp_path / "ntstats.txt"
-    at.nonthermal.spencerfano.main(
-        argsraw=[],
-        modelpath=modelcopy,
-        timedays=300,
-        makeplot=True,
-        npts=200,
-        noexcitation=True,
-        outputfile=tmp_path,
-        ostat=str(ostatfile),
-    )
+    with mock.patch.object(
+        pynonthermal.SpencerFanoSolver,
+        "override_n_e",
+        side_effect=pynonthermal.SpencerFanoSolver.override_n_e,
+        autospec=True,
+    ) as mockoverride:
+        at.nonthermal.spencerfano.main(
+            argsraw=[],
+            modelpath=modelcopy,
+            timedays=300,
+            makeplot=True,
+            npts=200,
+            noexcitation=True,
+            outputfile=tmp_path,
+            ostat=str(ostatfile),
+        )
 
     # 300 days is in timestep 54
     assert len(list(tmp_path.glob("spencerfano_cell00000_ts054_*.pdf"))) == 1
+    # the solver takes the nne of the estimators as ARTIS does, and not the sum of the charges of the ions it holds
+    estimatornne = at.estimators.read_estimators(modelpath, timestep=54, modelgridindex=0)[54, 0]["nne"]
+    mockoverride.assert_called_once()
+    assert np.isclose(mockoverride.call_args.args[1], estimatornne, rtol=1e-12, atol=0.0)
     dfstats = read_ntstats(ostatfile)
     assert dfstats["frac_excitation"].item() == 0
     assert dfstats["frac_sum"].item() == pytest.approx(1.0, abs=0.1)
