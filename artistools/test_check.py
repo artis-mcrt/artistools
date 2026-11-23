@@ -326,6 +326,11 @@ def test_check_names_the_missing_input_files_and_the_leftover_files(tmp_path: Pa
     assert "no abundances.txt" in detail
     assert "no adata.txt" in detail
 
+    # a damaged model.txt.zst gave the error of zstd, and the check then listed no file
+    (tmp_path / "model.txt.zst").write_bytes(b"\x28\xb5\x2f\xfd damaged")
+    status, detail = check_input_files(tmp_path)
+    assert "no abundances.txt" in detail
+
     # the readers also open a version 2 model.txt in data/, and such a model needs no abundances.txt
     (tmp_path / "model.txt.zst").unlink()
     (tmp_path / "data").mkdir()

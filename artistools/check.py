@@ -50,6 +50,7 @@ from artistools.misc import exit_with_error
 from artistools.misc import find_sn3d_input_file
 from artistools.misc import firstexisting_or_none
 from artistools.misc import format_range_list
+from artistools.misc import get_decompress_errors
 from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_model_folder
 from artistools.misc import get_model_format_version
@@ -506,7 +507,7 @@ def check_input_files(modelpath: Path) -> tuple[str, str]:
     if modelfile is not None:
         hasversion2 = False
         # a file that the readers cannot open gets its message from the check of the readers, not from this check
-        with contextlib.suppress(OSError, EOFError, ValueError), zopen(modelfile) as fmodel:
+        with contextlib.suppress(OSError, EOFError, ValueError, *get_decompress_errors()), zopen(modelfile) as fmodel:
             hasversion2 = get_model_format_version(fmodel.readline(), modelfile) == 2
         if hasversion2:
             del inputfiles["abundances.txt"]

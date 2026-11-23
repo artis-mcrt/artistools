@@ -529,13 +529,17 @@ def propagation_grid_is_model_grid(modelpath: Path, modelmeta: "Mapping[str, t.A
 
     A cartesian3d model always has its own grid. GRID_TYPE_OVERRIDE in artisoptions.h gives the grid of the run, and
     sn3d permits only a Cartesian grid in place of the grid of the model. grid.out lists only the cells with matter,
-    thus it applies only without the option.
+    thus the option applies first. For a value of the option that is not std::nullopt and not a Cartesian grid, and
+    without the option, grid.out gives the grid.
     """
     if get_model_coordinates(modelmeta) == "cartesian3d":
         return True
     gridoverride = get_artis_option(modelpath, "GRID_TYPE_OVERRIDE")
-    if gridoverride is not None:
-        return gridoverride != "GridType::CARTESIAN3D"
+    if gridoverride == "std::nullopt":
+        return True
+    # a different spelling of the option, e.g. std::optional{GridType::CARTESIAN3D}, can also give a Cartesian grid
+    if gridoverride is not None and "CARTESIAN3D" in gridoverride:
+        return False
     return grid_out_gives_direct_map(modelpath, modelmeta)
 
 

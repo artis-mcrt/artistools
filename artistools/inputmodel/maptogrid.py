@@ -683,6 +683,17 @@ def maptogrid(
             continue
         logprint(f"Particle {n} is totally unused but located in cell {loc_i} {loc_j} {loc_k}")
 
+    # the grid file and gridcontributions.txt name the same cells. Thus the old grid files go before the write of the
+    # contributions, and a stop before the new grid.dat leaves no grid file
+    for oldgridfile in [
+        path
+        for filename in GRID_FILE_NAMES
+        for path in get_file_copies(Path(outputfolderpath, filename))
+        if path.is_file()
+    ]:
+        oldgridfile.unlink()
+        logprint(f"Deleted {oldgridfile}, because gridcontributions.txt gets the cells of the new map")
+
     with np.errstate(divide="ignore", invalid="ignore"):
         gye = np.divide(gye, grho)
 
@@ -760,7 +771,6 @@ def maptogrid(
         )
 
     logprint(f"Saved {outputfolderpath / 'grid.dat'}")
-    delete_grid_files_of_earlier_maps(Path(outputfolderpath), "grid.dat", logprint)
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:

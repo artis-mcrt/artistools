@@ -6050,6 +6050,22 @@ def test_spherical_map_and_cartesian_map_give_the_same_shell_masses(
         )
     assert not list((tmp_path / "spherical").glob("*grid_spherical.dat*"))
 
+    # a Cartesian map deleted the grid of an earlier spherical map only after its grid.dat, thus a stop between
+    # left the old grid_spherical.dat with the Cartesian contributions
+    with (
+        mock.patch("artistools.inputmodel.maptogrid.save_gridparticlecontributions", side_effect=OSError("disk full")),
+        pytest.raises(OSError, match="disk full"),
+    ):
+        maptogrid(
+            tmp_path / "spherical_normalised" / "ejectasnapshot.dat",
+            tmp_path / "spherical_normalised",
+            ncoordgrid=ncoordgrid,
+            dtextra_seconds=0.0,
+            setgrid_fractionrmax=r_outer / 600.0,
+            modifysmoothinglength="False",
+        )
+    assert not list((tmp_path / "spherical_normalised").glob("grid*.dat*"))
+
 
 @pytest.mark.parametrize("mapto3d", [False, True])
 def test_from_e2e_model_spherical_grid_holds_both_halves_of_a_symmetric_model(tmp_path: Path, mapto3d: bool) -> None:

@@ -1661,7 +1661,7 @@ def test_server_protocol_changes_with_the_readers(package_modules: list[Path]) -
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (24, "69e24cb9f926002e"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (25, "69e24cb9f926002e"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )
@@ -2243,6 +2243,13 @@ def test_valid_range_starts_when_light_from_the_matter_of_the_largest_radius_arr
         # grid.out lists only the cells with matter, and GRID_TYPE_OVERRIDE gives the grid of the run
         ("spherical2d", DIRECT_GRID_OUT, CARTESIAN_OVERRIDE_OPTIONS, math.sqrt(3.0)),
         ("spherical2d", CARTESIAN_GRID_OUT, "constexpr std::optional<GridType> GRID_TYPE_OVERRIDE;\n", 1.0),
+        # a different spelling of the Cartesian option gave the grid of the model
+        (
+            "spherical1d",
+            CARTESIAN_GRID_OUT,
+            "constexpr std::optional<GridType> GRID_TYPE_OVERRIDE = std::optional{GridType::CARTESIAN3D};\n",
+            math.sqrt(3.0),
+        ),
         ("spherical2d mirror", MIRROR_GRID_OUT, None, 1.0),
         # a packet escapes at vmax plus one cell diagonal or less: the cell width is 2 vmax / 50 on each axis
         ("spherical1d", CARTESIAN_GRID_OUT, FORCE_SPHERICAL_OPTIONS, 1.0 + math.sqrt(3.0) * 2.0 / 50.0),
