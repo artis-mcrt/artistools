@@ -338,8 +338,12 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
     if coordinates in SPHERICAL_EDGE_COORDINATES:
         if coordinates == "spherical3d":
             print(f"The image shows the plane {args.sliceaxis} = 0")
+        # the image takes one row of the model for each point, thus it keeps only the plotted columns
         df2dslice, modelmeta, (plotaxis1, plotaxis2) = get_point_slice_through_spherical_model(
-            dfmodel, modelmeta, args.sliceaxis if coordinates == "spherical3d" else None, args.positive_axis
+            dfmodel.select(*dict.fromkeys(["modelgridindex", "rho", *colnames])),
+            modelmeta,
+            args.sliceaxis if coordinates == "spherical3d" else None,
+            args.positive_axis,
         )
     elif modelmeta["dimensions"] == 3:
         sliceaxis: AxisType = args.sliceaxis

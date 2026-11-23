@@ -134,7 +134,7 @@ def get_spherical_grid_edges(
     if not (math.isfinite(r_outer) and r_outer > 0.0):
         msg = (
             f"The outer radius of the spherical grid is {r_outer!r}, but it must be a finite number above 0. The radius"
-            " is -setgrid_fractionrmax times the largest radius of the particles"
+            " is --setgrid-fractionrmax times the largest radius of the particles"
         )
         raise ValueError(msg)
     theta_edges = np.arccos(np.linspace(1.0, -1.0, ngridtheta + 1))
@@ -859,7 +859,7 @@ def get_spherical_grid_shape(args: argparse.Namespace) -> tuple[int, int, int]:
     if args.coordinates == "spherical":
         if args.ncoordgrid is not None or args.sample_cell_lower_corner:
             exit_with_error(
-                "--ncoordgrid and --sample_cell_lower_corner apply to a Cartesian grid only",
+                "--ncoordgrid and --sample-cell-lower-corner apply to a Cartesian grid only",
                 "For --coordinates spherical, give --ngrid-r, --ngrid-theta, and --ngrid-phi",
             )
         if args.modifysmoothinglength in {"option1", "option5", "option6"}:

@@ -11,12 +11,14 @@ def test_cache_delete_keeps_the_lock_files_and_other_parquet_files(tmp_path: Pat
     """Delete the caches and the leftover files of a stopped conversion, and keep each file that is not a cache.
 
     A deleted lock file can give the lock to two writers. A parquet file of a different name belongs to the user, also
-    when it ends in .out.parquet.
+    when it ends in .out.parquet. The reader of abundances.txt puts its cache beside the file that sn3d reads, which
+    can be in artis/data/, and the command did not find that cache.
     """
     from artistools.cache import main as cachemain
 
     deleted = [
         "model.txt.parquet",
+        "artis/data/abundances.txt.parquet",
         "linelist.out.parquet.tmp",
         "packets/packetsbatch00_0000_0003.out.parquet",
         "12411848.slurm/estimbatch00_0000_0003.out.parquet",

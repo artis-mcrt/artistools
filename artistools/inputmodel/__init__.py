@@ -7,6 +7,7 @@ from artistools.inputmodel.core import dimension_reduce_model as dimension_reduc
 from artistools.inputmodel.core import find_abundance_file as find_abundance_file
 from artistools.inputmodel.core import get_cell_direction_selection as get_cell_direction_selection
 from artistools.inputmodel.core import get_cell_selection as get_cell_selection
+from artistools.inputmodel.core import get_gridcontributions_folder as get_gridcontributions_folder
 from artistools.inputmodel.core import get_initelemabundances as get_initelemabundances
 from artistools.inputmodel.core import get_mgi_of_velocity_kms as get_mgi_of_velocity_kms
 from artistools.inputmodel.core import get_model_file_path as get_model_file_path

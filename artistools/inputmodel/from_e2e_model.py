@@ -605,9 +605,9 @@ def map_to_spherical_artis_model(
     tracers have rotational symmetry around the z axis, thus the cells of one r and theta then have equal values.
     """
     for flag, value in (
-        ("-replacedyn", args.replacedyn),
-        ("-perturb3Dmodel", args.perturb3Dmodel),
-        ("-mergecells", args.mergecells),
+        ("--replacedyn", args.replacedyn),
+        ("--perturb3Dmodel", args.perturb3Dmodel),
+        ("--mergecells", args.mergecells),
     ):
         if value:
             exit_with_error(
@@ -831,7 +831,7 @@ def map_to_artis(
             or not math.isclose(dyntmodel_days, t_model_init_s / day_to_s, rel_tol=1e-4)
         ):
             exit_with_error(
-                f"The model of -replacedyn has the grid {dyngrid} with vmax {dynvmax_cmps:.6e} cm/s at"
+                f"The model of --replacedyn has the grid {dyngrid} with vmax {dynvmax_cmps:.6e} cm/s at"
                 f" {dyntmodel_days:g} d, but this model has the grid {thisgrid} with vmax {vmax_on_c * CLIGHT:.6e} cm/s"
                 f" at {t_model_init_s / day_to_s:g} d",
                 "Give a model of the dynamical ejecta at this time, on the grid of --ngridx, --ngridy, and --ngridz",

@@ -1413,7 +1413,7 @@ def test_a_position_in_a_spherical_grid_gets_the_cell_of_its_radius_and_angles()
         "vel_r_edges_kmps": r_edges_kmps,
         "theta_edges_radians": theta_edges,
         "phi_edges_radians": phi_edges,
-        "vmax_cmps": 9000.0e5,
+        "vmax_cmps": 9000.0 * at.constants.km_to_cm,
     }
     t_s = 5.0e4
     r_mid, theta_mid, phi_mid = (
@@ -1423,13 +1423,14 @@ def test_a_position_in_a_spherical_grid_gets_the_cell_of_its_radius_and_angles()
             indexing="ij",
         )
     )
-    radius = r_mid * 1e5 * t_s
+    radius = r_mid * at.constants.km_to_cm * t_s
     extrapositions = [
-        (0.0, 0.0, -3000e5 * t_s),  # the -z axis
-        (3000e5 * t_s, -1e-9, 0.0),  # an angle below the x axis that rounds to phi = 2 pi
-        (3000e5 * t_s, -300e5 * t_s, 0.0),  # an angle of 0.1 rad below the x axis
+        (0.0, 0.0, -3000.0 * at.constants.km_to_cm * t_s),  # the -z axis
+        (3000.0 * at.constants.km_to_cm * t_s, -1e-9, 0.0),  # an angle below the x axis that rounds to phi = 2 pi
+        # an angle of 0.1 rad below the x axis
+        (3000.0 * at.constants.km_to_cm * t_s, -300.0 * at.constants.km_to_cm * t_s, 0.0),
         (0.0, 0.0, 0.0),  # the centre
-        (9000e5 * t_s, 0.0, 0.0),  # the outer radius
+        (9000.0 * at.constants.km_to_cm * t_s, 0.0, 0.0),  # the outer radius
         (math.nan, 0.0, 0.0),  # NaN
     ]
     extra_x, extra_y, extra_z = (list(component) for component in zip(*extrapositions, strict=True))

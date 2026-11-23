@@ -4646,6 +4646,11 @@ def test_plotinitialcomposition_of_a_spherical_model_gives_each_point_the_value_
         ("3 4e-12 1", ("3 4e-12 inf",), "the columns X_Fegroup hold a value that is not finite"),
         # sn3d stops for a mass fraction of -1e-6 or less, and it reads a smaller negative value as 0
         ("3 4e-12 1", ("3 4e-12 -0.1",), "the columns X_Fegroup hold a mass fraction of -1e-06 or less"),
+        # the slow reader truncated the id 3.5 to 3, and it removed the text after # of a later cell line
+        ("3 4e-12 1", ("3.5 4e-12 1",), "the inputcellid 3.5 is not a whole number"),
+        ("3 4e-12 1", ("3 4e-12 1 # a note",), "or text after its values"),
+        # sn3d stops for X_Fegroup above 1.001
+        ("3 4e-12 1", ("3 4e-12 1.5",), "the columns X_Fegroup hold a mass fraction above 1"),
         # a cell with no line is empty, thus only the count finds a file that lost its last line
         ("3 4e-12 1", (), "the key cell_line_count gives 4 cell lines, but the file has 3"),
         ("cell_line_count 4", ("cell_line_count 5",), "cell_line_count must have one integer from 1 to 4"),
@@ -4709,6 +4714,24 @@ def test_spherical_model_reader_stops_for_a_wrong_file(
     (tmp_path / "model.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     with pytest.raises(ValueError, match=errortext):
+        at.inputmodel.scan_modeldata(tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("qvalue", "match"), [("nan", "the columns q hold a value that is not finite"), ("-5", "have a negative q")]
+)
+def test_spherical_model_reader_stops_for_a_q_that_sn3d_stops_for(tmp_path: Path, qvalue: str, match: str) -> None:
+    """sn3d stops for a q that is not finite, and for a negative q in a cell with density. The reader accepted both."""
+    qlines = [
+        "columns inputcellid rho X_Fegroup q"
+        if line.startswith("columns ")
+        else f"{line} {qvalue if line.startswith('3 ') else '1e10'}"
+        if line[:1].isdigit()
+        else line
+        for line in SPHERICAL2D_MODEL_LINES
+    ]
+    (tmp_path / "model.txt").write_text("\n".join(qlines) + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match=match):
         at.inputmodel.scan_modeldata(tmp_path)
 
 
@@ -4781,7 +4804,7 @@ def test_format_version_2_gives_the_cells_of_version_1(coordinates: str, tmp_pat
         assert np.allclose(cells[1]["logrho"], cells[2]["logrho"], rtol=0.0, atol=1e-6)
         assert metas[2]["vmax_cmps"] == pytest.approx(metas[1]["vmax_cmps"], rel=1e-6)
     else:
-        xmax = metas[1]["vmax_cmps"] * metas[1]["t_model_init_days"] * 86400
+        xmax = metas[1]["vmax_cmps"] * metas[1]["t_model_init_days"] * day_to_s
         for col in positioncols:
             assert np.allclose(cells[1][col], cells[2][col], rtol=0.0, atol=1e-6 * xmax), col
         assert metas[2]["vmax_cmps"] == metas[1]["vmax_cmps"]
@@ -4822,8 +4845,8 @@ def test_otherstable_columns_give_the_element_mass_fractions() -> None:
         "X_Fe_otherstable",
         "X_Ni_otherstable",
     ]
-    assert dfwithotherstable["X_Fe_otherstable"].to_list() == [0.125, 0.0]
-    assert dfwithotherstable["X_Ni_otherstable"].to_list() == [0.125, 0.0]
+    assert dfwithotherstable["X_Fe_otherstable"].to_list() == pytest.approx([0.125, 0.0], rel=1e-6)
+    assert dfwithotherstable["X_Ni_otherstable"].to_list() == pytest.approx([0.125, 0.0], rel=1e-6)
     dfelements = at.inputmodel.core.get_elemabundances_of_model_columns(dfwithotherstable.lazy()).collect()
     for elcol in ("X_Fe", "X_Co", "X_Ni"):
         assert dfelements[elcol].to_list() == pytest.approx(dfelabundances[elcol].to_list(), rel=1e-6)
@@ -4832,10 +4855,15 @@ def test_otherstable_columns_give_the_element_mass_fractions() -> None:
     dfnegative = at.inputmodel.core.with_otherstable_columns(
         dfmodel.with_columns(X_Ni57=pl.Series([-5e-7, 0.25])), dfelabundances
     )
-    assert dfnegative["X_Ni_otherstable"].to_list() == [0.125, 0.0]
+    assert dfnegative["X_Ni_otherstable"].to_list() == pytest.approx([0.125, 0.0], rel=1e-9)
     # the sum of the element also takes such a value as 0, as sn3d does
     dfnegativeelements = at.inputmodel.core.get_elemabundances_of_model_columns(dfnegative.lazy()).collect()
-    assert dfnegativeelements["X_Ni"].to_list() == [0.625, 0.5]
+    assert dfnegativeelements["X_Ni"].to_list() == pytest.approx([0.625, 0.5], rel=1e-9)
+    # the writer gives a NaN nuclide value as 0. polars puts a NaN above each number, thus the sum check stopped
+    dfnan = at.inputmodel.core.with_otherstable_columns(
+        dfmodel.with_columns(X_Ni57=pl.Series([float("nan"), 0.25])), dfelabundances
+    )
+    assert dfnan["X_Ni_otherstable"].to_list() == pytest.approx([0.125, 0.0], rel=1e-9)
 
     # a null or a NaN mass fraction is not known, and the otherstable column would give it as 0
     for unknownvalue in (None, float("nan")):
@@ -4883,6 +4911,27 @@ def test_otherstable_columns_give_the_element_mass_fractions() -> None:
         pl.DataFrame({"inputcellid": [1], "X_Fe": [0.5], "X_Ni": [0.5]}),
     )
     assert df1d["X_Ni_otherstable"].to_list() == pytest.approx([0.25, 0.0])
+
+
+def test_conversion_takes_a_folder_name_with_a_different_letter_case_as_the_same_folder(tmp_path: Path) -> None:
+    """A file system that ignores the letter case gives one folder to modelA and MODELA.
+
+    The conversion compared the text of the paths, thus -o MODELA took a different folder, and the conversion deleted
+    the opacity.txt that the check of the same folder protects.
+    """
+    sourcefolder = tmp_path / "modelA"
+    sourcefolder.mkdir()
+    for filename in ("model.txt", "abundances.txt"):
+        shutil.copy2(at.get_path("testdata") / "test-classicmode_1d" / filename, sourcefolder / filename)
+    (sourcefolder / "opacity.txt").write_text("1\n1 0.5\n", encoding="utf-8")
+    if not (tmp_path / "MODELA").is_dir():
+        pytest.skip("the file system takes the letter case into account")
+
+    with pytest.raises(SystemExit):
+        at.inputmodel.makeartismodel.main(
+            argsraw=[], modelpath=[sourcefolder], format_version=2, outputfile=tmp_path / "MODELA", force=True
+        )
+    assert (sourcefolder / "opacity.txt").is_file()
 
 
 def test_conversion_that_stops_during_its_install_leaves_no_old_model_txt(
@@ -5174,6 +5223,14 @@ def test_ye_merge_and_version_2_writer_follow_the_rules_of_sn3d(tmp_path: Path) 
     # .all() takes no account of a null, and the writer gave a null cell id as 0.0
     with pytest.raises(ValueError, match="the cell ids are 0 to 1"):
         at.inputmodel.core.get_version2_headerlines(pl.Series([None, 1], dtype=pl.Int64), dict(yemeta))
+    # a comparison of two series of different lengths raised ShapeError, and not this message
+    with pytest.raises(ValueError, match="but the model has 3 cells"):
+        at.inputmodel.core.get_version2_headerlines(pl.Series([0, 1, 2], dtype=pl.Int64), dict(yemeta))
+    # sn3d checks the range of Ye in a cell with density only, thus an empty cell can have Ye = -1
+    (yefolder / "model.txt").write_text(
+        yetext.format(-1.0).replace("1 1e-12 -1.0", "1 0 -1.0") + "\n", encoding="utf-8"
+    )
+    assert at.inputmodel.scan_modeldata(yefolder)[0].collect()["Ye"].to_list() == pytest.approx([0.4, -1.0])
 
 
 def test_ye_file_to_merge_follows_the_search_of_sn3d(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -5227,6 +5284,21 @@ def test_ye_file_to_merge_follows_the_search_of_sn3d(tmp_path: Path, monkeypatch
     assert find_ye_file_to_merge(linkedmodel / "data", tmp_path / "linkedout", 2) == linkedmodel / "Ye.txt"
 
 
+def test_gridcontributions_are_beside_model_txt_or_in_the_model_folder(tmp_path: Path) -> None:
+    """gridcontributions.txt is beside the model.txt that the reader opens, or in the model folder.
+
+    The search took only the folder of model.txt, thus a model with data/model.txt lost the contributions of its model
+    folder, and comparetogsinetwork and the reduction found no file.
+    """
+    modelfolder = tmp_path / "model"
+    (modelfolder / "data").mkdir(parents=True)
+    shutil.copy2(at.get_path("testdata") / "test-classicmode_1d" / "model.txt", modelfolder / "data" / "model.txt")
+    (modelfolder / "gridcontributions.txt").write_text("particleid cellindex frac_of_cellmass\n1 1 1.0\n")
+    assert at.inputmodel.get_gridcontributions_folder(modelfolder) == modelfolder
+    (modelfolder / "data" / "gridcontributions.txt").write_text("particleid cellindex frac_of_cellmass\n1 1 1.0\n")
+    assert at.inputmodel.get_gridcontributions_folder(modelfolder) == modelfolder / "data"
+
+
 def test_abundances_and_old_ye_files_follow_the_search_of_sn3d(tmp_path: Path) -> None:
     """sn3d searches the model folder, data/, and artis/data/ for each input file, also for a model.txt in data/.
 
@@ -5278,6 +5350,10 @@ def test_abundances_and_old_ye_files_follow_the_search_of_sn3d(tmp_path: Path) -
         ({"X_Ni56": [0.5, -0.1]}, r"The columns X_Ni56 hold a mass fraction of -1e-06 or less"),
         # the cast to an integer gave the ids 0 and 1, which the check of the ids accepted
         ({"inputcellid": [0.5, 1.5]}, "Each inputcellid must be a whole number"),
+        # sn3d stops for a nuclide mass fraction above 1, for a q that is not finite, and for a negative q
+        ({"X_Ni56": [1.0005, 0.0]}, "The columns X_Ni56 hold a mass fraction above 1"),
+        ({"q": [1e10, float("nan")]}, "The columns q hold a value that is not finite"),
+        ({"q": [1e10, -5.0]}, "A cell with density has a negative q"),
     ],
 )
 def test_version_2_writer_stops_for_a_value_that_the_reader_rejects(
@@ -5294,7 +5370,7 @@ def test_version_2_writer_stops_for_a_value_that_the_reader_rejects(
         "theta_edges_radians": [0.0, math.pi],
     }
     dfmodel = pl.DataFrame({"inputcellid": [0, 1], "rho": [1e-12, 1e-12]})
-    if any(key in dfmodel.columns or key.startswith("X_") for key in change):
+    if "t_model_init_days" not in change:
         dfmodel = dfmodel.with_columns(itertools.starmap(pl.Series, change.items()))
     else:
         modelmeta |= change

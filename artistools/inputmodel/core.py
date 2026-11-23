@@ -42,6 +42,7 @@ from artistools.misc import get_costhetabin_expr
 from artistools.misc import get_file_copies
 from artistools.misc import get_file_identity
 from artistools.misc import get_model_coordinates
+from artistools.misc import get_model_folder
 from artistools.misc import get_model_format_version
 from artistools.misc import get_parquet_cache_name
 from artistools.misc import get_phibin_expr
@@ -405,20 +406,28 @@ def scan_modelfile_text(
                 filename,
                 has_header=False,
                 skip_rows=numheaderrows,
-                comment_prefix="#" if formatversion == 2 else None,
+                # sn3d skips a comment line of version 2, but it stops for text after the values of a cell line
+                line_filter=~pl.col("line").str.strip_chars_start().str.starts_with("#")
+                if formatversion == 2
+                else None,
                 new_columns=[str(i) for i in range(max(ncols_line_even, ncols_line_odd))],
             )
         except pl.exceptions.SchemaError:
             if formatversion == 1:
                 raise
-            msg = f"{filename}: a cell line has more values than the key columns gives names"
+            msg = f"{filename}: a cell line has more values than the key columns gives names, or text after its values"
             raise ValueError(msg) from None
 
-        dfmodel = (
-            (dfmodelraw if onelinepercellformat else dfmodelraw[: npts_model * 2 : 2])
-            .select([pl.col(str(i)).alias(colname) for i, colname in enumerate(columns[:ncols_line_even])])
-            .with_columns(pl.col("inputcellid").cast(pl.Int32))
-        )
+        dfmodel = (dfmodelraw if onelinepercellformat else dfmodelraw[: npts_model * 2 : 2]).select([
+            pl.col(str(i)).alias(colname) for i, colname in enumerate(columns[:ncols_line_even])
+        ])
+        if formatversion == 2 and dfmodel.schema["inputcellid"].is_float():
+            # the cast to Int32 truncates an id such as 1.5, and sn3d stops for such an id
+            notwholeids = dfmodel.filter(~IS_WHOLE_INPUTCELLID)["inputcellid"]
+            if notwholeids.len():
+                msg = f"{filename}: the inputcellid {notwholeids.item(0)!r} is not a whole number"
+                raise ValueError(msg)
+        dfmodel = dfmodel.with_columns(pl.col("inputcellid").cast(pl.Int32))
 
         if ncols_line_odd > 0 and not onelinepercellformat:
             # the second line of a cell holds no cell id. It follows the first line, thus the two go side by side.
@@ -474,13 +483,14 @@ def scan_modelfile_text(
                 " Each cell of format version 2 needs a finite density of 0 or more"
             )
             raise ValueError(msg)
-        # save_modeldata writes a NaN mass fraction as 0, and sn3d stops for a value that is not finite
-        isnotfinite = dfmodel.select((~cs.starts_with("X_").is_finite()).any()).collect()
+        # sn3d stops for a value that is not finite in each column of each cell line, also of an empty cell. The
+        # check of Ye below gives its own message
+        isnotfinite = dfmodel.select((~(cs.float() - cs.by_name("Ye", require_all=False)).is_finite()).any()).collect()
         nonfinitecolumns = [col for col in isnotfinite.columns if isnotfinite[col].item()]
         if nonfinitecolumns:
             msg = (
                 f"{filename}: the columns {', '.join(nonfinitecolumns)} hold a value that is not finite, e.g. NaN."
-                " Each mass fraction of format version 2 must be a finite number"
+                " Each value of format version 2 must be a finite number"
             )
             raise ValueError(msg)
         negativecolumns = get_columns_below_min_massfrac(dfmodel)
@@ -490,8 +500,26 @@ def scan_modelfile_text(
                 " or less in a cell with density. sn3d stops for such a value"
             )
             raise ValueError(msg)
+        largecolumns = get_columns_above_max_massfrac(dfmodel)
+        if largecolumns:
+            msg = (
+                f"{filename}: the columns {', '.join(largecolumns)} hold a mass fraction above 1 in a cell with"
+                " density, or X_Fegroup above 1.001. sn3d stops for such a value"
+            )
+            raise ValueError(msg)
+        if "q" in dfmodel.collect_schema().names():
+            negativeqcount = dfmodel.filter((pl.col("q") < 0.0) & (pl.col("rho") > 0.0)).select(pl.len()).collect()
+            if negativeqcount.item():
+                msg = f"{filename}: {negativeqcount.item()} cells with density have a negative q. sn3d stops for it"
+                raise ValueError(msg)
         if "Ye" in dfmodel.collect_schema().names():
-            dfinvalidye = dfmodel.filter(~IS_VALID_YE).select("inputcellid", "Ye").collect()
+            # sn3d stops for a Ye that is not finite in each cell, and it checks the range in a cell with density only
+            dfinvalidye = (
+                dfmodel
+                .filter(~pl.col("Ye").is_finite() | ((pl.col("rho") > 0.0) & ~IS_VALID_YE))
+                .select("inputcellid", "Ye")
+                .collect()
+            )
             if dfinvalidye.height:
                 msg = (
                     f"{filename}: the cell {dfinvalidye['inputcellid'].item(0)} has the electron fraction"
@@ -717,16 +745,21 @@ def scan_modelfile_text(
     return dfmodel, modelmeta
 
 
+# the electron fraction is the number of electrons for each nucleon, thus it is from 0 to 1
+# a null Ye is a value that is not known, and the writer gives a null as 0
+IS_VALID_YE = (pl.col("Ye").is_finite() & pl.col("Ye").is_between(0.0, 1.0)).fill_null(value=False)
+# sn3d reads the id of a cell as an integer, and a cast to an integer truncates a value such as 1.5
+IS_WHOLE_INPUTCELLID = (
+    pl.col("inputcellid").is_finite() & (pl.col("inputcellid") == pl.col("inputcellid").round())
+).fill_null(value=False)
+
 # The version of the parquet cache format of every text source that get_text_source_cached() reads,
 # which is model.txt and abundances.txt. Increase it for a change that makes an older cache file
 # incorrect, e.g. a new column or a different data type in either one. Version 2 checks the cell count and the
 # cell ids of model.txt, and it puts the second line of a cell beside the first line in the order of the file.
 # Version 3 gives the key coordinates in the metadata of each model. Version 4 gives the key formatversion.
-# the electron fraction is the number of electrons for each nucleon, thus it is from 0 to 1
-# a null Ye is a value that is not known, and the writer gives a null as 0
-IS_VALID_YE = (pl.col("Ye").is_finite() & pl.col("Ye").is_between(0.0, 1.0)).fill_null(value=False)
-
-CACHEVERSION = 4
+# Version 5 checks more values of format version 2, as sn3d does.
+CACHEVERSION = 5
 
 
 def scan_parquet_cache(
@@ -885,6 +918,19 @@ def get_model_input_folder(modelpath: Path | str) -> Path:
     """
     modelfile = get_model_file_path(modelpath)
     return get_model_text_folder(modelpath) if modelfile is None else modelfile.parent
+
+
+def get_gridcontributions_folder(modelpath: Path | str) -> Path:
+    """Return the folder of the gridcontributions.txt of a local model path.
+
+    The file is beside the model.txt that the reader opens, which can be in a subfolder such as data/. An earlier
+    version of artistools wrote the file in the model folder, thus the model folder applies if the folder of model.txt
+    has no such file.
+    """
+    inputfolder = get_model_input_folder(modelpath)
+    if firstexisting_or_none("gridcontributions.txt", folder=inputfolder, tryzipped=True, search_subfolders=False):
+        return inputfolder
+    return get_model_folder(modelpath)
 
 
 def get_model_file_path(modelpath: Path | str) -> Path | None:
@@ -1907,6 +1953,34 @@ OTHERSTABLE_ROUNDING_RTOL = 1e-5
 ELEMENT_MASSFRAC_SUM_LIMIT = 1.0 + 1e-3
 # sn3d stops for a mass fraction of this value or less, and it reads a value from this limit to 0 as 0
 MIN_INPUT_MASSFRAC = -1e-6
+# sn3d stops for X_Fegroup above this value, which permits rounding. A nuclide mass fraction has the maximum 1
+MAX_FEGROUP_MASSFRAC = 1.0 + 1e-3
+
+
+def get_columns_above_max_massfrac(dfmodel: pl.LazyFrame) -> list[str]:
+    """Return the mass fraction columns that hold a value above the maximum of sn3d in a cell with density.
+
+    sn3d compares a nuclide mass fraction as Float32 with 1, and X_Fegroup with MAX_FEGROUP_MASSFRAC. An otherstable
+    column has no maximum of its own, and the check of the element sum applies to it.
+    """
+    colnames = dfmodel.collect_schema().names()
+    maxvalues = {
+        col: 1.0
+        for cols in get_element_columns_of_model(colnames).values()
+        for col in cols
+        if not col.endswith(OTHERSTABLE_SUFFIX)
+    } | ({"X_Fegroup": MAX_FEGROUP_MASSFRAC} if "X_Fegroup" in colnames else {})
+    if not maxvalues:
+        return []
+    # sn3d compares the Float32 value as a double, thus the cast to Float64 keeps a value just above 1.001 above it.
+    # The writer gives a NaN as 0, and polars puts a NaN above each number
+    isabove = dfmodel.select(
+        ((pl.col(col).cast(pl.Float32).cast(pl.Float64).fill_nan(0.0) > maxvalue) & (pl.col("rho") > 0.0))
+        .any()
+        .alias(col)
+        for col, maxvalue in maxvalues.items()
+    ).collect()
+    return [col for col in isabove.columns if isabove[col].item()]
 
 
 def get_columns_below_min_massfrac(dfmodel: pl.LazyFrame) -> list[str]:
@@ -1973,12 +2047,13 @@ def get_elemabundances_of_model_columns(dfmodel: pl.LazyFrame) -> pl.LazyFrame:
 
 
 def clamped_nuclide_massfrac(col: str) -> pl.Expr:
-    """Return the mass fraction of a nuclide column, with 0 for a negative value, as sn3d reads it.
+    """Return the mass fraction of a nuclide column, with 0 for a negative value or a NaN, as sn3d reads it.
 
     sn3d stops for a value below -1e-6 and reads a value from -1e-6 to 0 as 0. Thus the sum of the nuclide columns
-    of an element must also take 0, or the otherstable value of the element gets the negative part.
+    of an element must also take 0, or the otherstable value of the element gets the negative part. The writer gives
+    a NaN as 0, and polars puts a NaN above each number in a comparison.
     """
-    return pl.col(col).cast(pl.Float64).clip(lower_bound=0.0)
+    return pl.col(col).cast(pl.Float64).fill_nan(0.0).clip(lower_bound=0.0)
 
 
 def raise_if_element_sum_above_limit(elementsums: pl.DataFrame, reason: str) -> None:
@@ -2281,9 +2356,13 @@ def get_version2_headerlines(inputcellids: pl.Series, modelmeta: dict[str, t.Any
     print(f" {coordinates} grid size: {inputcellids.len()} ({gridshape})")
 
     firstaxis = edgekeys[0].split("_")[1]
-    # the writer gives a null cell id as 0.0, and .all() takes no account of a null
-    idsagree = (inputcellids == pl.int_range(npts_model, eager=True)).fill_null(value=False).all()
-    if inputcellids.len() != npts_model or not idsagree:
+    # the writer gives a null cell id as 0.0, and .all() takes no account of a null. A comparison of two series of
+    # different lengths raises, thus the length test comes first
+    idsagree = (
+        inputcellids.len() == npts_model
+        and (inputcellids == pl.int_range(npts_model, eager=True)).fill_null(value=False).all()
+    )
+    if not idsagree:
         msg = (
             f"The cell edges give {gridshape} = {npts_model} cells, but the model has {inputcellids.len()} cells with"
             f" the first cell id {inputcellids.item(0) if inputcellids.len() else None}. In format version 2, the cell"
@@ -2595,14 +2674,13 @@ def save_modeldata(
         key=customcolsortkey,
     )
 
-    if dfmodel.collect_schema()["inputcellid"].is_float():
-        # the cast to Int32 below truncates a value such as 0.5, and the id check of version 2 then accepts it
-        isintegral = (
-            pl.col("inputcellid").is_finite() & (pl.col("inputcellid") == pl.col("inputcellid").round())
-        ).all()
-        if not dfmodel.lazy().select(isintegral.fill_null(value=False)).collect().item():
-            msg = "Each inputcellid must be a whole number, but the column inputcellid holds a different value"
-            raise ValueError(msg)
+    # the cast to Int32 below truncates a value such as 0.5, and the id check of version 2 then accepts it
+    if (
+        dfmodel.collect_schema()["inputcellid"].is_float()
+        and not dfmodel.lazy().select(IS_WHOLE_INPUTCELLID.all()).collect().item()
+    ):
+        msg = "Each inputcellid must be a whole number, but the column inputcellid holds a different value"
+        raise ValueError(msg)
     # the select comes before the collect, thus a lazy query does not calculate the columns that model.txt does not get
     dfmodel = (
         dfmodel
@@ -2649,14 +2727,35 @@ def save_modeldata(
                 " cell with density. sn3d stops for such a value"
             )
             raise ValueError(msg)
-        # sn3d sums the nuclide columns and the otherstable columns of each element with Z of 1 or more. The writer
-        # gives a NaN as 0, and polars puts a NaN above each number
+        largecolumns = get_columns_above_max_massfrac(dfmodel.lazy())
+        if largecolumns:
+            msg = (
+                f"The columns {', '.join(largecolumns)} hold a mass fraction above 1 in a cell with density, or"
+                f" X_Fegroup above {MAX_FEGROUP_MASSFRAC:g}. sn3d stops for such a value"
+            )
+            raise ValueError(msg)
+        # the writer gives a NaN as 0 in the mass fractions only, and sn3d stops for a value that is not finite
+        othervaluecols = [
+            col for col in customcols if not col.startswith("X_") and col != "Ye" and dfmodel.schema[col].is_float()
+        ]
+        isnotfinite = dfmodel.select((~pl.col(othervaluecols).is_finite() & hasdensity).any())
+        nonfinitecolumns = [col for col in isnotfinite.columns if isnotfinite[col].item()]
+        if nonfinitecolumns:
+            msg = (
+                f"The columns {', '.join(nonfinitecolumns)} hold a value that is not finite in a cell with density."
+                " Each value of format version 2 must be a finite number"
+            )
+            raise ValueError(msg)
+        if "q" in dfmodel.columns and dfmodel.filter(hasdensity & (pl.col("q") < 0.0)).height:
+            msg = "A cell with density has a negative q, and sn3d stops for it"
+            raise ValueError(msg)
+        # sn3d sums the nuclide columns and the otherstable columns of each element with Z of 1 or more
         elementcolsofmodel = [col for cols in get_element_columns_of_model(dfmodel.columns).values() for col in cols]
         raise_if_element_sum_above_limit(
             dfmodel.filter(hasdensity).select(
                 "inputcellid",
                 elementsum=pl.sum_horizontal(
-                    [clamped_nuclide_massfrac(col).fill_nan(0.0) for col in elementcolsofmodel] or [pl.lit(0.0)]
+                    [clamped_nuclide_massfrac(col) for col in elementcolsofmodel] or [pl.lit(0.0)]
                 ),
             ),
             "The columns of the model give this sum.",
@@ -2872,24 +2971,24 @@ def scan_initelemabundances(modelpath: Path | str = ".", printwarningsonly: bool
     then the sum of the nuclide columns and the otherstable column of each element, as in sn3d.
     """
     modelfilepath = get_model_file_path(modelpath)
-    modelfolder = get_model_input_folder(modelpath)
+    inputfolder = get_model_input_folder(modelpath)
     if modelfilepath is not None:
         with zopen(modelfilepath) as fmodel:
             formatversion = get_model_format_version(fmodel.readline(), modelfilepath)
         if formatversion == 2:
             if (
-                firstexisting_or_none("abundances.txt", folder=modelfolder, tryzipped=True, search_subfolders=False)
+                firstexisting_or_none("abundances.txt", folder=inputfolder, tryzipped=True, search_subfolders=False)
                 is not None
             ):
                 print_warning(
-                    f"{modelfolder} holds abundances.txt, but its model.txt has format version 2, which gives the"
+                    f"{inputfolder} holds abundances.txt, but its model.txt has format version 2, which gives the"
                     " element mass fractions. artistools does not read abundances.txt, and sn3d stops for it"
                 )
             return get_elemabundances_of_model_columns(scan_modeldata(modelpath, printwarningsonly=True)[0])
 
-    abundancefile = find_abundance_file(modelfolder)
+    abundancefile = find_abundance_file(inputfolder)
     if abundancefile is None:
-        msg = f"sn3d finds no abundances.txt for the model.txt in {modelfolder}"
+        msg = f"sn3d finds no abundances.txt for the model.txt in {inputfolder}"
         raise FileNotFoundError(msg)
     return scan_abundance_file(abundancefile, printwarningsonly)
 
