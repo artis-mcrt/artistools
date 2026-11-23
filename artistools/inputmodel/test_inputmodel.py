@@ -4619,6 +4619,8 @@ def test_plotinitialcomposition_of_a_spherical_model_gives_each_point_the_value_
         ("3 4e-12 1", ("3 -4e-12 1",), "1 cells have a density that is not finite or is below 0"),
         ("3 4e-12 1", ("3 4e-12 nan",), "the columns X_Fegroup hold a value that is not finite"),
         ("3 4e-12 1", ("3 4e-12 inf",), "the columns X_Fegroup hold a value that is not finite"),
+        # sn3d stops for a mass fraction of -1e-6 or less, and it reads a smaller negative value as 0
+        ("3 4e-12 1", ("3 4e-12 -0.1",), "the columns X_Fegroup hold a mass fraction of -1e-06 or less"),
         # a cell with no line is empty, thus only the count finds a file that lost its last line
         ("3 4e-12 1", (), "the key cell_line_count gives 4 cell lines, but the file has 3"),
         ("cell_line_count 4", ("cell_line_count 5",), "cell_line_count must have one integer from 1 to 4"),
@@ -5214,6 +5216,10 @@ def test_abundances_and_old_ye_files_follow_the_search_of_sn3d(tmp_path: Path) -
         ({"X_Ni56": [0.5, float("inf")]}, "The columns X_Ni56 hold an infinite value in a cell with density"),
         # sn3d stops for this sum, and the writer with no element abundances did not check it
         ({"X_Ni56": [0.6, 0.0], "X_Fe52": [0.6, 0.0]}, r"sum to more than 1\.001, up to 1\.2 in the cell with"),
+        # sn3d stops for a value of -1e-6 or less, and the writer wrote it
+        ({"X_Ni56": [0.5, -0.1]}, r"The columns X_Ni56 hold a mass fraction of -1e-06 or less"),
+        # the cast to an integer gave the ids 0 and 1, which the check of the ids accepted
+        ({"inputcellid": [0.5, 1.5]}, "Each inputcellid must be a whole number"),
     ],
 )
 def test_version_2_writer_stops_for_a_value_that_the_reader_rejects(
@@ -5230,7 +5236,7 @@ def test_version_2_writer_stops_for_a_value_that_the_reader_rejects(
         "theta_edges_radians": [0.0, math.pi],
     }
     dfmodel = pl.DataFrame({"inputcellid": [0, 1], "rho": [1e-12, 1e-12]})
-    if "rho" in change or "X_Ni56" in change:
+    if any(key in dfmodel.columns or key.startswith("X_") for key in change):
         dfmodel = dfmodel.with_columns(itertools.starmap(pl.Series, change.items()))
     else:
         modelmeta |= change
@@ -5866,7 +5872,7 @@ def test_spherical_map_and_cartesian_map_give_the_same_shell_masses(
     with pytest.raises(SystemExit):
         at.inputmodel.modelfromhydro.read_griddat_file(damagedfolder)
     captured = capsys.readouterr()
-    assert "1 cells have no valid rho or Ye" in captured.out + captured.err
+    assert "1 cells have no valid rho, Ye, or tracercount" in captured.out + captured.err
 
     # a grid index that occurs two times and one that is absent give the same count of rows
     gridlines[-1] = " ".join([gridlines[-2].split()[0], *gridlines[-1].split()[1:]]).replace("nan", "0.0")
@@ -5882,6 +5888,33 @@ def test_spherical_map_and_cartesian_map_give_the_same_shell_masses(
     (damagedfolder / "grid_spherical.dat").write_text("\n".join(cutlines), encoding="utf-8")
     with pytest.raises(ValueError, match="does not end with a line end"):
         at.inputmodel.modelfromhydro.read_griddat_file(damagedfolder)
+
+    # the model writer gave a tracer count that is not available as 0
+    for tracercountvalue in ("nan", "-1"):
+        damagedlines = (tmp_path / "spherical" / "grid_spherical.dat").read_text(encoding="utf-8").splitlines()
+        damagedlines[-2] = " ".join([*damagedlines[-2].split()[:3], tracercountvalue])
+        (damagedfolder / "grid_spherical.dat").write_text("\n".join(damagedlines) + "\n", encoding="utf-8")
+        with pytest.raises(SystemExit):
+            at.inputmodel.modelfromhydro.read_griddat_file(damagedfolder)
+        captured = capsys.readouterr()
+        assert "1 cells have no valid rho, Ye, or tracercount" in captured.out + captured.err
+
+    # a stop before the new grid file is complete leaves no grid file, and not the old grid with new contributions
+    with (
+        mock.patch("artistools.inputmodel.maptogrid.save_gridparticlecontributions", side_effect=OSError("disk full")),
+        pytest.raises(OSError, match="disk full"),
+    ):
+        maptogrid(
+            tmp_path / "spherical" / "ejectasnapshot.dat",
+            tmp_path / "spherical",
+            ncoordgrid=ncoordgrid,
+            dtextra_seconds=0.0,
+            setgrid_fractionrmax=r_outer / 600.0,
+            modifysmoothinglength="False",
+            coordinates="spherical",
+            sphericalgridshape=(ncoordgrid // 2, 10, 20),
+        )
+    assert not list((tmp_path / "spherical").glob("*grid_spherical.dat*"))
 
 
 @pytest.mark.parametrize("mapto3d", [False, True])

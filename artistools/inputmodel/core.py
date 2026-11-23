@@ -482,6 +482,13 @@ def scan_modelfile_text(
                 " Each mass fraction of format version 2 must be a finite number"
             )
             raise ValueError(msg)
+        negativecolumns = get_columns_below_min_massfrac(dfmodel)
+        if negativecolumns:
+            msg = (
+                f"{filename}: the columns {', '.join(negativecolumns)} hold a mass fraction of {MIN_INPUT_MASSFRAC:g}"
+                " or less in a cell with density. sn3d stops for such a value"
+            )
+            raise ValueError(msg)
         if "Ye" in dfmodel.collect_schema().names():
             dfinvalidye = dfmodel.filter(~IS_VALID_YE).select("inputcellid", "Ye").collect()
             if dfinvalidye.height:
@@ -1824,6 +1831,19 @@ OTHERSTABLE_NEGATIVE_LIMIT = 1e-2
 OTHERSTABLE_ROUNDING_RTOL = 1e-5
 # sn3d stops for a cell whose element mass fractions sum to more than this value, which permits rounding
 ELEMENT_MASSFRAC_SUM_LIMIT = 1.0 + 1e-3
+# sn3d stops for a mass fraction of this value or less, and it reads a value from this limit to 0 as 0
+MIN_INPUT_MASSFRAC = -1e-6
+
+
+def get_columns_below_min_massfrac(dfmodel: pl.LazyFrame) -> list[str]:
+    """Return the mass fraction columns that hold MIN_INPUT_MASSFRAC or less in a cell with density.
+
+    sn3d stops for such a value in a nuclide column, an otherstable column, and the column X_Fegroup.
+    """
+    isbelow = dfmodel.select(
+        ((cs.starts_with("X_").as_expr() <= MIN_INPUT_MASSFRAC) & (pl.col("rho") > 0.0)).any()
+    ).collect()
+    return [col for col in isbelow.columns if isbelow[col].item()]
 
 
 def customcolsortkey(col: str) -> tuple[float, int]:
@@ -2501,6 +2521,14 @@ def save_modeldata(
         key=customcolsortkey,
     )
 
+    if dfmodel.collect_schema()["inputcellid"].is_float():
+        # the cast to Int32 below truncates a value such as 0.5, and the id check of version 2 then accepts it
+        isintegral = (
+            pl.col("inputcellid").is_finite() & (pl.col("inputcellid") == pl.col("inputcellid").round())
+        ).all()
+        if not dfmodel.lazy().select(isintegral.fill_null(value=False)).collect().item():
+            msg = "Each inputcellid must be a whole number, but the column inputcellid holds a different value"
+            raise ValueError(msg)
     # the select comes before the collect, thus a lazy query does not calculate the columns that model.txt does not get
     dfmodel = (
         dfmodel
@@ -2538,6 +2566,13 @@ def save_modeldata(
             msg = (
                 f"The columns {', '.join(infinitecolumns)} hold an infinite value in a cell with density. Each mass"
                 " fraction of format version 2 must be a finite number"
+            )
+            raise ValueError(msg)
+        negativecolumns = get_columns_below_min_massfrac(dfmodel.lazy())
+        if negativecolumns:
+            msg = (
+                f"The columns {', '.join(negativecolumns)} hold a mass fraction of {MIN_INPUT_MASSFRAC:g} or less in a"
+                " cell with density. sn3d stops for such a value"
             )
             raise ValueError(msg)
         # sn3d sums the nuclide columns and the otherstable columns of each element with Z of 1 or more. The writer

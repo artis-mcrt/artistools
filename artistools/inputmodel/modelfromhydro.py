@@ -210,14 +210,19 @@ def read_spherical_griddat_file(
         "gridindex": "inputcellid"
     })
     # maptogrid writes a number for each cell, also Ye = 0 for an empty cell. Thus a null or a NaN is damaged input
-    isvalidcell = (pl.col("rho").is_finite() & (pl.col("rho") >= 0.0) & IS_VALID_YE).fill_null(value=False)
+    tracercount = pl.col("tracercount").cast(pl.Float64)
+    isvalidtracercount = tracercount.is_finite() & (tracercount >= 0.0) & (tracercount == tracercount.round())
+    isvalidcell = (pl.col("rho").is_finite() & (pl.col("rho") >= 0.0) & IS_VALID_YE & isvalidtracercount).fill_null(
+        value=False
+    )
     dfinvalidcells = griddata.filter(~isvalidcell)
     if dfinvalidcells.height:
         exit_with_error(
-            f"{griddatfilepath}: {dfinvalidcells.height} cells have no valid rho or Ye, e.g. the cell"
-            f" {dfinvalidcells['inputcellid'].item(0)} with rho = {dfinvalidcells['rho'].item(0)!r} and Ye ="
-            f" {dfinvalidcells['Ye'].item(0)!r}",
-            "Each cell needs a finite density of 0 or more and an electron fraction from 0 to 1. Run maptogrid again",
+            f"{griddatfilepath}: {dfinvalidcells.height} cells have no valid rho, Ye, or tracercount, e.g. the cell"
+            f" {dfinvalidcells['inputcellid'].item(0)} with rho = {dfinvalidcells['rho'].item(0)!r}, Ye ="
+            f" {dfinvalidcells['Ye'].item(0)!r}, and tracercount = {dfinvalidcells['tracercount'].item(0)!r}",
+            "Each cell needs a finite density of 0 or more, an electron fraction from 0 to 1, and a whole tracer"
+            " count of 0 or more. Run maptogrid again",
         )
     griddata = griddata.with_columns(pl.col("rho") * geometric_density_to_g_per_cm3)
     gridshape = (len(vel_r_edges_kmps) - 1, len(theta_edges_radians) - 1, len(phi_edges_radians) - 1)

@@ -26,6 +26,7 @@ from artistools.misc import confirm_overwrite
 from artistools.misc import exit_with_error
 from artistools.misc import get_file_copies
 from artistools.misc import parse_cli_args
+from artistools.misc import write_text_file_atomic
 
 itable = 40000  # wie fein Kernelfkt interpoliert wird
 itab = itable + 5
@@ -379,18 +380,6 @@ def map_particles_to_spherical_grid(
     with np.errstate(divide="ignore", invalid="ignore"):
         cellye = np.where(cellmass > 0.0, cellyemass / cellmass, 0.0)
 
-    gridcontribpath = save_gridparticlecontributions(
-        pl.DataFrame({
-            "particleid": dfparticles["id"].to_numpy()[pairparticle],
-            # the cell ids of a spherical model start at 0, as format version 2 of model.txt needs
-            "cellindex": paircell,
-            "frac_of_cellmass": pairmass / cellmass[paircell],
-        }),
-        Path(outputfolderpath, "gridcontributions.txt"),
-        float_precision=None,
-    )
-    logprint(f"Saved {gridcontribpath}")
-
     gridmass = float(np.sum(cellrho * volumes.ravel(order="F")))
     totmass = float(dfparticles["pmass"].sum())
     logprint(f"Fraction of total mass on grid {gridmass / totmass}")
@@ -402,7 +391,7 @@ def map_particles_to_spherical_grid(
     nempty = int(np.count_nonzero(cellmass == 0.0))
     logprint(f"Number of cells with rho=0 {nempty}, total num of cells {ncells}, fraction {nempty / ncells}")
 
-    with Path(outputfolderpath, SPHERICAL_GRID_FILE_NAME).open("w", encoding="utf-8") as fgrid:
+    def write_grid(fgrid: t.TextIO) -> None:
         fgrid.write("coordinates spherical3d\n")
         fgrid.write(
             f"dtextra_geomunits {dtextra_geomunits} # extra time after explosion simulation ended (in geom units)\n"
@@ -419,8 +408,31 @@ def map_particles_to_spherical_grid(
             )
         )
 
-    logprint(f"Saved {outputfolderpath / SPHERICAL_GRID_FILE_NAME}")
-    delete_grid_files_of_earlier_maps(Path(outputfolderpath), SPHERICAL_GRID_FILE_NAME, logprint)
+    # the grid file and gridcontributions.txt name the same cells. Thus the old grid files go before the write of the
+    # contributions, and the new grid file takes its place only after both writes are complete
+    gridpath = Path(outputfolderpath, SPHERICAL_GRID_FILE_NAME)
+    stagedgridpath = gridpath.with_name(f".{SPHERICAL_GRID_FILE_NAME}.staged")
+    try:
+        write_text_file_atomic(stagedgridpath, write_grid)
+        if gridpath.is_file():
+            gridpath.unlink()
+            logprint(f"Deleted {gridpath}, because gridcontributions.txt gets the cells of the new map")
+        delete_grid_files_of_earlier_maps(Path(outputfolderpath), SPHERICAL_GRID_FILE_NAME, logprint)
+        gridcontribpath = save_gridparticlecontributions(
+            pl.DataFrame({
+                "particleid": dfparticles["id"].to_numpy()[pairparticle],
+                # the cell ids of a spherical model start at 0, as format version 2 of model.txt needs
+                "cellindex": paircell,
+                "frac_of_cellmass": pairmass / cellmass[paircell],
+            }),
+            Path(outputfolderpath, "gridcontributions.txt"),
+            float_precision=None,
+        )
+        logprint(f"Saved {gridcontribpath}")
+        stagedgridpath.replace(gridpath)
+    finally:
+        stagedgridpath.unlink(missing_ok=True)
+    logprint(f"Saved {gridpath}")
 
 
 def maptogrid(
