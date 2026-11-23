@@ -19,6 +19,7 @@ from matplotlib.image import AxesImage
 
 from artistools.constants import C_cm_per_s
 from artistools.constants import day_to_s
+from artistools.constants import km_to_cm
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import get_middle_layer_lower_edge
 from artistools.inputmodel.core import get_spherical_image_cell_indices
@@ -79,11 +80,13 @@ def get_point_slice_through_spherical_model(
     the two plot axes. The pos_ columns give the edges of the points, as for the cells of a slice.
 
     A spherical2d model gives the plane of the cylindrical radius and z, and sliceaxis is then None. A spherical3d
-    model gives the plane normal to sliceaxis through the centre. The plane lies at 1e-6 vmax on the positive side or
-    on the negative side of that axis. Thus a cell edge in the plane gives the cells of that side.
+    model gives the plane normal to sliceaxis through the centre. The plane lies at 1e-6 of the outer radius of the
+    innermost shell, on the positive side or on the negative side of that axis. Thus a cell edge in the plane gives
+    the cells of that side, and the plane cuts the innermost shell also if that shell is narrow.
     """
     vmax_cmps = float(modelmeta["vmax_cmps"])
-    slicevelocity_cmps = (1.0 if positive_axis else -1.0) * 1.0e-6 * vmax_cmps
+    innershellouter_cmps = float(modelmeta["vel_r_edges_kmps"][1]) * km_to_cm
+    slicevelocity_cmps = (1.0 if positive_axis else -1.0) * 1.0e-6 * innershellouter_cmps
     cellindices = get_spherical_image_cell_indices(modelmeta, sliceaxis, slicevelocity_cmps)
     pointcount2, pointcount1 = cellindices.shape
     plotaxes: tuple[AxisType, AxisType] = ("rcyl", "z")

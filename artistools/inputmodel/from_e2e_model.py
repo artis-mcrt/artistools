@@ -26,6 +26,7 @@ from artistools.inputmodel.core import CELL_ID_FILE_NAMES
 from artistools.inputmodel.core import dimension_reduce_model
 from artistools.inputmodel.core import MODEL_FILE_NAMES
 from artistools.inputmodel.core import remap_gridcontributions
+from artistools.inputmodel.core import require_no_ye_file_of_earlier_model
 from artistools.inputmodel.core import save_initelemabundances
 from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.core import scan_initelemabundances
@@ -1486,6 +1487,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def writes_format_version_2(args: argparse.Namespace) -> bool:
+    """Return True if the command writes a model.txt of format version 2, as for a spherical model with 2 or 3 axes."""
+    return args.coordinates == "spherical" and (args.dimensions is None or args.dimensions >= 2)
+
+
 def get_output_file_names(args: argparse.Namespace) -> tuple[str, ...]:
     """Return the names of the files that the command writes to the -o folder.
 
@@ -1495,8 +1501,7 @@ def get_output_file_names(args: argparse.Namespace) -> tuple[str, ...]:
     change these two files beside such a model.
     """
     if args.coordinates == "spherical":
-        writesversion2 = args.dimensions is None or args.dimensions >= 2
-        return (*MODEL_FILE_NAMES, *CELL_ID_FILE_NAMES) if writesversion2 else MODEL_FILE_NAMES
+        return (*MODEL_FILE_NAMES, *CELL_ID_FILE_NAMES) if writes_format_version_2(args) else MODEL_FILE_NAMES
     writesdynfiles = args.mapto3D and args.replacedyn and args.interpolate
     return (*MODEL_FILE_NAMES, *DYN_CHECK_FILE_NAMES) if writesdynfiles else MODEL_FILE_NAMES
 
@@ -1562,6 +1567,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         args.outputfile = Path(args.npz).parent / "artis_inputmodels" / modelname
         print(args.outputfile)
     confirm_overwrite([args.outputfile], get_output_file_names(args), force=args.force)
+    if not writes_format_version_2(args):
+        # the model.txt of version 1 holds the electron fractions, and sn3d would take a Ye.txt of an earlier model
+        require_no_ye_file_of_earlier_model(Path(args.outputfile), args.npz)
     Path(args.outputfile).mkdir(parents=True, exist_ok=True)
 
     # model_dim = 1 not covered in this script

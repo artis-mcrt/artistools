@@ -6157,6 +6157,47 @@ def test_from_e2e_model_spherical_grid_holds_both_halves_of_a_symmetric_model(tm
     np.testing.assert_allclose(dfcellfractions["frac_of_cellmass"].to_numpy(), 1.0, rtol=1e-6)
 
 
+def test_from_e2e_model_of_version_1_stops_for_a_ye_file_of_an_earlier_model(tmp_path: Path) -> None:
+    """A reduced spherical model has format version 1, and its model.txt holds the electron fractions.
+
+    The command kept the Ye.txt of an earlier model in the output folder, and sn3d then took its values.
+    """
+    datpath = tmp_path / "e2emodel.npz"
+    write_e2e_model(datpath, tmp_path / "iso_table.npy")
+    outputfolder = tmp_path / "model1d"
+    outputfolder.mkdir()
+    (outputfolder / "Ye.txt").write_text("1\n1 0.3\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        at.inputmodel.from_e2e_model.main(
+            argsraw=["-npz", str(datpath), "-vmax_on_c", "0.4", "--coordinates", "spherical", "-dimensions", "1"],
+            outputfile=outputfolder,
+            force=True,
+        )
+    assert (outputfolder / "Ye.txt").read_text(encoding="utf-8") == "1\n1 0.3\n"
+    assert not list(outputfolder.glob("model.txt*"))
+
+
+def test_plotinitialcomposition_central_plane_cuts_a_narrow_inner_shell(capsys: pytest.CaptureFixture[str]) -> None:
+    """The central plane of a spherical3d image cuts the innermost shell, also a shell of 5e-7 vmax.
+
+    The plane lay at 1e-6 vmax, thus it cut no part of such a shell, and the image gave no warning for it.
+    """
+    from artistools.inputmodel.plotinitialcomposition import get_point_slice_through_spherical_model
+
+    modelmeta = {
+        "coordinates": "spherical3d",
+        "vmax_cmps": 1e9,
+        "t_model_init_days": 1.0,
+        "vel_r_edges_kmps": [0.0, 5e-7 * 10000.0, 10000.0],
+        "theta_edges_radians": [0.0, math.pi],
+        "phi_edges_radians": [0.0, 2.0 * math.pi],
+    }
+    dfmodel = pl.DataFrame({"modelgridindex": [0, 1], "rho": [1e-12, 1e-12]})
+    get_point_slice_through_spherical_model(dfmodel, modelmeta, "z", positive_axis=True)
+    captured = capsys.readouterr()
+    assert "1 radial shells that the plane cuts have no point" in captured.out + captured.err
+
+
 def test_from_e2e_model_spherical_grid_agrees_with_the_cylindrical_grid(tmp_path: Path) -> None:
     """A 2D spherical map and a 2D cylindrical map of one model give the same mass in each radial shell.
 
