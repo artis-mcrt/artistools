@@ -479,11 +479,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             dfgridcontributions = get_gridparticlecontributions_or_none(sourcefolder)
             outputformatversion = get_output_format_version(args, modelpath)
             yefilepath = find_ye_file_to_merge(sourcefolder, outdir, outputformatversion)
-            if yefilepath is not None and outputformatversion == 2:
-                # sn3d takes the electron fractions of Ye.txt for the source model, and the reduced model of version 2
-                # gets them in its column Ye. A reduced model of version 1 gets the values of the column Ye of the
-                # source model.txt, as before
-                print("  Version 2 has no Ye.txt.")
+            if yefilepath is not None:
+                # sn3d takes the electron fractions of Ye.txt for the source model. Ye.txt has the cells of the source
+                # model, thus the reduced model gets these values in its column Ye, also in version 1
                 dfmodel = with_ye_of_yefile(dfmodel.collect(), yefilepath).lazy()
 
             (dfmodel_out, dfelabundances_out, dfgridcontributions_out, modelmeta_out) = dimension_reduce_model(

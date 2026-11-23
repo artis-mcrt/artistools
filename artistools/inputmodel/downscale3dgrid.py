@@ -78,9 +78,9 @@ def make_downscaled_3d_grid(
     Should be same as downscale_3d_grid.pro. args gives the options of the diagnostic plot, e.g. --darkmode.
     formatversion is the format version of the small model.txt, and None keeps the version of the model.
 
-    A small model of format version 2 gets the electron fractions of the Ye.txt of the model in its column Ye,
-    because sn3d takes them for the model. A small model of version 1 gets the values of the column Ye of model.txt,
-    and the function stops for a Ye.txt in the output folder, because that file is of a different model.
+    The small model gets the electron fractions of the Ye.txt of the model in its column Ye, because sn3d takes them
+    for the model and Ye.txt has the cells of the model. For a small model of version 1, the function stops for a
+    Ye.txt in the output folder, because that file is of a different model.
     """
     modelpath = Path(modelpath)
 
@@ -93,8 +93,8 @@ def make_downscaled_3d_grid(
         require_no_ye_file_of_earlier_model(outputfolder, modelpath)
     sourcefolder = get_model_input_folder(modelpath)
     yefilepath = find_ye_file_to_merge(sourcefolder, outputfolder, formatversion)
-    if yefilepath is not None and formatversion == 2:
-        print("  Version 2 has no Ye.txt.")
+    if yefilepath is not None:
+        # Ye.txt has the cells of the source model, thus the small model gets its values in the column Ye of model.txt
         pldfmodel = with_ye_of_yefile(pldfmodel.collect(), yefilepath).lazy()
     # save_modeldata also writes Ye, q, and tracercount, thus the downscaled model must keep them
     modelcolnames = pldfmodel.collect_schema().names()

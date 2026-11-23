@@ -5366,6 +5366,30 @@ def test_reduction_and_downscale_write_the_format_version_of_the_prompt(tmp_path
             assert yevalues.size > 0
             assert np.allclose(yevalues, 0.49, rtol=1e-6, atol=0.0)
 
+    # Ye.txt has the cells of the source model, thus a small model and a reduced model of version 1 also get its
+    # values in the column Ye. The two commands lost the values of Ye.txt for version 1
+    smallfromyefile = tmp_path / "smallfromyefile"
+    smallfromyefile.mkdir()
+    at.inputmodel.makeartismodel.main(
+        **downscaleargs, modelpath=[sourcefolder], format_version=1, outputfile=smallfromyefile
+    )
+    reducedversion1 = tmp_path / "reducedversion1"
+    at.inputmodel.makeartismodel.main(
+        argsraw=[],
+        modelpath=[sourcefolder],
+        dimensionreduce=1,
+        format_version=1,
+        outputfile=reducedversion1,
+        force=True,
+    )
+    for version1folder in (smallfromyefile, next(reducedversion1.iterdir())):
+        dfversion1, metaversion1 = at.inputmodel.scan_modeldata(version1folder)
+        assert metaversion1["formatversion"] == 1
+        # a 1D model of version 1 has logrho and no rho, thus the filter takes the cells with an electron fraction
+        yevalues = dfversion1.filter(pl.col("Ye") > 0).collect()["Ye"].to_numpy()
+        assert yevalues.size > 0
+        assert np.allclose(yevalues, 0.49, rtol=1e-6, atol=0.0)
+
     # a Ye.txt in the output folder of a small model of version 1 is of a different model, thus the command stops
     (tmp_path / "small1" / "Ye.txt").write_text("1\n1 0.9\n", encoding="utf-8")
     with pytest.raises(SystemExit):
