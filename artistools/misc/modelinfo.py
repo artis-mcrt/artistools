@@ -125,6 +125,12 @@ def read_grid_mapping(modelpath: Path) -> tuple[dict[int, list[int]], dict[int, 
     direct_model_propgrid_map = all(
         len(propcells) == 1 and mgi == propcells[0] for mgi, propcells in assoc_cells.items()
     )
+    if not direct_model_propgrid_map and dfgrid.height > 0:
+        # sn3d gives each cell of a mirrored model two propagation cells, and it applies no mass correction to them
+        from artistools.inputmodel import get_modelmeta
+
+        modelmeta = get_modelmeta(modelpath)
+        direct_model_propgrid_map = has_mirror_plane(modelmeta) and grid_map_is_direct(dfgrid, modelmeta)
 
     return assoc_cells, mgi_of_propcells, direct_model_propgrid_map
 
@@ -501,6 +507,14 @@ def grid_out_gives_direct_map(modelpath: Path, modelmeta: "Mapping[str, t.Any]")
     except (OSError, pl.exceptions.PolarsError, *get_decompress_errors()) as exc:
         print_warning(f"The command cannot read the grid.out of {modelpath}, thus it takes a Cartesian grid: {exc}")
         return False
+    return grid_map_is_direct(dfgrid, modelmeta)
+
+
+def grid_map_is_direct(dfgrid: pl.DataFrame, modelmeta: "Mapping[str, t.Any]") -> bool:
+    """Return True if the rows of grid.out give each propagation cell its own model cell.
+
+    A mirrored model has two propagation cells for each model cell, one in each half. A table with no row gives False.
+    """
     modelgridindexofpropcell = (
         get_mirrored_modelgridindex_of_propcell(pl.col("cellindex"), modelmeta)
         if has_mirror_plane(modelmeta)

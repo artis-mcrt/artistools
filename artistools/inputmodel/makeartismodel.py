@@ -255,6 +255,7 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
     # temporary folder in the output folder, and the files replace the old files only after each write is complete.
     # A rename in one file system needs no space, thus a full disk cannot stop it
     stagingfolder = Path(tempfile.mkdtemp(prefix=".formatconversion-", dir=outputfolder))
+    isinstalling = False
     try:
         # With dfelabundances, version 1 also gets abundances.txt, and version 2 gets the otherstable columns
         save_modeldata(
@@ -286,7 +287,22 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
                 # The command stopped above for a Ye.txt of an earlier model
                 obsoletefilenames.append(filename)
 
-        for stagedfile in sorted(stagingfolder.iterdir()):
+        # The old model.txt goes first and the new model.txt comes last. An install that stops between them leaves no
+        # model.txt, thus no reader takes the old model.txt with new files of the cells
+        stagedfiles = sorted(stagingfolder.iterdir())
+        stagedmodelfiles = [path for path in stagedfiles if without_compressed_extension(path).name == "model.txt"]
+        isinstalling = True
+        for oldfile in get_file_copies(outputfolder / "model.txt"):
+            if oldfile.is_file():
+                oldfile.unlink()
+                remove_parquet_cache(oldfile)
+        for filename in obsoletefilenames:
+            for oldfile in get_file_copies(outputfolder / filename):
+                if oldfile.is_file():
+                    oldfile.unlink()
+                    remove_parquet_cache(oldfile)
+                    print(f"  Deleted {oldfile}, which the converted model has no use for")
+        for stagedfile in [*(path for path in stagedfiles if path not in stagedmodelfiles), *stagedmodelfiles]:
             newfile = outputfolder / stagedfile.name
             stagedfile.replace(newfile)
             # the new file replaces each copy of the old file, e.g. a plain Ye.txt beside the new Ye.txt.zst
@@ -295,14 +311,16 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
                     oldfile.unlink()
             remove_parquet_cache(newfile)
             print(f"  Saved {newfile}")
-        for filename in obsoletefilenames:
-            for oldfile in get_file_copies(outputfolder / filename):
-                if oldfile.is_file():
-                    oldfile.unlink()
-                    remove_parquet_cache(oldfile)
-                    print(f"  Deleted {oldfile}, which the converted model has no use for")
+        isinstalling = False
     finally:
-        shutil.rmtree(stagingfolder, ignore_errors=True)
+        if isinstalling:
+            # the old model.txt is gone, thus the staging folder holds the only copy of the new files
+            print_warning(
+                f"The conversion stopped during the install of its files into {outputfolder}, after it deleted the"
+                f" old model.txt. {stagingfolder} holds each new file. Move these files into {outputfolder}"
+            )
+        else:
+            shutil.rmtree(stagingfolder, ignore_errors=True)
 
 
 def get_converted_file_names(

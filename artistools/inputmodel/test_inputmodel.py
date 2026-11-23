@@ -4885,6 +4885,39 @@ def test_otherstable_columns_give_the_element_mass_fractions() -> None:
     assert df1d["X_Ni_otherstable"].to_list() == pytest.approx([0.25, 0.0])
 
 
+def test_conversion_that_stops_during_its_install_leaves_no_old_model_txt(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A conversion that stops during the install of its files leaves no model.txt, and it keeps the new files.
+
+    The install took the files in the order of their names, thus abundances.txt came before model.txt. A stop
+    between the two left the old model.txt with the new abundances.txt.
+    """
+    sourcefolder = tmp_path / "source"
+    sourcefolder.mkdir()
+    for filename in ("model.txt", "abundances.txt"):
+        shutil.copy2(at.get_path("testdata") / "test-classicmode_1d" / filename, sourcefolder / filename)
+    outputfolder = tmp_path / "output"
+    shutil.copytree(sourcefolder, outputfolder)
+    replacefile = Path.replace
+
+    def replace_that_stops_for_abundances(self: Path, target: Path) -> Path:
+        if self.name.startswith("abundances.txt") and self.parent.name.startswith(".formatconversion-"):
+            msg = "the disk is full"
+            raise OSError(msg)
+        return replacefile(self, target)
+
+    with mock.patch.object(Path, "replace", replace_that_stops_for_abundances), pytest.raises(OSError, match="full"):
+        at.inputmodel.makeartismodel.main(
+            argsraw=[], modelpath=[sourcefolder], format_version=1, outputfile=outputfolder, force=True
+        )
+    assert not list(outputfolder.glob("model.txt*"))
+    stagingfolders = list(outputfolder.glob(".formatconversion-*"))
+    assert len(stagingfolders) == 1
+    assert list(stagingfolders[0].glob("model.txt*"))
+    assert "holds each new file" in capsys.readouterr().err
+
+
 def test_conversion_reads_the_folder_of_a_file_path_and_changes_no_file_before_its_checks_pass(tmp_path: Path) -> None:
     """A conversion takes the files of the model folder also for a path of model.txt, and it stops before a write.
 

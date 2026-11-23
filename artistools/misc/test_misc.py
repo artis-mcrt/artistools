@@ -1661,7 +1661,7 @@ def test_server_protocol_changes_with_the_readers(package_modules: list[Path]) -
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (23, "69e24cb9f926002e"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (24, "69e24cb9f926002e"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )
@@ -2269,6 +2269,27 @@ def test_valid_range_ends_at_the_escape_surface_of_the_grid_of_the_run(
     validrange_end_days = get_escaped_arrivalrange(modelfolder)[2]
     assert validrange_end_days is not None
     assert math.isclose(validrange_end_days, lastend_days * (1.0 - escapefactor * vmax_on_c), rel_tol=1e-12)
+
+
+@pytest.mark.parametrize(
+    ("coordinates", "gridout", "isdirect"),
+    [
+        ("spherical2d", DIRECT_GRID_OUT, True),
+        ("spherical1d", CARTESIAN_GRID_OUT, False),
+        ("cylindrical2d mirror", MIRROR_GRID_OUT, True),
+        ("spherical2d mirror", MIRROR_GRID_OUT, True),
+    ],
+)
+def test_grid_mapping_of_a_mirrored_model_on_its_own_grid_is_direct(
+    tmp_path: Path, coordinates: str, gridout: str, isdirect: bool
+) -> None:
+    """A mirrored model on its own grid has two propagation cells for each model cell, and sn3d corrects no mass.
+
+    get_grid_mapping gave such a map as not direct. describeinputmodel and comparetogsinetwork then took a Cartesian
+    grid of CUBOID_NCOORDGRID_X cells, and they gave a mapped mass and abundance corrections that were not correct.
+    """
+    modelfolder = write_escape_surface_model(tmp_path, coordinates, gridout, CARTESIAN_COUNT_OPTIONS)
+    assert at.misc.get_grid_mapping(modelfolder)[2] == isdirect
 
 
 def test_average_direction_bins_unequal_bincounts(monkeypatch: pytest.MonkeyPatch) -> None:
