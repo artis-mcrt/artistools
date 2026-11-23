@@ -191,7 +191,8 @@ def get_spherical_deposit(
 
     r_particle = np.sqrt(np.sum(position**2, axis=1))
     with np.errstate(divide="ignore", invalid="ignore"):
-        costheta_particle = np.where(r_particle > 0.0, position[:, 2] / r_particle, 1.0)
+        # a particle at the centre has no direction, and it gets the first polar cell, as in the other cell searches
+        costheta_particle = np.where(r_particle > 0.0, position[:, 2] / r_particle, costheta_edges[0])
     theta_particle = np.arccos(np.clip(costheta_particle, -1.0, 1.0))
     phi_particle = np.arctan2(position[:, 1], position[:, 0]) % (2.0 * math.pi)
     # the remainder of a small negative angle rounds to 2 pi, which is the angle 0

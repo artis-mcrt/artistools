@@ -4872,12 +4872,17 @@ def test_makeartismodel_converts_the_format_version_into_a_new_folder(tmp_path: 
         dfversion1.select("X_Fe").collect().to_series(), dfsource.select("X_Fe").collect().to_series()
     )
 
-    for outputfolder in (version2folder, None):
+    # a reader also finds a model file in a subfolder, and the conversion wrote a second model.txt beside it
+    nestedfolder = tmp_path / "nested"
+    (nestedfolder / "data").mkdir(parents=True)
+    shutil.copy(sourcefolder / "Ye.txt", nestedfolder / "data" / "Ye.txt")
+    for outputfolder in (version2folder, nestedfolder, None):
         with pytest.raises(SystemExit):
             at.inputmodel.makeartismodel.main(
                 argsraw=[], modelpath=[sourcefolder], format_version=2, outputfile=outputfolder
             )
     assert {path.name: path.read_bytes() for path in sourcefolder.iterdir() if path.is_file()} == sourcefiles
+    assert [path.name for path in nestedfolder.iterdir()] == ["data"]
 
 
 def test_ye_merge_and_version_2_writer_follow_the_rules_of_sn3d(tmp_path: Path) -> None:
@@ -5428,6 +5433,14 @@ def test_spherical_deposit_agrees_with_a_sum_over_all_cells(normalisekernelweigh
         assert actual[~isinside].any()
         assert not actual[6].any()
         np.testing.assert_allclose(actual.sum(axis=1), mass * weightsums, rtol=1e-12)
+
+    # A particle at the centre has no direction. Its mass went to the last polar cell, and the other cell searches
+    # give the centre to the first polar cell
+    _, centrecell, centremass, _ = get_spherical_deposit(
+        np.zeros((1, 3)), np.array([1e-3]), np.array([2.0]), edges, wij, normalisekernelweights=True
+    )
+    assert centrecell.tolist() == [0]
+    assert centremass.tolist() == pytest.approx([2.0])
 
 
 def test_spherical_map_gives_each_particle_the_cell_of_its_direction(tmp_path: Path) -> None:

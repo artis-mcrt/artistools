@@ -156,15 +156,11 @@ def convert_model_format(modelpath: Path, outputfolder: Path, formatversion: int
     does not read. The output folder holds no model file before the conversion, thus the command changes no file
     of a model.
     """
-    oldfiles = [
-        path
-        for filename in (*MODEL_FILE_NAMES, *CELL_ID_FILE_NAMES)
-        for path in get_file_copies(outputfolder / filename)
-        if path.is_file()
-    ]
-    if oldfiles:
+    # the search of the readers, which also finds a compressed file and a file in a subfolder, e.g. data/model.txt
+    oldfile = firstexisting_or_none([*MODEL_FILE_NAMES, *CELL_ID_FILE_NAMES], folder=outputfolder)
+    if oldfile is not None:
         exit_with_error(
-            f"The output folder holds {oldfiles[0]}, and a conversion writes into a folder with no model file",
+            f"The output folder holds {oldfile}, and a conversion writes into a folder with no model file",
             "Give -o with a new folder",
         )
     lzmodel, modelmeta = scan_modeldata(modelpath)
