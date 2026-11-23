@@ -543,52 +543,33 @@ def propagation_grid_is_model_grid(modelpath: Path, modelmeta: "Mapping[str, t.A
     return grid_out_gives_direct_map(modelpath, modelmeta)
 
 
-def get_valid_range_radial_velocities_cmps(modelpath: Path, modelmeta: "Mapping[str, t.Any]") -> tuple[float, float]:
-    """Return the largest radial velocity of the matter and of the escape surface of a run [cm/s].
+def get_escape_surface_radial_velocity_cmps(modelpath: Path, modelmeta: "Mapping[str, t.Any]") -> float:
+    """Return the largest radial velocity of the escape surface of a run [cm/s], which sets the valid range.
 
-    modelpath is a local model folder. The first value sets the start of the valid range, and the second value sets
-    its end. sn3d propagates the packets on the grid of the model cells or on a Cartesian grid (GRID_TYPE_OVERRIDE),
-    and propagation_grid_is_model_grid gives which. A spherical grid ends at vmax, a corner of a cylindrical grid is
-    at sqrt(2) vmax, and a corner of a Cartesian grid is at sqrt(3) vmax.
+    modelpath is a local model folder. The packets escape at the outer edge of the propagation grid. sn3d propagates
+    the packets on the grid of the model cells or on a Cartesian grid (GRID_TYPE_OVERRIDE), and
+    propagation_grid_is_model_grid gives which. A spherical grid ends at vmax, a corner of a cylindrical grid is at
+    sqrt(2) vmax, and a corner of a Cartesian grid is at sqrt(3) vmax.
 
-    The matter: sn3d gives each propagation cell the matter of the model at the centre of the cell (grid.cc). On the
-    model grid, the matter thus ends at the corner of that grid. On a Cartesian propagation grid, the matter extends
-    up to half a cell diagonal beyond the corner of the model grid. Without the counts of the propagation cells, the
-    function takes the corner of the model grid.
-
-    The escape surface: the packets escape at the outer edge of the propagation grid. With
-    FORCE_SPHERICAL_ESCAPE_SURFACE, sn3d removes the matter of each cell whose centre is outside vmax. A packet then
-    escapes when it enters a cell whose nearest point to the centre is outside vmax. The cell that it leaves has its
-    nearest point inside vmax, thus the packet is at vmax plus one cell diagonal or less.
+    With FORCE_SPHERICAL_ESCAPE_SURFACE, sn3d removes the matter of each cell whose centre is outside vmax. A packet
+    then escapes when it enters a cell whose nearest point to the centre is outside vmax. The cell that it leaves has
+    its nearest point inside vmax, thus the packet is at vmax plus one cell diagonal or less.
     """
     vmax_cmps = float(modelmeta["vmax_cmps"])
     hasmodelgrid = propagation_grid_is_model_grid(modelpath, modelmeta)
-    modelcornervmax_cmps = get_grid_max_radial_velocity_cmps(modelmeta)
-    gridcornervmax_cmps = (
-        modelcornervmax_cmps
-        if hasmodelgrid
-        else get_grid_max_radial_velocity_cmps({"coordinates": "cartesian3d", "vmax_cmps": vmax_cmps})
+    gridcornervmax_cmps = get_grid_max_radial_velocity_cmps(
+        modelmeta if hasmodelgrid else {"coordinates": "cartesian3d", "vmax_cmps": vmax_cmps}
     )
+    if get_artis_option(modelpath, "FORCE_SPHERICAL_ESCAPE_SURFACE") != "true":
+        return gridcornervmax_cmps
     celldiagonal_cmps = get_propagation_cell_diagonal_cmps(modelpath, modelmeta, hasmodelgrid=hasmodelgrid)
     if celldiagonal_cmps is None:
-        if not hasmodelgrid:
-            print_warning(
-                f"artisoptions.h of {modelpath} gives no positive integer CUBOID_NCOORDGRID_X, _Y, and _Z. Thus the"
-                " start of the valid range takes the corner of the model grid. The matter of a Cartesian propagation"
-                " grid can extend half a cell diagonal beyond that corner (grid.cc)"
-            )
-        return modelcornervmax_cmps, gridcornervmax_cmps
-
-    mattervmax_cmps = (
-        modelcornervmax_cmps
-        if hasmodelgrid
-        else min(gridcornervmax_cmps, modelcornervmax_cmps + celldiagonal_cmps / 2.0)
-    )
-    escapevmax_cmps = gridcornervmax_cmps
-    if get_artis_option(modelpath, "FORCE_SPHERICAL_ESCAPE_SURFACE") == "true":
-        mattervmax_cmps = min(mattervmax_cmps, vmax_cmps + celldiagonal_cmps / 2.0)
-        escapevmax_cmps = min(escapevmax_cmps, vmax_cmps + celldiagonal_cmps)
-    return mattervmax_cmps, escapevmax_cmps
+        print_warning(
+            f"artisoptions.h of {modelpath} gives FORCE_SPHERICAL_ESCAPE_SURFACE but no positive integer count of the"
+            " propagation cells on each axis. Thus the escape surface is the corner of the propagation grid"
+        )
+        return gridcornervmax_cmps
+    return min(gridcornervmax_cmps, vmax_cmps + celldiagonal_cmps)
 
 
 def get_propagation_cell_diagonal_cmps(

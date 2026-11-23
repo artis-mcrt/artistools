@@ -51,6 +51,7 @@ from artistools.misc import get_average_group_dirbins
 from artistools.misc import get_bin_index_expr
 from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_dirbins
+from artistools.misc import get_escape_surface_radial_velocity_cmps
 from artistools.misc import get_file_copies
 from artistools.misc import get_file_state
 from artistools.misc import get_metadata_path
@@ -63,7 +64,6 @@ from artistools.misc import get_nu_grid
 from artistools.misc import get_run_subfolders
 from artistools.misc import get_time_range
 from artistools.misc import get_timestep_times
-from artistools.misc import get_valid_range_radial_velocities_cmps
 from artistools.misc import get_vpkt_config
 from artistools.misc import get_xunit
 from artistools.misc import modelpath_cache
@@ -1887,7 +1887,7 @@ def get_default_radialvelocity_shells(
     vmax_kmps = modelmeta["vmax_cmps"] / km_to_cm
     edges = [vmax_kmps * i / nshells for i in range(nshells + 1)]
     # a spherical grid ends at vmax, thus it gets no outer shell
-    escapevelocity_kmps = get_valid_range_radial_velocities_cmps(get_model_folder(modelpath), modelmeta)[1] / km_to_cm
+    escapevelocity_kmps = get_escape_surface_radial_velocity_cmps(get_model_folder(modelpath), modelmeta) / km_to_cm
     if escapevelocity_kmps > vmax_kmps:
         edges.append(escapevelocity_kmps)
 

@@ -1191,7 +1191,7 @@ def test_filterpackets_keeps_a_file_with_no_escaped_rpkt(tmp_path: Path, capsys:
 def test_plotspherical(tmp_path: Path) -> None:
     at.packets.plotspherical.main(argsraw=[], modelpath=modelpath, outputfile=tmp_path)
 
-    assert [path.name for path in tmp_path.glob("plotspherical_*.pdf")] == ["plotspherical_256.67-333.82d.pdf"]
+    assert [path.name for path in tmp_path.glob("plotspherical_*.pdf")] == ["plotspherical_261.55-333.82d.pdf"]
 
 
 def test_plotspherical_gaussian_filter(tmp_path: Path) -> None:

@@ -760,9 +760,7 @@ def test_spectra_default_velocity_shells_take_units_of_c_for_a_fast_model() -> N
     with (
         mock.patch("artistools.inputmodel.scan_modeldata", return_value=(pl.LazyFrame(), fastmeta)),
         # the model of this test runs on its own spherical grid, which ends at vmax
-        mock.patch.object(
-            atspectra, "get_valid_range_radial_velocities_cmps", return_value=(fastmeta["vmax_cmps"],) * 2
-        ),
+        mock.patch.object(atspectra, "get_escape_surface_radial_velocity_cmps", return_value=fastmeta["vmax_cmps"]),
     ):
         edges, unit = atspectra.get_default_radialvelocity_shells("fastmodel", nshells=3)
     assert unit == "c"
@@ -2188,7 +2186,7 @@ def test_plotspectra_takes_a_reference_named_out_before_a_model(tmp_path: Path) 
     outputfolder = tmp_path / "out"
     outputfolder.mkdir()
     at.spectra.plot(
-        argsraw=["-timedays", "260-300", str(tmp_path / "myref.out"), str(modelpath), "-outputfile", str(outputfolder)]
+        argsraw=["-timedays", "265-300", str(tmp_path / "myref.out"), str(modelpath), "-outputfile", str(outputfolder)]
     )
 
     assert len(list(outputfolder.glob("*.pdf"))) == 1

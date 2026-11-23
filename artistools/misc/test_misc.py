@@ -1661,7 +1661,7 @@ def test_server_protocol_changes_with_the_readers(package_modules: list[Path]) -
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (27, "69e24cb9f926002e"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (28, "69e24cb9f926002e"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )
@@ -2198,34 +2198,6 @@ def write_escape_surface_model(tmp_path: Path, coordinates: str, gridout: str | 
 
 
 @pytest.mark.parametrize(
-    ("options", "startfactor"),
-    [
-        # without the counts of the propagation cells, the start takes the corner of the model grid
-        (None, 1.0),
-        # a cell of the Cartesian grid has the width 2 vmax / 50, thus half its diagonal is sqrt(3) vmax / 50
-        (CARTESIAN_COUNT_OPTIONS, 1.0 + math.sqrt(3.0) / 50.0),
-    ],
-)
-def test_valid_range_starts_when_light_from_the_matter_of_the_largest_radius_arrives(
-    tmp_path: Path, options: str | None, startfactor: float
-) -> None:
-    """The valid range of the arrival times starts at t_start (1 + v / c), with v at the matter of the largest radius.
-
-    sn3d gives each propagation cell the matter at the centre of the cell. Thus a cell at the edge of a 1D model on a
-    Cartesian grid has matter up to half a cell diagonal beyond vmax. The start took vmax, which accepted early times.
-    """
-    from artistools.misc import get_escaped_arrivalrange
-
-    modelfolder = write_escape_surface_model(tmp_path, "spherical1d", CARTESIAN_GRID_OUT, options)
-    firststart_days = at.get_timestep_times(modelfolder, loc="start")[0]
-    vmax_on_c = 3000.0 * at.constants.km_to_cm / at.constants.C_cm_per_s
-    get_escaped_arrivalrange.cache_clear()
-    validrange_start_days = get_escaped_arrivalrange(modelfolder)[1]
-    assert validrange_start_days is not None
-    assert math.isclose(validrange_start_days, firststart_days * (1.0 + startfactor * vmax_on_c), rel_tol=1e-12)
-
-
-@pytest.mark.parametrize(
     ("coordinates", "gridout", "options", "escapefactor"),
     [
         # without grid.out, the grid of the run is not known, and the Cartesian corner is the safe value
@@ -2257,24 +2229,28 @@ def test_valid_range_starts_when_light_from_the_matter_of_the_largest_radius_arr
         ("spherical1d", DIRECT_GRID_OUT, FORCE_SPHERICAL_OPTIONS, 1.0),
     ],
 )
-def test_valid_range_ends_at_the_escape_surface_of_the_grid_of_the_run(
+def test_valid_range_takes_the_escape_surface_of_the_grid_of_the_run(
     tmp_path: Path, coordinates: str, gridout: str | None, options: str | None, escapefactor: float
 ) -> None:
-    """The valid range of the arrival times ends at t_end (1 - v / c), with v at the surface where packets escape.
+    """The valid range of the arrival times is t_start (1 + v / c) to t_end (1 - v / c), with v at the escape surface.
 
     The packets escape at the outer edge of the propagation grid, which has the cells of the model or is a Cartesian
     grid. grid.out shows the grid of a run with its map of the model cells. A spherical grid ends at vmax, a corner
     of a cylindrical grid is at sqrt(2) vmax, and a corner of a Cartesian grid is at sqrt(3) vmax. The range took
-    the Cartesian corner for each run, thus it ended too early for a run on a different grid.
+    the Cartesian corner for each run, thus it ended too early for a run on a different grid. The start took the
+    matter of the largest radius, which is not the corner of the escape surface.
     """
     from artistools.misc import get_escaped_arrivalrange
 
     modelfolder = write_escape_surface_model(tmp_path, coordinates, gridout, options)
+    firststart_days = at.get_timestep_times(modelfolder, loc="start")[0]
     lastend_days = at.get_timestep_times(modelfolder, loc="end")[-1]
     vmax_on_c = 3000.0 * at.constants.km_to_cm / at.constants.C_cm_per_s
     get_escaped_arrivalrange.cache_clear()
-    validrange_end_days = get_escaped_arrivalrange(modelfolder)[2]
+    _, validrange_start_days, validrange_end_days = get_escaped_arrivalrange(modelfolder)
+    assert validrange_start_days is not None
     assert validrange_end_days is not None
+    assert math.isclose(validrange_start_days, firststart_days * (1.0 + escapefactor * vmax_on_c), rel_tol=1e-12)
     assert math.isclose(validrange_end_days, lastend_days * (1.0 - escapefactor * vmax_on_c), rel_tol=1e-12)
 
 

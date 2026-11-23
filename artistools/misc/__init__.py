@@ -171,6 +171,7 @@ from artistools.misc.modelinfo import get_artis_option as get_artis_option
 from artistools.misc.modelinfo import get_artis_options as get_artis_options
 from artistools.misc.modelinfo import get_artis_source_text as get_artis_source_text
 from artistools.misc.modelinfo import get_cell_counts_of_edges as get_cell_counts_of_edges
+from artistools.misc.modelinfo import get_escape_surface_radial_velocity_cmps as get_escape_surface_radial_velocity_cmps
 from artistools.misc.modelinfo import get_grid_mapping as get_grid_mapping
 from artistools.misc.modelinfo import get_grid_max_radial_velocity_cmps as get_grid_max_radial_velocity_cmps
 from artistools.misc.modelinfo import get_inputfilepath as get_inputfilepath
@@ -189,7 +190,6 @@ from artistools.misc.modelinfo import get_ranks_of_cells_in_layout as get_ranks_
 from artistools.misc.modelinfo import get_run_subfolders as get_run_subfolders
 from artistools.misc.modelinfo import get_runfolder_timesteps as get_runfolder_timesteps
 from artistools.misc.modelinfo import get_runfolders as get_runfolders
-from artistools.misc.modelinfo import get_valid_range_radial_velocities_cmps as get_valid_range_radial_velocities_cmps
 from artistools.misc.modelinfo import get_vpkt_config as get_vpkt_config
 from artistools.misc.modelinfo import has_mirror_plane as has_mirror_plane
 from artistools.misc.modelinfo import MODEL_EDGE_KEYS as MODEL_EDGE_KEYS
