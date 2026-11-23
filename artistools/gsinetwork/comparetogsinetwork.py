@@ -21,6 +21,7 @@ from artistools.constants import geometric_time_to_s
 from artistools.constants import Msun_to_g
 from artistools.estimators import scan_estimators
 from artistools.inputmodel import add_derived_cols_to_modeldata
+from artistools.inputmodel import get_gridcontributions_folder
 from artistools.inputmodel import scan_modeldata
 from artistools.inputmodel.modelfromhydro import get_merger_time_geomunits
 from artistools.inputmodel.rprocess_from_trajectory import check_traj_time_matches
@@ -40,6 +41,7 @@ from artistools.misc import df_filter_minmax_bracketed
 from artistools.misc import exit_with_error
 from artistools.misc import get_artis_option
 from artistools.misc import get_grid_mapping
+from artistools.misc import get_model_coordinates
 from artistools.misc import get_model_name
 from artistools.misc import is_in_range
 from artistools.misc import output_data
@@ -84,10 +86,12 @@ def get_abundance_correction_factors(
             print("  The map of the model cells to the propagation grid is direct")
     except FileNotFoundError:
         # ARTIS maps a 1D or 2D model to a spherical, cylindrical, or Cartesian grid, and grid.out alone tells which
-        if modelmeta["dimensions"] != 3:
+        # ARTIS can also map a model with spherical2d or spherical3d coordinates to a Cartesian grid
+        if get_model_coordinates(modelmeta) != "cartesian3d":
             exit_with_error(
                 f"{Path(modelpath, 'grid.out')} does not exist. Thus artistools cannot get the map of the"
-                f" {modelmeta['dimensions']}D model cells to the propagation grid or the abundance correction factors",
+                f" {get_model_coordinates(modelmeta)} model cells to the propagation grid or the abundance correction"
+                " factors",
                 "Copy grid.out of the run into the model folder",
             )
         print("  No grid.out. A 3D model grid is also the propagation grid, thus the map is direct")
@@ -645,14 +649,12 @@ def get_dfcontribsparticledata(
     t_mergertime_s = mergertime_geomunits * geometric_time_to_s
     arr_time_gsi_s_incpremerger = np.array(arr_time_gsi_days) * day_to_s + t_mergertime_s
 
-    dfpartcontrib = (
-        get_gridparticlecontributions(modelpath)
-        .lazy()
-        .with_columns(modelgridindex=pl.col("cellindex") - 1)
-        .filter(pl.col("frac_of_cellmass") > 0)
-    ).join(
-        lzdfmodel.select(["modelgridindex", "cellmass_on_mtot"]),
-        on="modelgridindex",
+    # the cell ids of gridcontributions.txt are those of model.txt, which start at 1, or at 0 in format version 2
+    dfgridcontributions = get_gridparticlecontributions(get_gridcontributions_folder(modelpath))
+    dfpartcontrib = (dfgridcontributions.lazy().filter(pl.col("frac_of_cellmass") > 0)).join(
+        lzdfmodel.select(["inputcellid", "modelgridindex", "cellmass_on_mtot"]),
+        left_on="cellindex",
+        right_on="inputcellid",
         how="inner",
         maintain_order="left",
     )

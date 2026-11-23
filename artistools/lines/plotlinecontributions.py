@@ -46,6 +46,7 @@ from artistools.misc import positive_velocity_kmps_arg
 from artistools.misc import print_detail
 from artistools.misc import print_modelpath
 from artistools.misc import print_warning
+from artistools.misc import require_cartesian3d_model
 from artistools.plottools import addarg_velocitybins
 from artistools.plottools import convert_velocity_columns
 from artistools.plottools import format_velocity
@@ -348,13 +349,13 @@ def get_trough_settings(args: argparse.Namespace, unit: t.Literal["kmps", "c"]) 
         return None
     check_dirbin(args.troughdirbin, "-troughdirbin", averageoverphi=args.average_over_phi_angle, allowall=False)
     _, modelmeta = scan_modeldata(args.modelpath, printwarningsonly=True)
-    if modelmeta["dimensions"] != 3:
-        # a cell of a 2D model is a ring, and a cell of a 1D model is a shell
-        exit_with_error(
-            f"The trough estimate needs the velocity vector of each cell, and a {modelmeta['dimensions']}D model has no"
-            " such vector",
-            "Remove --troughdirbin",
-        )
+    # a cell of a 2D model is a ring, and a cell of a 1D model is a shell. The estimate also reads the equal widths
+    # of the cells along x, y, and z
+    require_cartesian3d_model(
+        modelmeta,
+        "The trough estimate needs",
+        "The estimate reads the velocity vector and the widths of each cell. Remove --troughdirbin",
+    )
     photospherevelocity_kmps = args.photospherevelocity_kmps
     if photospherevelocity_kmps is None:
         exit_with_error(

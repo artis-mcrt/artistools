@@ -23,6 +23,7 @@ from artistools.misc import open_file
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import print_saved
+from artistools.misc import require_cartesian3d_model
 from artistools.plottools import TRANSPARENT_DARKMODE_FORMATS
 
 
@@ -74,6 +75,8 @@ def viewing_angles_visualisation(args: argparse.Namespace) -> None:
 
     # the volume holds the density of each cell, thus the model gives the positions and the densities
     lzmodel, modelmeta = scan_modeldata(args.modelpath)
+    # the isosurface reads the density on a regular grid of x, y, and z
+    require_cartesian3d_model(modelmeta, "The 3D view of the density needs", "Give a 3D Cartesian model")
     dfmodel = (
         add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
         .select("pos_x_mid", "pos_y_mid", "pos_z_mid", "rho")

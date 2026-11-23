@@ -11,12 +11,14 @@ def test_cache_delete_keeps_the_lock_files_and_other_parquet_files(tmp_path: Pat
     """Delete the caches and the leftover files of a stopped conversion, and keep each file that is not a cache.
 
     A deleted lock file can give the lock to two writers. A parquet file of a different name belongs to the user, also
-    when it ends in .out.parquet.
+    when it ends in .out.parquet. The reader of abundances.txt puts its cache beside the file that sn3d reads, which
+    can be in artis/data/, and the command did not find that cache.
     """
     from artistools.cache import main as cachemain
 
     deleted = [
         "model.txt.parquet",
+        "artis/data/abundances.txt.parquet",
         "linelist.out.parquet.tmp",
         "packets/packetsbatch00_0000_0003.out.parquet",
         "12411848.slurm/estimbatch00_0000_0003.out.parquet",
@@ -37,6 +39,24 @@ def test_cache_delete_keeps_the_lock_files_and_other_parquet_files(tmp_path: Pat
     cachemain(argsraw=["delete", "-f", str(tmp_path)])
 
     assert sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*") if path.is_file()) == sorted(kept)
+
+
+def test_cache_make_reads_the_input_files_that_the_readers_take(tmp_path: Path) -> None:
+    """The readers take a model.txt in data/ and an abundances.txt that sn3d reads, e.g. in artis/data/.
+
+    The cache command searched the model folder alone, thus it made no cache for such a model.
+    """
+    from unittest import mock
+
+    from artistools.cache import make_inputmodel_caches
+
+    (tmp_path / "input.txt").write_text("", encoding="utf-8")
+    for filename, folder in (("model.txt", "data"), ("abundances.txt", "artis/data")):
+        (tmp_path / folder).mkdir(parents=True)
+        shutil.copy2(at.get_path("testdata") / "test-classicmode_1d" / filename, tmp_path / folder / filename)
+    with mock.patch("artistools.cache.scan_initelemabundances") as mockscan:
+        assert make_inputmodel_caches(tmp_path) is not None
+    mockscan.assert_called_once()
 
 
 def test_cache_make_gives_no_data_for_virtual_packets_without_their_files(tmp_path: Path) -> None:

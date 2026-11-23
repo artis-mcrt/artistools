@@ -4,6 +4,7 @@ import gzip
 import itertools
 import lzma
 import math
+import os
 import re
 import typing as t
 from collections.abc import Callable
@@ -756,10 +757,37 @@ def test_spectra_default_velocity_shells_take_units_of_c_for_a_fast_model() -> N
     assert np.isclose(edges[10], 28920.2, rtol=1e-4)
 
     fastmeta = {"vmax_cmps": 0.3 * 2.99792458e10, "dimensions": 1}
-    with mock.patch("artistools.inputmodel.scan_modeldata", return_value=(pl.LazyFrame(), fastmeta)):
+    with (
+        mock.patch("artistools.inputmodel.scan_modeldata", return_value=(pl.LazyFrame(), fastmeta)),
+        # the model of this test runs on its own spherical grid, which ends at vmax
+        mock.patch.object(atspectra, "get_escape_surface_radial_velocity_cmps", return_value=fastmeta["vmax_cmps"]),
+    ):
         edges, unit = atspectra.get_default_radialvelocity_shells("fastmodel", nshells=3)
     assert unit == "c"
     assert atspectra.get_shell_labels(edges, unit) == ["[0, 0.1) c", "[0.1, 0.2) c", "[0.2, 0.3) c"]
+
+
+def test_spectra_default_shells_of_a_spherical_model_on_a_cartesian_grid_end_at_its_corner(tmp_path: Path) -> None:
+    """A spherical model on a Cartesian propagation grid has matter outside vmax, and the last shell holds it.
+
+    The default shells of a spherical model ended at vmax, thus the packets of the corner cells had no shell.
+    """
+    modellines = [
+        "format_version 2",
+        "coordinates spherical2d",
+        "t_model_init_days 1.0",
+        "vel_r_edges_kmps 0 1000 3000",
+        "costheta_edges -1 0.1 1",
+        "columns inputcellid rho",
+        "0 1e-12",
+    ]
+    (tmp_path / "model.txt").write_text("\n".join(modellines) + "\n", encoding="utf-8")
+    (tmp_path / "artisoptions.h").write_text(
+        "constexpr std::optional<GridType> GRID_TYPE_OVERRIDE = GridType::CARTESIAN3D;\n", encoding="utf-8"
+    )
+    edges, _ = atspectra.get_default_radialvelocity_shells(tmp_path, nshells=3)
+    assert edges[-1] == pytest.approx(3000.0 * math.sqrt(3.0), rel=1e-9)
+    assert len(edges) == 5
 
 
 def test_spectra_losvelocity_shell_contributions() -> None:
@@ -2158,7 +2186,7 @@ def test_plotspectra_takes_a_reference_named_out_before_a_model(tmp_path: Path) 
     outputfolder = tmp_path / "out"
     outputfolder.mkdir()
     at.spectra.plot(
-        argsraw=["-timedays", "260-300", str(tmp_path / "myref.out"), str(modelpath), "-outputfile", str(outputfolder)]
+        argsraw=["-timedays", "265-300", str(tmp_path / "myref.out"), str(modelpath), "-outputfile", str(outputfolder)]
     )
 
     assert len(list(outputfolder.glob("*.pdf"))) == 1
@@ -3947,3 +3975,16 @@ def test_polarisation_marks_zero_intensity_as_unavailable(capsys: pytest.Capture
     result = plotspectra.get_polarisation_spectrum(stokes, "3.0", args)
     assert result["3.0"].to_list() == [None, None]
     assert "no value at 2 of 2 points" in capsys.readouterr().out
+
+
+def test_vspecpol_rank_files_take_the_newest_copy_of_each_rank(tmp_path: Path) -> None:
+    """A continued run writes a rank file that also holds the flux of the earlier runs, thus the newest file applies."""
+    oldfile = tmp_path / "vspecpol_0000.out"
+    newfile = tmp_path / "1234.slurm" / "vspecpol_0000.out"
+    newfile.parent.mkdir()
+    for rankfile, mtime in ((oldfile, 1_000_000), (newfile, 2_000_000)):
+        rankfile.write_text("0\n", encoding="utf-8")
+        os.utime(rankfile, (mtime, mtime))
+
+    with mock.patch.object(atspectra, "get_nprocs", return_value=1):
+        assert atspectra.get_vspecpol_rank_files(tmp_path) == [newfile]

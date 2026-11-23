@@ -17,6 +17,8 @@ import polars as pl
 
 from artistools.atomic import scan_linelist
 from artistools.estimators import scan_estimators
+from artistools.inputmodel import find_abundance_file
+from artistools.inputmodel import get_model_file_path
 from artistools.inputmodel import scan_initelemabundances
 from artistools.inputmodel import scan_modeldata
 from artistools.misc import addarg_action
@@ -35,6 +37,7 @@ from artistools.misc import print_or_write_table
 from artistools.misc import print_warning
 from artistools.misc import require_action
 from artistools.misc import resolve_table_outputfile
+from artistools.misc import SN3D_INPUT_FOLDERS
 from artistools.packets import get_packets_batch_parquet_paths
 
 if t.TYPE_CHECKING:
@@ -56,8 +59,14 @@ LEFTOVER_NAME_PATTERN: t.Final = re.compile(rf"\.{CACHE_BASENAME}\.(?:partial\w+
 
 
 def get_cache_folders(modelfolder: Path) -> list[Path]:
-    """Return the model folder and its subfolders, e.g. packets and the run folders, where the readers put caches."""
-    return [modelfolder, *sorted(child for child in modelfolder.iterdir() if child.is_dir())]
+    """Return the model folder and its subfolders, e.g. packets and the run folders, where the readers put caches.
+
+    The reader of abundances.txt takes the file that sn3d reads, which can be in artis/data/. The reader puts the
+    cache beside that file.
+    """
+    subfolders = [child for child in modelfolder.iterdir() if child.is_dir()]
+    sn3dfolders = [modelfolder / folder for folder in SN3D_INPUT_FOLDERS[1:] if (modelfolder / folder).is_dir()]
+    return [modelfolder, *sorted(dict.fromkeys([*subfolders, *sn3dfolders]))]
 
 
 def find_cache_files(modelfolder: Path) -> tuple[list[Path], list[Path]]:
@@ -100,10 +109,12 @@ def make_inputmodel_caches(modelfolder: Path) -> str | None:
 
     Return None for a model folder with no model.txt.
     """
-    if firstexisting_or_none("model.txt", folder=modelfolder, search_subfolders=False) is None:
+    # the readers also open a model.txt in data/, and an abundances.txt that sn3d reads, e.g. in artis/data/
+    modelfile = get_model_file_path(modelfolder)
+    if modelfile is None:
         return None
     scan_modeldata(modelfolder, printwarningsonly=True)
-    if firstexisting_or_none("abundances.txt", folder=modelfolder, search_subfolders=False) is not None:
+    if find_abundance_file(modelfile.parent) is not None:
         scan_initelemabundances(modelfolder, printwarningsonly=True)
     return "the reader keeps a cache of each input file larger than 2 MiB"
 

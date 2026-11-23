@@ -71,6 +71,8 @@ from artistools.estimators.plotitems import SERIESTYPES
 from artistools.estimators.plotitems import split_plotitem_styles
 from artistools.estimators.plotitems import VARIABLE_ALIASES
 from artistools.inputmodel import get_cell_direction_selection
+from artistools.inputmodel import get_spherical_image_cell_indices
+from artistools.inputmodel import get_spherical_slice_velocity_cmps
 from artistools.inputmodel import resolve_cell_direction_range
 from artistools.misc import addarg_axislimits
 from artistools.misc import addarg_celldirectionrange
@@ -101,11 +103,13 @@ from artistools.misc import format_cell_direction_range
 from artistools.misc import format_frame_path
 from artistools.misc import get_bin_index_expr
 from artistools.misc import get_filterfunc
+from artistools.misc import get_model_coordinates
 from artistools.misc import get_model_name
 from artistools.misc import get_time_range
 from artistools.misc import get_time_range_text
 from artistools.misc import get_timestep_time
 from artistools.misc import get_timestep_times
+from artistools.misc import has_mirror_plane
 from artistools.misc import is_plain_value
 from artistools.misc import item_names_a_folder
 from artistools.misc import on_model_host
@@ -117,11 +121,13 @@ from artistools.misc import print_detail
 from artistools.misc import print_modelpath
 from artistools.misc import print_product
 from artistools.misc import print_warning
+from artistools.misc import require_cartesian3d_model
 from artistools.misc import resolve_frameset_paths
 from artistools.misc import resolve_positional_modelpath
 from artistools.misc import resolve_slice_axis
 from artistools.misc import scan_timesteps
 from artistools.misc import SERIES_STYLE_KEYS
+from artistools.misc import SPHERICAL_EDGE_COORDINATES
 from artistools.misc import suggest_names
 from artistools.nltepops import has_nlte_populations
 from artistools.nltepops import read_nltepops
@@ -2381,12 +2387,60 @@ def get_shell_values_on_rz_grid(
     ]
 
 
+def get_spherical_image_values(
+    estimators: pl.LazyFrame,
+    panels: Sequence[ImagePanel],
+    modelmeta: dict[str, t.Any],
+    sliceaxis: str | None,
+    slicevelocity_cmps: float,
+    timesteps: Collection[int],
+) -> "tuple[list[npt.NDArray[np.float64]], tuple[str, str]]":
+    """Return the grid of values of each panel for a model with spherical edges, and the two plot axes.
+
+    The image is a grid of points with equal steps, and each point takes the value of the cell that holds it (see
+    get_spherical_image_cell_indices). With a sliceaxis, the points are in the plane normal to that axis at
+    slicevelocity_cmps. With no sliceaxis, the image has the cylindrical radius and z as its axes. A spherical2d cell
+    is a ring around the z axis. For a spherical3d model, the value of a ring of r and cos(theta) is then the mean over
+    its cells in phi. get_panel_means gives the weight.
+    """
+    if sliceaxis is not None:
+        # get_cells_of_slice moves the plane in the same way, thus each point has a cell that the reader read
+        slicevelocity_cmps = get_spherical_slice_velocity_cmps(slicevelocity_cmps, float(modelmeta["vmax_cmps"]))
+    cellindices = get_spherical_image_cell_indices(modelmeta, sliceaxis, slicevelocity_cmps)
+    ringcount = (len(modelmeta["vel_r_edges_kmps"]) - 1) * (len(modelmeta["costheta_edges"]) - 1)
+    # the points of an image with no sliceaxis are in the first cell of phi, thus their cell index is a ring index
+    imagecell = pl.col("modelgridindex") % ringcount if sliceaxis is None else pl.col("modelgridindex")
+    dfcells = (
+        estimators
+        .filter(pl.col("timestep").is_in(list(timesteps)))
+        .group_by(imagecell.alias("imagecell"))
+        .agg(get_panel_means(panels))
+        .collect()
+    )
+    print(
+        f"  The image has {cellindices.shape[1]} x {cellindices.shape[0]} points with equal steps. Each point takes"
+        f" the value of the cell that holds it, from {dfcells.height} cells or rings of cells with estimators. A cell"
+        " that is narrower than the step of the points can have no point in the image"
+    )
+    isingrid = cellindices >= 0
+    grids = []
+    for panelindex in range(len(panels)):
+        # a cell with no estimators, and a point outside the grid, give NaN
+        cellvalues = np.full(int(modelmeta["npts_model"]), np.nan)
+        cellvalues[dfcells["imagecell"].to_numpy()] = dfcells[f"panel{panelindex}"].to_numpy()
+        grids.append(np.where(isingrid, cellvalues[np.where(isingrid, cellindices, 0)], np.nan))
+
+    plotaxes = ("rcyl", "z") if sliceaxis is None else tuple(axisname for axisname in "xyz" if axisname != sliceaxis)
+    return grids, (plotaxes[0], plotaxes[1])
+
+
 def get_image_values(
     estimators: pl.LazyFrame,
     panels: Sequence[ImagePanel],
     modelmeta: dict[str, t.Any],
     sliceaxis: str | None,
     timesteps: Collection[int],
+    slicevelocity_cmps: float = 0.0,
 ) -> "tuple[list[npt.NDArray[np.float64]], tuple[str, str]]":
     """Return the grid of values of each panel, and the two plot axes.
 
@@ -2400,13 +2454,25 @@ def get_image_values(
 
     An empty cell has no estimators and gives NaN. Each value is the mean over the cells and the timesteps, and
     get_panel_means gives the weight.
+
+    A model with spherical edges has no cell with straight edges on the axes of an image, and
+    get_spherical_image_values gives its grid. slicevelocity_cmps is the position of the plane of such a model on
+    the sliceaxis.
     """
     vmax_cmps = float(modelmeta["vmax_cmps"])
+    if get_model_coordinates(modelmeta) in SPHERICAL_EDGE_COORDINATES:
+        return get_spherical_image_values(estimators, panels, modelmeta, sliceaxis, slicevelocity_cmps, timesteps)
     if modelmeta["dimensions"] == 1:
         return get_shell_values_on_rz_grid(estimators, panels, vmax_cmps, timesteps), ("rcyl", "z")
 
+    # A mirrored model holds the cells with z >= 0, and each cell also fills its mirror cell. The image has the rows
+    # of both halves, and the rows with z < 0 copy the rows of their mirror cells
+    ismirrored = has_mirror_plane(modelmeta) and modelmeta["dimensions"] == 2
+
     def cellindex(axisname: str) -> pl.Expr:
         ncells = int(modelmeta[f"ncoordgrid{axisname}"])
+        if ismirrored and axisname == "z":
+            return ncells + (pl.col("vel_z_mid") / (vmax_cmps / ncells)).floor().cast(pl.Int32)
         return ((pl.col(f"vel_{axisname}_mid") + vmax_cmps) / (2.0 * vmax_cmps / ncells)).floor().cast(pl.Int32)
 
     if sliceaxis is None:
@@ -2433,10 +2499,13 @@ def get_image_values(
 
     grids = []
     for panelindex in range(len(panels)):
-        grid = np.full((int(modelmeta[f"ncoordgrid{plotaxis2}"]), ncells1), np.nan)
-        grid[dfcells["cellindex2"].to_numpy(), dfcells["cellindex1"].to_numpy()] = (
-            dfcells[f"panel{panelindex}"].cast(pl.Float64).fill_null(float("nan")).to_numpy()
-        )
+        ncells2 = int(modelmeta[f"ncoordgrid{plotaxis2}"])
+        grid = np.full((2 * ncells2 if ismirrored else ncells2, ncells1), np.nan)
+        grid[dfcells["cellindex2"].to_numpy(), dfcells["cellindex1"].to_numpy()] = dfcells[
+            f"panel{panelindex}"
+        ].to_numpy()
+        if ismirrored:
+            grid[:ncells2] = grid[ncells2:][::-1]
         grids.append(grid)
 
     return grids, (plotaxis1, plotaxis2)
@@ -2489,7 +2558,9 @@ def get_image_figure_data(
 
     The image shows a plane of a 3D model for --slice, and the model at each cylindrical radius and each z without it.
     """
-    grids, (plotaxis1, plotaxis2) = get_image_values(estimators, panels, modelmeta, args.sliceaxis, timestepslist)
+    grids, (plotaxis1, plotaxis2) = get_image_values(
+        estimators, panels, modelmeta, args.sliceaxis, timestepslist, args.slicevelocity_cmps
+    )
     isplane = plotaxis1 != "rcyl"
 
     strtimestep, strtimedays = get_snapshot_timestrings(modelpath, timestepslist, multiplot=args.multiplot)
@@ -2500,7 +2571,9 @@ def get_image_figure_data(
     elif not isplane and modelmeta["dimensions"] == 3:
         strimage = "average around the z axis"
     figure_title = f"{get_model_name(modelpath)}\nTimestep {strtimestep} ({strtimedays}), {strimage}"
-    directionrange = resolve_cell_direction_range(args, modelpath, quiet=True, dimensions=modelmeta["dimensions"])
+    directionrange = resolve_cell_direction_range(
+        args, modelpath, quiet=True, dimensions=modelmeta["dimensions"], mirrored=has_mirror_plane(modelmeta)
+    )
     if directionrange is not None:
         figure_title += f", {format_cell_direction_range(directionrange)}"
     print("  Plotting " + figure_title.replace("\n", " "))
@@ -3139,6 +3212,8 @@ def resolve_snapshot_arguments(args: argparse.Namespace) -> None:
     isimage = args.dimensionreduce == 2
     # a projection groups the cells as a plane normal to its axis does, and it reads every cell of each line
     args.sliceaxis = projection or (conditions[0][0] if isimage and conditions else None)
+    # an image of a model with spherical edges has its points in the plane at this velocity on the sliceaxis
+    args.slicevelocity_cmps = conditions[0][1] if isimage and conditions else 0.0
     args.slicelabel = ", ".join(label for _, _, label in conditions)
     if not isimage and not conditions:
         return
@@ -3299,10 +3374,9 @@ def prepare_snapshot(
         estimators = estimators.filter(pl.col("modelgridindex").is_in(args.modelgridindex or []))
 
     panels: list[ImagePanel] = []
-    if args.projection is not None and modelmeta["dimensions"] != 3:
-        exit_with_error(
-            f"--projection needs a 3D model, and this model has {modelmeta['dimensions']} dimension(s)",
-            "Give --dimensionreduce 2 for the average around the z axis",
+    if args.projection is not None:
+        require_cartesian3d_model(
+            modelmeta, "--projection needs", "Give --dimensionreduce 2 for the average around the z axis"
         )
     if args.dimensionreduce == 2:
         panels = get_image_panels(plotlist, estimators.collect_schema().names(), args.poptype)
@@ -3508,7 +3582,9 @@ def add_plot_columns(
     if args.modelgridindex is None and args.dimensionreduce == 1:
         estimators = estimators.filter(pl.col("vel_r_mid") <= modelmeta["vmax_cmps"])
 
-    directionrange = resolve_cell_direction_range(args, args.modelpath, quiet=True, dimensions=modelmeta["dimensions"])
+    directionrange = resolve_cell_direction_range(
+        args, args.modelpath, quiet=True, dimensions=modelmeta["dimensions"], mirrored=has_mirror_plane(modelmeta)
+    )
     if directionrange is not None:
         columns = estimators.collect_schema().names()
         estimators = estimators.filter(get_cell_direction_selection(directionrange, columns))

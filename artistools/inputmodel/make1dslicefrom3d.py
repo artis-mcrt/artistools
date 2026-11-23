@@ -22,6 +22,7 @@ from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_show
 from artistools.misc import confirm_overwrite
+from artistools.misc import get_model_coordinates
 from artistools.misc import model_path_from_text
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
@@ -75,8 +76,11 @@ def slice_3dmodel(
 ) -> tuple[dict[int, int], list[float], list[list[float]]]:
     """Write a 1D model.txt from the cells along chosenaxis, and return the 3D-to-1D cell id map and plot data."""
     dfmodel3d, modelmeta3d = scan_modeldata(inputfolder)
-    if modelmeta3d["dimensions"] != 3:
-        msg = f"The model in {inputfolder} has {modelmeta3d['dimensions']} dimensions, but the slice needs a 3D model"
+    if get_model_coordinates(modelmeta3d) != "cartesian3d":
+        msg = (
+            f"The model in {inputfolder} has {get_model_coordinates(modelmeta3d)} coordinates, but the slice needs a"
+            " model with 3D Cartesian coordinates"
+        )
         raise ValueError(msg)
     t_model_s = modelmeta3d["t_model_init_days"] * day_to_s
     wid_init = modelmeta3d["wid_init"]

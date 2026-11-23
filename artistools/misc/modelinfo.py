@@ -2,6 +2,7 @@
 
 import contextlib
 import dataclasses as dc
+import itertools
 import math
 import re
 import typing as t
@@ -19,11 +20,14 @@ import numpy.typing as npt
 import polars as pl
 
 from artistools.constants import h_ev_s
+from artistools.constants import km_to_cm
+from artistools.misc.console import add_help_note
 from artistools.misc.console import print_detail
 from artistools.misc.console import print_warning
 from artistools.misc.fileio import COMPRESSED_EXTENSIONS
 from artistools.misc.fileio import firstexisting
 from artistools.misc.fileio import firstexisting_or_none
+from artistools.misc.fileio import get_decompress_errors
 from artistools.misc.fileio import get_text_compression
 from artistools.misc.fileio import natural_sort_key
 from artistools.misc.fileio import normalised_lines
@@ -87,15 +91,15 @@ def get_grid_mapping(modelpath: Path | str) -> tuple[dict[int, list[int]], dict[
     return read_grid_mapping(resolve_modelpath(modelpath))
 
 
-@on_model_host
-def read_grid_mapping(modelpath: Path) -> tuple[dict[int, list[int]], dict[int, int], bool]:
-    """Return the result of get_grid_mapping for a model path. The read runs on the host of a remote model.
+def read_grid_out(modelpath: Path) -> pl.DataFrame:
+    """Return the propagation cells of grid.out in a local model folder, each with the index of its model cell.
 
-    sn3d writes grid.out in the model folder alone, and a grid.out in a subfolder is of a different model.
+    sn3d writes only the propagation cells that have a model cell with matter. sn3d writes grid.out in the model
+    folder alone, and a grid.out in a subfolder is of a different model.
     """
     filename = firstexisting("grid.out", tryzipped=True, folder=modelpath, search_subfolders=False)
     with polars_source_open(filename) as source:
-        dfgrid = pl.read_csv(
+        return pl.read_csv(
             source,
             separator=" ",
             has_header=False,
@@ -103,6 +107,12 @@ def read_grid_mapping(modelpath: Path) -> tuple[dict[int, list[int]], dict[int, 
             schema={"cellindex": pl.Int32, "modelgridindex": pl.Int32},
             glob=False,
         )
+
+
+@on_model_host
+def read_grid_mapping(modelpath: Path) -> tuple[dict[int, list[int]], dict[int, int], bool]:
+    """Return the result of get_grid_mapping for a model path. The read runs on the host of a remote model."""
+    dfgrid = read_grid_out(modelpath)
     assoc_cells: dict[int, list[int]] = dict(
         dfgrid
         .group_by("modelgridindex")
@@ -115,6 +125,12 @@ def read_grid_mapping(modelpath: Path) -> tuple[dict[int, list[int]], dict[int, 
     direct_model_propgrid_map = all(
         len(propcells) == 1 and mgi == propcells[0] for mgi, propcells in assoc_cells.items()
     )
+    if not direct_model_propgrid_map and dfgrid.height > 0:
+        # sn3d gives each cell of a mirrored model two propagation cells, and it applies no mass correction to them
+        from artistools.inputmodel import get_modelmeta
+
+        modelmeta = get_modelmeta(modelpath)
+        direct_model_propgrid_map = has_mirror_plane(modelmeta) and grid_map_is_direct(dfgrid, modelmeta)
 
     return assoc_cells, mgi_of_propcells, direct_model_propgrid_map
 
@@ -344,12 +360,39 @@ def get_model_logname(path: Path | str, label: str | None = None) -> str:
     return label if label == modelname == foldername else f"{label} (folder {foldername})"
 
 
+def get_model_format_version(firstline: str, modelfilepath: Path | str) -> int:
+    """Return the format version of a model.txt from its first line.
+
+    A version 2 file has the line "format_version 2" as its first line. A version 1 file has no such line.
+    """
+    tokens = firstline.split("#", 1)[0].split()
+    if tokens[:1] != ["format_version"]:
+        return 1
+    if tokens[1:] != ["2"]:
+        msg = (
+            f"{modelfilepath}: the format version {' '.join(tokens[1:])!r} is not known. This version of artistools"
+            " reads format version 2, and format version 1, which has no format_version line"
+        )
+        raise ValueError(msg)
+    return 2
+
+
 def parse_npts_line(line: str, modelfilepath: Path | str) -> list[int]:
-    """Return the one or two cell counts from the first line of model.txt after the comments.
+    """Return the one or two cell counts from the first line of a version 1 model.txt after the comments.
 
     One number is the cell count. Two numbers are the 2D counts along the cylindrical radius and along
     the z axis. The line can end with an inline comment, as the lines of input.txt do.
     """
+    firsttoken = line.split()[:1]
+    if firsttoken == ["format_version"]:
+        msg = f"{modelfilepath}: the line {line.strip()!r} must be the first line of the file"
+        raise ValueError(msg)
+    if firsttoken == ["coordinates"]:
+        msg = (
+            f"{modelfilepath}: the key coordinates needs the line 'format_version 2' as the first line of the file."
+            " Write the model again with a current version of artistools"
+        )
+        raise ValueError(msg)
     cellcounts: list[int] = []
     # a token that is not an integer leaves the list empty, and the error below then names the file
     with contextlib.suppress(ValueError):
@@ -360,6 +403,458 @@ def parse_npts_line(line: str, modelfilepath: Path | str) -> list[int]:
     return cellcounts
 
 
+# The edge lists in the header of a version 2 model.txt, in the sequence of the file. The index of the first axis
+# changes fastest in the sequence of the cells. The coordinates spherical2d and spherical3d have format version 2 only
+MODEL_EDGE_KEYS: t.Final["Mapping[str, tuple[str, ...]]"] = MappingProxyType({
+    "spherical1d": ("vel_r_edges_kmps",),
+    "cylindrical2d": ("vel_rcyl_edges_kmps", "vel_z_edges_kmps"),
+    "cartesian3d": ("vel_x_edges_kmps", "vel_y_edges_kmps", "vel_z_edges_kmps"),
+    "spherical2d": ("vel_r_edges_kmps", "costheta_edges"),
+    "spherical3d": ("vel_r_edges_kmps", "costheta_edges", "phi_edges_radians"),
+})
+MODEL_COORDINATES = tuple(MODEL_EDGE_KEYS)
+ALL_MODEL_EDGE_KEYS = tuple(dict.fromkeys(key for edgekeys in MODEL_EDGE_KEYS.values() for key in edgekeys))
+SPHERICAL_EDGE_COORDINATES = ("spherical2d", "spherical3d")
+# the coordinates that permit the key mirror_plane z=0 of a version 2 model.txt
+MIRROR_COORDINATES = ("cylindrical2d", "spherical2d", "spherical3d")
+# sn3d and artistools hold these grids with cells of equal width, from -vmax (0 for the cylindrical radius) to vmax
+UNIFORM_EDGE_COORDINATES = ("cylindrical2d", "cartesian3d")
+# the largest difference of an edge from its place on a grid with cells of equal width, as a fraction of vmax. sn3d
+# has the same limit
+UNIFORM_EDGE_RTOL = 1e-9
+# sn3d accepts the same difference between the last azimuthal edge and 2 pi. A cell in cos(theta) or in phi must be
+# wider than this value, because sn3d has a position tolerance at a cell boundary
+ANGLE_EDGE_ATOL = 1e-8
+
+
+def get_model_coordinates(modelmeta: "Mapping[str, t.Any]") -> str:
+    """Return the coordinates of a model, which are one of MODEL_COORDINATES.
+
+    The readers of model.txt set the key coordinates. A caller that makes the metadata can give the dimensions
+    only, thus 1, 2, and 3 give spherical1d, cylindrical2d, and cartesian3d.
+    """
+    dimensions = modelmeta.get("dimensions")
+    coordinates = modelmeta.get("coordinates")
+    if coordinates is None:
+        coordinates_of_dimensions = {1: "spherical1d", 2: "cylindrical2d", 3: "cartesian3d"}
+        if dimensions not in coordinates_of_dimensions:
+            msg = f"dimensions must be 1, 2, or 3, not {dimensions}"
+            raise ValueError(msg)
+        return coordinates_of_dimensions[dimensions]
+
+    if coordinates not in MODEL_COORDINATES:
+        msg = f"The coordinates {coordinates!r} are not known. The choices are {', '.join(MODEL_COORDINATES)}"
+        raise ValueError(msg)
+    if dimensions is not None and dimensions != int(coordinates[-2]):
+        msg = f"The coordinates {coordinates} do not agree with dimensions = {dimensions}"
+        raise ValueError(msg)
+    return coordinates
+
+
+def has_mirror_plane(modelmeta: "Mapping[str, t.Any]") -> bool:
+    """Return whether a model has mirror symmetry in the plane z = 0 (the key mirror_plane z=0 of model.txt).
+
+    The model then holds the cells with z >= 0, and each cell also fills its mirror cell with z <= 0. Thus the volume
+    and the mass of a cell are two times the values of the half cell. The z axis of a cylindrical2d model starts at 0,
+    and the polar axis of a spherical model ends at pi / 2.
+    """
+    return modelmeta.get("mirror_plane") == "z=0"
+
+
+def get_mirrored_modelgridindex_of_propcell(cellindex: pl.Expr, modelmeta: "Mapping[str, t.Any]") -> pl.Expr:
+    """Return the model grid index of a propagation cell of sn3d for a mirrored model on its own grid type.
+
+    The propagation grid has the cells of both halves, thus two times the cells of the model on the mirror axis: z of
+    a cylindrical model and cos(theta) of a spherical model. The index of the first axis changes fastest in both
+    indices. The model counts the cells of the mirror axis from the plane z = 0, and the propagation grid counts them
+    from the -z side.
+    """
+    axisnames = ("rcyl", "z") if get_model_coordinates(modelmeta) == "cylindrical2d" else ("r", "costheta")
+    count0, halfcount = (int(modelmeta[f"ncoordgrid{axisname}"]) for axisname in axisnames)
+    index0 = cellindex % count0
+    propindex1 = (cellindex // count0) % (2 * halfcount)
+    index2 = cellindex // (count0 * 2 * halfcount)
+    halfindex1 = pl.when(propindex1 >= halfcount).then(propindex1 - halfcount).otherwise(halfcount - 1 - propindex1)
+    return index0 + count0 * (halfindex1 + halfcount * index2)
+
+
+def get_grid_max_radial_velocity_cmps(modelmeta: "Mapping[str, t.Any]") -> float:
+    """Return the largest radial velocity of the model grid [cm/s].
+
+    A spherical grid ends at vmax. A corner of a cylindrical grid is at sqrt(2) vmax, and a corner of a
+    Cartesian grid is at sqrt(3) vmax.
+    """
+    cornerfactor = {"cylindrical2d": math.sqrt(2.0), "cartesian3d": math.sqrt(3.0)}
+    return float(modelmeta["vmax_cmps"]) * cornerfactor.get(get_model_coordinates(modelmeta), 1.0)
+
+
+def grid_out_gives_direct_map(modelpath: Path, modelmeta: "Mapping[str, t.Any]") -> bool:
+    """Return True if grid.out of a local model folder gives each propagation cell its own model cell.
+
+    sn3d opens grid.out in each job before it writes the cells, thus a job that stops early can leave an empty file.
+    Such a file, and a file that the reader cannot read, give False, which is the safe value. A mirrored model has
+    two propagation cells for each model cell, one in each half.
+    """
+    try:
+        dfgrid = read_grid_out(modelpath)
+    except FileNotFoundError:
+        return False
+    except (OSError, pl.exceptions.PolarsError, *get_decompress_errors()) as exc:
+        print_warning(f"The command cannot read the grid.out of {modelpath}, thus it takes a Cartesian grid: {exc}")
+        return False
+    return grid_map_is_direct(dfgrid, modelmeta)
+
+
+def grid_map_is_direct(dfgrid: pl.DataFrame, modelmeta: "Mapping[str, t.Any]") -> bool:
+    """Return True if the rows of grid.out give each propagation cell its own model cell.
+
+    A mirrored model has two propagation cells for each model cell, one in each half. A table with no row gives False.
+    """
+    modelgridindexofpropcell = (
+        get_mirrored_modelgridindex_of_propcell(pl.col("cellindex"), modelmeta)
+        if has_mirror_plane(modelmeta)
+        else pl.col("cellindex")
+    )
+    isdirectmap = dfgrid.select((pl.col("modelgridindex") == modelgridindexofpropcell).all(ignore_nulls=False)).item()
+    return dfgrid.height > 0 and isdirectmap is True
+
+
+def propagation_grid_is_model_grid(modelpath: Path, modelmeta: "Mapping[str, t.Any]") -> bool:
+    """Return True if sn3d propagates the packets of a local model folder on the grid of the model cells.
+
+    A cartesian3d model always has its own grid. GRID_TYPE_OVERRIDE in artisoptions.h gives the grid of the run, and
+    sn3d permits only a Cartesian grid in place of the grid of the model. grid.out lists only the cells with matter,
+    thus the option applies first. For a value of the option that is not std::nullopt and not a Cartesian grid, and
+    without the option, grid.out gives the grid.
+    """
+    if get_model_coordinates(modelmeta) == "cartesian3d":
+        return True
+    gridoverride = get_artis_option(modelpath, "GRID_TYPE_OVERRIDE")
+    if gridoverride == "std::nullopt":
+        return True
+    # a different spelling of the option, e.g. std::optional{GridType::CARTESIAN3D}, can also give a Cartesian grid
+    if gridoverride is not None and "CARTESIAN3D" in gridoverride:
+        return False
+    return grid_out_gives_direct_map(modelpath, modelmeta)
+
+
+def get_escape_surface_radial_velocity_cmps(modelpath: Path, modelmeta: "Mapping[str, t.Any]") -> float:
+    """Return the largest radial velocity of the escape surface of a run [cm/s], which sets the valid range.
+
+    modelpath is a local model folder. The packets escape at the outer edge of the propagation grid. sn3d propagates
+    the packets on the grid of the model cells or on a Cartesian grid (GRID_TYPE_OVERRIDE), and
+    propagation_grid_is_model_grid gives which. A spherical grid ends at vmax, a corner of a cylindrical grid is at
+    sqrt(2) vmax, and a corner of a Cartesian grid is at sqrt(3) vmax.
+
+    With FORCE_SPHERICAL_ESCAPE_SURFACE, sn3d removes the matter of each cell whose centre is outside vmax. A packet
+    then escapes when it enters a cell whose nearest point to the centre is outside vmax. The cell that it leaves has
+    its nearest point inside vmax, thus the packet is at vmax plus one cell diagonal or less.
+    """
+    vmax_cmps = float(modelmeta["vmax_cmps"])
+    hasmodelgrid = propagation_grid_is_model_grid(modelpath, modelmeta)
+    gridcornervmax_cmps = get_grid_max_radial_velocity_cmps(
+        modelmeta if hasmodelgrid else {"coordinates": "cartesian3d", "vmax_cmps": vmax_cmps}
+    )
+    if get_artis_option(modelpath, "FORCE_SPHERICAL_ESCAPE_SURFACE") != "true":
+        return gridcornervmax_cmps
+    celldiagonal_cmps = get_propagation_cell_diagonal_cmps(modelpath, modelmeta, hasmodelgrid=hasmodelgrid)
+    if celldiagonal_cmps is None:
+        print_warning(
+            f"artisoptions.h of {modelpath} gives FORCE_SPHERICAL_ESCAPE_SURFACE but no positive integer count of the"
+            " propagation cells on each axis. Thus the escape surface is the corner of the propagation grid"
+        )
+        return gridcornervmax_cmps
+    return min(gridcornervmax_cmps, vmax_cmps + celldiagonal_cmps)
+
+
+def get_propagation_cell_diagonal_cmps(
+    modelpath: Path, modelmeta: "Mapping[str, t.Any]", *, hasmodelgrid: bool
+) -> float | None:
+    """Return the diagonal of a cell of a Cartesian or a cylindrical propagation grid [cm/s], or None.
+
+    The model grid gives the counts of its cells. For a model on a different grid, a Cartesian propagation grid takes
+    them from CUBOID_NCOORDGRID_X, _Y, and _Z of artisoptions.h. A spherical grid, an absent count, and a
+    count that is not a positive integer give None.
+    """
+    gridcoordinates = get_model_coordinates(modelmeta) if hasmodelgrid else "cartesian3d"
+    # the width of the propagation grid on each axis in units of vmax, and the count of its cells on that axis
+    cellcounts: list[tuple[float, t.Any]]
+    if gridcoordinates == "cylindrical2d":
+        # the z axis of a mirrored model is the half from 0 to vmax
+        zwidth = 1.0 if has_mirror_plane(modelmeta) else 2.0
+        cellcounts = [(1.0, modelmeta.get("ncoordgridrcyl")), (zwidth, modelmeta.get("ncoordgridz"))]
+    elif gridcoordinates == "cartesian3d" and hasmodelgrid:
+        cellcounts = [(2.0, modelmeta.get(f"ncoordgrid{axisname}")) for axisname in "xyz"]
+    elif gridcoordinates == "cartesian3d":
+        cellcounts = [(2.0, get_artis_option(modelpath, f"CUBOID_NCOORDGRID_{axisname}")) for axisname in "XYZ"]
+    else:
+        return None
+    if any(count is None for _, count in cellcounts):
+        return None
+    try:
+        counts = [int(count) for _, count in cellcounts]
+    except ValueError:
+        # e.g. "2 * N" or the name of a different constant in artisoptions.h
+        return None
+    if min(counts) <= 0:
+        return None
+    return float(modelmeta["vmax_cmps"]) * math.sqrt(
+        sum((gridwidth / count) ** 2 for (gridwidth, _), count in zip(cellcounts, counts, strict=True))
+    )
+
+
+def require_cartesian3d_model(modelmeta: "Mapping[str, t.Any]", requirement: str, helptext: str) -> None:
+    """Raise a ValueError with the help text if the model grid is not 3D Cartesian.
+
+    requirement starts the message and names the option or the command, e.g. "--slice needs". Such a feature reads
+    the cell positions on the x, y, and z axes, or the equal width of the cells.
+    """
+    coordinates = get_model_coordinates(modelmeta)
+    if coordinates != "cartesian3d":
+        msg = f"{requirement} a model with 3D Cartesian coordinates, and this model has {coordinates} coordinates"
+        raise add_help_note(ValueError(msg), helptext)
+
+
+def validate_model_edges(
+    coordinates: str, edgelists: "Mapping[str, Sequence[float] | None]", source: Path | str, mirrored: bool = False
+) -> dict[str, list[float]]:
+    """Return the cell edges of a version 2 file, with the last azimuthal angle exactly 2 pi.
+
+    edgelists must hold each key of MODEL_EDGE_KEYS for the coordinates, and no other edge key. These are the rules:
+
+    - Each list increases. A list of r, rcyl, or phi starts at exactly 0.
+    - costheta_edges holds the cosine of the polar angle from the +z axis, from exactly -1 to exactly 1. The cosine
+      is the value that sn3d uses for a polar edge, thus the poles and the plane z = 0 need no tolerance.
+    - The last azimuthal angle is 2 pi, to ANGLE_EDGE_ATOL. Each cell in cos(theta) and in phi must be wider than
+      ANGLE_EDGE_ATOL.
+    - A cylindrical2d or cartesian3d grid has cells of equal width. The lists of x, y, and z are from -vmax to
+      vmax, and all the axes have the same vmax. A cartesian3d grid has the same count of cells on each axis.
+    - A mirrored model (mirrored = True) holds the cells with z >= 0. Its list of z and its list of cos(theta)
+      start at 0.
+
+    source is the file or the caller that the error names.
+    """
+    if mirrored and coordinates not in MIRROR_COORDINATES:
+        msg = (
+            f"{source}: a {coordinates} model takes no key mirror_plane. The key applies to"
+            f" {', '.join(MIRROR_COORDINATES)} models"
+        )
+        raise ValueError(msg)
+    edgekeys = MODEL_EDGE_KEYS[coordinates]
+    missingkeys = [key for key in edgekeys if edgelists.get(key) is None]
+    if missingkeys:
+        msg = f"{source}: a {coordinates} model needs the cell edges {', '.join(missingkeys)}"
+        raise ValueError(msg)
+    otherkeys = [key for key in ALL_MODEL_EDGE_KEYS if key not in edgekeys and edgelists.get(key) is not None]
+    if otherkeys:
+        msg = f"{source}: a {coordinates} model takes no {', '.join(otherkeys)}"
+        raise ValueError(msg)
+
+    edges: dict[str, list[float]] = {}
+    for key in edgekeys:
+        values = edgelists[key]
+        assert values is not None
+        edges[key] = [float(edge) for edge in values]
+    keys_from_minus_vmax = {"vel_x_edges_kmps", "vel_y_edges_kmps", "vel_z_edges_kmps"}
+    for key, values in edges.items():
+        if len(values) < 2 or not all(math.isfinite(edge) for edge in values):
+            msg = f"{source}: {key} must hold two or more finite values"
+            raise ValueError(msg)
+        if key == "costheta_edges":
+            firstcostheta = 0.0 if mirrored else -1.0
+            if values[0] != firstcostheta or values[-1] != 1.0:
+                msg = (
+                    f"{source}: the values of {key} must go from {firstcostheta:g} to 1, not from {values[0]!r} to"
+                    f" {values[-1]!r}"
+                )
+                raise ValueError(msg)
+        elif key not in keys_from_minus_vmax and values[0] != 0.0:
+            msg = f"{source}: the first value of {key} must be 0, not {values[0]!r}"
+            raise ValueError(msg)
+        if key == "phi_edges_radians":
+            if abs(values[-1] - 2.0 * math.pi) > ANGLE_EDGE_ATOL:
+                msg = f"{source}: the last value of {key} must be {2.0 * math.pi!r} (2 pi), not {values[-1]!r}"
+                raise ValueError(msg)
+            values[-1] = 2.0 * math.pi
+        if not all(lower < upper for lower, upper in itertools.pairwise(values)):
+            msg = f"{source}: the values of {key} must increase from each value to the next"
+            raise ValueError(msg)
+        # sn3d has a position tolerance at a cell boundary, and a thinner angular cell gets no packet path
+        if key in {"costheta_edges", "phi_edges_radians"} and any(
+            upper - lower <= ANGLE_EDGE_ATOL for lower, upper in itertools.pairwise(values)
+        ):
+            msg = f"{source}: each cell of {key} must be wider than {ANGLE_EDGE_ATOL:g}"
+            raise ValueError(msg)
+
+    if coordinates in UNIFORM_EDGE_COORDINATES:
+        vmax_kmps = edges[edgekeys[0]][-1]
+        for key, values in edges.items():
+            firstedge = (
+                -vmax_kmps if key in keys_from_minus_vmax and not (mirrored and key == "vel_z_edges_kmps") else 0.0
+            )
+            uniformedges = np.linspace(firstedge, vmax_kmps, len(values))
+            if not np.allclose(values, uniformedges, rtol=0.0, atol=UNIFORM_EDGE_RTOL * vmax_kmps):
+                msg = (
+                    f"{source}: the values of {key} must have equal steps from {firstedge!r} to {vmax_kmps!r}, which"
+                    f" is the last value of {edgekeys[0]}. sn3d and artistools read a {coordinates} grid only with"
+                    " cells of equal width and the same vmax on each axis"
+                )
+                raise ValueError(msg)
+        if coordinates == "cartesian3d" and len({len(values) for values in edges.values()}) != 1:
+            msg = f"{source}: the lists {', '.join(edgekeys)} must have the same count of values"
+            raise ValueError(msg)
+
+    return edges
+
+
+def get_cell_counts_of_edges(coordinates: str, edges: "Mapping[str, Sequence[float]]") -> dict[str, int]:
+    """Return the metadata keys of the cell counts, e.g. ncoordgridrcyl, for the cell edges of a version 2 file."""
+    counts = {
+        f"ncoordgrid{key.removeprefix('vel_').split('_edges')[0]}": len(edges[key]) - 1
+        for key in MODEL_EDGE_KEYS[coordinates]
+    }
+    # a 1D model has npts_model only, and the reader of a 3D Cartesian model also gives the count of one axis
+    if coordinates == "spherical1d":
+        return {}
+    if coordinates == "cartesian3d":
+        counts["ncoordgrid"] = counts["ncoordgridx"]
+    return counts
+
+
+def read_keyword_model_header(
+    modelfile: t.IO[str], modelfilepath: Path | str
+) -> tuple[dict[str, t.Any], list[str], int, int | None]:
+    """Return the metadata, the column names, and two counts for the header of a version 2 model.
+
+    modelfile is at the line after the line "format_version 2". Each header line is a key and its values, and the
+    keys can come in any sequence. The key columns gives the column names and ends the header. The function gives a
+    warning for a key that it does not know, and it ignores that key. Thus a later version of ARTIS can add a
+    key to format version 2. The key headercommentlines of the metadata holds each comment line of the header.
+
+    The first count is the count of the lines read. The second count is the value of the optional key
+    cell_line_count, which gives the count of the cell lines. It is None for a header with no such key.
+    """
+    commentlines: list[str] = []
+    keyvalues: dict[str, list[str]] = {}
+    linecount = 0
+    while "columns" not in keyvalues:
+        line = modelfile.readline()
+        linecount += 1
+        if not line:
+            msg = f"{modelfilepath}: the header must end with the key columns, which gives the column names"
+            raise ValueError(msg)
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            commentlines.append(stripped.removeprefix("#").removeprefix(" "))
+        elif stripped:
+            key, *values = line.split("#", 1)[0].split()
+            if key in keyvalues:
+                msg = f"{modelfilepath}: the header has the key {key} two times"
+                raise ValueError(msg)
+            keyvalues[key] = values
+
+    def get_floats(key: str) -> list[float]:
+        try:
+            return [float(token) for token in keyvalues[key]]
+        except ValueError:
+            msg = f"{modelfilepath}: each value of the key {key} must be a number, not {keyvalues[key]!r}"
+            raise ValueError(msg) from None
+
+    knownkeys = (
+        "coordinates",
+        "cells_per_axis",
+        "mirror_plane",
+        "t_model_init_days",
+        *ALL_MODEL_EDGE_KEYS,
+        "cell_line_count",
+        "columns",
+    )
+    for key in keyvalues:
+        if key not in knownkeys:
+            print_warning(
+                f"{modelfilepath}: this version of artistools does not know the key {key} of model.txt, and it"
+                " ignores the key"
+            )
+    for key in ("coordinates", "t_model_init_days"):
+        if key not in keyvalues:
+            msg = f"{modelfilepath}: the header has no key {key}"
+            raise ValueError(msg)
+
+    coordinatetokens = keyvalues["coordinates"]
+    if len(coordinatetokens) != 1 or coordinatetokens[0] not in MODEL_COORDINATES:
+        msg = (
+            f"{modelfilepath}: the key coordinates must have one value. The choices are"
+            f" {', '.join(MODEL_COORDINATES)}, not {' '.join(coordinatetokens)!r}"
+        )
+        raise ValueError(msg)
+    coordinates = coordinatetokens[0]
+    mirrortokens = keyvalues.get("mirror_plane")
+    if mirrortokens is not None and mirrortokens != ["z=0"]:
+        msg = f"{modelfilepath}: the key mirror_plane must have the value z=0, not {' '.join(mirrortokens)!r}"
+        raise ValueError(msg)
+
+    timevalues = get_floats("t_model_init_days")
+    if len(timevalues) != 1 or not timevalues[0] > 0.0 or not math.isfinite(timevalues[0]):
+        msg = f"{modelfilepath}: the key t_model_init_days must have one finite value above 0, not {timevalues!r}"
+        raise ValueError(msg)
+
+    edges = validate_model_edges(
+        coordinates,
+        {key: get_floats(key) for key in ALL_MODEL_EDGE_KEYS if key in keyvalues},
+        modelfilepath,
+        mirrored=mirrortokens is not None,
+    )
+
+    columns = keyvalues["columns"]
+    positioncolumns = [
+        col for col in columns if col.startswith(("pos_", "vel_")) or col in {"logrho", "velocity_outer"}
+    ]
+    if columns[:2] != ["inputcellid", "rho"] or len(set(columns)) != len(columns) or positioncolumns:
+        msg = (
+            f"{modelfilepath}: the first two columns of a version 2 file must be inputcellid and rho. Each column"
+            " name must be different, and the cell edges of the header replace each position column. The columns"
+            f" are {' '.join(columns)!r}"
+        )
+        raise ValueError(msg)
+
+    cellcounts = [len(edges[key]) - 1 for key in MODEL_EDGE_KEYS[coordinates]]
+    npts_model = math.prod(cellcounts)
+    # an edge list that lost a value or got one more value gives a different count of cells on its axis
+    cellsperaxis = keyvalues.get("cells_per_axis")
+    if cellsperaxis is not None and [int(token) if token.isdecimal() else None for token in cellsperaxis] != cellcounts:
+        msg = (
+            f"{modelfilepath}: the key cells_per_axis gives the cell counts {' '.join(cellsperaxis)!r}, but the cell"
+            f" edges give {' '.join(str(count) for count in cellcounts)!r}"
+        )
+        raise ValueError(msg)
+    celllinecount = None
+    if "cell_line_count" in keyvalues:
+        # a file that lost lines at its end has fewer cell lines than this count, and a cell with no line is empty
+        counttokens = keyvalues["cell_line_count"]
+        if len(counttokens) != 1 or not counttokens[0].isdecimal() or not 1 <= int(counttokens[0]) <= npts_model:
+            msg = (
+                f"{modelfilepath}: the key cell_line_count must have one integer from 1 to {npts_model}, which is the"
+                f" count of the cells that the cell edges give, not {' '.join(counttokens)!r}"
+            )
+            raise ValueError(msg)
+        celllinecount = int(counttokens[0])
+
+    modelmeta: dict[str, t.Any] = {
+        "headercommentlines": commentlines,
+        "formatversion": 2,
+        "coordinates": coordinates,
+        "dimensions": int(coordinates[-2]),
+        "t_model_init_days": timevalues[0],
+        **edges,
+        **get_cell_counts_of_edges(coordinates, edges),
+        "vmax_cmps": edges[MODEL_EDGE_KEYS[coordinates][0]][-1] * km_to_cm,
+        "npts_model": npts_model,
+    }
+    if mirrortokens is not None:
+        modelmeta["mirror_plane"] = "z=0"
+    return modelmeta, columns, linecount, celllinecount
+
+
 @modelpath_cache(maxsize=8)
 @on_model_host
 def get_npts_model(modelpath: Path) -> int:
@@ -368,7 +863,11 @@ def get_npts_model(modelpath: Path) -> int:
         Path(modelpath) if Path(modelpath).is_file() else firstexisting("model.txt", folder=modelpath, tryzipped=True)
     )
     with zopen(modelfilepath) as modelfile:
-        return math.prod(parse_npts_line(readnoncommentline(modelfile), modelfilepath))
+        firstline = modelfile.readline()
+        if get_model_format_version(firstline, modelfilepath) == 2:
+            return int(read_keyword_model_header(modelfile, modelfilepath)[0]["npts_model"])
+        line = firstline if firstline.strip() and not firstline.lstrip().startswith("#") else ""
+        return math.prod(parse_npts_line(line or readnoncommentline(modelfile), modelfilepath))
 
 
 def get_inputfilepath(modelpath: Path | str) -> Path:

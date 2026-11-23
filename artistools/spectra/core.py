@@ -51,9 +51,12 @@ from artistools.misc import get_average_group_dirbins
 from artistools.misc import get_bin_index_expr
 from artistools.misc import get_dirbin_definitions
 from artistools.misc import get_dirbins
+from artistools.misc import get_escape_surface_radial_velocity_cmps
 from artistools.misc import get_file_copies
 from artistools.misc import get_file_state
 from artistools.misc import get_metadata_path
+from artistools.misc import get_model_coordinates
+from artistools.misc import get_model_folder
 from artistools.misc import get_model_logname
 from artistools.misc import get_model_name
 from artistools.misc import get_nprocs
@@ -951,10 +954,11 @@ def make_virtual_spectra_summed_file(modelpath: Path | str) -> None:
 def get_vspecpol_rank_files(modelpath: Path | str) -> list[Path]:
     """Return the file of the virtual packet spectra of each MPI rank, which make_virtual_spectra_summed_file sums.
 
-    A restarted run reads the sums of the run before it, thus the newest run folder with a file for each rank holds
-    the complete sums. The search covers the model folder, then the run folders from the newest. It also covers the
-    folder vspecpol in each of them, where ARTIS writes the files since 2026-09-27. A subfolder with an input.txt is
-    a different model.
+    A restarted run reads the sums of the run before it, thus the newest complete set of files holds the complete
+    sums. A folder is complete if it holds a file for each rank. The search covers the model folder and the run
+    folders, and also the folder vspecpol in each of them, where ARTIS writes the files since 2026-09-27. A subfolder
+    with an input.txt is a different model. Of the complete folders, the folder with the newest file applies. If two
+    folders have the same time, the newest run folder applies.
     """
     modelfolder = Path(modelpath)
     subfolders_newest_first = [
@@ -963,10 +967,11 @@ def get_vspecpol_rank_files(modelpath: Path | str) -> list[Path]:
     # a dict keeps the first place of the folder vspecpol of the model folder, which is also a subfolder
     searchfolders = dict.fromkeys(
         searchfolder
-        for folder in (modelfolder, *subfolders_newest_first)
+        for folder in (*subfolders_newest_first, modelfolder)
         for searchfolder in (folder, folder / "vspecpol")
     )
     nprocs = get_nprocs(modelfolder)
+    completerankfiles = []
     for folder in searchfolders:
         rankfiles = [
             rankfile
@@ -979,9 +984,16 @@ def get_vspecpol_rank_files(modelpath: Path | str) -> list[Path]:
             is not None
         ]
         if len(rankfiles) == nprocs:
-            return rankfiles
-    msg = f"No run folder of {modelfolder} holds a vspecpol_NNNN.out file for each of the {nprocs} MPI ranks"
-    raise FileNotFoundError(msg)
+            completerankfiles.append(rankfiles)
+    if not completerankfiles:
+        msg = f"No run folder of {modelfolder} holds a vspecpol_NNNN.out file for each of the {nprocs} MPI ranks"
+        raise FileNotFoundError(msg)
+
+    def get_newest_mtime(rankfiles: list[Path]) -> float:
+        return max(rankfile.stat().st_mtime for rankfile in rankfiles)
+
+    # max takes the first of equal values, which is the newest run folder
+    return max(completerankfiles, key=get_newest_mtime)
 
 
 def vspecpol_total_is_older_than_its_rank_files(modelpath: Path, totalfile: Path) -> bool:
@@ -1862,19 +1874,22 @@ DEFAULT_YE_SHELLS: t.Final[tuple[float, ...]] = (*(index * 0.05 for index in ran
 def get_default_radialvelocity_shells(
     modelpath: Path | str, nshells: int = 10
 ) -> tuple[list[float], t.Literal["kmps", "c"]]:
-    """Return the edges [km/s] of nshells equal shells up to vmax, plus one shell to the grid corner, and the unit.
+    """Return the edges [km/s] of nshells equal shells up to vmax, plus one shell to the escape surface, and the unit.
 
-    A cell in the corner of a 2D grid or a 3D grid lies outside vmax. The last shell holds the
-    packets from these cells. The labels take the unit of get_auto_velocity_unit(), e.g. c for a kilonova and km/s for a
-    supernova.
+    A cell in the corner of a 2D grid or a 3D grid lies outside vmax, and a Cartesian propagation grid of a 1D or a
+    spherical model has matter outside vmax. The last shell holds the packets from these cells. It ends at the escape
+    surface of the run, which no packet passes. The labels take the unit of get_auto_velocity_unit(), e.g. c for a
+    kilonova and km/s for a supernova.
     """
     from artistools.inputmodel import scan_modeldata
 
     _, modelmeta = scan_modeldata(modelpath, printwarningsonly=True)
     vmax_kmps = modelmeta["vmax_cmps"] / km_to_cm
     edges = [vmax_kmps * i / nshells for i in range(nshells + 1)]
-    if modelmeta["dimensions"] > 1:
-        edges.append(vmax_kmps * math.sqrt(modelmeta["dimensions"]))
+    # a spherical grid ends at vmax, thus it gets no outer shell
+    escapevelocity_kmps = get_escape_surface_radial_velocity_cmps(get_model_folder(modelpath), modelmeta) / km_to_cm
+    if escapevelocity_kmps > vmax_kmps:
+        edges.append(escapevelocity_kmps)
 
     return edges, get_auto_velocity_unit(modelmeta["vmax_cmps"])
 
@@ -2044,7 +2059,7 @@ def add_ye_columns(
     )
     for column, position in positions:
         if position == "trueem" and thermalfromvelocity:
-            if modelmeta["dimensions"] != 1:
+            if get_model_coordinates(modelmeta) != "spherical1d":
                 msg = "The packets hold no thermal emission position, thus the Ye shells need a 1D model"
                 raise ValueError(msg)
             indexexpr = get_modelgridindex_from_velocity_expr(pl.col("true_emission_velocity"), dfmodel)

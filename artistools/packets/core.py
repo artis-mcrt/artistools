@@ -38,6 +38,7 @@ from artistools.misc import get_bin_index_expr
 from artistools.misc import get_costhetabin_expr
 from artistools.misc import get_file_identity
 from artistools.misc import get_file_state
+from artistools.misc import get_model_coordinates
 from artistools.misc import get_nprocs
 from artistools.misc import get_parquet_cache_name
 from artistools.misc import get_phibin_expr
@@ -47,6 +48,7 @@ from artistools.misc import get_viewingdirection_costhetabincount
 from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import get_weighted_quantile_expr
+from artistools.misc import has_mirror_plane
 from artistools.misc import make_cache_folder
 from artistools.misc import modelpath_cache
 from artistools.misc import natural_sort_key
@@ -58,6 +60,7 @@ from artistools.misc import print_detail
 from artistools.misc import print_warning
 from artistools.misc import raise_if_cut_line
 from artistools.misc import rankbatch_parquet_staleness
+from artistools.misc import SPHERICAL_EDGE_COORDINATES
 from artistools.misc import write_parquet_atomic
 from artistools.misc import zopen
 
@@ -383,6 +386,40 @@ def get_modelgridindex_from_velocity_expr(velocity: pl.Expr, dfmodel: pl.LazyFra
     return pl.when(index.is_between(0, len(velbins) - 2)).then(index)
 
 
+def get_spherical_modelgridindex_expr(
+    vel_r: pl.Expr, vel_x: pl.Expr, vel_y: pl.Expr, vel_z: pl.Expr, modelmeta: dict[str, t.Any]
+) -> pl.Expr:
+    """Return the index of the cell of a spherical2d or spherical3d model that holds a velocity vector [cm/s].
+
+    A velocity at or above the outer edge of the grid, and a velocity of NaN, give null. A cell holds its lower
+    edge on each axis. The last polar cell also holds cos(theta) = 1. An azimuthal angle that rounds to 2 pi is the
+    angle 0. A velocity of zero has no direction, and it gets the first polar cell and the first azimuthal cell.
+    sn3d uses the same rules.
+    """
+    ncoordgridr = len(modelmeta["vel_r_edges_kmps"]) - 1
+    ncoordgridcostheta = len(modelmeta["costheta_edges"]) - 1
+    # a velocity with z < 0 of a mirrored model is in the mirror cell of its mirror velocity
+    if has_mirror_plane(modelmeta):
+        vel_z = vel_z.abs()
+
+    index_r = get_bin_index_expr(vel_r, [edge * km_to_cm for edge in modelmeta["vel_r_edges_kmps"]])
+    index_r = pl.when(index_r.is_between(0, ncoordgridr - 1)).then(index_r)
+
+    costheta = pl.when(vel_r > 0.0).then((vel_z / vel_r).clip(-1.0, 1.0)).otherwise(modelmeta["costheta_edges"][0])
+    index_costheta = get_bin_index_expr(costheta, modelmeta["costheta_edges"])
+    index_costheta = (
+        pl.when(index_costheta >= ncoordgridcostheta).then(ncoordgridcostheta - 1).otherwise(index_costheta)
+    )
+
+    cellindex = index_costheta * ncoordgridr + index_r
+    if "phi_edges_radians" in modelmeta:
+        phi = pl.arctan2(vel_y, vel_x)
+        phi = pl.when(phi < 0.0).then(phi + 2.0 * math.pi).otherwise(phi)
+        phi = pl.when(phi >= 2.0 * math.pi).then(0.0).otherwise(phi)
+        cellindex += get_bin_index_expr(phi, modelmeta["phi_edges_radians"]) * (ncoordgridr * ncoordgridcostheta)
+    return cellindex
+
+
 def get_modelgridindex_expr(
     position: t.Literal["em", "trueem"], modelmeta: dict[str, t.Any], dfmodel: pl.LazyFrame
 ) -> pl.Expr:
@@ -391,7 +428,8 @@ def get_modelgridindex_expr(
     A position outside the grid and a position of NaN give null. A cast alone rounds toward zero, and a sum of
     the axis indices with no range check gave a real cell, e.g. the cell at x = 0 of the next row.
     """
-    if modelmeta["dimensions"] == 1:
+    coordinates = get_model_coordinates(modelmeta)
+    if coordinates == "spherical1d":
         return get_modelgridindex_from_velocity_expr(get_emission_velocity_expr(position), dfmodel)
 
     t_model_s = float(modelmeta["t_model_init_days"]) * day_to_s
@@ -404,13 +442,24 @@ def get_modelgridindex_expr(
         index = coordinate.floor().cast(pl.Int32, strict=False)
         return pl.when(index.is_between(0, count - 1)).then(index)
 
-    if modelmeta["dimensions"] == 2:
+    if coordinates in SPHERICAL_EDGE_COORDINATES:
+        return get_spherical_modelgridindex_expr(
+            get_emission_velocity_expr(position), velocity("x"), velocity("y"), velocity("z"), modelmeta
+        )
+
+    if coordinates == "cylindrical2d":
         vwidthrcyl = float(modelmeta["wid_init_rcyl"]) / t_model_s
         vwidthz = float(modelmeta["wid_init_z"]) / t_model_s
         ncoordgridrcyl = int(modelmeta["ncoordgridrcyl"])
         coordrcyl = axisindex((velocity("x").pow(2) + velocity("y").pow(2)).sqrt() / vwidthrcyl, ncoordgridrcyl)
-        coordz = axisindex((velocity("z") + vmax) / vwidthz, int(modelmeta["ncoordgridz"]))
+        # the z axis of a mirrored model starts at the plane z = 0, and a position with z < 0 takes its mirror cell
+        zfromlowestedge = velocity("z").abs() if has_mirror_plane(modelmeta) else velocity("z") + vmax
+        coordz = axisindex(zfromlowestedge / vwidthz, int(modelmeta["ncoordgridz"]))
         return coordz * ncoordgridrcyl + coordrcyl
+
+    if coordinates != "cartesian3d":
+        msg = f"The coordinates {coordinates!r} are not known"
+        raise ValueError(msg)
 
     vwidth = float(modelmeta["wid_init"]) / t_model_s
     ncoordgrid = {axis: int(modelmeta[f"ncoordgrid{axis}"]) for axis in ("x", "y", "z")}
@@ -443,7 +492,7 @@ def add_derived_columns_lazy(dfpackets: pl.LazyFrame | pl.DataFrame, modelpath: 
             true_emission_velocity_lineofsight=get_emission_velocity_lineofsight_expr("trueem"),
             emtrue_modelgridindex=get_modelgridindex_expr("trueem", modelmeta, dfmodel),
         )
-    elif "true_emission_velocity" in packetcolumns and modelmeta["dimensions"] == 1:
+    elif "true_emission_velocity" in packetcolumns and get_model_coordinates(modelmeta) == "spherical1d":
         # an old packets file holds the thermal emission velocity and no position, which gives the cell of a 1D model
         dfpackets = dfpackets.with_columns(
             emtrue_modelgridindex=get_modelgridindex_from_velocity_expr(pl.col("true_emission_velocity"), dfmodel)

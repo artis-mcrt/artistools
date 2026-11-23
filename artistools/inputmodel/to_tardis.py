@@ -83,7 +83,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     listspecies = [
         col[2:]
         for col in dfmodel.columns
-        if col.startswith("X_") and col.upper() != "X_FEGROUP" and col[-1].isdigit() == wantsnuclides
+        if col.startswith("X_")
+        and col.upper() != "X_FEGROUP"
+        and not col.endswith("_otherstable")
+        and col[-1].isdigit() == wantsnuclides
     ]
 
     if args.maxatomicnumber and args.maxatomicnumber > 0:

@@ -22,6 +22,7 @@ from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_show
 from artistools.misc import get_model_name
+from artistools.misc import has_mirror_plane
 from artistools.misc import normalize_path_list
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
@@ -44,6 +45,10 @@ def get_nuclide_massfractions(
     dfmodel, modelmeta = scan_modeldata(modelpath=modelpath)
     if modelmeta["dimensions"] == 1 and (thetamin is not None or thetamax is not None):
         msg = f"A polar angle range needs a 2D or 3D model, but {modelpath} is 1D"
+        raise ValueError(msg)
+    if has_mirror_plane(modelmeta) and (thetamin is not None or thetamax is not None):
+        # each cell of such a model fills both halves, thus a polar angle range cannot select the half of a cell
+        msg = f"{modelpath} has mirror symmetry in the plane z = 0, thus a polar angle range cannot select its cells"
         raise ValueError(msg)
 
     dfmodel = add_derived_cols_to_modeldata(dfmodel, modelmeta=modelmeta)

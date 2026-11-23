@@ -4,13 +4,20 @@
 # the plot modules below import such modules, thus a name must exist before a cycle comes back here
 from artistools.inputmodel.core import add_derived_cols_to_modeldata as add_derived_cols_to_modeldata
 from artistools.inputmodel.core import dimension_reduce_model as dimension_reduce_model
+from artistools.inputmodel.core import find_abundance_file as find_abundance_file
 from artistools.inputmodel.core import get_cell_direction_selection as get_cell_direction_selection
 from artistools.inputmodel.core import get_cell_selection as get_cell_selection
+from artistools.inputmodel.core import get_gridcontributions_folder as get_gridcontributions_folder
 from artistools.inputmodel.core import get_initelemabundances as get_initelemabundances
 from artistools.inputmodel.core import get_mgi_of_velocity_kms as get_mgi_of_velocity_kms
+from artistools.inputmodel.core import get_model_file_path as get_model_file_path
+from artistools.inputmodel.core import get_model_input_folder as get_model_input_folder
 from artistools.inputmodel.core import get_modeldata as get_modeldata
 from artistools.inputmodel.core import get_modelmeta as get_modelmeta
 from artistools.inputmodel.core import get_spatial_scales as get_spatial_scales
+from artistools.inputmodel.core import get_spherical_cell_index_of_velocities as get_spherical_cell_index_of_velocities
+from artistools.inputmodel.core import get_spherical_image_cell_indices as get_spherical_image_cell_indices
+from artistools.inputmodel.core import get_spherical_slice_velocity_cmps as get_spherical_slice_velocity_cmps
 from artistools.inputmodel.core import resolve_cell_direction_range as resolve_cell_direction_range
 from artistools.inputmodel.core import save_empty_abundance_file as save_empty_abundance_file
 from artistools.inputmodel.core import save_initelemabundances as save_initelemabundances
@@ -18,6 +25,7 @@ from artistools.inputmodel.core import save_modeldata as save_modeldata
 from artistools.inputmodel.core import scale_model_to_time as scale_model_to_time
 from artistools.inputmodel.core import scan_initelemabundances as scan_initelemabundances
 from artistools.inputmodel.core import scan_modeldata as scan_modeldata
+from artistools.inputmodel.core import with_cell_ids_from_zero as with_cell_ids_from_zero
 
 # isort: split
 from artistools.inputmodel import core as core

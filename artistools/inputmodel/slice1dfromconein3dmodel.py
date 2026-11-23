@@ -16,6 +16,7 @@ from artistools.constants import km_to_cm
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import get_middle_layer_lower_edge
 from artistools.inputmodel.core import LOGRHO_FROM_RHO
+from artistools.inputmodel.core import OTHERSTABLE_SUFFIX
 from artistools.inputmodel.core import save_initelemabundances
 from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.core import savetologfile
@@ -28,6 +29,7 @@ from artistools.misc import confirm_overwrite
 from artistools.misc import get_model_logname
 from artistools.misc import normalize_path_list
 from artistools.misc import parse_cli_args
+from artistools.misc import require_cartesian3d_model
 from artistools.misc import resolve_slice_axis
 
 
@@ -188,6 +190,9 @@ def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> 
     modelpath = normalize_path_list(args.modelpath)[0]
     logprint("Making 1D model from 3D model:", get_model_logname(modelpath))
     pldfmodel, modelmeta = scan_modeldata(modelpath=modelpath, get_elemabundances=True)
+    require_cartesian3d_model(
+        modelmeta, "A 1D model from a cone or an axis needs", "Give --dimensionreduce 1 to makeartismodel"
+    )
     args.t_model = modelmeta["t_model_init_days"]
     if args.makefromcone:
         logprint("From a cone")
@@ -212,7 +217,10 @@ def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> 
             logprint(f"Spacing shells in 1D model so they are equally spaced on a radius^{shell_spacing_power} grid")
             cone_radius_spacing = np.linspace(0, r_max**shell_spacing_power, N_shells + 1)
             cone1d_bins = list(np.power(cone_radius_spacing, (1 / shell_spacing_power)))
-        speciescols = [colname for colname in cone.columns if colname.startswith("X_")]
+        # the element columns of a version 2 model already hold the mass of its otherstable columns
+        speciescols = [
+            colname for colname in cone.columns if colname.startswith("X_") and not colname.endswith(OTHERSTABLE_SUFFIX)
+        ]
         shellrows = get_cone_shells(cone, cone1d_bins, speciescols, logprint)
 
         # Combine all bin results into a single DataFrame

@@ -3210,7 +3210,7 @@ def test_estimator_slice_of_two_axes_gives_a_line(mockplot: mock.MagicMock, tmp_
 def test_estimator_image_refuses_arguments_that_do_not_apply(tmp_path: Path) -> None:
     """An image and a slice stop the command for a model, a plane, or an argument that does not fit."""
     # get_cells_of_slice is a reader that a script can call, thus it raises ValueError and not SystemExit
-    with pytest.raises(ValueError, match="--slice needs a 3D model"):
+    with pytest.raises(ValueError, match="--slice needs a model with 3D spherical coordinates or"):
         at.estimators.plot(
             argsraw=[], modelpath=modelpath, plotlist=[["Te"]], outputfile=tmp_path, timestep="40", slice="xy"
         )
@@ -4516,6 +4516,131 @@ def test_projection_is_the_mean_of_each_line_of_cells() -> None:
     assert np.isnan(grid[0, 0])
 
 
+def test_image_of_a_spherical_model_gives_each_point_the_value_of_its_cell(tmp_path: Path) -> None:
+    """An image of a spherical3d model is a grid of points, and each point takes the value of the cell that holds it.
+
+    A model with spherical edges has no cell with straight edges on the axes of an image. The cells at +x, -y, and +z
+    give the orientation of each image. The image with no slice is the mean over phi of each ring of r and cos(theta).
+    """
+    vmax_cmps = 2.0e9
+    modelmeta: dict[str, t.Any] = {
+        "coordinates": "spherical3d",
+        "dimensions": 3,
+        "t_model_init_days": 1.0,
+        "vel_r_edges_kmps": [0.0, 1.0e4, 2.0e4],
+        "costheta_edges": [-1.0, -0.4, 0.5, 1.0],
+        "phi_edges_radians": [0.0, 1.5, 3.0, 4.5, 2.0 * math.pi],
+        "vmax_cmps": vmax_cmps,
+        "npts_model": 24,
+    }
+    panels = [plotestimators.ImagePanel(pl.col("Te"), plotestimators.PanelStyle("Te", None, None, None))]
+    cellweights = [1.0 + cellindex % 5 for cellindex in range(24)]
+    estimators = pl.LazyFrame({
+        "timestep": [5] * 24,
+        "modelgridindex": list(range(24)),
+        "deltavol_deltat": cellweights,
+        "Te": [1000.0 + cellindex for cellindex in range(24)],
+    })
+
+    def get_point_index(velocity_cmps: float, pointcount: int, lowest_cmps: float = -vmax_cmps) -> int:
+        return int((velocity_cmps - lowest_cmps) / ((vmax_cmps - lowest_cmps) / pointcount))
+
+    # the index of a cell is i_r + 2 * (i_costheta + 3 * i_phi), and each of these points is in the outer shell
+    # (i_r = 1)
+    (gridxy,), plotaxes = plotestimators.get_image_values(estimators, panels, modelmeta, "z", [5], 0.0)
+    assert plotaxes == ("x", "y")
+    assert gridxy.shape == (400, 400)
+    # the grid holds [second axis][first axis]. The plane z = 0 is in the polar cell 1
+    # +x with a small positive y: phi is above 0, thus the azimuthal cell is 0
+    assert np.isclose(
+        gridxy[get_point_index(1.0e7, 400), get_point_index(1.5e9, 400)], 1000.0 + 1 + 2 * (1 + 3 * 0), rtol=1e-12
+    )
+    # -y with a small positive x: phi is above 3 pi / 2, thus the azimuthal cell is 3
+    assert np.isclose(
+        gridxy[get_point_index(-1.5e9, 400), get_point_index(1.0e7, 400)], 1000.0 + 1 + 2 * (1 + 3 * 3), rtol=1e-12
+    )
+    # a corner of the image is outside the sphere
+    assert np.isnan(gridxy[0, 0])
+
+    (gridyz,), plotaxes = plotestimators.get_image_values(estimators, panels, modelmeta, "x", [5], 0.0)
+    assert plotaxes == ("y", "z")
+    # +z with a small positive y: the polar cell is 2, and phi = pi / 2 is in the azimuthal cell 1
+    assert np.isclose(
+        gridyz[get_point_index(1.5e9, 400), get_point_index(1.0e7, 400)], 1000.0 + 1 + 2 * (2 + 3 * 1), rtol=1e-12
+    )
+    # -y with a small positive z: the polar cell is 1, and phi = 3 pi / 2 is in the azimuthal cell 3
+    assert np.isclose(
+        gridyz[get_point_index(1.0e7, 400), get_point_index(-1.5e9, 400)], 1000.0 + 1 + 2 * (1 + 3 * 3), rtol=1e-12
+    )
+
+    (gridrz,), plotaxes = plotestimators.get_image_values(estimators, panels, modelmeta, None, [5])
+    assert plotaxes == ("rcyl", "z")
+    assert gridrz.shape == (400, 200)
+    # the ring of the outer shell at the lowest values of cos(theta) (-z is the polar cell 0) holds four cells in phi
+    ringcells = [1 + 2 * (0 + 3 * index_phi) for index_phi in range(4)]
+    ringmean = sum((1000.0 + cellindex) * cellweights[cellindex] for cellindex in ringcells) / sum(
+        cellweights[cellindex] for cellindex in ringcells
+    )
+    assert np.isclose(gridrz[get_point_index(-1.5e9, 400), get_point_index(1.0e7, 200, 0.0)], ringmean, rtol=1e-12)
+
+    # --slice selects the cells of the same points, thus each point of the image finds the estimators of its cell
+    dfmodel = pl.DataFrame({"inputcellid": pl.int_range(24, eager=True, dtype=pl.Int32), "rho": 1.0e-12})
+    at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta=dict(modelmeta))
+    planecells = at.estimators.get_cells_of_slice(tmp_path, [("z", 0.0, "z = 0")])
+    assert planecells == sorted(index_r + 2 * (1 + 3 * index_phi) for index_r in range(2) for index_phi in range(4))
+
+
+def test_slice_of_a_spherical_model_on_cell_edges_takes_the_cells_on_the_positive_side(tmp_path: Path) -> None:
+    """A slice plane on a cell edge gives the cells on its positive side, in both halves of the image.
+
+    Each point of the image lies on the plane, and a cell holds its lower edge. Thus on x = 0, the half with y > 0
+    showed the cells at -x. The half with y < 0 showed the cells at +x. On z = 0, the image showed the cells below
+    the plane.
+    """
+    vmax_cmps = 2.0e9
+    modelmeta: dict[str, t.Any] = {
+        "coordinates": "spherical3d",
+        "dimensions": 3,
+        "t_model_init_days": 1.0,
+        "vel_r_edges_kmps": [0.0, 1.0e4, 2.0e4],
+        "costheta_edges": [-1.0, 0.0, 1.0],
+        "phi_edges_radians": np.linspace(0.0, 2.0 * math.pi, 5).tolist(),
+        "vmax_cmps": vmax_cmps,
+        "npts_model": 16,
+    }
+    panels = [plotestimators.ImagePanel(pl.col("Te"), plotestimators.PanelStyle("Te", None, None, None))]
+    estimators = pl.LazyFrame({
+        "timestep": [5] * 16,
+        "modelgridindex": list(range(16)),
+        "deltavol_deltat": [1.0] * 16,
+        "Te": [1000.0 + cellindex for cellindex in range(16)],
+    })
+
+    def get_te_of_cell(index_costheta: int, index_phi: int) -> float:
+        # each of the points below is in the outer shell (index_r = 1)
+        return 1000.0 + 1 + 2 * (index_costheta + 2 * index_phi)
+
+    def get_point_index(velocity_cmps: float) -> int:
+        return int((velocity_cmps + vmax_cmps) / (2.0 * vmax_cmps / 400))
+
+    # on x = 0, the +x side is phi in [0, pi / 2) for y > 0 and phi in [3 pi / 2, 2 pi) for y < 0
+    (gridyz,), _ = plotestimators.get_image_values(estimators, panels, modelmeta, "x", [5], 0.0)
+    for y_cmps, index_phi in ((1.5e9, 0), (-1.5e9, 3)):
+        te = gridyz[get_point_index(1.0e7), get_point_index(y_cmps)]
+        assert np.isclose(te, get_te_of_cell(1, index_phi), rtol=1e-12, atol=0.0), y_cmps
+    # on z = 0, the +z side is the polar cell 1
+    (gridxy,), _ = plotestimators.get_image_values(estimators, panels, modelmeta, "z", [5], 0.0)
+    assert np.isclose(
+        gridxy[get_point_index(1.0e7), get_point_index(1.5e9)], get_te_of_cell(1, 0), rtol=1e-12, atol=0.0
+    )
+
+    # --slice reads the cells of the same points
+    dfmodel = pl.DataFrame({"inputcellid": pl.int_range(16, eager=True, dtype=pl.Int32), "rho": 1.0e-12})
+    at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta=dict(modelmeta))
+    planecells = at.estimators.get_cells_of_slice(tmp_path, [("x", 0.0, "x = 0")])
+    assert {(cellindex // 2) // 2 for cellindex in planecells} == {0, 3}
+
+
 def test_image_of_a_mass_fraction_takes_the_mass_weight_of_the_line_plot() -> None:
     """A pixel of a mass fraction or Ye is a mean with the cell masses as weights, as the line plot gives.
 
@@ -4806,7 +4931,9 @@ def test_cell_selection_of_a_reader_raises_an_error_that_a_script_can_catch(
     import artistools.__main__
 
     args = argparse.Namespace(readonlymgi="alongaxis")
-    with pytest.raises(ValueError, match="-readonlymgi alongaxis needs a 3D model") as excinfo:
+    with pytest.raises(
+        ValueError, match="-readonlymgi alongaxis needs a model with 3D Cartesian coordinates"
+    ) as excinfo:
         at.estimators.core.get_cells_along_axis(CLASSIC1DPATH, args)
     assert at.misc.get_help_notes(excinfo.value) == ["Remove --readonlymgi to plot every cell against the velocity"]
 
@@ -4826,7 +4953,7 @@ def test_cell_selection_of_a_reader_raises_an_error_that_a_script_can_catch(
         )
     assert exitinfo.value.code == 1
     errorlines = capsys.readouterr().err.splitlines()
-    assert any(line.startswith("error: --readonlymgi alongaxis needs a 3D model") for line in errorlines)
+    assert any(line.startswith("error: --readonlymgi alongaxis needs a model with 3D Cartesian") for line in errorlines)
     assert "help: Remove --readonlymgi to plot every cell against the velocity" in errorlines
     assert not list(tmp_path.glob("*.pdf"))
 

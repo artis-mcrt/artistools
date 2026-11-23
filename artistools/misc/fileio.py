@@ -625,6 +625,25 @@ def firstexisting(
     raise FileNotFoundError(msg)
 
 
+# the folders of the model folder in which sn3d searches for an input file (datafolders of constants.h)
+SN3D_INPUT_FOLDERS = (".", "data", "artis/data")
+
+
+def find_sn3d_input_file(
+    filename: str, modelfolder: Path, datafolders: Sequence[str] = SN3D_INPUT_FOLDERS
+) -> Path | None:
+    """Return the input file of this name that sn3d reads, or None.
+
+    sn3d tests the plain file and a copy that zstd compressed, in each folder of datafolders below the model folder
+    (inputfile_exists of inputfilestream.h). It does not read a copy that gzip or xz compressed.
+    """
+    for datafolder in datafolders:
+        for path in (Path(modelfolder, datafolder, filename), Path(modelfolder, datafolder, f"{filename}.zst")):
+            if path.is_file():
+                return path
+    return None
+
+
 def firstexisting_or_none(
     filelist: Sequence[str | Path] | str | Path,
     folder: Path | str = ".",

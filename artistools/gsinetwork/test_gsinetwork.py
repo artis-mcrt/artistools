@@ -486,7 +486,7 @@ def test_comparetogsinetwork_takes_particles_with_no_network_data(tmp_path: Path
     from artistools.gsinetwork import comparetogsinetwork
 
     dfcontributions = pl.DataFrame({"particleid": [1, 2], "cellindex": [1, 1], "frac_of_cellmass": [0.5, 0.5]})
-    lzdfmodel = pl.LazyFrame({"modelgridindex": [0], "cellmass_on_mtot": [1.0]})
+    lzdfmodel = pl.LazyFrame({"inputcellid": [1], "modelgridindex": [0], "cellmass_on_mtot": [1.0]})
 
     def map_in_sequence(function: t.Any, items: t.Any, **_kwargs: t.Any) -> list[t.Any]:
         return [function(item) for item in items]

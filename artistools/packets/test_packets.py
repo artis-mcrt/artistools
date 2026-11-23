@@ -1191,7 +1191,7 @@ def test_filterpackets_keeps_a_file_with_no_escaped_rpkt(tmp_path: Path, capsys:
 def test_plotspherical(tmp_path: Path) -> None:
     at.packets.plotspherical.main(argsraw=[], modelpath=modelpath, outputfile=tmp_path)
 
-    assert [path.name for path in tmp_path.glob("plotspherical_*.pdf")] == ["plotspherical_256.67-333.82d.pdf"]
+    assert [path.name for path in tmp_path.glob("plotspherical_*.pdf")] == ["plotspherical_261.55-333.82d.pdf"]
 
 
 def test_plotspherical_gaussian_filter(tmp_path: Path) -> None:
@@ -1392,3 +1392,63 @@ def test_last_interaction_convention_reads_a_negative_thermalisation_probability
     (tmp_path / "artisoptions.h").write_text(f"{optionline}\n", encoding="utf-8")
     at.packets.core.print_last_interaction_convention(tmp_path)
     assert expected in capsys.readouterr().out
+
+
+def test_a_position_in_a_spherical_grid_gets_the_cell_of_its_radius_and_angles() -> None:
+    """A packet at the mid-point of each cell of a spherical3d grid gets that cell, and the edges follow sn3d.
+
+    The cell index is i_r + n_r * (i_costheta + n_costheta * i_phi). The angle theta is from the +z axis, its cosine
+    increases from -1 to 1, and phi = atan2(y, x) is from 0 to 2 pi. A position on the -z axis is in the first cell
+    of cos(theta). A position at or outside the outer radius, and a position of NaN, get no cell.
+    """
+    from artistools.packets.core import get_modelgridindex_expr
+
+    r_edges_kmps = [0.0, 2000.0, 4500.0, 9000.0]
+    costheta_edges = [-1.0, -0.2, 0.6, 1.0]
+    phi_edges = [0.0, 1.0, 2.5, 4.0, 2.0 * math.pi]
+    modelmeta = {
+        "coordinates": "spherical3d",
+        "dimensions": 3,
+        "t_model_init_days": 1.0,
+        "vel_r_edges_kmps": r_edges_kmps,
+        "costheta_edges": costheta_edges,
+        "phi_edges_radians": phi_edges,
+        "vmax_cmps": 9000.0 * at.constants.km_to_cm,
+    }
+    t_s = 5.0e4
+    r_mid, costheta_mid, phi_mid = (
+        mid.ravel(order="F")
+        for mid in np.meshgrid(
+            *(
+                (np.array(edges[:-1]) + np.array(edges[1:])) / 2.0
+                for edges in (r_edges_kmps, costheta_edges, phi_edges)
+            ),
+            indexing="ij",
+        )
+    )
+    radius = r_mid * at.constants.km_to_cm * t_s
+    extrapositions = [
+        (0.0, 0.0, -3000.0 * at.constants.km_to_cm * t_s),  # the -z axis
+        (3000.0 * at.constants.km_to_cm * t_s, -1e-9, 0.0),  # an angle below the x axis that rounds to phi = 2 pi
+        # an angle of 0.1 rad below the x axis
+        (3000.0 * at.constants.km_to_cm * t_s, -300.0 * at.constants.km_to_cm * t_s, 0.0),
+        (0.0, 0.0, 0.0),  # the centre
+        (9000.0 * at.constants.km_to_cm * t_s, 0.0, 0.0),  # the outer radius
+        (math.nan, 0.0, 0.0),  # NaN
+    ]
+    extra_x, extra_y, extra_z = (list(component) for component in zip(*extrapositions, strict=True))
+    dfpackets = pl.DataFrame({
+        "em_posx": [*(radius * np.sqrt(1.0 - costheta_mid**2) * np.cos(phi_mid)), *extra_x],
+        "em_posy": [*(radius * np.sqrt(1.0 - costheta_mid**2) * np.sin(phi_mid)), *extra_y],
+        "em_posz": [*(radius * costheta_mid), *extra_z],
+        "em_time": [t_s] * (len(radius) + 6),
+    })
+
+    cells = dfpackets.select(get_modelgridindex_expr("em", modelmeta, pl.LazyFrame()).alias("mgi"))["mgi"].to_list()
+
+    ncells = len(radius)
+    assert cells[:ncells] == list(range(ncells))
+    # the shell of 3000 km/s has the radial index 1. cos(theta) = -1 is in the first cell of cos(theta), and
+    # cos(theta) = 0 is in the cell with the index 1. phi = 2 pi is the angle 0, thus it is in the first cell of phi,
+    # and an angle below it is in the last cell. The centre is in the first cell of each axis
+    assert cells[ncells:] == [1 + 3 * (0 + 3 * 0), 1 + 3 * (1 + 3 * 0), 1 + 3 * (1 + 3 * 3), 0, None, None]

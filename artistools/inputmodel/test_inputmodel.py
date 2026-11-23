@@ -4,6 +4,7 @@ import itertools
 import json
 import math
 import multiprocessing
+import os
 import re
 import shutil
 import tarfile
@@ -73,7 +74,7 @@ def get_empty_3d_model(
         ])
     )
 
-    standardcols = get_standard_columns(3, includenico57=includenico57)
+    standardcols = get_standard_columns("cartesian3d", includenico57=includenico57)
 
     dfmodel = dfmodel.with_columns([
         pl.lit(0.0, dtype=pl.Float32).alias(colname)
@@ -268,7 +269,6 @@ def test_trajectory_cache_replaces_a_stale_cache_and_outlives_its_archive(tmp_pa
     assert pqmetadata["textsource"] == "114511.tar.xz"
 
     # a copy with cp -p keeps the modification time, thus the size of the archive shows the change
-    import os
 
     archivetime = Path(archivepath).stat().st_mtime
     shutil.copy(testdatapath / "kilonova" / "trajectories" / "109215.tar.xz", archivepath)
@@ -612,6 +612,39 @@ def test_make1dmodelfromcone(tmp_path: Path) -> None:
     assert 1 <= modelmeta["npts_model"] <= 4
     assert dfmodel.select(pl.col("logrho").max()).collect().item() > -90.0
     assert (tmp_path / "abundances_1d.txt.zst").is_file()
+
+
+def test_make1dmodelfromcone_of_a_version_2_model_gives_the_mass_fractions_of_version_1(tmp_path: Path) -> None:
+    """A version 2 model holds each X_<el>_otherstable beside an element column that already includes it.
+
+    The sum of the normalisation counted the otherstable columns twice, thus each mass fraction was too low.
+    """
+    version2folder = tmp_path / "version2"
+    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[modelpath_3d], format_version=2, outputfile=version2folder)
+    massfractions = []
+    for sourcefolder in (modelpath_3d, version2folder):
+        conefolder = tmp_path / f"cone_{sourcefolder.name}"
+        conefolder.mkdir()
+        at.inputmodel.slice1dfromconein3dmodel.main(
+            argsraw=[],
+            modelpath=[sourcefolder],
+            outputpath=conefolder,
+            axis="-z",
+            coneshellspacingexponent=2.0,
+            nshells=4,
+            coneangle=60,
+        )
+        dfmodel, _ = at.inputmodel.scan_modeldata(conefolder / "model_1d.txt", printwarningsonly=True)
+        with at.zopen(conefolder / "abundances_1d.txt.zst") as abundfile:
+            elementfractions = np.loadtxt(abundfile)[:, 1:]
+        massfractions.append((dfmodel.select(cs.starts_with("X_")).collect(), elementfractions))
+
+    (nuclides_v1, elements_v1), (nuclides_v2, elements_v2) = massfractions
+    assert nuclides_v1.columns == nuclides_v2.columns
+    for colname in nuclides_v1.columns:
+        assert np.allclose(nuclides_v2[colname], nuclides_v1[colname], rtol=1e-6, atol=0.0), colname
+    assert np.allclose(elements_v2, elements_v1, rtol=1e-6, atol=0.0)
+    assert np.allclose(elements_v2.sum(axis=1), 1.0, rtol=1e-6, atol=0.0)
 
 
 def test_empty_shell_warning_goes_to_the_standard_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -2197,13 +2230,15 @@ def test_save_modeldata_writes_the_extra_columns(
         "tracercount": [3, 4],
         "mycolumn": [5.0, 6.0],
     })
-    extracolsarg = {} if extracols is None else {"extracols": extracols}
     at.inputmodel.save_modeldata(
-        dfmodel, outpath=tmp_path, modelmeta={"dimensions": 1, "t_model_init_days": 1.0}, **extracolsarg
+        dfmodel,
+        outpath=tmp_path,
+        modelmeta={"dimensions": 1, "t_model_init_days": 1.0},
+        extracols=() if extracols is None else extracols,
     )
 
     lzdfmodel_written, _ = at.inputmodel.core.scan_modelfile_text(tmp_path / "model.txt.zst")
-    standardcols = at.inputmodel.core.get_standard_columns(1)
+    standardcols = at.inputmodel.core.get_standard_columns("spherical1d")
     assert lzdfmodel_written.collect_schema().names() == [*standardcols, "X_Sr89", *expectedcustomcols]
 
 
@@ -3581,7 +3616,8 @@ def write_e2e_model(datpath: Path, isopath: Path) -> None:
         qdot=np.full((ntraj, ntimes), 1e10),
         hnuloss=np.zeros((ntraj, ntimes)),
         time=np.linspace(0.0, 2.0 * t_model_init_s, ntimes),
-        nz=rng.uniform(0.01, 0.2, size=(ntraj, 2)),
+        # number fractions whose mass fractions sum to less than 1, because sn3d stops for a larger sum
+        nz=rng.uniform(0.01, 0.2, size=(ntraj, 2)) * np.array([0.5, 0.01]),
         t5out=np.column_stack([np.zeros((ntraj, 4)), np.full(ntraj, 0.3)]),
     )
     # the neutron number and the atomic number of He4 and Zn56
@@ -3640,6 +3676,35 @@ def test_from_e2e_model_main(
     )
     lzreplaced, _ = at.inputmodel.scan_modeldata(tmp_path / "replaced", printwarningsonly=True)
     assert lzreplaced.select(pl.col("rho").is_finite().all()).collect().item()
+
+    # a model of format version 2 has the cell ids 0 to N - 1, and the joins then gave each cell the next cell
+    at.inputmodel.makeartismodel.main(
+        argsraw=[], modelpath=[tmp_path / "dyn3d"], format_version=2, outputfile=tmp_path / "dyn3d_v2"
+    )
+    for outfoldername, modeargs in (("replaced", ["--globaldynscale"]), ("interpolated", ["--interpolate"])):
+        at.inputmodel.from_e2e_model.main(
+            argsraw=[
+                *gridargs3d,
+                "-replacedyn",
+                str(tmp_path / "dyn3d_v2"),
+                *modeargs,
+                "-o",
+                str(tmp_path / f"{outfoldername}_v2"),
+            ]
+        )
+        for reader in (at.inputmodel.scan_modeldata, at.inputmodel.scan_initelemabundances):
+            dfresults = []
+            for folder in (tmp_path / outfoldername, tmp_path / f"{outfoldername}_v2"):
+                result = reader(folder, printwarningsonly=True)
+                lzresult = result[0] if isinstance(result, tuple) else result
+                dfresults.append(lzresult.select(cs.by_name("rho", require_all=False) | cs.starts_with("X_")).collect())
+            dfresult_v1, dfresult_v2 = dfresults
+            assert dfresult_v1.columns == dfresult_v2.columns
+            for colname in dfresult_v1.columns:
+                assert np.allclose(dfresult_v2[colname], dfresult_v1[colname], rtol=1e-5, atol=0.0), (
+                    outfoldername,
+                    colname,
+                )
 
     for filename in at.inputmodel.core.MODEL_FILE_NAMES:
         (tmp_path / "interpolated" / f"{filename}.zst").unlink(missing_ok=True)
@@ -3966,7 +4031,7 @@ def test_abundance_write_failure_keeps_the_previous_file(tmp_path: Path, extensi
     abundance = pl.DataFrame({"inputcellid": [1], "X_H": [1.0]})
     if failure == "validation":
         abundance = abundance.with_columns(pl.lit(2).alias("inputcellid"))
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError, match="must start at 0 or 1"):
             at.inputmodel.save_initelemabundances(abundance, outpath=output)
     else:
         msg = "Write failed"
@@ -3975,6 +4040,31 @@ def test_abundance_write_failure_keeps_the_previous_file(tmp_path: Path, extensi
             pytest.raises(OSError, match=msg),
         ):
             at.inputmodel.save_initelemabundances(abundance, outpath=output)
+    assert output.read_bytes() == original
+    assert sorted(tmp_path.iterdir()) == [output]
+
+
+@pytest.mark.parametrize("extension", ["", ".zst"])
+def test_model_write_failure_keeps_the_previous_file(tmp_path: Path, extension: str) -> None:
+    """A write of model.txt that stops early leaves the old model.txt, e.g. of a conversion in its model folder.
+
+    The writer deleted the old file and then wrote the new file at its place, thus a stop left a part of the file.
+    """
+    output = tmp_path / f"model.txt{extension}"
+    original = b"previous model data"
+    output.write_bytes(original)
+    dfmodel = pl.DataFrame({"inputcellid": [0], "rho": [1e-12]})
+    modelmeta = {"coordinates": "spherical1d", "formatversion": 2, "t_model_init_days": 1.0}
+    msg = "Write failed"
+    with (
+        mock.patch("artistools.inputmodel.core.write_artis_csv", side_effect=OSError(msg)),
+        pytest.raises(OSError, match=msg),
+    ):
+        at.inputmodel.save_modeldata(
+            dfmodel.with_columns(vel_r_max_kmps=pl.lit(1000.0), logrho=pl.lit(-12.0)),
+            outpath=tmp_path,
+            modelmeta=modelmeta,
+        )
     assert output.read_bytes() == original
     assert sorted(tmp_path.iterdir()) == [output]
 
@@ -4013,6 +4103,1662 @@ def test_from_e2e_model_rejects_unequal_3d_dimensions_before_a_write(tmp_path: P
     at.inputmodel.from_e2e_model.main(argsraw=[*gridargs, "-dimensions", "1", "-o", str(tmp_path / "model1d")])
     _, modelmeta1d = at.inputmodel.scan_modeldata(tmp_path / "model1d", printwarningsonly=True)
     assert modelmeta1d["dimensions"] == 1
+
+
+def get_random_spherical_model(coordinates: str) -> tuple[pl.DataFrame, dict[str, t.Any]]:
+    """Return a model with spherical cell edges that are not uniform and random cell values, and its metadata."""
+    rng = np.random.default_rng(seed=1)
+    modelmeta: dict[str, t.Any] = {
+        "coordinates": coordinates,
+        "dimensions": int(coordinates[-2]),
+        "t_model_init_days": 0.5,
+        "vel_r_edges_kmps": [0.0, 2000.0, 4500.0, 9000.0, 30000.0],
+        "costheta_edges": [-1.0, -0.2, 0.4, 1.0],
+        "vmax_cmps": 30000.0 * at.constants.km_to_cm,
+        "firstinputcellid": 0,
+        "headercommentlines": ["a comment of the user"],
+    }
+    ncells = 4 * 3
+    if coordinates == "spherical3d":
+        modelmeta["phi_edges_radians"] = [0.0, 1.0, 2.5, 4.0, 5.5, 2.0 * math.pi]
+        ncells *= 5
+    dfmodel = pl.DataFrame({
+        "inputcellid": pl.int_range(ncells, eager=True, dtype=pl.Int32),
+        "rho": rng.random(ncells) * 1e-12,
+        "X_Fegroup": np.ones(ncells),
+        "X_Ni56": rng.random(ncells),
+        "X_Co56": np.zeros(ncells),
+        "X_Fe52": np.zeros(ncells),
+        "X_Cr48": np.zeros(ncells),
+        "Ye": rng.random(ncells),
+        "tracercount": rng.integers(0, 5, ncells).astype(np.int32),
+    })
+    return dfmodel, modelmeta
+
+
+@pytest.mark.parametrize("coordinates", ["spherical2d", "spherical3d"])
+def test_spherical_model_round_trip(tmp_path: Path, coordinates: str) -> None:
+    """A spherical2d or spherical3d model keeps its edges, its cells, and its volume through a write and a read.
+
+    model.txt has no position column for these coordinates. Thus the edges of the header and the id of a cell give
+    each position. An error in the cell order or in an edge shows in the volume and in the mid-points.
+    """
+    dfmodel, modelmeta = get_random_spherical_model(coordinates)
+    # The reader gives Float32 values, and the nine significant figures of version 2 give each of them again. Eight
+    # figures give a different Float32 for the density of the first cell
+    dfmodel = dfmodel.with_columns(
+        rho=pl.when(pl.col("inputcellid") == 0).then(1.04083036e-13).otherwise(pl.col("rho"))
+    ).with_columns(cs.float().cast(pl.Float32))
+    edgekeys = [key for key in ("vel_r_edges_kmps", "costheta_edges", "phi_edges_radians") if key in modelmeta]
+    edges_written = {key: list(modelmeta[key]) for key in edgekeys}
+
+    # a version 2 model has no opacity.txt. The file can hold the only copy of its values, thus the writer deletes it
+    # only when the caller agrees
+    (tmp_path / "opacity.txt").write_text("1\n1 0.5\n", encoding="utf-8")
+    with pytest.raises(ValueError, match=r"opacity\.txt gives values of the cells"):
+        at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta=dict(modelmeta))
+    assert (tmp_path / "opacity.txt").is_file()
+    assert not list(tmp_path.glob("model.txt*"))
+    at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta=modelmeta, deletecellidfiles=True)
+    assert not (tmp_path / "opacity.txt").exists()
+    lzmodel_read, modelmeta_read = at.inputmodel.scan_modeldata(tmp_path)
+
+    # the file has no composition column that holds zero in each cell, and the reader gives such a column again
+    with at.zopen(tmp_path / "model.txt.zst") as fmodel:
+        headerlines = fmodel.read().splitlines()[: -dfmodel.height]
+    assert headerlines[-2:] == [
+        f"cell_line_count {dfmodel.height}",
+        "columns inputcellid rho X_Fegroup X_Ni56 Ye tracercount",
+    ]
+    # the key cells_per_axis gives the cell counts, thus the line of the coordinates has no comment
+    coordinatesindex = headerlines.index(f"coordinates {coordinates}")
+    gridcounts = " ".join(str(len(modelmeta[key]) - 1) for key in edgekeys)
+    assert headerlines[coordinatesindex + 1] == f"cells_per_axis {gridcounts}"
+
+    # the writer gives 17 significant digits, thus each edge comes back with no change
+    assert {key: modelmeta_read[key] for key in edgekeys} == edges_written
+    assert modelmeta_read["coordinates"] == coordinates
+    assert modelmeta_read["headercommentlines"] == ["a comment of the user"]
+    assert modelmeta_read["npts_model"] == dfmodel.height == at.misc.get_npts_model(tmp_path)
+    pltest.assert_frame_equal(
+        lzmodel_read.drop("modelgridindex").collect(), dfmodel, check_dtypes=False, check_exact=True
+    )
+
+    dfderived = at.inputmodel.add_derived_cols_to_modeldata(lzmodel_read, modelmeta_read).collect()
+    radius_outer = modelmeta_read["vmax_cmps"] * modelmeta_read["t_model_init_days"] * day_to_s
+    assert math.isclose(dfderived["volume"].sum(), 4.0 / 3.0 * math.pi * radius_outer**3, rel_tol=1e-12)
+    assert np.allclose(
+        np.hypot(dfderived["vel_rcyl_mid"].to_numpy(), dfderived["vel_z_mid"].to_numpy()),
+        dfderived["vel_r_mid"].to_numpy(),
+        rtol=1e-12,
+        atol=0.0,
+    )
+    if coordinates == "spherical3d":
+        assert np.allclose(
+            np.hypot(dfderived["vel_x_mid"].to_numpy(), dfderived["vel_y_mid"].to_numpy()),
+            dfderived["vel_rcyl_mid"].to_numpy(),
+            rtol=1e-12,
+            atol=0.0,
+        )
+
+    # the id of a cell gives its index in the grid. Thus a selection of the rows in a different order gives the
+    # same values
+    isselected = pl.col("inputcellid") % 3 == 0
+    pltest.assert_frame_equal(
+        at.inputmodel.add_derived_cols_to_modeldata(
+            lzmodel_read.filter(isselected).sort("rho"), modelmeta_read
+        ).collect(),
+        dfderived.filter(isselected).sort("rho"),
+    )
+
+
+SPHERICAL2D_MODEL_LINES = (
+    "format_version 2",
+    "# a comment before the keys",
+    "coordinates spherical2d",
+    "# a comment between two keys",
+    "t_model_init_days 1.0  # an inline comment",
+    "cell_line_count 4",
+    "vel_r_edges_kmps 0 1000 3000",
+    "costheta_edges -1 0.1 1",
+    "columns inputcellid rho X_Fegroup",
+    "0 1e-12 1",
+    "1 2e-12 1",
+    "2 3e-12 1",
+    "3 4e-12 1",
+)
+
+
+def test_spherical_model_reader_takes_cell_ids_from_zero(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The first cell id of a file sets the index of each cell, also with no modelgridindex column.
+
+    The reader also takes a comment line before each key line.
+    """
+    (tmp_path / "model.txt").write_text("\n".join(SPHERICAL2D_MODEL_LINES) + "\n", encoding="utf-8")
+    lzmodel, modelmeta = at.inputmodel.scan_modeldata(tmp_path)
+
+    assert modelmeta["firstinputcellid"] == 0
+    assert modelmeta["headercommentlines"] == ["a comment before the keys", "a comment between two keys"]
+
+    # the keys can come in any sequence before the key columns, and a key that artistools does not know gets a warning
+    lines = [SPHERICAL2D_MODEL_LINES[0], "key_of_a_later_version 1", *reversed(SPHERICAL2D_MODEL_LINES[1:8])]
+    # a comment line or an empty line can come before each cell line
+    celllines = [SPHERICAL2D_MODEL_LINES[8], "# a comment before the first cell", "", SPHERICAL2D_MODEL_LINES[9]]
+    (tmp_path / "model.txt").write_text(
+        "\n".join([*lines, *celllines, "# a comment", "", *SPHERICAL2D_MODEL_LINES[10:]]) + "\n", encoding="utf-8"
+    )
+    dfreordered, metareordered = at.inputmodel.scan_modeldata(tmp_path)
+    pltest.assert_frame_equal(dfreordered.collect(), lzmodel.collect())
+    assert metareordered["costheta_edges"] == modelmeta["costheta_edges"]
+    captured = capsys.readouterr()
+    assert "does not know the key key_of_a_later_version" in captured.out + captured.err
+
+    # a model with no density keeps one cell line, because a file with no cell line is not valid
+    emptyfolder = tmp_path / "empty"
+    emptyfolder.mkdir()
+    # a version 2 model has no Ye.txt, thus the file of an earlier model goes, also for a model with no column Ye
+    (emptyfolder / "Ye.txt").write_text("1\n1 0.3\n", encoding="utf-8")
+    at.inputmodel.save_modeldata(
+        lzmodel.with_columns(rho=pl.lit(0.0, dtype=pl.Float32)).collect(),
+        outpath=emptyfolder,
+        modelmeta=dict(modelmeta),
+        deletecellidfiles=True,
+    )
+    assert not (emptyfolder / "Ye.txt").exists()
+    # the count of the cell lines is 1, and the file has no composition column that is zero in each cell with density
+    with at.zopen(emptyfolder / "model.txt.zst") as fmodel:
+        assert fmodel.read().splitlines()[-3:-1] == ["cell_line_count 1", "columns inputcellid rho"]
+    dfempty = at.inputmodel.scan_modeldata(emptyfolder)[0].collect()
+    assert dfempty["inputcellid"].to_list() == [0, 1, 2, 3]
+    assert dfempty["rho"].to_list() == [0.0, 0.0, 0.0, 0.0]
+
+    # a cell with no line is empty in format version 2, and the count of the cell lines agrees with the file
+    lines = [
+        line.replace("cell_line_count 4", "cell_line_count 3")
+        for line in SPHERICAL2D_MODEL_LINES
+        if line != "2 3e-12 1"
+    ]
+    (tmp_path / "model.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    dfwithabsentcell = at.inputmodel.scan_modeldata(tmp_path)[0].collect()
+    assert dfwithabsentcell["inputcellid"].to_list() == [0, 1, 2, 3]
+    assert dfwithabsentcell["rho"].to_list() == pytest.approx([1e-12, 2e-12, 0.0, 4e-12])
+    assert dfwithabsentcell["X_Fegroup"].to_list() == [1.0, 1.0, 0.0, 1.0]
+    # a composition column that the file does not have holds zero, at its place in a version 1 file
+    assert dfwithabsentcell.columns[:7] == ["inputcellid", "rho", "X_Fegroup", "X_Ni56", "X_Co56", "X_Fe52", "X_Cr48"]
+    assert dfwithabsentcell["X_Ni56"].to_list() == [0.0, 0.0, 0.0, 0.0]
+    dfderived = at.inputmodel.add_derived_cols_to_modeldata(lzmodel.drop("modelgridindex"), modelmeta).collect()
+    # the radial index changes fastest, thus the cells 0 and 2 are in the inner shell
+    assert dfderived["vel_r_max"].to_list() == pytest.approx([1e8, 3e8, 1e8, 3e8])
+    assert dfderived["costheta_min"].to_list() == pytest.approx([-1.0, -1.0, 0.1, 0.1])
+    # metadata with no key firstinputcellid gave the first cell the edges of the last cell. The cell ids of format
+    # version 2 start at 0
+    metawithoutkey = {key: value for key, value in modelmeta.items() if key != "firstinputcellid"}
+    pltest.assert_frame_equal(
+        at.inputmodel.add_derived_cols_to_modeldata(lzmodel.drop("modelgridindex"), metawithoutkey).collect(), dfderived
+    )
+
+
+def get_mirrored_model_and_twin(
+    coordinates: str,
+) -> tuple[pl.DataFrame, dict[str, t.Any], pl.DataFrame, dict[str, t.Any], np.ndarray[t.Any, np.dtype[np.int64]]]:
+    """Return a model with mirror symmetry in the plane z = 0, its full twin, and the half cell of each twin cell.
+
+    The twin has the cells of both halves, and each pair of mirror cells has the values of the cell of the mirrored
+    model. The cell index of each list is the model grid index, in which the first axis changes fastest.
+    """
+    rng = np.random.default_rng(seed=3)
+    # the position columns of a cylindrical model. A spherical model has none
+    mirrorpos: dict[str, np.ndarray[t.Any, np.dtype[np.floating]]]
+    twinpos: dict[str, np.ndarray[t.Any, np.dtype[np.floating]]]
+    if coordinates == "cylindrical2d":
+        n0, nhalf, n2 = 3, 2, 1
+        vmax_cmps = 3e9
+        tmodel_s = 0.5 * day_to_s
+        rcylwidth_cm = vmax_cmps * tmodel_s / n0
+        zwidth_cm = vmax_cmps * tmodel_s / nhalf
+        index0, index1 = np.arange(n0 * nhalf) % n0, np.arange(n0 * nhalf) // n0
+        common = {"coordinates": coordinates, "t_model_init_days": 0.5, "vmax_cmps": vmax_cmps, "ncoordgridrcyl": n0}
+        mirrormeta = common | {"ncoordgridz": nhalf, "mirror_plane": "z=0"}
+        twinmeta = common | {"ncoordgridz": 2 * nhalf}
+        mirrorpos = {"pos_rcyl_mid": (index0 + 0.5) * rcylwidth_cm, "pos_z_mid": (index1 + 0.5) * zwidth_cm}
+        twinindex0, twinindex1 = np.arange(n0 * 2 * nhalf) % n0, np.arange(n0 * 2 * nhalf) // n0
+        twinpos = {
+            "pos_rcyl_mid": (twinindex0 + 0.5) * rcylwidth_cm,
+            "pos_z_mid": (twinindex1 + 0.5) * zwidth_cm - vmax_cmps * tmodel_s,
+        }
+        # the z index of the half starts at the plane z = 0
+        halfindex1 = np.where(twinindex1 >= nhalf, twinindex1 - nhalf, nhalf - 1 - twinindex1)
+    else:
+        n0, nhalf, n2 = 4, 2, 3
+        halfcosthetaedges = [0.0, 0.6, 1.0]
+        common = {
+            "coordinates": coordinates,
+            "t_model_init_days": 0.5,
+            "vel_r_edges_kmps": [0.0, 2000.0, 4500.0, 9000.0, 30000.0],
+            "phi_edges_radians": [0.0, 1.0, 4.5, 2.0 * math.pi],
+        }
+        mirrormeta = common | {"costheta_edges": halfcosthetaedges, "mirror_plane": "z=0"}
+        twinmeta = common | {"costheta_edges": [-1.0, -0.6, *halfcosthetaedges]}
+        mirrorpos = dict[str, np.ndarray[t.Any, np.dtype[np.floating]]]()
+        twinpos = mirrorpos
+        twinindex0 = np.arange(n0 * 2 * nhalf * n2) % n0
+        twinindex1 = (np.arange(n0 * 2 * nhalf * n2) // n0) % (2 * nhalf)
+        # the polar index of the half also starts at the plane z = 0
+        halfindex1 = np.where(twinindex1 >= nhalf, twinindex1 - nhalf, nhalf - 1 - twinindex1)
+    twinindex2 = np.arange(n0 * 2 * nhalf * n2) // (n0 * 2 * nhalf)
+    halfcell = twinindex0 + n0 * (halfindex1 + nhalf * twinindex2)
+    ncells = n0 * nhalf * n2
+    mirrorcells = pl.DataFrame({
+        "inputcellid": np.arange(ncells, dtype=np.int32),
+        **mirrorpos,
+        "rho": rng.random(ncells) * 1e-12,
+        "X_Ni56": rng.random(ncells),
+    })
+    twincells = pl.DataFrame({
+        "inputcellid": np.arange(2 * ncells, dtype=np.int32),
+        **twinpos,
+        "rho": mirrorcells["rho"].to_numpy()[halfcell],
+        "X_Ni56": mirrorcells["X_Ni56"].to_numpy()[halfcell],
+    })
+    return mirrorcells, mirrormeta, twincells, twinmeta, halfcell
+
+
+@pytest.mark.parametrize("coordinates", ["cylindrical2d", "spherical3d"])
+def test_mirrored_model_has_the_masses_and_the_cells_of_its_full_twin(tmp_path: Path, coordinates: str) -> None:
+    """A model with the key mirror_plane z=0 gives the masses and the cell search of the full model of both halves.
+
+    Each cell of the file also fills its mirror cell. Thus its volume and its mass are two times the values of the
+    half cell, and a velocity with z < 0 is in the cell of its mirror velocity.
+    """
+    mirrorcells, mirrormeta, twincells, twinmeta, halfcell = get_mirrored_model_and_twin(coordinates)
+    readmodels: dict[str, tuple[pl.DataFrame, dict[str, t.Any]]] = {}
+    for name, dfcells, meta in (("mirror", mirrorcells, mirrormeta), ("twin", twincells, twinmeta)):
+        at.inputmodel.save_modeldata(dfcells, outpath=tmp_path / name, modelmeta=meta | {"formatversion": 2})
+        lzmodel, modelmeta = at.inputmodel.scan_modeldata(tmp_path / name)
+        readmodels[name] = (at.inputmodel.add_derived_cols_to_modeldata(lzmodel, modelmeta).collect(), modelmeta)
+    dfmirror, metamirror = readmodels["mirror"]
+    dftwin, metatwin = readmodels["twin"]
+
+    with at.zopen(tmp_path / "mirror" / "model.txt.zst") as fmodel:
+        assert "mirror_plane z=0" in fmodel.read().splitlines()
+    assert at.misc.has_mirror_plane(metamirror)
+    assert not at.misc.has_mirror_plane(metatwin)
+    # the cells of a mirror pair together have the mass of their cell in the mirrored model
+    twinpairmass = np.bincount(halfcell, weights=dftwin.sort("modelgridindex")["mass_g"].to_numpy())
+    np.testing.assert_allclose(dfmirror.sort("modelgridindex")["mass_g"].to_numpy(), twinpairmass, rtol=1e-6)
+    assert math.isclose(dfmirror["volume"].sum(), dftwin["volume"].sum(), rel_tol=1e-6)
+
+    # a velocity with z < 0 is in the mirror cell, thus the twin cell of each velocity has the half cell of the file
+    rng = np.random.default_rng(seed=4)
+    velocities = rng.uniform(-2.9e9, 2.9e9, size=(3000, 3))
+    if coordinates == "cylindrical2d":
+        positions = {f"em_pos{axis}": velocities[:, i] * 1e5 for i, axis in enumerate("xyz")}
+        dfpackets = pl.DataFrame(positions | {"em_time": np.full(len(velocities), 1e5)})
+        cellsof = {
+            name: dfpackets
+            .select(at.packets.core.get_modelgridindex_expr("em", meta, pl.LazyFrame()).fill_null(-1))
+            .to_series()
+            .to_numpy()
+            for name, meta in (("mirror", metamirror), ("twin", metatwin))
+        }
+    else:
+        cellsof = {
+            name: at.inputmodel.get_spherical_cell_index_of_velocities(
+                velocities[:, 0], velocities[:, 1], velocities[:, 2], meta
+            )
+            for name, meta in (("mirror", metamirror), ("twin", metatwin))
+        }
+        dfvelocities = pl.DataFrame({"vel_x": velocities[:, 0], "vel_y": velocities[:, 1], "vel_z": velocities[:, 2]})
+        vel_r = (pl.col("vel_x") ** 2 + pl.col("vel_y") ** 2 + pl.col("vel_z") ** 2).sqrt()
+        packetcells = (
+            dfvelocities
+            .select(
+                at.packets.get_spherical_modelgridindex_expr(
+                    vel_r, pl.col("vel_x"), pl.col("vel_y"), pl.col("vel_z"), metamirror
+                ).fill_null(-1)
+            )
+            .to_series()
+            .to_numpy()
+        )
+        assert np.array_equal(packetcells, cellsof["mirror"])
+    isingrid = cellsof["twin"] >= 0
+    assert isingrid.sum() > 100
+    assert np.array_equal(cellsof["mirror"][isingrid], halfcell[cellsof["twin"][isingrid]])
+
+    # each cell fills both halves, thus a range of directions cannot select the part of a cell in the range
+    args = argparse.Namespace(
+        dirbin=0, costhetamin=None, costhetamax=None, average_over_phi_angle=True, average_over_theta_angle=False
+    )
+    assert at.inputmodel.resolve_cell_direction_range(args, tmp_path / "twin", quiet=True) is not None
+    with pytest.raises(SystemExit):
+        at.inputmodel.resolve_cell_direction_range(args, tmp_path / "mirror", quiet=True)
+
+    if coordinates == "cylindrical2d":
+        # the image shows both halves, thus the full grid of the mirrored model has the cells of the twin
+        from artistools.inputmodel.plotinitialcomposition import get_full_grid_of_cylindrical_model
+
+        dffull, metafull = get_full_grid_of_cylindrical_model(dfmirror, metamirror)
+        assert metafull["ncoordgridz"] == metatwin["ncoordgridz"]
+        np.testing.assert_allclose(dffull["rho"].to_numpy(), dftwin.sort("modelgridindex")["rho"].to_numpy())
+        np.testing.assert_allclose(
+            dffull["pos_z_mid"].to_numpy(), dftwin.sort("modelgridindex")["pos_z_mid"].to_numpy()
+        )
+        # format version 1 has no mirror symmetry
+        with pytest.raises(ValueError, match="has no mirror symmetry"):
+            at.inputmodel.save_modeldata(
+                mirrorcells, outpath=tmp_path / "v1", modelmeta=mirrormeta | {"formatversion": 1}
+            )
+    else:
+        # a reduction to 2D keeps the mirror plane, and a reduction to 1D gives the shells of both halves
+        for outputdimensions, keepsmirror in ((2, True), (1, False)):
+            dfreduced, _, _, metareduced = at.inputmodel.dimension_reduce_model(
+                dfmirror.select(*mirrorcells.columns, "modelgridindex"), outputdimensions, modelmeta=dict(metamirror)
+            )
+            assert at.misc.has_mirror_plane(metareduced) == keepsmirror
+            assert math.isclose(dfreduced["mass_g"].sum(), dftwin["mass_g"].sum(), rel_tol=1e-6)
+
+
+def test_spherical_cell_search_of_an_image_agrees_with_the_cell_search_of_the_packets() -> None:
+    """The cell of a velocity vector is the same for the points of an image and for the packets.
+
+    The packets take the rules of sn3d. The points are random, and some are at the centre, on the z axis, in the
+    plane z = 0, in the half-plane of phi = 0, and outside the grid.
+    """
+    _, modelmeta = get_random_spherical_model("spherical3d")
+    rng = np.random.default_rng(seed=2)
+    velocities = rng.uniform(-3.2e9, 3.2e9, size=(4000, 3))
+    # the two inner shells are small, thus a part of the points is near the centre
+    velocities[2000:] *= rng.uniform(0.0, 0.3, size=(2000, 1))
+    velocities[:50, 2] = 0.0
+    velocities[50:100, :2] = 0.0
+    velocities[100:150, 1] = 0.0
+    velocities[150] = 0.0
+    cellindices = at.inputmodel.get_spherical_cell_index_of_velocities(
+        velocities[:, 0], velocities[:, 1], velocities[:, 2], modelmeta
+    )
+    dfpackets = pl.DataFrame({"vel_x": velocities[:, 0], "vel_y": velocities[:, 1], "vel_z": velocities[:, 2]})
+    vel_r = (pl.col("vel_x") ** 2 + pl.col("vel_y") ** 2 + pl.col("vel_z") ** 2).sqrt()
+    packetcells = dfpackets.select(
+        at.packets
+        .get_spherical_modelgridindex_expr(vel_r, pl.col("vel_x"), pl.col("vel_y"), pl.col("vel_z"), modelmeta)
+        .fill_null(-1)
+        .alias("cellindex")
+    )["cellindex"].to_numpy()
+    assert np.array_equal(cellindices, packetcells)
+    # a part of the points is outside the grid, and the points inside it find each cell
+    assert (cellindices == -1).sum() > 100
+    assert set(cellindices.tolist()) == {-1, *range(4 * 3 * 5)}
+
+
+def test_plotinitialcomposition_of_a_spherical_model_gives_each_point_the_value_of_its_cell(tmp_path: Path) -> None:
+    """The image of a spherical2d model is a grid of points, and each point has the density of the cell that holds it.
+
+    The model has two shells with the outer velocities 1000 and 3000 km/s and two polar cells with the edge at
+    cos(theta) = 0.1. The index of a cell is i_r + 2 * i_costheta, and its density is (index + 1) * 1e-12 g/cm3.
+    """
+    (tmp_path / "model.txt").write_text("\n".join(SPHERICAL2D_MODEL_LINES) + "\n", encoding="utf-8")
+    with mock.patch.object(mplax.Axes, "imshow", side_effect=mplax.Axes.imshow, autospec=True) as mockimshow:
+        at.inputmodel.plotinitialcomposition.main(argsraw=["rho", str(tmp_path), "-o", str(tmp_path / "plot.pdf")])
+
+    valuegrid = mockimshow.call_args.args[1]
+    assert valuegrid.shape == (400, 200)
+    xmin, xmax, ymin, ymax = mockimshow.call_args.kwargs["extent"]
+    vmax_on_c = 3000.0 * at.constants.km_to_cm / at.constants.C_cm_per_s
+    assert (xmin, xmax, ymin, ymax) == pytest.approx((0.0, vmax_on_c, -vmax_on_c, vmax_on_c), rel=1e-6)
+
+    def get_density(vel_rcyl_kmps: float, vel_z_kmps: float) -> float:
+        return float(valuegrid[int((vel_z_kmps + 3000.0) / (6000.0 / 400)), int(vel_rcyl_kmps / (3000.0 / 200))])
+
+    # the first polar cell has cos(theta) < 0.1, which holds -z, and the second one holds +z
+    assert get_density(100.0, -500.0) == pytest.approx(1e-12, rel=1e-6)
+    assert get_density(2000.0, -500.0) == pytest.approx(2e-12, rel=1e-6)
+    assert get_density(100.0, 500.0) == pytest.approx(3e-12, rel=1e-6)
+    assert get_density(100.0, 2000.0) == pytest.approx(4e-12, rel=1e-6)
+    # a point outside the sphere has no cell
+    assert np.ma.is_masked(valuegrid[399, 199])
+
+
+@pytest.mark.parametrize(
+    ("oldline", "newlines", "errortext"),
+    [
+        ("3 4e-12 1", ("3 4e-12 1", "4 5e-12 1"), "more than 4 cells"),
+        ("3 4e-12 1", ("2 4e-12 1",), "must increase from each cell line to the next"),
+        ("3 4e-12 1", ("4 4e-12 1",), "each inputcellid must be from 0 to 3"),
+        ("3 4e-12 1", ("3 4e-12 1 0.5",), "a cell line has more values than the key columns"),
+        ("3 4e-12 1", ("3 4e-12",), "a cell line has fewer values than the key columns"),
+        # the writer does not write such a density, thus the reader also stops for it
+        ("3 4e-12 1", ("3 nan 1",), "1 cells have a density that is not finite or is below 0"),
+        ("3 4e-12 1", ("3 inf 1",), "1 cells have a density that is not finite or is below 0"),
+        ("3 4e-12 1", ("3 -4e-12 1",), "1 cells have a density that is not finite or is below 0"),
+        ("3 4e-12 1", ("3 4e-12 nan",), "the columns X_Fegroup hold a value that is not finite"),
+        ("3 4e-12 1", ("3 4e-12 inf",), "the columns X_Fegroup hold a value that is not finite"),
+        # sn3d stops for a mass fraction of -1e-6 or less, and it reads a smaller negative value as 0
+        ("3 4e-12 1", ("3 4e-12 -0.1",), "the columns X_Fegroup hold a mass fraction of -1e-06 or less"),
+        # the slow reader truncated the id 3.5 to 3, and it removed the text after # of a later cell line
+        ("3 4e-12 1", ("3.5 4e-12 1",), "the inputcellid 3.5 is not a whole number"),
+        ("3 4e-12 1", ("3 4e-12 1 # a note",), "or text after its values"),
+        # sn3d stops for X_Fegroup above 1.001
+        ("3 4e-12 1", ("3 4e-12 1.5",), "the columns X_Fegroup hold a mass fraction above 1"),
+        # a cell with no line is empty, thus only the count finds a file that lost its last line
+        ("3 4e-12 1", (), "the key cell_line_count gives 4 cell lines, but the file has 3"),
+        ("cell_line_count 4", ("cell_line_count 5",), "cell_line_count must have one integer from 1 to 4"),
+        # the polar axis of a mirrored model starts at the plane z = 0
+        (
+            "cell_line_count 4",
+            ("cell_line_count 4", "mirror_plane z=0"),
+            "the values of costheta_edges must go from 0 to 1, not from -1.0 to 1.0",
+        ),
+        (
+            "cell_line_count 4",
+            ("cell_line_count 4", "mirror_plane z=1"),
+            "the key mirror_plane must have the value z=0",
+        ),
+        # the key cells_per_axis is optional, and a different count stops the reader
+        (
+            "cell_line_count 4",
+            ("cell_line_count 4", "cells_per_axis 2 3"),
+            "cells_per_axis gives the cell counts '2 3', but the cell edges give '2 2'",
+        ),
+        (
+            "columns inputcellid rho X_Fegroup",
+            ("phi_edges_radians 0 6.283185307179586", "columns inputcellid rho X_Fegroup"),
+            "takes no phi_edges_radians",
+        ),
+        ("columns inputcellid rho X_Fegroup", (), "must end with the key columns"),
+        ("t_model_init_days 1.0  # an inline comment", (), "the header has no key t_model_init_days"),
+        ("t_model_init_days 1.0  # an inline comment", ("t_model_init_days inf",), "one finite value above 0"),
+        ("vel_r_edges_kmps 0 1000 3000", ("vel_r_edges_kmps 0 3000 1000",), "must increase"),
+        (
+            "costheta_edges -1 0.1 1",
+            ("costheta_edges -1 0.1 0.1000000001 1",),
+            "each cell of costheta_edges must be wider than 1e-08",
+        ),
+        ("format_version 2", (), "needs the line 'format_version 2' as the first line"),
+        ("format_version 2", ("# a comment", "format_version 2"), "must be the first line of the file"),
+        ("format_version 2", ("format_version 3",), "the format version '3' is not known"),
+        # the list of cos(theta) goes from exactly -1 to exactly 1, and it increases
+        (
+            "costheta_edges -1 0.1 1",
+            ("costheta_edges -1 0.1 0.9",),
+            "the values of costheta_edges must go from -1 to 1",
+        ),
+        ("costheta_edges -1 0.1 1", ("costheta_edges -1 0.5 0.1 1",), "costheta_edges must increase"),
+    ],
+)
+def test_spherical_model_reader_stops_for_a_wrong_file(
+    tmp_path: Path, oldline: str, newlines: tuple[str, ...], errortext: str
+) -> None:
+    """The reader checks the cell lines against the cell edges and against the key cell_line_count of the header."""
+    lines = [newline for line in SPHERICAL2D_MODEL_LINES for newline in (newlines if line == oldline else (line,))]
+    (tmp_path / "model.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match=errortext):
+        at.inputmodel.scan_modeldata(tmp_path)
+
+
+@pytest.mark.parametrize("formatversion", [1, 2])
+def test_model_reader_keeps_each_digit_of_a_tracer_count(tmp_path: Path, formatversion: int) -> None:
+    """The reader gave tracercount as Float32, thus a count of 16777217 became 16777216."""
+    # the cell ids start at 1 in version 1 and at 0 in version 2
+    dfmodel = pl.DataFrame({
+        "inputcellid": [2 - formatversion, 3 - formatversion],
+        "vel_r_max_kmps": [1000.0, 2000.0],
+        "logrho": [-12.0, -12.0],
+        "tracercount": [16777217, 123456789],
+    })
+    at.inputmodel.save_modeldata(
+        dfmodel, outpath=tmp_path, modelmeta={"t_model_init_days": 1.0, "formatversion": formatversion}
+    )
+    dfread = at.inputmodel.scan_modeldata(tmp_path, printwarningsonly=True)[0].collect()
+    assert dfread["tracercount"].to_list() == [16777217, 123456789]
+    assert dfread.schema["tracercount"] == pl.Int64
+
+
+@pytest.mark.parametrize(
+    ("qvalue", "match"),
+    [("nan", "the columns q hold a value that is not finite"), ("-5", "a cell with density has a negative q")],
+)
+def test_spherical_model_reader_stops_for_a_q_that_sn3d_stops_for(tmp_path: Path, qvalue: str, match: str) -> None:
+    """sn3d stops for a q that is not finite, and for a negative q in a cell with density. The reader accepted both."""
+    qlines = [
+        "columns inputcellid rho X_Fegroup q"
+        if line.startswith("columns ")
+        else f"{line} {qvalue if line.startswith('3 ') else '1e10'}"
+        if line[:1].isdigit()
+        else line
+        for line in SPHERICAL2D_MODEL_LINES
+    ]
+    (tmp_path / "model.txt").write_text("\n".join(qlines) + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match=match):
+        at.inputmodel.scan_modeldata(tmp_path)
+
+
+def test_spherical_model_reader_stops_for_a_cut_line_or_a_large_element_sum(tmp_path: Path) -> None:
+    """The reader stops for a file that sn3d stops for, or that is not complete.
+
+    A cut inside the last value gives a valid number, e.g. 1.0 of 1.0e-12, thus only the missing line end shows it.
+    The key cell_line_count finds a lost line, and the reader accepted a file that ended inside its last line. The
+    reader also accepted a cell whose element mass fractions sum to 1.2, which sn3d stops for.
+    """
+    (tmp_path / "model.txt").write_text("\n".join(SPHERICAL2D_MODEL_LINES), encoding="utf-8")
+    with pytest.raises(ValueError, match="does not end with a line end"):
+        at.inputmodel.scan_modeldata(tmp_path)
+
+    largesumlines = [
+        "columns inputcellid rho X_Fegroup X_Ni56 X_Fe52"
+        if line.startswith("columns ")
+        else f"{line} {'0.6 0.6' if line.startswith('3 ') else '0.5 0.0'}"
+        if line[:1].isdigit()
+        else line
+        for line in SPHERICAL2D_MODEL_LINES
+    ]
+    (tmp_path / "model.txt").write_text("\n".join(largesumlines) + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match=r"sum to more than 1\.001, up to 1\.2 in the cell with inputcellid 3"):
+        at.inputmodel.scan_modeldata(tmp_path)
+
+
+@pytest.mark.parametrize("coordinates", ["spherical1d", "cylindrical2d", "cartesian3d"])
+def test_format_version_2_gives_the_cells_of_version_1(coordinates: str, tmp_path: Path) -> None:
+    """A model in format version 2 gives the cells and the metadata of the same model in format version 1.
+
+    A version 2 file has the cell edges in its header and no position column, thus the reader makes the position
+    columns of version 1 from the edges. sn3d makes the grid of a 2D cylindrical or a 3D Cartesian model from vmax,
+    thus that value must be exactly equal in the two versions.
+    """
+    lzmodel, modelmeta = at.inputmodel.scan_modeldata(
+        at.get_path("testdata") / ("test-classicmode_1d" if coordinates == "spherical1d" else "test-classicmode_3d")
+    )
+    dfmodel = lzmodel.collect()
+    if coordinates == "cylindrical2d":
+        dfmodel, _, _, modelmeta = at.inputmodel.dimension_reduce_model(
+            dfmodel, outputdimensions=2, modelmeta=modelmeta
+        )
+
+    cells: dict[int, pl.DataFrame] = {}
+    metas: dict[int, dict[str, t.Any]] = {}
+    for formatversion in (1, 2):
+        folder = tmp_path / f"version{formatversion}"
+        folder.mkdir()
+        # the cell ids of the test model start at 1, and version 2 has cell ids from 0
+        dfcells = at.inputmodel.with_cell_ids_from_zero(dfmodel)[0] if formatversion == 2 else dfmodel
+        at.inputmodel.save_modeldata(dfcells, outpath=folder, modelmeta=modelmeta | {"formatversion": formatversion})
+        lzcells, metas[formatversion] = at.inputmodel.scan_modeldata(folder)
+        cells[formatversion] = lzcells.collect()
+
+    with at.zopen(tmp_path / "version2" / "model.txt.zst") as fmodel:
+        assert fmodel.readline() == "format_version 2\n"
+    assert metas[1]["formatversion"] == 1
+    assert metas[2]["formatversion"] == 2
+    assert metas[2]["coordinates"] == coordinates
+
+    positioncols = [col for col in cells[1].columns if col.startswith(("pos_", "vel_")) or col == "logrho"]
+    assert positioncols
+    othercols = [col for col in cells[1].columns if col not in {*positioncols, "inputcellid"}]
+    pltest.assert_frame_equal(cells[1].select(othercols), cells[2].select(othercols))
+    assert cells[1]["inputcellid"].to_list() == [inputcellid + 1 for inputcellid in cells[2]["inputcellid"]]
+    if coordinates == "spherical1d":
+        # version 1 gives vel_r_max_kmps with two decimal places and logrho with eight
+        assert np.allclose(cells[1]["vel_r_max_kmps"], cells[2]["vel_r_max_kmps"], rtol=0.0, atol=0.006)
+        assert np.allclose(cells[1]["logrho"], cells[2]["logrho"], rtol=0.0, atol=1e-6)
+        assert metas[2]["vmax_cmps"] == pytest.approx(metas[1]["vmax_cmps"], rel=1e-6)
+    else:
+        xmax = metas[1]["vmax_cmps"] * metas[1]["t_model_init_days"] * day_to_s
+        for col in positioncols:
+            assert np.allclose(cells[1][col], cells[2][col], rtol=0.0, atol=1e-6 * xmax), col
+        assert metas[2]["vmax_cmps"] == metas[1]["vmax_cmps"]
+
+    edgekeys = at.misc.MODEL_EDGE_KEYS[coordinates]
+    assert {key for key in metas[2] if key not in metas[1]} == set(edgekeys)
+    for key, value in metas[1].items():
+        if key not in {"formatversion", "vmax_cmps"}:
+            assert metas[2][key] == value, key
+
+    # version 2 keeps each value that it holds, thus a second write gives the same cells
+    at.inputmodel.save_modeldata(cells[2], outpath=tmp_path, modelmeta=metas[2])
+    pltest.assert_frame_equal(at.inputmodel.scan_modeldata(tmp_path)[0].collect(), cells[2])
+
+
+def test_otherstable_columns_give_the_element_mass_fractions() -> None:
+    """A version 2 model.txt has no abundances.txt, and sn3d sums the nuclide columns and the otherstable column.
+
+    Thus the otherstable column of an element holds the mass fraction that its nuclide columns do not hold. An
+    element gets no column if its nuclide columns hold its mass fraction to the Float32 rounding.
+    """
+    dfmodel = pl.DataFrame({
+        "inputcellid": [0, 1],
+        "rho": [1e-12, 2e-12],
+        "X_Fegroup": [1.0, 1.0],
+        "X_Ni56": [0.5, 0.25],
+        "X_Ni57": [0.0, 0.25],
+        "X_Co56": [0.25, 0.125],
+    })
+    dfelabundances = pl.DataFrame({
+        "inputcellid": [0, 1],
+        "X_Fe": [0.125, 0.0],
+        "X_Co": [0.25, 0.125 * (1 + 1e-7)],
+        "X_Ni": [0.625, 0.5],
+    })
+    dfwithotherstable = at.inputmodel.core.with_otherstable_columns(dfmodel, dfelabundances)
+    assert [col for col in dfwithotherstable.columns if col.endswith("_otherstable")] == [
+        "X_Fe_otherstable",
+        "X_Ni_otherstable",
+    ]
+    assert dfwithotherstable["X_Fe_otherstable"].to_list() == pytest.approx([0.125, 0.0], rel=1e-6)
+    assert dfwithotherstable["X_Ni_otherstable"].to_list() == pytest.approx([0.125, 0.0], rel=1e-6)
+    dfelements = at.inputmodel.core.get_elemabundances_of_model_columns(dfwithotherstable.lazy()).collect()
+    for elcol in ("X_Fe", "X_Co", "X_Ni"):
+        assert dfelements[elcol].to_list() == pytest.approx(dfelabundances[elcol].to_list(), rel=1e-6)
+
+    # sn3d reads a small negative nuclide mass fraction as 0, thus the otherstable value must not take it
+    dfnegative = at.inputmodel.core.with_otherstable_columns(
+        dfmodel.with_columns(X_Ni57=pl.Series([-5e-7, 0.25])), dfelabundances
+    )
+    assert dfnegative["X_Ni_otherstable"].to_list() == pytest.approx([0.125, 0.0], rel=1e-9)
+    # the sum of the element also takes such a value as 0, as sn3d does
+    dfnegativeelements = at.inputmodel.core.get_elemabundances_of_model_columns(dfnegative.lazy()).collect()
+    assert dfnegativeelements["X_Ni"].to_list() == pytest.approx([0.625, 0.5], rel=1e-9)
+    # the writer gives a NaN nuclide value as 0. polars puts a NaN above each number, thus the sum check stopped
+    dfnan = at.inputmodel.core.with_otherstable_columns(
+        dfmodel.with_columns(X_Ni57=pl.Series([float("nan"), 0.25])), dfelabundances
+    )
+    assert dfnan["X_Ni_otherstable"].to_list() == pytest.approx([0.125, 0.0], rel=1e-9)
+
+    # a null or a NaN mass fraction is not known, and the otherstable column would give it as 0
+    for unknownvalue in (None, float("nan")):
+        with pytest.raises(ValueError, match="The element abundances have no finite value for 1 cells with density"):
+            at.inputmodel.core.with_otherstable_columns(
+                dfmodel, dfelabundances.with_columns(X_Fe=pl.Series([0.125, unknownvalue], dtype=pl.Float64))
+            )
+
+    # sn3d stops if the nuclide columns of an element hold more than the element
+    with pytest.raises(ValueError, match=r"The nuclide columns of Ni hold up to 0\.125 more"):
+        at.inputmodel.core.with_otherstable_columns(dfmodel, dfelabundances.with_columns(X_Ni=pl.lit(0.375)))
+
+    # A cell with density and no row of element mass fractions got no otherstable value, thus it lost the elements
+    # that its nuclide columns do not hold. An empty cell needs no row
+    firstcellid = dfmodel["inputcellid"][0]
+    with pytest.raises(ValueError, match="no row for 1 cells with density"):
+        at.inputmodel.core.with_otherstable_columns(
+            dfmodel, dfelabundances.filter(pl.col("inputcellid") != firstcellid)
+        )
+    isfirstcell = pl.col("inputcellid") == firstcellid
+    at.inputmodel.core.with_otherstable_columns(
+        dfmodel.with_columns(rho=pl.when(isfirstcell).then(0.0).otherwise(pl.col("rho"))),
+        dfelabundances.filter(~isfirstcell),
+    )
+
+    # X_n gives the free neutrons, but the reader of an otherstable column takes the symbol n as nitrogen
+    with_otherstable_columns = at.inputmodel.core.with_otherstable_columns
+    dfneutrons = with_otherstable_columns(
+        pl.DataFrame({"inputcellid": [0], "rho": [1e-12], "X_n1": [0.2], "X_He4": [0.8]}),
+        pl.DataFrame({"inputcellid": [0], "X_n": [0.2], "X_He": [0.8]}),
+    )
+    assert not [col for col in dfneutrons.columns if col.endswith("_otherstable")]
+
+    # The nuclide columns of nickel hold more than its element mass fraction, within the tolerance of sn3d. Thus the
+    # otherstable value of nickel is 0, and the elements sum to 1.005, which sn3d stops for
+    with pytest.raises(ValueError, match=r"sum to more than 1\.001, up to 1\.005"):
+        with_otherstable_columns(
+            pl.DataFrame({"inputcellid": [0], "rho": [1e-12], "X_Ni56": [0.505]}),
+            pl.DataFrame({"inputcellid": [0], "X_Fe": [0.5], "X_Ni": [0.5]}),
+        )
+
+    # a 1D model of version 1 gives logrho, and a cell with logrho -99 is empty and needs no row
+    df1d = with_otherstable_columns(
+        pl.DataFrame({"inputcellid": [1, 2], "logrho": [-10.0, -99.0], "X_Ni56": [0.25, 0.0]}),
+        pl.DataFrame({"inputcellid": [1], "X_Fe": [0.5], "X_Ni": [0.5]}),
+    )
+    assert df1d["X_Ni_otherstable"].to_list() == pytest.approx([0.25, 0.0])
+
+
+def test_conversion_takes_a_folder_name_with_a_different_letter_case_as_the_same_folder(tmp_path: Path) -> None:
+    """A file system that ignores the letter case gives one folder to modelA and MODELA.
+
+    The conversion compared the text of the paths, thus -o MODELA took a different folder, and the conversion deleted
+    the opacity.txt that the check of the same folder protects.
+    """
+    sourcefolder = tmp_path / "modelA"
+    sourcefolder.mkdir()
+    for filename in ("model.txt", "abundances.txt"):
+        shutil.copy2(at.get_path("testdata") / "test-classicmode_1d" / filename, sourcefolder / filename)
+    (sourcefolder / "opacity.txt").write_text("1\n1 0.5\n", encoding="utf-8")
+    if not (tmp_path / "MODELA").is_dir():
+        pytest.skip("the file system takes the letter case into account")
+
+    with pytest.raises(SystemExit):
+        at.inputmodel.makeartismodel.main(
+            argsraw=[], modelpath=[sourcefolder], format_version=2, outputfile=tmp_path / "MODELA", force=True
+        )
+    assert (sourcefolder / "opacity.txt").is_file()
+
+
+def test_makeartismodel_converts_the_format_version_into_a_new_folder(tmp_path: Path) -> None:
+    """--format-version writes the model in the other format version into a folder that holds no model file.
+
+    The cell ids of version 2 start at 0, and its model.txt holds the element mass fractions and the electron
+    fractions of Ye.txt. A conversion changes no file of a model, thus it stops for an output folder with a model
+    file and for a command with no -o.
+    """
+    sourcefolder = tmp_path / "source"
+    shutil.copytree(at.get_path("testdata") / "test-classicmode_3d", sourcefolder)
+    dfsource = at.inputmodel.scan_modeldata(sourcefolder, get_elemabundances=True)[0]
+    # the cell ids of this model start at 1, and Ye.txt holds two of the cells with density
+    idswithdensity = dfsource.filter(pl.col("rho") > 0).select("inputcellid").collect().to_series()
+    firstid, lastid = idswithdensity.item(0), idswithdensity.item(-1)
+    (sourcefolder / "Ye.txt").write_text(f"2\n{firstid}\t0.25\n{lastid}\t0.45\n", encoding="utf-8")
+    (sourcefolder / "opacity.txt").write_text("2\n1 0.1\n1000 3.3\n", encoding="utf-8")
+    sourcefiles = {path.name: path.read_bytes() for path in sourcefolder.iterdir() if path.is_file()}
+
+    version2folder = tmp_path / "version2"
+    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[sourcefolder], format_version=2, outputfile=version2folder)
+    dfversion2, metaversion2 = at.inputmodel.scan_modeldata(version2folder, get_elemabundances=True)
+    assert metaversion2["formatversion"] == 2
+    assert dfversion2.filter(pl.col("Ye") > 0).select("inputcellid", "Ye").collect().rows() == [
+        (firstid - 1, pytest.approx(0.25)),
+        (lastid - 1, pytest.approx(0.45)),
+    ]
+    assert sorted(path.name for path in version2folder.iterdir()) == ["model.txt.zst"]
+    pltest.assert_series_equal(
+        dfversion2.select("X_Fe").collect().to_series(), dfsource.select("X_Fe").collect().to_series()
+    )
+
+    version1folder = tmp_path / "version1"
+    at.inputmodel.makeartismodel.main(
+        argsraw=[], modelpath=[version2folder], format_version=1, outputfile=version1folder
+    )
+    dfversion1, metaversion1 = at.inputmodel.scan_modeldata(version1folder, get_elemabundances=True)
+    assert metaversion1["formatversion"] == 1
+    pltest.assert_series_equal(
+        dfversion1.select("X_Fe").collect().to_series(), dfsource.select("X_Fe").collect().to_series()
+    )
+
+    # a reader also finds a model file in a subfolder, and the conversion wrote a second model.txt beside it
+    nestedfolder = tmp_path / "nested"
+    (nestedfolder / "data").mkdir(parents=True)
+    shutil.copy(sourcefolder / "Ye.txt", nestedfolder / "data" / "Ye.txt")
+    for outputfolder in (version2folder, nestedfolder, None):
+        with pytest.raises(SystemExit):
+            at.inputmodel.makeartismodel.main(
+                argsraw=[], modelpath=[sourcefolder], format_version=2, outputfile=outputfolder
+            )
+    assert {path.name: path.read_bytes() for path in sourcefolder.iterdir() if path.is_file()} == sourcefiles
+    assert [path.name for path in nestedfolder.iterdir()] == ["data"]
+
+
+def test_ye_merge_and_version_2_writer_follow_the_rules_of_sn3d(tmp_path: Path) -> None:
+    """The values of Ye.txt and a NaN mass fraction of a version 2 file follow the rules of sn3d.
+
+    The merge of Ye.txt ignored the count of its first line, thus a file that lost its last lines gave the old value
+    of the column to the cells of those lines. sn3d stops for such a file, and it reads no value after the count.
+    The writer of version 2 wrote a NaN mass fraction as NaN, which sn3d stops for.
+    """
+    dfmodel = pl.DataFrame({"inputcellid": [1, 2], "rho": [1e-12, 1e-12], "Ye": [0.3, 0.3]})
+    yefile = tmp_path / "Ye.txt"
+    yefile.write_text("3\n1 0.4\n2 0.4\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="ends after 2 of its 3 cell lines"):
+        at.inputmodel.core.with_ye_of_yefile(dfmodel, yefile)
+    yefile.write_text("1\n1 0.4\n2 0.45\n", encoding="utf-8")
+    assert at.inputmodel.core.with_ye_of_yefile(dfmodel, yefile)["Ye"].to_list() == pytest.approx([0.4, 0.3])
+    # a conversion to version 2 gives these values to the column Ye
+    for invalidye in ("nan", "inf", "1.5", "-0.1"):
+        yefile.write_text(f"1\n1 {invalidye}\n", encoding="utf-8")
+        with pytest.raises(ValueError, match="Each electron fraction must be a finite number from 0 to 1"):
+            at.inputmodel.core.with_ye_of_yefile(dfmodel, yefile)
+
+    at.inputmodel.save_modeldata(
+        pl.DataFrame({"inputcellid": [0, 1], "rho": [1e-12, 1e-12], "X_Ni56": [0.5, float("nan")]}),
+        outpath=tmp_path,
+        modelmeta={
+            "coordinates": "spherical2d",
+            "t_model_init_days": 1.0,
+            "vel_r_edges_kmps": [0.0, 1000.0, 2000.0],
+            "costheta_edges": [-1.0, 1.0],
+        },
+        deletecellidfiles=True,
+    )
+    dfwritten = at.inputmodel.scan_modeldata(tmp_path)[0].collect()
+    assert dfwritten["X_Ni56"].to_list() == [0.5, 0.0]
+
+    # the column Ye of a version 2 file holds an electron fraction from 0 to 1, as Ye.txt does
+    yemeta = {
+        "coordinates": "spherical2d",
+        "t_model_init_days": 1.0,
+        "vel_r_edges_kmps": [0.0, 1000.0, 2000.0],
+        "costheta_edges": [-1.0, 1.0],
+    }
+    yefolder = tmp_path / "ye"
+    yelines = [
+        "format_version 2",
+        "coordinates spherical2d",
+        "t_model_init_days 1.0",
+        "vel_r_edges_kmps 0 1000 2000",
+        "costheta_edges -1 1",
+        "columns inputcellid rho Ye",
+        "0 1e-12 0.4",
+    ]
+    yefolder.mkdir()
+    for invalidye in (float("nan"), float("inf"), 1.5, -0.1):
+        with pytest.raises(ValueError, match="Each value of the column Ye must be a finite number from 0 to 1"):
+            at.inputmodel.save_modeldata(
+                pl.DataFrame({"inputcellid": [0, 1], "rho": [1e-12, 1e-12], "Ye": [0.4, invalidye]}),
+                outpath=yefolder,
+                modelmeta=dict(yemeta),
+            )
+        (yefolder / "model.txt").write_text("\n".join([*yelines, f"1 1e-12 {invalidye}"]) + "\n", encoding="utf-8")
+        with pytest.raises(ValueError, match="Each value of the column Ye must be a finite number from 0 to 1"):
+            at.inputmodel.scan_modeldata(yefolder)
+    # a null Ye is not known, and the writer gave it as 0.0
+    with pytest.raises(ValueError, match="Each value of the column Ye must be a finite number from 0 to 1"):
+        at.inputmodel.save_modeldata(
+            pl.DataFrame({
+                "inputcellid": [0, 1],
+                "rho": [1e-12, 1e-12],
+                "Ye": pl.Series([0.4, None], dtype=pl.Float64),
+            }),
+            outpath=yefolder,
+            modelmeta=dict(yemeta),
+        )
+    # .all() takes no account of a null, and the writer gave a null cell id as 0.0
+    with pytest.raises(ValueError, match="the cell ids are 0 to 1"):
+        at.inputmodel.core.get_version2_headerlines(pl.Series([None, 1], dtype=pl.Int64), dict(yemeta))
+    # a comparison of two series of different lengths raised ShapeError, and not this message
+    with pytest.raises(ValueError, match="but the model has 3 cells"):
+        at.inputmodel.core.get_version2_headerlines(pl.Series([0, 1, 2], dtype=pl.Int64), dict(yemeta))
+    # sn3d checks the range of Ye in a cell with density only, thus an empty cell can have Ye = -1
+    (yefolder / "model.txt").write_text("\n".join([*yelines, "1 0 -1.0"]) + "\n", encoding="utf-8")
+    assert at.inputmodel.scan_modeldata(yefolder)[0].collect()["Ye"].to_list() == pytest.approx([0.4, -1.0])
+
+
+def test_gridcontributions_are_beside_model_txt_or_in_the_model_folder(tmp_path: Path) -> None:
+    """gridcontributions.txt is beside the model.txt that the reader opens, or in the model folder.
+
+    The search took only the folder of model.txt, thus a model with data/model.txt lost the contributions of its model
+    folder, and comparetogsinetwork and the reduction found no file.
+    """
+    modelfolder = tmp_path / "model"
+    (modelfolder / "data").mkdir(parents=True)
+    shutil.copy2(at.get_path("testdata") / "test-classicmode_1d" / "model.txt", modelfolder / "data" / "model.txt")
+    (modelfolder / "gridcontributions.txt").write_text("particleid cellindex frac_of_cellmass\n1 1 1.0\n")
+    assert at.inputmodel.get_gridcontributions_folder(modelfolder) == modelfolder
+    (modelfolder / "data" / "gridcontributions.txt").write_text("particleid cellindex frac_of_cellmass\n1 1 1.0\n")
+    assert at.inputmodel.get_gridcontributions_folder(modelfolder) == modelfolder / "data"
+
+
+def test_abundances_and_old_ye_files_follow_the_search_of_sn3d(tmp_path: Path) -> None:
+    """sn3d searches the model folder, data/, and artis/data/ for each input file, also for a model.txt in data/.
+
+    The search for abundances.txt took only the folder of model.txt, thus a conversion of data/model.txt stopped.
+    The check for the Ye.txt of an earlier model took only the output folder, and sn3d then read a data/Ye.txt.
+    """
+    from artistools.inputmodel.core import find_abundance_file
+    from artistools.inputmodel.core import require_no_ye_file_of_earlier_model
+
+    modelfolder = tmp_path / "model"
+    (modelfolder / "data").mkdir(parents=True)
+    (modelfolder / "input.txt").write_text("", encoding="utf-8")
+    (modelfolder / "abundances.txt").write_text("1 1.0\n", encoding="utf-8")
+    assert find_abundance_file(modelfolder / "data") == modelfolder / "abundances.txt"
+
+    (modelfolder / "data" / "Ye.txt").write_text("1\n1 0.3\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        require_no_ye_file_of_earlier_model(modelfolder, tmp_path / "source")
+
+
+@pytest.mark.parametrize(
+    ("change", "match"),
+    [
+        ({"t_model_init_days": 0.0}, "t_model_init_days must be one finite value above 0"),
+        ({"t_model_init_days": float("nan")}, "t_model_init_days must be one finite value above 0"),
+        ({"rho": [1e-12, float("nan")]}, "1 cells have a density that is not finite or is below 0"),
+        ({"rho": [1e-12, -1e-12]}, "1 cells have a density that is not finite or is below 0"),
+        ({"rho": [1e-12, float("inf")]}, "1 cells have a density that is not finite or is below 0"),
+        ({"X_Ni56": [0.5, float("inf")]}, "the columns X_Ni56 hold a value that is not finite"),
+        # sn3d stops for this sum, and the writer with no element abundances did not check it
+        ({"X_Ni56": [0.6, 0.0], "X_Fe52": [0.6, 0.0]}, r"sum to more than 1\.001, up to 1\.2 in the cell with"),
+        # sn3d stops for a value of -1e-6 or less, and the writer wrote it
+        ({"X_Ni56": [0.5, -0.1]}, r"the columns X_Ni56 hold a mass fraction of -1e-06 or less"),
+        # the cast to an integer gave the ids 0 and 1, which the check of the ids accepted
+        ({"inputcellid": [0.5, 1.5]}, "Each inputcellid must be a whole number"),
+        # sn3d stops for a nuclide mass fraction above 1, for a q that is not finite, and for a negative q
+        ({"X_Ni56": [1.0005, 0.0]}, "the columns X_Ni56 hold a mass fraction above 1"),
+        ({"q": [1e10, float("nan")]}, "the columns q hold a value that is not finite"),
+        ({"q": [1e10, -5.0]}, "a cell with density has a negative q"),
+        # .any() took no account of a null, and the writer gave the null as 0.0
+        ({"q": [1e10, None]}, "the columns q hold a value that is not finite"),
+    ],
+)
+def test_version_2_writer_stops_for_a_value_that_the_reader_rejects(
+    change: dict[str, t.Any], match: str, tmp_path: Path
+) -> None:
+    """The writer of version 2 wrote a model time that its reader rejects, and it lost a NaN or negative density.
+
+    A cell with such a density got no line, thus the reader gave it rho = 0. The writer now stops before it writes.
+    """
+    modelmeta = {
+        "coordinates": "spherical2d",
+        "t_model_init_days": 1.0,
+        "vel_r_edges_kmps": [0.0, 1000.0, 2000.0],
+        "costheta_edges": [-1.0, 1.0],
+    }
+    dfmodel = pl.DataFrame({"inputcellid": [0, 1], "rho": [1e-12, 1e-12]})
+    if "t_model_init_days" not in change:
+        dfmodel = dfmodel.with_columns(itertools.starmap(pl.Series, change.items()))
+    else:
+        modelmeta |= change
+    with pytest.raises(ValueError, match=match):
+        at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path, modelmeta=modelmeta)
+    assert not list(tmp_path.glob("model.txt*"))
+
+
+def test_version_2_writer_gives_zeros_to_the_kept_line_of_a_model_with_no_density(tmp_path: Path) -> None:
+    """A model with no density keeps its first cell line, and the checks of the writer apply to cells with density.
+
+    The writer gave that line its tracercount of -1 and its q of NaN, and the reader then refused the file.
+    """
+    at.inputmodel.save_modeldata(
+        pl.DataFrame({"inputcellid": [0, 1], "rho": [0.0, 0.0], "tracercount": [-1, 2], "q": [float("nan"), 1.0]}),
+        outpath=tmp_path,
+        modelmeta={
+            "coordinates": "spherical2d",
+            "t_model_init_days": 1.0,
+            "vel_r_edges_kmps": [0.0, 1000.0, 2000.0],
+            "costheta_edges": [-1.0, 1.0],
+        },
+    )
+    dfread = at.inputmodel.scan_modeldata(tmp_path, printwarningsonly=True)[0].collect()
+    assert dfread.select("tracercount", "q").row(0) == (0, 0.0)
+
+
+def test_version_2_file_with_a_different_name_keeps_the_files_of_model_txt(tmp_path: Path) -> None:
+    """A version 2 file with a different name keeps abundances.txt, Ye.txt, and opacity.txt beside model.txt.
+
+    sn3d reads these files beside model.txt. The writer of model_v2.txt deleted them, thus the model.txt of version 1
+    in the same folder had no abundances.txt.
+    """
+    oldfiles = dict.fromkeys(("abundances.txt", "Ye.txt", "opacity.txt"), "1\n1 0.5\n")
+    for name, text in oldfiles.items():
+        (tmp_path / name).write_text(text, encoding="utf-8")
+    dfmodel, modelmeta = get_random_spherical_model("spherical2d")
+    at.inputmodel.save_modeldata(dfmodel, outpath=tmp_path / "model_v2.txt", modelmeta=modelmeta)
+
+    assert (tmp_path / "model_v2.txt.zst").is_file()
+    assert {name: (tmp_path / name).read_text(encoding="utf-8") for name in oldfiles} == oldfiles
+
+
+def test_reduction_and_downscale_take_the_elements_of_the_selected_model_file(tmp_path: Path) -> None:
+    """A reduction and a downscale of a selected model file take its elements, also beside a different model.txt.
+
+    The reader of the element mass fractions opened the model.txt of the folder again, thus the output got the
+    elements of a different model.
+    """
+    version2folder = tmp_path / "version2"
+    at.inputmodel.makeartismodel.main(
+        argsraw=[],
+        modelpath=[at.get_path("testdata") / "test-classicmode_3d"],
+        format_version=2,
+        outputfile=version2folder,
+    )
+    lzselected, metaselected = at.inputmodel.scan_modeldata(version2folder, get_elemabundances=True)
+    selectedmodel = at.inputmodel.add_derived_cols_to_modeldata(lzselected, metaselected).collect()
+    hydrogenmass = float((selectedmodel["X_H"] * selectedmodel["mass_g"]).sum())
+    assert hydrogenmass > 0.0
+
+    # the folder holds the selected model as model_alt.txt.zst and a model.txt with half of its hydrogen
+    altfolder = tmp_path / "alt"
+    otherfolder = tmp_path / "other"
+    altfolder.mkdir()
+    (version2folder / "model.txt.zst").rename(altfolder / "model_alt.txt.zst")
+    dfother = at.inputmodel.scan_modeldata(altfolder / "model_alt.txt.zst")[0].drop("modelgridindex").collect()
+    at.inputmodel.save_modeldata(
+        dfother.with_columns(pl.col("X_H_otherstable") * 0.5), outpath=otherfolder, modelmeta=dict(metaselected)
+    )
+    with at.zopen(otherfolder / "model.txt.zst") as fmodel:
+        (altfolder / "model.txt").write_text(fmodel.read(), encoding="utf-8")
+
+    def get_hydrogen_mass(modelfolder: Path) -> float:
+        lzmodel, modelmeta = at.inputmodel.scan_modeldata(modelfolder, get_elemabundances=True)
+        dfmodel = at.inputmodel.add_derived_cols_to_modeldata(lzmodel, modelmeta).collect()
+        return float((dfmodel["X_H"] * dfmodel["mass_g"]).sum())
+
+    reducedfolder = tmp_path / "reduced"
+    at.inputmodel.makeartismodel.main(
+        argsraw=[],
+        modelpath=[altfolder / "model_alt.txt.zst"],
+        dimensionreduce=1,
+        format_version=2,
+        outputfile=reducedfolder,
+    )
+    assert math.isclose(get_hydrogen_mass(next(reducedfolder.iterdir())), hydrogenmass, rel_tol=1e-5)
+
+    smallfolder = tmp_path / "small"
+    at.inputmodel.makeartismodel.main(
+        argsraw=[],
+        modelpath=[altfolder / "model_alt.txt.zst"],
+        downscale3dgrid=True,
+        outputgridsize=5,
+        format_version=2,
+        outputfile=smallfolder,
+    )
+    assert math.isclose(get_hydrogen_mass(smallfolder), hydrogenmass, rel_tol=1e-5)
+    # the model reader also takes the elements of the selected file
+    assert math.isclose(get_hydrogen_mass(altfolder / "model_alt.txt.zst"), hydrogenmass, rel_tol=1e-6)
+
+    # a conversion in the folder writes model.txt, thus it replaced the model.txt of the folder with the selected file
+    modeltextbefore = (altfolder / "model.txt").read_bytes()
+    with pytest.raises(SystemExit):
+        at.inputmodel.makeartismodel.main(
+            argsraw=[], modelpath=[altfolder / "model_alt.txt.zst"], format_version=1, force=True
+        )
+    assert (altfolder / "model.txt").read_bytes() == modeltextbefore
+
+    # sn3d reads the abundances.txt beside model.txt, and a file in a subfolder is of a different model
+    version1folder = tmp_path / "version1"
+    (version1folder / "sub").mkdir(parents=True)
+    for sourcefile in (at.get_path("testdata") / "test-classicmode_3d").glob("model.txt*"):
+        shutil.copy(sourcefile, version1folder)
+    for sourcefile in (at.get_path("testdata") / "test-classicmode_3d").glob("abundances.txt*"):
+        shutil.copy(sourcefile, version1folder / "sub")
+    with pytest.raises(FileNotFoundError):
+        at.inputmodel.scan_initelemabundances(version1folder).collect()
+
+
+def test_reduction_and_downscale_write_the_format_version_of_the_prompt(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A reduction and a downscale write the format version that the (y/n) prompt took, and version 2 takes Ye.txt.
+
+    A downscale with --format-version wrote the version of the source model, thus it deleted a Ye.txt that the
+    prompt did not name. A reduction to version 2 ignored the Ye.txt of the source model, which sn3d uses.
+    """
+    sourcefolder = tmp_path / "source"
+    shutil.copytree(at.get_path("testdata") / "test-classicmode_3d", sourcefolder)
+    dfsource = at.inputmodel.scan_modeldata(sourcefolder)[0].collect()
+    (sourcefolder / "Ye.txt").write_text(
+        f"{dfsource.height}\n" + "".join(f"{cellid} 0.49\n" for cellid in dfsource["inputcellid"]), encoding="utf-8"
+    )
+    # The output folder of the reduction is a subfolder of the source folder, and it holds the particle contributions
+    # of an earlier model. The source model has none, thus the reduced model gets none
+    reducedfolder = sourcefolder / f"{sourcefolder.name}_dimreduce_1d"
+    reducedfolder.mkdir()
+    (reducedfolder / "gridcontributions.txt").write_text(
+        "particleid cellindex frac_of_cellmass\n42 1 1.0\n", encoding="utf-8"
+    )
+    at.inputmodel.makeartismodel.main(
+        argsraw=[], modelpath=[sourcefolder], dimensionreduce=1, format_version=2, outputfile=sourcefolder, force=True
+    )
+    dfreduced = at.inputmodel.scan_modeldata(reducedfolder)[0].collect()
+    assert dfreduced.filter(pl.col("rho") > 0)["Ye"].to_list() == pytest.approx([0.49] * 5, rel=1e-6)
+    assert not list(reducedfolder.glob("gridcontributions.txt*"))
+
+    version2folder = tmp_path / "version2"
+    at.inputmodel.makeartismodel.main(argsraw=[], modelpath=[sourcefolder], format_version=2, outputfile=version2folder)
+    downscaleargs: dict[str, t.Any] = {"argsraw": [], "downscale3dgrid": True, "outputgridsize": 5, "force": True}
+    for formatversion in (1, 2):
+        sourceversion = 2 if formatversion == 1 else 1
+        smallfolder = tmp_path / f"small{formatversion}"
+        smallfolder.mkdir()
+        at.inputmodel.makeartismodel.main(
+            **downscaleargs,
+            modelpath=[version2folder if sourceversion == 2 else sourcefolder],
+            format_version=formatversion,
+            outputfile=smallfolder,
+        )
+        dfsmall, metasmall = at.inputmodel.scan_modeldata(smallfolder)
+        assert metasmall["formatversion"] == formatversion
+        # the small model of version 2 gets the values of the Ye.txt of the source model
+        if formatversion == 2:
+            yevalues = dfsmall.filter(pl.col("rho") > 0).collect()["Ye"].to_numpy()
+            assert yevalues.size > 0
+            assert np.allclose(yevalues, 0.49, rtol=1e-6, atol=0.0)
+
+    # Ye.txt has the cells of the source model, thus a small model and a reduced model of version 1 also get its
+    # values in the column Ye. The two commands lost the values of Ye.txt for version 1
+    smallfromyefile = tmp_path / "smallfromyefile"
+    smallfromyefile.mkdir()
+    at.inputmodel.makeartismodel.main(
+        **downscaleargs, modelpath=[sourcefolder], format_version=1, outputfile=smallfromyefile
+    )
+    reducedversion1 = tmp_path / "reducedversion1"
+    at.inputmodel.makeartismodel.main(
+        argsraw=[],
+        modelpath=[sourcefolder],
+        dimensionreduce=1,
+        format_version=1,
+        outputfile=reducedversion1,
+        force=True,
+    )
+    for version1folder in (smallfromyefile, next(reducedversion1.iterdir())):
+        dfversion1, metaversion1 = at.inputmodel.scan_modeldata(version1folder)
+        assert metaversion1["formatversion"] == 1
+        # a 1D model of version 1 has logrho and no rho, thus the filter takes the cells with an electron fraction
+        yevalues = dfversion1.filter(pl.col("Ye") > 0).collect()["Ye"].to_numpy()
+        assert yevalues.size > 0
+        assert np.allclose(yevalues, 0.49, rtol=1e-6, atol=0.0)
+
+    # sn3d stops for a Ye.txt beside a model.txt of version 2, thus the file is not of the model. The reduction and
+    # the downscale gave its values to the new model
+    (version2folder / "Ye.txt").write_text("1\n0 0.9\n", encoding="utf-8")
+    staleyecommands: list[dict[str, t.Any]] = [
+        {"argsraw": [], "dimensionreduce": 1, "outputfile": tmp_path / "reducedfromstale", "force": True},
+        {**downscaleargs, "outputfile": tmp_path / "smallfromstale"},
+    ]
+    for commandargs in staleyecommands:
+        with pytest.raises(SystemExit):
+            at.inputmodel.makeartismodel.main(**commandargs, modelpath=[version2folder], format_version=2)
+        assert "but the model.txt of" in capsys.readouterr().err
+    (version2folder / "Ye.txt").unlink()
+
+    # a Ye.txt in the output folder of a small model of version 1 is of a different model, thus the command stops
+    (tmp_path / "small1" / "Ye.txt").write_text("1\n1 0.9\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        at.inputmodel.makeartismodel.main(
+            **downscaleargs, modelpath=[version2folder], format_version=1, outputfile=tmp_path / "small1"
+        )
+
+
+def test_version_2_edges_of_a_cartesian_grid_must_have_equal_steps() -> None:
+    """A Cartesian grid has equal cells to one vmax in sn3d and in artistools, thus other edges are an error."""
+    edgekeys = at.misc.MODEL_EDGE_KEYS["cartesian3d"]
+    uniformedges = {key: [-3000.0, -1000.0, 1000.0, 3000.0] for key in edgekeys}
+    assert at.misc.validate_model_edges("cartesian3d", uniformedges, "test") == uniformedges
+
+    for wrongedges in ([-3000.0, -1500.0, 1000.0, 3000.0], [-2000.0, -666.0, 666.0, 2000.0]):
+        with pytest.raises(ValueError, match="must have equal steps"):
+            at.misc.validate_model_edges("cartesian3d", uniformedges | {"vel_z_edges_kmps": wrongedges}, "test")
+    with pytest.raises(ValueError, match="same count of values"):
+        at.misc.validate_model_edges("cartesian3d", uniformedges | {"vel_y_edges_kmps": [-3000.0, 0.0, 3000.0]}, "test")
+
+
+def test_dimension_reduce_of_a_spherical_model_sums_complete_cells() -> None:
+    """A spherical3d model gives a spherical2d model, a 1D model, and one zone, each as a sum of complete cells.
+
+    Thus each output mass is exact. The contributions of the particles change with the masses of the cells.
+    """
+    dfmodel, modelmeta = get_random_spherical_model("spherical3d")
+    gridshape = (4, 3, 5)
+    cellmass = (
+        at.inputmodel
+        .add_derived_cols_to_modeldata(dfmodel, modelmeta)
+        .select("mass_g")
+        .collect()
+        .to_series()
+        .to_numpy()
+        .reshape(gridshape, order="F")
+    )
+    cellni56 = dfmodel["X_Ni56"].to_numpy().reshape(gridshape, order="F")
+    # the first particle gives 0.25 of the mass of each cell, and a second particle of each cell gives the other part
+    dfgridcontributions = pl.DataFrame({
+        "particleid": [*([1] * dfmodel.height), *range(2, dfmodel.height + 2)],
+        "cellindex": [*dfmodel["inputcellid"], *dfmodel["inputcellid"]],
+        "frac_of_cellmass": [*([0.25] * dfmodel.height), *([0.75] * dfmodel.height)],
+    })
+
+    expectedcoordinates = {2: "spherical2d", 1: "spherical1d", 0: "spherical1d"}
+    summedaxes: dict[int, tuple[int, ...]] = {2: (2,), 1: (1, 2), 0: (0, 1, 2)}
+    for outputdimensions, axes in summedaxes.items():
+        dfmodel_out, _, dfcontributions_out, modelmeta_out = at.inputmodel.dimension_reduce_model(
+            dfmodel, outputdimensions, dfgridcontributions=dfgridcontributions, modelmeta=dict(modelmeta)
+        )
+        assert dfcontributions_out is not None
+        expectedmass = cellmass.sum(axis=axes).ravel(order="F")
+        np.testing.assert_allclose(dfmodel_out["mass_g"].to_numpy(), expectedmass, rtol=1e-12)
+        np.testing.assert_allclose(
+            dfmodel_out["X_Ni56"].to_numpy(),
+            (cellmass * cellni56).sum(axis=axes).ravel(order="F") / expectedmass,
+            rtol=1e-12,
+        )
+        # the density of an output cell and the volume from the output metadata give the same mass again
+        np.testing.assert_allclose(
+            at.inputmodel
+            .add_derived_cols_to_modeldata(dfmodel_out.drop("mass_g"), modelmeta_out)
+            .select("mass_g")
+            .collect()
+            .to_series()
+            .to_numpy(),
+            expectedmass,
+            rtol=1e-12,
+        )
+        assert modelmeta_out["coordinates"] == expectedcoordinates[outputdimensions]
+        assert "phi_edges_radians" not in modelmeta_out
+        if outputdimensions == 1:
+            assert dfmodel_out["vel_r_max_kmps"].to_list() == modelmeta["vel_r_edges_kmps"][1:]
+
+        np.testing.assert_allclose(
+            dfcontributions_out.filter(pl.col("particleid") == 1).sort("cellindex")["frac_of_cellmass"].to_numpy(),
+            0.25,
+            rtol=1e-12,
+        )
+        # the second particle of the first input cell gives a part of the first output cell. The cell ids start at 0
+        # for a spherical2d model (format version 2), and at 1 for the 1D model that artistools writes
+        assert dfcontributions_out.filter(pl.col("particleid") == 2).row(0, named=True) == pytest.approx({
+            "particleid": 2,
+            "cellindex": 0 if outputdimensions == 2 else 1,
+            "frac_of_cellmass": 0.75 * cellmass[0, 0, 0] / expectedmass[0],
+        })
+
+
+@pytest.mark.parametrize("normalisekernelweights", [False, True])
+def test_spherical_deposit_agrees_with_a_sum_over_all_cells(normalisekernelweights: bool) -> None:
+    """The deposit of the spherical map finds each cell mid-point in a kernel, for both deposit methods.
+
+    The deposit searches a region of r, theta, and phi around a particle. The region must hold the kernel also at
+    the polar axis, across phi = 0, and at the centre. The default method is the kernel sum of the Cartesian map.
+    With normalised weights, the grid keeps the mass of each particle inside it, and a particle with no cell
+    mid-point in its kernel gives its mass to the cell that holds it.
+    """
+    from artistools.inputmodel.maptogrid import get_spherical_cell_volumes
+    from artistools.inputmodel.maptogrid import get_spherical_deposit
+    from artistools.inputmodel.maptogrid import get_spherical_grid_edges
+    from artistools.inputmodel.maptogrid import get_wij
+    from artistools.inputmodel.maptogrid import kernelvals2
+
+    # -setgrid_fractionrmax 0 gave edges that do not increase, and cells with no volume
+    with pytest.raises(ValueError, match="must be a finite number above 0"):
+        get_spherical_grid_edges(0.0, 6, 5, 8)
+    r_outer = 1000.0
+    edges = get_spherical_grid_edges(r_outer, 6, 5, 8)
+    rng = np.random.default_rng(seed=3)
+    position = np.vstack((
+        [
+            [5.0, 3.0, 600.0],  # near the +z axis
+            [400.0, 2.0, 50.0],  # on one side of phi = 0
+            [400.0, -2.0, 50.0],  # on the other side of phi = 0
+            [3.0, -4.0, 5.0],  # near the centre
+            [0.0, 990.0, 10.0],  # near the outer radius
+            [0.0, 0.0, 1200.0],  # outside the grid
+            [-300.0, 200.0, -100.0],  # a kernel that holds no cell mid-point
+            [1.0, 0.0, -700.0],  # near the -z axis
+            [0.0, 0.0, 0.0],  # at the centre, with the mid-points of the second shell at the edge of its kernel
+        ],
+        rng.uniform(-550.0, 550.0, (40, 3)),
+    ))
+    # the kernel radius 2h of the particle at the centre is the mid-point radius of the second shell
+    h_centre = (edges[0][1] + edges[0][2]) / 4.0
+    h = np.concatenate(([150.0, 80.0, 80.0, 100.0, 60.0, 400.0, 1e-3, 120.0, h_centre], rng.uniform(20.0, 300.0, 40)))
+    mass = rng.uniform(1.0, 2.0, len(h))
+    wij = get_wij()
+
+    pairparticle, paircell, pairmass, weightsums = get_spherical_deposit(
+        position, h, mass, edges, wij, normalisekernelweights
+    )
+    # A cell mid-point at the edge of a kernel has a weight of zero. Such a pair counted as a tracer of the cell, and
+    # a cell with only such pairs got 0 / 0 as the fraction of its mass
+    assert (pairmass > 0.0).all()
+
+    r_mid, costheta_mid, phi_mid = np.meshgrid(*((edge[:-1] + edge[1:]) / 2.0 for edge in edges), indexing="ij")
+    sintheta_mid = np.sqrt(1.0 - costheta_mid**2)
+    cellposition = np.stack(
+        (r_mid * sintheta_mid * np.cos(phi_mid), r_mid * sintheta_mid * np.sin(phi_mid), r_mid * costheta_mid), axis=-1
+    ).reshape((-1, 3), order="F")
+    volumes = get_spherical_cell_volumes(*edges).ravel(order="F")
+    expected = np.zeros((len(h), volumes.size))
+    for n in range(len(h)):
+        dis2 = np.sum((cellposition - position[n]) ** 2, axis=1)
+        weights = np.where(dis2 < (2.0 * h[n]) ** 2, kernelvals2(np.minimum(dis2, 4.0 * h[n] ** 2), h[n], wij), 0.0)
+        weights *= volumes
+        if not normalisekernelweights:
+            # the density of a cell is the sum of mass times kernel value, as in the Cartesian map
+            expected[n] = mass[n] * weights
+        elif np.linalg.norm(position[n]) > r_outer:
+            continue
+        elif weights.sum() > 0.0:
+            expected[n] = mass[n] * weights / weights.sum()
+        else:
+            radius = float(np.linalg.norm(position[n]))
+            index_r, index_costheta, index_phi = (
+                int(np.searchsorted(edge, value, side="right")) - 1
+                for edge, value in zip(
+                    edges,
+                    (radius, position[n, 2] / radius, math.atan2(position[n, 1], position[n, 0]) % (2.0 * math.pi)),
+                    strict=True,
+                )
+            )
+            expected[n, index_r + 6 * (index_costheta + 5 * index_phi)] = mass[n]
+
+    actual = np.zeros_like(expected)
+    np.add.at(actual, (pairparticle, paircell), pairmass)
+    # a cell mid-point at the edge of a kernel has a weight near zero. The two distance formulas can put it on
+    # different sides of the edge
+    np.testing.assert_allclose(actual, expected, rtol=1e-9, atol=1e-12)
+
+    isinside = np.linalg.norm(position, axis=1) <= r_outer
+    assert weightsums[6] == pytest.approx(0.0, abs=0.0)
+    if normalisekernelweights:
+        assert np.isnan(weightsums[~isinside]).all()
+        assert not actual[~isinside].any()
+        np.testing.assert_allclose(actual.sum(axis=1)[isinside], mass[isinside], rtol=1e-12)
+    else:
+        # the particle outside the grid has cell mid-points in its kernel, and the particle with a very small
+        # kernel has none
+        assert actual[~isinside].any()
+        assert not actual[6].any()
+        np.testing.assert_allclose(actual.sum(axis=1), mass * weightsums, rtol=1e-12)
+
+    # A particle at the centre has no direction. Its mass went to the last polar cell, and the other cell searches
+    # give the centre to the first polar cell
+    _, centrecell, centremass, _ = get_spherical_deposit(
+        np.zeros((1, 3)), np.array([1e-3]), np.array([2.0]), edges, wij, normalisekernelweights=True
+    )
+    assert centrecell.tolist() == [0]
+    assert centremass.tolist() == pytest.approx([2.0])
+
+
+def test_spherical_map_gives_each_particle_the_cell_of_its_direction(tmp_path: Path) -> None:
+    """The cell order and the angles of the spherical map agree with the reader of the model.
+
+    A particle on the +z axis has cos(theta) = 1. A particle near the -y axis has phi = atan2(y, x) near 3 pi / 2. The
+    kernels hold no cell mid-point. With normalised kernel weights, each particle then gives its mass to the cell
+    that holds it.
+    """
+    from artistools.inputmodel.maptogrid import maptogrid
+
+    def snapshotline(particleid: int, position: tuple[float, float, float]) -> str:
+        values = [0.0] * 31
+        values[0] = particleid
+        values[1] = 1.0  # h
+        values[2:5] = position
+        for column in (14, 15, 16, 17):  # pmass, rho, p, rho_rst
+            values[column] = 1.0
+        values[20] = 0.3  # ye
+        return " ".join(str(value) for value in values)
+
+    (tmp_path / "ejectasnapshot.dat").write_text(
+        snapshotline(1, (0.0, 0.0, 1000.0)) + "\n" + snapshotline(2, (100.0, -1000.0, 100.0)) + "\n", encoding="utf-8"
+    )
+    # the snapshot is 20000 time units after the merger, thus the velocities are below the speed of light
+    (tmp_path / "test_info.dat").write_text("0 0 20000.0\n", encoding="utf-8")
+    (tmp_path / "tmerger.txt").write_text("# time of merger in geom units\n0.0\n", encoding="utf-8")
+
+    gridshape = (4, 4, 8)
+    maptogrid(
+        tmp_path / "ejectasnapshot.dat",
+        tmp_path,
+        dtextra_seconds=0.0,
+        setgrid_fractionrmax=1.5,
+        modifysmoothinglength="False",
+        coordinates="spherical",
+        sphericalgridshape=gridshape,
+        normalisekernelweights=True,
+    )
+    at.inputmodel.modelfromhydro.main(
+        argsraw=[], gridfolderpath=tmp_path, outputpath=tmp_path / "model", dimensions=3, timedays=0.1
+    )
+
+    lzmodel, modelmeta = at.inputmodel.scan_modeldata(tmp_path / "model")
+    assert tuple(modelmeta[f"ncoordgrid{axis}"] for axis in ("r", "costheta", "phi")) == gridshape
+    dfcells = (
+        at.inputmodel
+        .add_derived_cols_to_modeldata(lzmodel, modelmeta)
+        .filter(pl.col("rho") > 0.0)
+        .sort("modelgridindex")
+        .collect()
+    )
+    # both particles are in the third shell. The first one is in the last cell of cos(theta) and the first cell of
+    # phi. The second one is in the cell with 0 <= cos(theta) < 0.5 and 270 <= phi < 315 degrees
+    assert dfcells["modelgridindex"].to_list() == [2 + 4 * (3 + 4 * 0), 2 + 4 * (2 + 4 * 6)]
+    onaxis, nearminusy = dfcells.rows(named=True)
+    assert onaxis["vel_z_mid"] > onaxis["vel_rcyl_mid"] > 0.0
+    assert nearminusy["vel_y_mid"] < 0.0 < nearminusy["vel_x_mid"] < -nearminusy["vel_y_mid"]
+    assert nearminusy["vel_z_mid"] > 0.0
+    np.testing.assert_allclose(dfcells["mass_g"].to_numpy(), dfcells.item(0, "mass_g"), rtol=1e-6)
+
+
+def test_spherical_map_and_cartesian_map_give_the_same_shell_masses(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The two maps of one snapshot estimate the same density field, thus their radial shells hold equal masses.
+
+    The kernel of each particle is inside both grids and wider than a cell. The kernel sum of the Cartesian map then
+    gives the mass pmass * rho / rho_rst of the particles to 1e-3. The spherical map has the same method by default,
+    and its cells have different sizes, thus it gives that mass to 0.03. With normalised kernel weights, the
+    spherical map keeps that mass exactly.
+
+    The cumulative mass of the shells of each spherical map agrees with the Cartesian map to less than 0.05 of the
+    total mass. The values are not equal, because the Cartesian cells do not follow the shells.
+    """
+    from artistools.inputmodel.maptogrid import get_spherical_cell_volumes
+    from artistools.inputmodel.maptogrid import maptogrid
+
+    rng = np.random.default_rng(seed=7)
+    particlecount, ncoordgrid, r_outer = 400, 20, 1000.0
+    direction = rng.normal(size=(particlecount, 3))
+    position = direction / np.linalg.norm(direction, axis=1)[:, np.newaxis]
+    position *= (600.0 * np.cbrt(rng.random(particlecount)))[:, np.newaxis]
+    # the largest radius of the particles sets the size of the grids
+    position[0] = (600.0, 0.0, 0.0)
+    pmass = 1.0 + rng.random(particlecount)
+    rho_on_rho_rst = 0.5 + 0.5 * rng.random(particlecount)
+    snapshotlines = []
+    for particleindex in range(particlecount):
+        values = [0.0] * 31
+        values[0] = particleindex + 1
+        values[1] = 150.0  # h
+        values[2:5] = position[particleindex].tolist()
+        values[14] = pmass[particleindex]
+        values[15] = rho_on_rho_rst[particleindex]  # rho
+        values[17] = 1.0  # rho_rst
+        values[20] = 0.3  # ye
+        snapshotlines.append(" ".join(str(value) for value in values))
+
+    for foldername, coordinates, normalisekernelweights in (
+        ("cartesian", "cartesian", False),
+        ("spherical", "spherical", False),
+        ("spherical_normalised", "spherical", True),
+    ):
+        folder = tmp_path / foldername
+        folder.mkdir()
+        (folder / "ejectasnapshot.dat").write_text("\n".join(snapshotlines) + "\n", encoding="utf-8")
+        maptogrid(
+            folder / "ejectasnapshot.dat",
+            folder,
+            ncoordgrid=ncoordgrid,
+            dtextra_seconds=0.0,
+            setgrid_fractionrmax=r_outer / 600.0,
+            modifysmoothinglength="False",
+            coordinates=coordinates,
+            sphericalgridshape=(ncoordgrid // 2, 10, 20),
+            normalisekernelweights=normalisekernelweights,
+        )
+
+    dfcartesian = at.misc.read_wsv(tmp_path / "cartesian" / "grid.dat", skip_rows=3)
+    cellwidth = 2.0 * r_outer / ncoordgrid
+    cellradius = np.sqrt(
+        sum((dfcartesian[f"pos_{axis}_min"].to_numpy() + cellwidth / 2.0) ** 2 for axis in ("x", "y", "z"))
+    )
+    cellmass_cartesian = dfcartesian["rho"].to_numpy() * cellwidth**3
+
+    headerlines = (tmp_path / "spherical" / "grid_spherical.dat").read_text(encoding="utf-8").splitlines()[2:5]
+    r_edges, costheta_edges, phi_edges = (np.array(line.split()[1:], dtype=np.float64) for line in headerlines)
+    cellvolumes = get_spherical_cell_volumes(r_edges, costheta_edges, phi_edges).ravel(order="F")
+    shellmass_cartesian, _ = np.histogram(cellradius, bins=r_edges, weights=cellmass_cartesian)
+
+    particlemass = float(np.sum(pmass * rho_on_rho_rst))
+    assert math.isclose(cellmass_cartesian.sum(), particlemass, rel_tol=1e-3)
+    for foldername, mass_rtol in (("spherical", 0.03), ("spherical_normalised", 1e-12)):
+        dfspherical = at.misc.read_wsv(tmp_path / foldername / "grid_spherical.dat", skip_rows=5)
+        shellmass_spherical = (
+            (dfspherical["rho"].to_numpy() * cellvolumes).reshape((len(r_edges) - 1, -1), order="F").sum(axis=1)
+        )
+        assert math.isclose(shellmass_spherical.sum(), particlemass, rel_tol=mass_rtol), foldername
+        cumulativedifference = np.cumsum(shellmass_spherical - shellmass_cartesian) / particlemass
+        assert np.abs(cumulativedifference).max() < 0.05, foldername
+
+    # maptogrid writes a number for each cell, thus the reader stops for a damaged value and does not give it rho = 0
+    damagedfolder = tmp_path / "damaged"
+    shutil.copytree(tmp_path / "spherical", damagedfolder)
+    (damagedfolder / "test_info.dat").write_text("0 0 20000.0\n", encoding="utf-8")
+    (damagedfolder / "tmerger.txt").write_text("# time of merger in geom units\n0.0\n", encoding="utf-8")
+    gridlines = (tmp_path / "spherical" / "grid_spherical.dat").read_text(encoding="utf-8").splitlines()
+    gridindex, _, ye, tracercount = gridlines[-1].split()
+    gridlines[-1] = f"{gridindex} nan {ye} {tracercount}"
+    (damagedfolder / "grid_spherical.dat").write_text("\n".join(gridlines) + "\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        at.inputmodel.modelfromhydro.read_griddat_file(damagedfolder)
+    captured = capsys.readouterr()
+    assert "1 cells have no valid rho, Ye, or tracercount" in captured.out + captured.err
+
+    # a grid index that occurs two times and one that is absent give the same count of rows
+    gridlines[-1] = " ".join([gridlines[-2].split()[0], *gridlines[-1].split()[1:]]).replace("nan", "0.0")
+    (damagedfolder / "grid_spherical.dat").write_text("\n".join(gridlines) + "\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        at.inputmodel.modelfromhydro.read_griddat_file(damagedfolder)
+    captured = capsys.readouterr()
+    assert "the grid indices must be 0 to" in captured.out + captured.err
+
+    # a cut inside the last line keeps a valid prefix of Ye, and the reader gave the cell no tracercount
+    cutlines = (tmp_path / "spherical" / "grid_spherical.dat").read_text(encoding="utf-8").splitlines()
+    cutlines[-1] = " ".join([*cutlines[-1].split()[:2], "0.1"])
+    (damagedfolder / "grid_spherical.dat").write_text("\n".join(cutlines), encoding="utf-8")
+    with pytest.raises(ValueError, match="does not end with a line end"):
+        at.inputmodel.modelfromhydro.read_griddat_file(damagedfolder)
+
+    # the model writer gave a tracer count that is not available as 0
+    for tracercountvalue in ("nan", "-1"):
+        damagedlines = (tmp_path / "spherical" / "grid_spherical.dat").read_text(encoding="utf-8").splitlines()
+        damagedlines[-2] = " ".join([*damagedlines[-2].split()[:3], tracercountvalue])
+        (damagedfolder / "grid_spherical.dat").write_text("\n".join(damagedlines) + "\n", encoding="utf-8")
+        with pytest.raises(SystemExit):
+            at.inputmodel.modelfromhydro.read_griddat_file(damagedfolder)
+        captured = capsys.readouterr()
+        assert "1 cells have no valid rho, Ye, or tracercount" in captured.out + captured.err
+
+    # a stop before the new grid file is complete leaves no grid file, and not the old grid with new contributions
+    with (
+        mock.patch("artistools.inputmodel.maptogrid.save_gridparticlecontributions", side_effect=OSError("disk full")),
+        pytest.raises(OSError, match="disk full"),
+    ):
+        maptogrid(
+            tmp_path / "spherical" / "ejectasnapshot.dat",
+            tmp_path / "spherical",
+            ncoordgrid=ncoordgrid,
+            dtextra_seconds=0.0,
+            setgrid_fractionrmax=r_outer / 600.0,
+            modifysmoothinglength="False",
+            coordinates="spherical",
+            sphericalgridshape=(ncoordgrid // 2, 10, 20),
+        )
+    assert not list((tmp_path / "spherical").glob("*grid_spherical.dat*"))
+
+    # a Cartesian map deleted the grid of an earlier spherical map only after its grid.dat, thus a stop between
+    # left the old grid_spherical.dat with the Cartesian contributions
+    with (
+        mock.patch("artistools.inputmodel.maptogrid.save_gridparticlecontributions", side_effect=OSError("disk full")),
+        pytest.raises(OSError, match="disk full"),
+    ):
+        maptogrid(
+            tmp_path / "spherical_normalised" / "ejectasnapshot.dat",
+            tmp_path / "spherical_normalised",
+            ncoordgrid=ncoordgrid,
+            dtextra_seconds=0.0,
+            setgrid_fractionrmax=r_outer / 600.0,
+            modifysmoothinglength="False",
+        )
+    assert not list((tmp_path / "spherical_normalised").glob("grid*.dat*"))
+
+
+@pytest.mark.parametrize("mapto3d", [False, True])
+def test_from_e2e_model_spherical_grid_holds_both_halves_of_a_symmetric_model(tmp_path: Path, mapto3d: bool) -> None:
+    """A spherical grid holds both halves of a model with equatorial symmetry, with two times the tracer mass.
+
+    The tracers of such a model are above the plane z = 0. The cylindrical grid maps one half and reflects it. A
+    spherical grid has no reflection: the map reads each cell at |z|, and the normalisation takes two times the
+    tracer mass. The contributions of the particles then name each cell of both halves.
+    """
+    from artistools.inputmodel.from_e2e_model import t_model_init_s
+
+    rng = np.random.default_rng(seed=5)
+    ntraj, ntimes = 60, 8
+    datpath = tmp_path / "e2emodel.npz"
+    np.savez(
+        datpath,
+        # each polar angle is below pi / 2, thus the model has equatorial symmetry
+        pos=np.column_stack([rng.uniform(0.05, 0.3, ntraj), rng.uniform(0.2, 1.5, ntraj)]),
+        idx=np.arange(1, ntraj + 1, dtype=float),
+        state=np.zeros(ntraj),
+        mass=np.full(ntraj, 1e-3),
+        qdot=np.full((ntraj, ntimes), 1e10),
+        hnuloss=np.zeros((ntraj, ntimes)),
+        time=np.linspace(0.0, 2.0 * t_model_init_s, ntimes),
+        # number fractions whose mass fractions sum to less than 1, because sn3d stops for a larger sum
+        nz=rng.uniform(0.01, 0.2, size=(ntraj, 2)) * np.array([0.5, 0.01]),
+        t5out=np.column_stack([np.zeros((ntraj, 4)), np.full(ntraj, 0.3)]),
+    )
+    np.save(tmp_path / "iso_table.npy", np.array([[2, 2], [26, 30]]))
+
+    gridshape = (6, 8, 4) if mapto3d else (6, 8)
+    argsraw = ["-npz", str(datpath), "-vmax_on_c", "0.4", "--coordinates", "spherical"]
+    argsraw += ["--ngrid-r", "6", "--ngrid-theta", "8", *(["--mapto3D", "--ngrid-phi", "4"] if mapto3d else [])]
+    at.inputmodel.from_e2e_model.main(argsraw=[*argsraw, "-o", str(tmp_path / "model")])
+
+    lzmodel, modelmeta = at.inputmodel.scan_modeldata(tmp_path / "model", printwarningsonly=True)
+    assert modelmeta["coordinates"] == ("spherical3d" if mapto3d else "spherical2d")
+    dfmodel = at.inputmodel.add_derived_cols_to_modeldata(lzmodel, modelmeta).collect()
+    cellmass = dfmodel["mass_g"].to_numpy().reshape(gridshape, order="F")
+
+    tracermass_g = ntraj * 1e-3 * at.constants.Msun_to_g
+    assert math.isclose(cellmass.sum(), 2.0 * tracermass_g, rel_tol=1e-6)
+    # the polar cells are uniform in cos(theta), thus cell i_costheta and cell n_costheta - 1 - i_costheta are mirror
+    # cells
+    np.testing.assert_allclose(cellmass, cellmass[:, ::-1], rtol=1e-6)
+    if mapto3d:
+        # the tracers have rotational symmetry around the z axis
+        np.testing.assert_allclose(cellmass, np.broadcast_to(cellmass[:, :, :1], cellmass.shape), rtol=1e-6)
+
+    dfcontributions = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(tmp_path / "model")
+    dfcellfractions = dfcontributions.group_by("cellindex").agg(pl.col("frac_of_cellmass").sum()).sort("cellindex")
+    assert dfcellfractions["cellindex"].to_list() == dfmodel.filter(pl.col("rho") > 0)["inputcellid"].to_list()
+    np.testing.assert_allclose(dfcellfractions["frac_of_cellmass"].to_numpy(), 1.0, rtol=1e-6)
+
+
+def test_from_e2e_model_of_version_1_stops_for_a_ye_file_of_an_earlier_model(tmp_path: Path) -> None:
+    """A reduced spherical model has format version 1, and its model.txt holds the electron fractions.
+
+    The command kept the Ye.txt of an earlier model in the output folder, and sn3d then took its values.
+    """
+    datpath = tmp_path / "e2emodel.npz"
+    write_e2e_model(datpath, tmp_path / "iso_table.npy")
+    outputfolder = tmp_path / "model1d"
+    outputfolder.mkdir()
+    (outputfolder / "Ye.txt").write_text("1\n1 0.3\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        at.inputmodel.from_e2e_model.main(
+            argsraw=["-npz", str(datpath), "-vmax_on_c", "0.4", "--coordinates", "spherical", "-dimensions", "1"],
+            outputfile=outputfolder,
+            force=True,
+        )
+    assert (outputfolder / "Ye.txt").read_text(encoding="utf-8") == "1\n1 0.3\n"
+    assert not list(outputfolder.glob("model.txt*"))
+
+
+def test_from_e2e_model_spherical_grid_agrees_with_the_cylindrical_grid(tmp_path: Path) -> None:
+    """A 2D spherical map and a 2D cylindrical map of one model give the same mass in each radial shell.
+
+    The spherical map has the method of the cylindrical map, and both hold the tracer mass after the normalisation.
+    The cumulative mass of the shells agrees to less than 0.05 of the total mass. The values are not equal, because
+    the cylindrical cells do not follow the shells.
+    """
+    datpath = tmp_path / "e2emodel.npz"
+    write_e2e_model(datpath, tmp_path / "iso_table.npy")
+    baseargs = ["-npz", str(datpath), "-vmax_on_c", "0.4"]
+    gridargs = {
+        "cylindrical": ["-ngridrcyl", "24", "-ngridz", "48"],
+        "spherical": ["--coordinates", "spherical", "--ngrid-r", "24", "--ngrid-theta", "24"],
+    }
+    shelledges_on_c = np.linspace(0.0, 0.4, 9)
+    shellmassfractions = {}
+    for coordinates, coordinateargs in gridargs.items():
+        at.inputmodel.from_e2e_model.main(argsraw=[*baseargs, *coordinateargs, "-o", str(tmp_path / coordinates)])
+        lzmodel, modelmeta = at.inputmodel.scan_modeldata(tmp_path / coordinates, printwarningsonly=True)
+        dfmodel = at.inputmodel.add_derived_cols_to_modeldata(lzmodel, modelmeta).collect()
+        shellmass, _ = np.histogram(
+            dfmodel["vel_r_mid_on_c"].to_numpy(), bins=shelledges_on_c, weights=dfmodel["mass_g"].to_numpy()
+        )
+        # 40 tracers of 1e-3 Msun
+        assert math.isclose(dfmodel["mass_g"].sum(), 0.04 * at.constants.Msun_to_g, rel_tol=1e-6), coordinates
+        shellmassfractions[coordinates] = shellmass / dfmodel["mass_g"].sum()
+
+    cumulativedifference = np.cumsum(shellmassfractions["spherical"] - shellmassfractions["cylindrical"])
+    assert np.abs(cumulativedifference).max() < 0.05
 
 
 def test_scan_modeldata_of_a_model_file_reads_the_abundances_beside_it() -> None:

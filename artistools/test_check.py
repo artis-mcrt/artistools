@@ -325,6 +325,19 @@ def test_check_names_the_missing_input_files_and_the_leftover_files(tmp_path: Pa
     assert "model.txt" not in detail
     assert "no abundances.txt" in detail
     assert "no adata.txt" in detail
+
+    # a damaged model.txt.zst gave the error of zstd, and the check then listed no file
+    (tmp_path / "model.txt.zst").write_bytes(b"\x28\xb5\x2f\xfd damaged")
+    status, detail = check_input_files(tmp_path)
+    assert "no abundances.txt" in detail
+
+    # the readers also open a version 2 model.txt in data/, and such a model needs no abundances.txt
+    (tmp_path / "model.txt.zst").unlink()
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "model.txt").write_text("format_version 2\n", encoding="utf-8")
+    status, detail = check_input_files(tmp_path)
+    assert "model.txt" not in detail
+    assert "abundances.txt" not in detail
     status, detail = check_caches(tmp_path)
     assert status == "warning"
     assert "1 leftover files of conversions that stopped" in detail

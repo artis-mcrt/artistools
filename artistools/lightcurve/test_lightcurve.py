@@ -49,10 +49,10 @@ outputpath = at.get_path("testoutput")
             [modelpath],
             {
                 "time_max": 333.334,
-                "time_std": 22.2348791,
-                "integral": 2.4189054554e42,
-                "lum_mean": 3.231155e40,
-                "lum_std": 7.2115e39,
+                "time_std": 20.9791151,
+                "integral": 2.2376076167e42,
+                "lum_mean": 3.1692273e40,
+                "lum_std": 7.0337518e39,
             },
             id="lightcurve_out",
         ),
@@ -61,10 +61,10 @@ outputpath = at.get_path("testoutput")
             modelpath,
             {
                 "time_max": 333.33389,
-                "time_std": 22.23483,
-                "integral": 9.0323767e40,
-                "lum_mean": 1.2039713396033405e39,
-                "lum_std": 3.614004402353378e38,
+                "time_std": 20.9790926,
+                "integral": 8.4411944e40,
+                "lum_mean": 1.1954232309048462e39,
+                "lum_std": 3.634900712467767e38,
             },
             id="packets",
         ),
@@ -88,10 +88,11 @@ def test_lightcurve_plot(
     arr_time_d = np.array(mockplot.call_args[0][1])
     arr_lum = np.array(mockplot.call_args[0][2])
 
-    assert np.isclose(arr_time_d.min(), 257.253, rtol=1e-4)
+    # the valid range starts when light from the origin reaches the corner of the Cartesian propagation grid
+    assert np.isclose(arr_time_d.min(), 261.618, rtol=1e-4)
     assert np.isclose(arr_time_d.max(), expected["time_max"], rtol=1e-4)
 
-    assert np.isclose(arr_time_d.mean(), 293.67411, rtol=1e-4)
+    assert np.isclose(arr_time_d.mean(), 296.04955, rtol=1e-4)
     assert np.isclose(arr_time_d.std(), expected["time_std"], rtol=1e-4)
 
     integral = np.trapezoid(arr_lum, arr_time_d)
@@ -1867,7 +1868,7 @@ def test_bolometric_residual_panel_gives_the_rms_residual(
     dfmodel = (
         at.lightcurve
         .scan_lightcurve(at.lightcurve.find_lightcurve_file(modelpath))[-1]
-        .filter(pl.col("time_days").is_between(260.0, 330.0))
+        .filter(pl.col("time_days").is_between(262.0, 330.0))
         .gather_every(5)
         .collect()
     )

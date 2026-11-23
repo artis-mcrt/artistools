@@ -17,6 +17,7 @@ result. --exit-zero gives the status 0.
 """
 
 import argparse
+import contextlib
 import itertools
 import typing as t
 from collections.abc import Callable
@@ -33,6 +34,8 @@ from artistools.constants import Lsun_to_erg_per_s
 from artistools.describemodel import get_run_versions
 from artistools.estimators import get_temperature_limits
 from artistools.estimators import scan_estimators
+from artistools.inputmodel import find_abundance_file
+from artistools.inputmodel import get_model_file_path
 from artistools.lightcurve import find_lightcurve_file
 from artistools.lightcurve import get_katz_integral
 from artistools.lightcurve import scan_lightcurve
@@ -44,10 +47,13 @@ from artistools.logs import get_logged_rank_count
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_table_output
 from artistools.misc import exit_with_error
+from artistools.misc import find_sn3d_input_file
 from artistools.misc import firstexisting_or_none
 from artistools.misc import format_range_list
+from artistools.misc import get_decompress_errors
 from artistools.misc import get_escaped_arrivalrange
 from artistools.misc import get_model_folder
+from artistools.misc import get_model_format_version
 from artistools.misc import get_run_subfolders
 from artistools.misc import get_runfolders
 from artistools.misc import get_timestep_times
@@ -59,6 +65,7 @@ from artistools.misc import print_or_write_table
 from artistools.misc import print_warning
 from artistools.misc import resolve_table_outputfile
 from artistools.misc import scan_deposition
+from artistools.misc import zopen
 
 STATUSES: t.Final = ("ok", "warning", "error", "not checked")
 
@@ -488,15 +495,46 @@ def check_packet_noise(modelpath: Path, frompackets: bool) -> tuple[str, str]:
 
 
 def check_input_files(modelpath: Path) -> tuple[str, str]:
-    """Find the input files that the readers of artistools need, and return the status and the detail."""
+    """Find the input files that the readers of artistools need, and return the status and the detail.
+
+    A model.txt of format version 2 gives the element mass fractions and the electron fractions. Such a model has
+    no abundances.txt and no Ye.txt, and sn3d stops if one of these files is present.
+    """
+    inputfiles = dict(INPUTFILE_READERS)
+    problems = []
+    # the reader of model.txt also opens a model.txt in a subfolder, e.g. data/model.txt
+    modelfile = get_model_file_path(modelpath)
+    if modelfile is not None:
+        hasversion2 = False
+        # a file that the readers cannot open gets its message from the check of the readers, not from this check
+        with contextlib.suppress(OSError, EOFError, ValueError, *get_decompress_errors()), zopen(modelfile) as fmodel:
+            hasversion2 = get_model_format_version(fmodel.readline(), modelfile) == 2
+        if hasversion2:
+            del inputfiles["abundances.txt"]
+            # sn3d stops for a file that it finds with its own search, which differs from the search of artistools
+            for filename, quantity in (("abundances.txt", "element mass"), ("Ye.txt", "electron")):
+                stalefile = find_sn3d_input_file(filename, modelpath)
+                if stalefile is not None:
+                    problems.append(
+                        f"the model folder holds {stalefile.relative_to(modelpath)}, but model.txt has format version"
+                        f" 2, which gives the {quantity} fractions. sn3d stops for this file"
+                    )
+    # the reader of abundances.txt takes the file that sn3d reads for model.txt. The other readers read the files of
+    # the model folder alone
+    foundfiles = {
+        "model.txt": modelfile,
+        "abundances.txt": find_abundance_file(modelpath if modelfile is None else modelfile.parent),
+    }
     missing = [
         f"{filename} ({readers})"
-        for filename, readers in INPUTFILE_READERS.items()
-        if firstexisting_or_none(filename, folder=modelpath, search_subfolders=False) is None
+        for filename, readers in inputfiles.items()
+        if foundfiles.get(filename, firstexisting_or_none(filename, folder=modelpath, search_subfolders=False)) is None
     ]
-    if not missing:
-        return "ok", f"the model folder holds {', '.join(INPUTFILE_READERS)}"
-    return "warning", f"the model folder holds no {'; no '.join(missing)}"
+    if missing:
+        problems.append(f"the model folder holds no {'; no '.join(missing)}")
+    if not problems:
+        return "ok", f"the model folder holds {', '.join(inputfiles)}"
+    return "warning", "; ".join(problems)
 
 
 def check_caches(modelpath: Path) -> tuple[str, str]:
