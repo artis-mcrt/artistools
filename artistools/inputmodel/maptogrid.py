@@ -126,10 +126,10 @@ def get_modified_smoothing_lengths(
 def get_spherical_grid_edges(
     r_outer: float, ngridr: int, ngridtheta: int, ngridphi: int
 ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:
-    """Return the edges of the cells of a spherical grid in the radius, the polar angle, and the azimuthal angle.
+    """Return the edges of the cells of a spherical grid in the radius, cos(theta), and the azimuthal angle.
 
-    The radial edges and the azimuthal edges are uniform. The polar edges are uniform in cos(theta), thus the
-    cells of one shell have equal volumes.
+    theta is the polar angle from the +z axis. Each list of edges is uniform. The polar edges are uniform in
+    cos(theta) from -1 to 1, thus the cells of one shell have equal volumes.
     """
     if not (math.isfinite(r_outer) and r_outer > 0.0):
         msg = (
@@ -137,20 +137,18 @@ def get_spherical_grid_edges(
             " is --setgrid-fractionrmax times the largest radius of the particles"
         )
         raise ValueError(msg)
-    theta_edges = np.arccos(np.linspace(1.0, -1.0, ngridtheta + 1))
     phi_edges = np.linspace(0.0, 2.0 * math.pi, ngridphi + 1)
-    # arccos(-1) and the last value of linspace can differ from pi and 2 pi in the last bit
-    theta_edges[-1] = math.pi
+    # the last value of linspace can differ from 2 pi in the last bit
     phi_edges[-1] = 2.0 * math.pi
-    return np.linspace(0.0, r_outer, ngridr + 1), theta_edges, phi_edges
+    return np.linspace(0.0, r_outer, ngridr + 1), np.linspace(-1.0, 1.0, ngridtheta + 1), phi_edges
 
 
 def get_spherical_cell_volumes(
-    r_edges: npt.NDArray[np.float64], theta_edges: npt.NDArray[np.float64], phi_edges: npt.NDArray[np.float64]
+    r_edges: npt.NDArray[np.float64], costheta_edges: npt.NDArray[np.float64], phi_edges: npt.NDArray[np.float64]
 ) -> npt.NDArray[np.float64]:
-    """Return the volume of each cell of a spherical grid, with the shape (n_r, n_theta, n_phi)."""
+    """Return the volume of each cell of a spherical grid, with the shape (n_r, n_costheta, n_phi)."""
     radialpart = (r_edges[1:] ** 3 - r_edges[:-1] ** 3) / 3.0
-    polarpart = np.cos(theta_edges[:-1]) - np.cos(theta_edges[1:])
+    polarpart = np.diff(costheta_edges)
     return radialpart[:, np.newaxis, np.newaxis] * polarpart[np.newaxis, :, np.newaxis] * np.diff(phi_edges)
 
 
@@ -164,9 +162,9 @@ def get_spherical_deposit(
 ) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.int64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:
     """Return the mass that each particle gives to each cell of a spherical grid.
 
-    position has one row of x, y, and z for each particle, and edges holds the cell edges in r, theta, and phi. The
+    position has one row of x, y, and z for each particle, and edges holds the cell edges in r, cos(theta), and phi. The
     result holds the particle index, the cell index, and the mass of each pair, and the sum of the weights of each
-    particle. The cell index is i_r + n_r * (i_theta + n_theta * i_phi).
+    particle. The cell index is i_r + n_r * (i_costheta + n_costheta * i_phi).
 
     A particle gives mass to the cells whose mid-points are in its kernel, which has the radius 2h. The weight of a
     cell is the kernel value at its mid-point times its volume.
@@ -182,13 +180,13 @@ def get_spherical_deposit(
     mass of each particle inside the outer radius. The particle with the largest radius is at the outer radius for a
     grid to that radius, and it is inside the grid.
     """
-    r_edges, theta_edges, phi_edges = edges
+    r_edges, costheta_edges, phi_edges = edges
     ngridr, ngridtheta, ngridphi = (len(axisedges) - 1 for axisedges in edges)
-    r_mid, theta_mid, phi_mid = ((axisedges[:-1] + axisedges[1:]) / 2.0 for axisedges in edges)
-    sintheta_mid, costheta_mid = np.sin(theta_mid), np.cos(theta_mid)
+    r_mid, costheta_mid, phi_mid = ((axisedges[:-1] + axisedges[1:]) / 2.0 for axisedges in edges)
+    sintheta_mid = np.sqrt(1.0 - costheta_mid**2)
     # a search of three copies of the azimuthal mid-points finds a range that goes through phi = 0
     phi_mid_periodic = np.concatenate((phi_mid - 2.0 * math.pi, phi_mid, phi_mid + 2.0 * math.pi))
-    volumes = get_spherical_cell_volumes(r_edges, theta_edges, phi_edges)
+    volumes = get_spherical_cell_volumes(r_edges, costheta_edges, phi_edges)
     alltheta, allphi = np.arange(ngridtheta), np.arange(ngridphi)
 
     r_particle = np.sqrt(np.sum(position**2, axis=1))
@@ -214,9 +212,10 @@ def get_spherical_deposit(
         thetaindices, phiindices = alltheta, allphi
         if kernelradius < r_p:
             halfangle = math.asin(kernelradius / r_p)
+            # cos(theta) decreases with theta, thus the largest angle of the cone gives the first index
             thetaindices = np.arange(
-                np.searchsorted(theta_mid, theta_p - halfangle, side="left"),
-                np.searchsorted(theta_mid, theta_p + halfangle, side="right"),
+                np.searchsorted(costheta_mid, math.cos(min(theta_p + halfangle, math.pi)), side="left"),
+                np.searchsorted(costheta_mid, math.cos(max(theta_p - halfangle, 0.0)), side="right"),
             )
             if theta_p - halfangle > 0.0 and theta_p + halfangle < math.pi:
                 phihalfrange = math.asin(min(1.0, math.sin(halfangle) / math.sin(theta_p)))
@@ -251,11 +250,11 @@ def get_spherical_deposit(
             pairmasses.append(mass[n] * weights[hasweight] / weightsum)
         else:
             # a cell holds its lower edge, and the last cell of an axis also holds the upper edge of the grid
-            index_r, index_theta, index_phi = (
+            index_r, index_costheta, index_phi = (
                 min(int(np.searchsorted(axisedges, value, side="right")) - 1, len(axisedges) - 2)
-                for axisedges, value in zip(edges, (r_p, theta_p, phi_p), strict=True)
+                for axisedges, value in zip(edges, (r_p, math.cos(theta_p), phi_p), strict=True)
             )
-            paircells.append(np.array([index_r + ngridr * (index_theta + ngridtheta * index_phi)], dtype=np.int64))
+            paircells.append(np.array([index_r + ngridr * (index_costheta + ngridtheta * index_phi)], dtype=np.int64))
             pairmasses.append(np.array([mass[n]]))
         pairparticles.append(np.full(paircells[-1].size, n, dtype=np.int64))
 
@@ -313,7 +312,8 @@ def map_particles_to_spherical_grid(
     ncells = volumes.size
     logprint(
         "Coordinates: spherical. theta is the polar angle from the +z axis, and phi = atan2(y, x) is the azimuthal"
-        " angle. The index of a cell is i_r + n_r * (i_theta + n_theta * i_phi)"
+        " angle. The polar edges are values of cos(theta) from -1 to 1. The index of a cell is"
+        " i_r + n_r * (i_costheta + n_costheta * i_phi)"
     )
     logprint(
         f"Grid: n_r x n_theta x n_phi = {' x '.join(str(count) for count in gridshape)} = {ncells} cells. The radial"
@@ -336,7 +336,7 @@ def map_particles_to_spherical_grid(
             " kernel, d is the distance from the cell mid-point to the particle, and h is the smoothing length. The"
             " mass on the grid is the mass of the particles only if the cells resolve each kernel"
         )
-    logprint("The mid-point of a cell is the mean of its edges in r, theta, and phi")
+    logprint("The mid-point of a cell is the mean of its edges in r, cos(theta), and phi")
     logprint(
         "Assumption: the mass of a particle on the grid is pmass * rho / rho_rst, the same factor as the Cartesian"
         " map (source: maptogrid.f90 of A. Bauswein)"
@@ -375,7 +375,7 @@ def map_particles_to_spherical_grid(
     cellmass = np.bincount(paircell, weights=pairmass, minlength=ncells)
     cellyemass = np.bincount(paircell, weights=pairmass * particleye[pairparticle], minlength=ncells)
     celltracercount = np.bincount(paircell, minlength=ncells)
-    # the order of the flat arrays has the radial index fastest, which is the Fortran order of [i_r, i_theta, i_phi]
+    # the order of the flat arrays has the radial index fastest, which is the Fortran order of [i_r, i_costheta, i_phi]
     cellrho = cellmass / volumes.ravel(order="F")
     with np.errstate(divide="ignore", invalid="ignore"):
         cellye = np.where(cellmass > 0.0, cellyemass / cellmass, 0.0)

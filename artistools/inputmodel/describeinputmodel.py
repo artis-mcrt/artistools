@@ -105,7 +105,7 @@ def describe_model(modelpath: Path | str, args: argparse.Namespace) -> None:
         nonemptycells = dfmodel.select(pl.len()).collect().item()
         gridshape = " x ".join(
             f"{modelmeta[f'ncoordgrid{axis}']} ({axis})"
-            for axis in ("r", "theta", "phi")
+            for axis in ("r", "costheta", "phi")
             if f"ncoordgrid{axis}" in modelmeta
         )
         print_product(

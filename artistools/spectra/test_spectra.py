@@ -777,7 +777,7 @@ def test_spectra_default_shells_of_a_spherical_model_on_a_cartesian_grid_end_at_
         "coordinates spherical2d",
         "t_model_init_days 1.0",
         "vel_r_edges_kmps 0 1000 3000",
-        f"theta_edges_radians 0 1.5 {math.pi!r}",
+        "costheta_edges -1 0.1 1",
         "columns inputcellid rho",
         "0 1e-12",
     ]

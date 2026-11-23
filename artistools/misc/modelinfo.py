@@ -409,8 +409,8 @@ MODEL_EDGE_KEYS: t.Final["Mapping[str, tuple[str, ...]]"] = MappingProxyType({
     "spherical1d": ("vel_r_edges_kmps",),
     "cylindrical2d": ("vel_rcyl_edges_kmps", "vel_z_edges_kmps"),
     "cartesian3d": ("vel_x_edges_kmps", "vel_y_edges_kmps", "vel_z_edges_kmps"),
-    "spherical2d": ("vel_r_edges_kmps", "theta_edges_radians"),
-    "spherical3d": ("vel_r_edges_kmps", "theta_edges_radians", "phi_edges_radians"),
+    "spherical2d": ("vel_r_edges_kmps", "costheta_edges"),
+    "spherical3d": ("vel_r_edges_kmps", "costheta_edges", "phi_edges_radians"),
 })
 MODEL_COORDINATES = tuple(MODEL_EDGE_KEYS)
 ALL_MODEL_EDGE_KEYS = tuple(dict.fromkeys(key for edgekeys in MODEL_EDGE_KEYS.values() for key in edgekeys))
@@ -422,11 +422,9 @@ UNIFORM_EDGE_COORDINATES = ("cylindrical2d", "cartesian3d")
 # the largest difference of an edge from its place on a grid with cells of equal width, as a fraction of vmax. sn3d
 # has the same limit
 UNIFORM_EDGE_RTOL = 1e-9
-# sn3d accepts the same difference between the last angular edge and pi or 2 pi
-ANGLE_EDGE_ATOL_RADIANS = 1e-8
-# the cosine of a polar edge moves the cone of the edge by approximately 1.1e-16 / theta of the radius, and sn3d has a
-# position tolerance of 1e-12 of the radius at a cell boundary. sn3d has the same limit
-MIN_POLAR_EDGE_ANGLE_FROM_AXIS_RADIANS = 1e-4
+# sn3d accepts the same difference between the last azimuthal edge and 2 pi. A cell in cos(theta) or in phi must be
+# wider than this value, because sn3d has a position tolerance at a cell boundary
+ANGLE_EDGE_ATOL = 1e-8
 
 
 def get_model_coordinates(modelmeta: "Mapping[str, t.Any]") -> str:
@@ -467,19 +465,16 @@ def get_mirrored_modelgridindex_of_propcell(cellindex: pl.Expr, modelmeta: "Mapp
     """Return the model grid index of a propagation cell of sn3d for a mirrored model on its own grid type.
 
     The propagation grid has the cells of both halves, thus two times the cells of the model on the mirror axis: z of
-    a cylindrical model and theta of a spherical model. The index of the first axis changes fastest in both indices.
+    a cylindrical model and cos(theta) of a spherical model. The index of the first axis changes fastest in both
+    indices. The model counts the cells of the mirror axis from the plane z = 0, and the propagation grid counts them
+    from the -z side.
     """
-    axisnames = ("rcyl", "z") if get_model_coordinates(modelmeta) == "cylindrical2d" else ("r", "theta")
+    axisnames = ("rcyl", "z") if get_model_coordinates(modelmeta) == "cylindrical2d" else ("r", "costheta")
     count0, halfcount = (int(modelmeta[f"ncoordgrid{axisname}"]) for axisname in axisnames)
     index0 = cellindex % count0
     propindex1 = (cellindex // count0) % (2 * halfcount)
     index2 = cellindex // (count0 * 2 * halfcount)
-    # a cylindrical model counts its z cells from the plane z = 0, and a spherical model its polar cells from +z
-    halfindex1 = (
-        pl.when(propindex1 >= halfcount).then(propindex1 - halfcount).otherwise(halfcount - 1 - propindex1)
-        if axisnames[1] == "z"
-        else pl.when(propindex1 < halfcount).then(propindex1).otherwise(2 * halfcount - 1 - propindex1)
-    )
+    halfindex1 = pl.when(propindex1 >= halfcount).then(propindex1 - halfcount).otherwise(halfcount - 1 - propindex1)
     return index0 + count0 * (halfindex1 + halfcount * index2)
 
 
@@ -623,19 +618,19 @@ def require_cartesian3d_model(modelmeta: "Mapping[str, t.Any]", requirement: str
 def validate_model_edges(
     coordinates: str, edgelists: "Mapping[str, Sequence[float] | None]", source: Path | str, mirrored: bool = False
 ) -> dict[str, list[float]]:
-    """Return the cell edges of a version 2 file, with the last angles exactly pi and 2 pi.
+    """Return the cell edges of a version 2 file, with the last azimuthal angle exactly 2 pi.
 
     edgelists must hold each key of MODEL_EDGE_KEYS for the coordinates, and no other edge key. These are the rules:
 
-    - Each list increases. A list of r, rcyl, theta, or phi starts at exactly 0.
-    - The last polar angle is pi and the last azimuthal angle is 2 pi, to ANGLE_EDGE_ATOL_RADIANS. A polar angle
-      at pi / 2, to the same tolerance, becomes exactly pi / 2 before the check, as in sn3d. Each polar angle other
-      than 0 and pi is at least MIN_POLAR_EDGE_ANGLE_FROM_AXIS_RADIANS from the z axis, and each cell in theta and in
-      phi must be wider than ANGLE_EDGE_ATOL_RADIANS.
+    - Each list increases. A list of r, rcyl, or phi starts at exactly 0.
+    - costheta_edges holds the cosine of the polar angle from the +z axis, from exactly -1 to exactly 1. The cosine
+      is the value that sn3d uses for a polar edge, thus the poles and the plane z = 0 need no tolerance.
+    - The last azimuthal angle is 2 pi, to ANGLE_EDGE_ATOL. Each cell in cos(theta) and in phi must be wider than
+      ANGLE_EDGE_ATOL.
     - A cylindrical2d or cartesian3d grid has cells of equal width. The lists of x, y, and z are from -vmax to
       vmax, and all the axes have the same vmax. A cartesian3d grid has the same count of cells on each axis.
-    - A mirrored model (mirrored = True) holds the cells with z >= 0. Its list of z starts at 0, and its last polar
-      angle is pi / 2.
+    - A mirrored model (mirrored = True) holds the cells with z >= 0. Its list of z and its list of cos(theta)
+      start at 0.
 
     source is the file or the caller that the error names.
     """
@@ -660,49 +655,35 @@ def validate_model_edges(
         values = edgelists[key]
         assert values is not None
         edges[key] = [float(edge) for edge in values]
-    if "theta_edges_radians" in edges:
-        edges["theta_edges_radians"] = [
-            math.pi / 2.0 if abs(edge - math.pi / 2.0) <= ANGLE_EDGE_ATOL_RADIANS else edge
-            for edge in edges["theta_edges_radians"]
-        ]
-
-    lastangles = {"theta_edges_radians": math.pi / 2.0 if mirrored else math.pi, "phi_edges_radians": 2.0 * math.pi}
-    lastanglenames = {"theta_edges_radians": "pi / 2" if mirrored else "pi", "phi_edges_radians": "2 pi"}
     keys_from_minus_vmax = {"vel_x_edges_kmps", "vel_y_edges_kmps", "vel_z_edges_kmps"}
     for key, values in edges.items():
         if len(values) < 2 or not all(math.isfinite(edge) for edge in values):
             msg = f"{source}: {key} must hold two or more finite values"
             raise ValueError(msg)
-        if key not in keys_from_minus_vmax and values[0] != 0.0:
-            msg = f"{source}: the first value of {key} must be 0, not {values[0]!r}"
-            raise ValueError(msg)
-        if key in lastangles:
-            if abs(values[-1] - lastangles[key]) > ANGLE_EDGE_ATOL_RADIANS:
+        if key == "costheta_edges":
+            firstcostheta = 0.0 if mirrored else -1.0
+            if values[0] != firstcostheta or values[-1] != 1.0:
                 msg = (
-                    f"{source}: the last value of {key} must be {lastangles[key]!r}"
-                    f" ({lastanglenames[key]}), not {values[-1]!r}"
+                    f"{source}: the values of {key} must go from {firstcostheta:g} to 1, not from {values[0]!r} to"
+                    f" {values[-1]!r}"
                 )
                 raise ValueError(msg)
-            values[-1] = lastangles[key]
+        elif key not in keys_from_minus_vmax and values[0] != 0.0:
+            msg = f"{source}: the first value of {key} must be 0, not {values[0]!r}"
+            raise ValueError(msg)
+        if key == "phi_edges_radians":
+            if abs(values[-1] - 2.0 * math.pi) > ANGLE_EDGE_ATOL:
+                msg = f"{source}: the last value of {key} must be {2.0 * math.pi!r} (2 pi), not {values[-1]!r}"
+                raise ValueError(msg)
+            values[-1] = 2.0 * math.pi
         if not all(lower < upper for lower, upper in itertools.pairwise(values)):
             msg = f"{source}: the values of {key} must increase from each value to the next"
             raise ValueError(msg)
         # sn3d has a position tolerance at a cell boundary, and a thinner angular cell gets no packet path
-        if key in lastangles and any(
-            upper - lower <= ANGLE_EDGE_ATOL_RADIANS for lower, upper in itertools.pairwise(values)
+        if key in {"costheta_edges", "phi_edges_radians"} and any(
+            upper - lower <= ANGLE_EDGE_ATOL for lower, upper in itertools.pairwise(values)
         ):
-            msg = f"{source}: each cell of {key} must be wider than {ANGLE_EDGE_ATOL_RADIANS:g} rad"
-            raise ValueError(msg)
-
-    # sn3d takes a polar edge as a cone with the cosine of the edge, and near the z axis that cosine does not give the
-    # angle to the position tolerance of a cell boundary
-    for edge in edges.get("theta_edges_radians", []):
-        if 0.0 < edge < math.pi and min(edge, math.pi - edge) < MIN_POLAR_EDGE_ANGLE_FROM_AXIS_RADIANS:
-            msg = (
-                f"{source}: the polar edge {edge!r} rad is less than {MIN_POLAR_EDGE_ANGLE_FROM_AXIS_RADIANS:g} rad"
-                " from the z axis. sn3d takes a polar edge as a cone with the cosine of the edge, and the cosine of"
-                " such an edge does not give its angle to the position tolerance of a cell boundary"
-            )
+            msg = f"{source}: each cell of {key} must be wider than {ANGLE_EDGE_ATOL:g}"
             raise ValueError(msg)
 
     if coordinates in UNIFORM_EDGE_COORDINATES:
@@ -728,7 +709,10 @@ def validate_model_edges(
 
 def get_cell_counts_of_edges(coordinates: str, edges: "Mapping[str, Sequence[float]]") -> dict[str, int]:
     """Return the metadata keys of the cell counts, e.g. ncoordgridrcyl, for the cell edges of a version 2 file."""
-    counts = {f"ncoordgrid{key.split('_')[-3]}": len(edges[key]) - 1 for key in MODEL_EDGE_KEYS[coordinates]}
+    counts = {
+        f"ncoordgrid{key.removeprefix('vel_').split('_edges')[0]}": len(edges[key]) - 1
+        for key in MODEL_EDGE_KEYS[coordinates]
+    }
     # a 1D model has npts_model only, and the reader of a 3D Cartesian model also gives the count of one axis
     if coordinates == "spherical1d":
         return {}

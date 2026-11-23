@@ -705,7 +705,7 @@ IS_WHOLE_INPUTCELLID = (
 # cell ids of model.txt, and it puts the second line of a cell beside the first line in the order of the file.
 # Version 3 gives the key coordinates in the metadata of each model. Version 4 gives the key formatversion.
 # Version 5 checks more values of format version 2, as sn3d does. Version 6 gives tracercount as Int64.
-CACHEVERSION = 7
+CACHEVERSION = 8
 
 
 def scan_parquet_cache(
@@ -1328,13 +1328,13 @@ def get_spherical_cell_indices(
 ) -> tuple[pl.Expr, pl.Expr, pl.Expr]:
     """Return the radial, polar, and azimuthal index of each cell of a spherical2d or spherical3d model.
 
-    The radial index changes fastest: the index of a cell is i_r + n_r * (i_theta + n_theta * i_phi). The cell
+    The radial index changes fastest: the index of a cell is i_r + n_r * (i_costheta + n_costheta * i_phi). The cell
     index is modelgridindex if colnames holds it. If not, it is inputcellid minus the key firstinputcellid of the
     metadata, which is 0 without the key, because the cell ids of format version 2 start at 0. Thus the rows can be
     a selection of the cells in each order. The azimuthal index of a spherical2d model is 0.
     """
     ncoordgridr = len(modelmeta["vel_r_edges_kmps"]) - 1
-    ncoordgridtheta = len(modelmeta["theta_edges_radians"]) - 1
+    ncoordgridcostheta = len(modelmeta["costheta_edges"]) - 1
     cellindex = (
         pl.col("modelgridindex")
         if "modelgridindex" in colnames
@@ -1342,8 +1342,8 @@ def get_spherical_cell_indices(
     ).cast(pl.Int64)
     return (
         cellindex % ncoordgridr,
-        (cellindex // ncoordgridr) % ncoordgridtheta,
-        cellindex // (ncoordgridr * ncoordgridtheta),
+        (cellindex // ncoordgridr) % ncoordgridcostheta,
+        cellindex // (ncoordgridr * ncoordgridcostheta),
     )
 
 
@@ -1351,11 +1351,11 @@ def add_spherical_derived_cols(dfmodel: pl.LazyFrame, modelmeta: dict[str, t.Any
     """Add the bounds, the mid-point, the volume, and the kinetic energy of each cell of a grid with spherical edges.
 
     The cell edges of the metadata give each value, because model.txt has no position column for the coordinates
-    spherical2d and spherical3d. The mid-point of a cell is the mean of its edges in r, theta, and phi. A
+    spherical2d and spherical3d. The mid-point of a cell is the mean of its edges in r, cos(theta), and phi. A
     spherical2d cell is a ring around the z axis, and its mid-point is in the plane of rcyl and z.
     """
     t_model_init_seconds = modelmeta["t_model_init_days"] * day_to_s
-    i_r, i_theta, i_phi = get_spherical_cell_indices(dfmodel.collect_schema().names(), modelmeta)
+    i_r, i_costheta, i_phi = get_spherical_cell_indices(dfmodel.collect_schema().names(), modelmeta)
 
     def edge_at(key: str, index: pl.Expr, scale: float = 1.0) -> pl.Expr:
         return pl.lit(pl.Series(modelmeta[key], dtype=pl.Float64) * scale).gather(index)
@@ -1364,14 +1364,14 @@ def add_spherical_derived_cols(dfmodel: pl.LazyFrame, modelmeta: dict[str, t.Any
     dfmodel = dfmodel.with_columns(
         pos_r_min=edge_at("vel_r_edges_kmps", i_r, pos_scale),
         pos_r_max=edge_at("vel_r_edges_kmps", i_r + 1, pos_scale),
-        theta_min_radians=edge_at("theta_edges_radians", i_theta),
-        theta_max_radians=edge_at("theta_edges_radians", i_theta + 1),
+        costheta_min=edge_at("costheta_edges", i_costheta),
+        costheta_max=edge_at("costheta_edges", i_costheta + 1),
     ).with_columns(pos_r_mid=(pl.col("pos_r_min") + pl.col("pos_r_max")) / 2.0)
 
-    theta_mid = (pl.col("theta_min_radians") + pl.col("theta_max_radians")) / 2.0
+    costheta_mid = (pl.col("costheta_min") + pl.col("costheta_max")) / 2.0
     midpointcols = {
-        "pos_rcyl_mid": pl.col("pos_r_mid") * theta_mid.sin(),
-        "pos_z_mid": pl.col("pos_r_mid") * theta_mid.cos(),
+        "pos_rcyl_mid": pl.col("pos_r_mid") * (1.0 - costheta_mid.pow(2)).sqrt(),
+        "pos_z_mid": pl.col("pos_r_mid") * costheta_mid,
     }
     azimuthal_width: pl.Expr | float = 2.0 * math.pi
     if "phi_edges_radians" in modelmeta:
@@ -1387,7 +1387,7 @@ def add_spherical_derived_cols(dfmodel: pl.LazyFrame, modelmeta: dict[str, t.Any
 
     # a cell of a mirrored model also fills its mirror cell
     solid_angle = (
-        (pl.col("theta_min_radians").cos() - pl.col("theta_max_radians").cos())
+        (pl.col("costheta_max") - pl.col("costheta_min"))
         * azimuthal_width
         * (2.0 if has_mirror_plane(modelmeta) else 1.0)
     )
@@ -1415,14 +1415,14 @@ def get_spherical_cell_index_of_velocities(
 
     A velocity at or above the outer edge of the grid gives -1. The rules are those of sn3d and of
     get_spherical_modelgridindex_expr of the packets. A cell holds its lower edge on each axis, and the last polar
-    cell also holds the angle pi. An azimuthal angle that rounds to 2 pi is the angle 0. A velocity of zero has no
-    direction, and it gets the first polar cell and the first azimuthal cell. The index of a cell is
-    i_r + n_r * (i_theta + n_theta * i_phi), and a spherical2d model has one azimuthal cell.
+    cell also holds cos(theta) = 1, which is the +z axis. An azimuthal angle that rounds to 2 pi is the angle 0. A
+    velocity of zero has no direction, and it gets the first polar cell and the first azimuthal cell. The index of
+    a cell is i_r + n_r * (i_costheta + n_costheta * i_phi), and a spherical2d model has one azimuthal cell.
     """
     vel_r_edges = np.array([edge * km_to_cm for edge in modelmeta["vel_r_edges_kmps"]], dtype=np.float64)
-    theta_edges = np.asarray(modelmeta["theta_edges_radians"], dtype=np.float64)
+    costheta_edges = np.asarray(modelmeta["costheta_edges"], dtype=np.float64)
     ncoordgridr = len(vel_r_edges) - 1
-    ncoordgridtheta = len(theta_edges) - 1
+    ncoordgridcostheta = len(costheta_edges) - 1
 
     # a velocity with z < 0 of a mirrored model is in the mirror cell of its mirror velocity
     if has_mirror_plane(modelmeta):
@@ -1430,16 +1430,16 @@ def get_spherical_cell_index_of_velocities(
     vel_r = np.sqrt(vel_x**2 + vel_y**2 + vel_z**2)
     index_r = np.searchsorted(vel_r_edges, vel_r, side="right") - 1
     ismoving = vel_r > 0.0
-    theta = np.where(ismoving, np.arccos(np.clip(vel_z / np.where(ismoving, vel_r, 1.0), -1.0, 1.0)), 0.0)
-    index_theta = np.minimum(np.searchsorted(theta_edges, theta, side="right") - 1, ncoordgridtheta - 1)
+    costheta = np.where(ismoving, np.clip(vel_z / np.where(ismoving, vel_r, 1.0), -1.0, 1.0), costheta_edges[0])
+    index_costheta = np.minimum(np.searchsorted(costheta_edges, costheta, side="right") - 1, ncoordgridcostheta - 1)
 
-    cellindex = index_theta * ncoordgridr + index_r
+    cellindex = index_costheta * ncoordgridr + index_r
     if "phi_edges_radians" in modelmeta:
         phi = np.arctan2(vel_y, vel_x)
         phi = np.where(phi < 0.0, phi + 2.0 * math.pi, phi)
         phi = np.where(phi >= 2.0 * math.pi, 0.0, phi)
         index_phi = np.searchsorted(np.asarray(modelmeta["phi_edges_radians"], dtype=np.float64), phi, side="right") - 1
-        cellindex += index_phi * (ncoordgridr * ncoordgridtheta)
+        cellindex += index_phi * (ncoordgridr * ncoordgridcostheta)
     return np.where(index_r < ncoordgridr, cellindex, -1).astype(np.int64)
 
 
@@ -2229,7 +2229,7 @@ def get_version2_headerlines(inputcellids: pl.Series, modelmeta: dict[str, t.Any
     if coordinates in SPHERICAL_EDGE_COORDINATES:
         modelmeta |= {"vmax_cmps": vmax_cmps, "firstinputcellid": 0}
     edgecomments = {
-        "theta_edges_radians": "  # the polar angle from the +z axis",
+        "costheta_edges": "  # the cosine of the polar angle from the +z axis",
         "phi_edges_radians": "  # the azimuthal angle phi = atan2(y, x)",
     }
     return [
@@ -2355,7 +2355,7 @@ def save_modeldata(
     2D spherical and 3D spherical
     -------
     dfmodel must contain columns inputcellid and rho
-    modelmeta must define: coordinates (spherical2d or spherical3d), vel_r_edges_kmps, theta_edges_radians, and for
+    modelmeta must define: coordinates (spherical2d or spherical3d), vel_r_edges_kmps, costheta_edges, and for
     spherical3d also phi_edges_radians
 
     The format version
@@ -2370,30 +2370,32 @@ def save_modeldata(
 
     - coordinates: spherical1d, cylindrical2d, cartesian3d, spherical2d, or spherical3d;
     - cells_per_axis: the count of the cells on each axis, in the sequence of the edge lists, e.g. 5 4 4 for
-      n_r = 5, n_theta = 4, and n_phi = 4. The key is optional, and a reader stops if a count is different from the
+      n_r = 5, n_costheta = 4, and n_phi = 4. The key is optional, and a reader stops if a count is different from the
       count that the edges give;
     - mirror_plane z=0 (optional, from the key mirror_plane of modelmeta): mirror symmetry in the plane z = 0, for
       cylindrical2d, spherical2d, and spherical3d. The file then holds the cells with z >= 0: the z edges start at 0,
-      and the polar edges end at pi / 2. Each cell also fills its mirror cell, thus its volume and its mass are two
+      and the list of cos(theta) starts at 0. Each cell also fills its mirror cell, thus its volume and its mass are two
       times the values of the half cell. Format version 1 has no mirror symmetry;
     - t_model_init_days;
-    - the cell edges of each axis: vel_r_edges_kmps (and theta_edges_radians, phi_edges_radians), or
+    - the cell edges of each axis: vel_r_edges_kmps (and costheta_edges, phi_edges_radians), or
       vel_rcyl_edges_kmps and vel_z_edges_kmps, or vel_x_edges_kmps, vel_y_edges_kmps, and vel_z_edges_kmps;
     - cell_line_count: the count of the cell lines, thus a reader finds a file that lost lines at its end;
     - columns: inputcellid, rho, and the other column names.
 
     Each list of edges has one value more than the count of the cells on that axis, and it increases. A list of r,
-    rcyl, theta, or phi starts at 0. The last polar angle is pi, and the last azimuthal angle is 2 pi. The polar
-    angle theta is from the +z axis, and the azimuthal angle is phi = atan2(y, x). A cylindrical or a Cartesian grid
-    has cells of equal width from -vmax (0 for rcyl) to vmax. sn3d and artistools hold no other grid of these types.
-    For these two, the function makes the edges from vmax_cmps and stops if a position column does not agree.
+    rcyl, or phi starts at 0, and the last azimuthal angle is 2 pi. costheta_edges holds the cosine of the polar
+    angle theta from the +z axis, from -1 to 1, and the azimuthal angle is phi = atan2(y, x). A cylindrical or a
+    Cartesian grid has cells of equal width from -vmax (0 for rcyl) to vmax. sn3d and artistools hold no other grid
+    of these types. For these two, the function makes the edges from vmax_cmps and stops if a position column does
+    not agree.
 
     The cells of a version 2 file have no position column. The cell id is the index of the cell in the grid of the
-    edges, from 0. The index of the first axis changes fastest, e.g. i_r + n_r * (i_theta + n_theta * i_phi). Thus
-    dfmodel must have the cell ids 0 to N - 1 for version 2, where N is the count of the cells. gridcontributions.txt
-    of the model must hold the same ids (see with_cell_ids_from_zero). A cell with no line is empty, thus the function
-    writes no line for an empty cell (rho = 0). A file needs one cell line, thus a model with no density keeps the
-    line of its first cell. Each version 2 file holds rho, and no version 2 file holds logrho.
+    edges, from 0. The index of the first axis changes fastest, e.g. i_r + n_r * (i_costheta + n_costheta * i_phi).
+    Thus dfmodel must have the cell ids 0 to N - 1 for version 2, where N is the count of the cells.
+    gridcontributions.txt of the model must hold the same ids (see with_cell_ids_from_zero). A cell with no line is
+    empty, thus the function writes no line for an empty cell (rho = 0). A file needs one cell line, thus a model
+    with no density keeps the line of its first cell. Each version 2 file holds rho, and no version 2 file holds
+    logrho.
 
     A version 2 file needs only the columns inputcellid and rho. The columns X_Fegroup, X_Ni56, X_Co56, X_Fe52,
     X_Cr48, X_Ni57, and X_Co57 have a fixed place in version 1. In version 2, such a column that is absent holds zero
@@ -2418,7 +2420,7 @@ def save_modeldata(
     - a comment line that gives the creation time;
     - a comment line that gives the column units;
     - in version 1, an inline comment after each header value, and a comment line that gives the column names;
-    - in version 2, an inline comment only for information that the key does not give, e.g. the direction of theta = 0.
+    - in version 2, an inline comment only for information that the key does not give, e.g. the axis of the polar angle.
 
     For a 1D model or a 2D model of version 1, sn3d reads these column names from v2024.04.
 
@@ -3002,7 +3004,7 @@ def dimension_reduce_model(
         modelmeta_out |= {
             "coordinates": "spherical2d",
             "vel_r_edges_kmps": modelmeta["vel_r_edges_kmps"],
-            "theta_edges_radians": modelmeta["theta_edges_radians"],
+            "costheta_edges": modelmeta["costheta_edges"],
             "firstinputcellid": 1,
         }
     else:
@@ -3022,14 +3024,14 @@ def dimension_reduce_model(
         cs.by_name(inputcols) | cs.starts_with("vel_") | cs.by_name("mass_g")
     )
 
-    # the second axis of a 2D output is z for cylindrical coordinates and theta for spherical coordinates
+    # the second axis of a 2D output is z for cylindrical coordinates and cos(theta) for spherical coordinates
     if hassphericaledges:
-        in_n_r, in_n_theta, _ = get_spherical_cell_indices(inputcols, modelmeta)
+        in_n_r, in_n_costheta, _ = get_spherical_cell_indices(inputcols, modelmeta)
         ncoordgridr = len(modelmeta["vel_r_edges_kmps"]) - 1 if outputdimensions > 0 else 1
-        ncoordgridz = len(modelmeta["theta_edges_radians"]) - 1 if outputdimensions == 2 else 1
+        ncoordgridz = len(modelmeta["costheta_edges"]) - 1 if outputdimensions == 2 else 1
         dfmodel_out = dfmodel_out.with_columns(
             out_n_r=(in_n_r if outputdimensions > 0 else pl.lit(0)).cast(pl.Int32),
-            out_n_z=(in_n_theta if outputdimensions == 2 else pl.lit(0)).cast(pl.Int32),
+            out_n_z=(in_n_costheta if outputdimensions == 2 else pl.lit(0)).cast(pl.Int32),
         )
         if outputdimensions == 1:
             modelmeta_out["ncoordgridr"] = ncoordgridr

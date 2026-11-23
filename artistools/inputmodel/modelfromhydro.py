@@ -153,7 +153,7 @@ def has_grid_file(gridfolderpath: Path | str, filename: str) -> bool:
 
 
 # the keys of the edge lists in the grid_spherical.dat of a spherical map. The radial edges are in geometric units
-SPHERICAL_GRIDDAT_EDGE_KEYS = ("r_edges_geomunits", "theta_edges_radians", "phi_edges_radians")
+SPHERICAL_GRIDDAT_EDGE_KEYS = ("r_edges_geomunits", "costheta_edges", "phi_edges_radians")
 
 
 def read_spherical_griddat_file(
@@ -161,8 +161,8 @@ def read_spherical_griddat_file(
 ) -> tuple[pl.DataFrame, float, float, float, dict[str, t.Any]]:
     """Read the grid_spherical.dat of a spherical map, and return the same values as read_griddat_file.
 
-    The header gives the key coordinates, the extra time, and the cell edges in r, theta, and phi. The cells have no
-    position column, and gridindex starts at 0, as the cell ids of format version 2 of model.txt do. A radial edge is
+    The header gives the key coordinates, the extra time, and the cell edges in r, cos(theta), and phi. The cells have
+    no position column, and gridindex starts at 0, as the cell ids of format version 2 of model.txt do. A radial edge is
     a velocity in the model, thus a different model time changes only the density.
     """
     griddatfilepath = Path(pathtogriddata) / SPHERICAL_GRID_FILE_NAME
@@ -196,12 +196,12 @@ def read_spherical_griddat_file(
             "vel_r_edges_kmps": [
                 float(edge) * geometric_length_to_km / t_model_sec for edge in headervalues["r_edges_geomunits"]
             ],
-            "theta_edges_radians": [float(edge) for edge in headervalues["theta_edges_radians"]],
+            "costheta_edges": [float(edge) for edge in headervalues["costheta_edges"]],
             "phi_edges_radians": [float(edge) for edge in headervalues["phi_edges_radians"]],
         },
         griddatfilepath,
     )
-    vel_r_edges_kmps, theta_edges_radians, phi_edges_radians = edges.values()
+    vel_r_edges_kmps, costheta_edges, phi_edges_radians = edges.values()
     vmax = vel_r_edges_kmps[-1] * km_to_cm
 
     # a cut inside the last value gives a valid number, and the checks of the cells below do not find it
@@ -225,7 +225,7 @@ def read_spherical_griddat_file(
             " count of 0 or more. Run maptogrid again",
         )
     griddata = griddata.with_columns(pl.col("rho") * geometric_density_to_g_per_cm3)
-    gridshape = (len(vel_r_edges_kmps) - 1, len(theta_edges_radians) - 1, len(phi_edges_radians) - 1)
+    gridshape = (len(vel_r_edges_kmps) - 1, len(costheta_edges) - 1, len(phi_edges_radians) - 1)
     # a grid index that occurs two times and one that is absent give the same count of rows
     if (
         not griddata["inputcellid"]
@@ -252,7 +252,7 @@ def read_spherical_griddat_file(
         t_model_days = targetmodeltime_days
 
     print(
-        f"Grid model is n_r x n_theta x n_phi = {' x '.join(str(count) for count in gridshape)}"
+        f"Grid model is n_r x n_costheta x n_phi = {' x '.join(str(count) for count in gridshape)}"
         f" = {griddata.height} cells"
     )
     modelmeta = {
@@ -261,7 +261,7 @@ def read_spherical_griddat_file(
         "t_model_init_days": t_model_days,
         "vmax_cmps": vmax,
         "vel_r_edges_kmps": vel_r_edges_kmps,
-        "theta_edges_radians": theta_edges_radians,
+        "costheta_edges": costheta_edges,
         "phi_edges_radians": phi_edges_radians,
         "firstinputcellid": 0,
         "headercommentlines": [f"gridfolder: {Path(pathtogriddata).resolve().parts[-1]}"],

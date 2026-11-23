@@ -422,13 +422,14 @@ columns `X_Fegroup`, `X_Ni56`, `X_Co56`, `X_Fe52`, and `X_Cr48` are optional in 
 gives such a column with the value 0 if the file does not have it, because `sn3d` uses 0 for an absent column.
 
 A model with the coordinates `spherical2d` or `spherical3d` has version 2 only. Its parameters are
-`vel_r_edges_kmps`, `theta_edges_radians`, and, for `spherical3d`, `phi_edges_radians`. Each list holds the edges of
-the cells on one axis. The polar angle theta is from the +z axis, and the azimuthal angle is phi = atan2(y, x). The
-index of a cell is `i_r + n_r * (i_theta + n_theta * i_phi)`. For such a model, `add_derived_cols_to_modeldata` gives
-these columns:
+`vel_r_edges_kmps`, `costheta_edges`, and, for `spherical3d`, `phi_edges_radians`. Each list holds the edges of
+the cells on one axis. `costheta_edges` holds the cosine of the polar angle theta from the +z axis, from -1 to 1,
+and the azimuthal angle is phi = atan2(y, x). The index of a cell is
+`i_r + n_r * (i_costheta + n_costheta * i_phi)`. For such a model, `add_derived_cols_to_modeldata` gives these
+columns:
 
 - `vel_r_min`, `vel_r_mid`, and `vel_r_max`;
-- `theta_min_radians` and `theta_max_radians`;
+- `costheta_min` and `costheta_max`;
 - `phi_min_radians` and `phi_max_radians` (`spherical3d` only);
 - the velocity of the mid-point of the cell: `vel_rcyl_mid` and `vel_z_mid`, and for `spherical3d` also `vel_x_mid` and
   `vel_y_mid`.

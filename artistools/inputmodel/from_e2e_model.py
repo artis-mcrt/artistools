@@ -130,8 +130,8 @@ def get_grid(
     corresponding no* flag.
 
     sphericaledges_cm selects a spherical grid. It holds the cell edges of the radius [cm] at the time of the
-    model, of the polar angle [rad], and of the azimuthal angle [rad]. A model_dim of 2 then gives a grid of r and
-    theta with the method of the cylindrical grid. A model_dim of 3 gives a grid of r, theta, and phi with the
+    model, of the cosine of the polar angle, and of the azimuthal angle [rad]. A model_dim of 2 then gives a grid of r
+    and theta with the method of the cylindrical grid. A model_dim of 3 gives a grid of r, theta, and phi with the
     method of the Cartesian grid. The grid holds both halves of a model with equatorial symmetry, and the result
     has no cell positions.
     """
@@ -247,12 +247,13 @@ def get_grid(
     returnedgridpositions: tuple[npt.NDArray[np.floating], ...]
     if sphericaledges_cm is not None:
         # ... cylindrical coordinates of the mid-point of each cell of the spherical grid. The mid-point of a cell is
-        # the mean of its edges in r and in theta. The grids have the index [n_r, n_theta] or [n_r, n_theta, n_phi]
-        r_edges, theta_edges, phi_edges = sphericaledges_cm
+        # the mean of its edges in r and in cos(theta). The grids have the index [n_r, n_costheta] or
+        # [n_r, n_costheta, n_phi]
+        r_edges, costheta_edges, phi_edges = sphericaledges_cm
         r_mid = (r_edges[:-1] + r_edges[1:]) / 2.0
-        theta_mid = (theta_edges[:-1] + theta_edges[1:]) / 2.0
-        cellvolumes = get_spherical_cell_volumes(r_edges, theta_edges, phi_edges)
-        gridrcyl, gridz = op(r_mid, np.sin(theta_mid)), op(r_mid, np.cos(theta_mid))
+        costheta_mid = (costheta_edges[:-1] + costheta_edges[1:]) / 2.0
+        cellvolumes = get_spherical_cell_volumes(r_edges, costheta_edges, phi_edges)
+        gridrcyl, gridz = op(r_mid, np.sqrt(1.0 - costheta_mid**2)), op(r_mid, costheta_mid)
         if model_dim == 2:
             # a cell of a 2D grid is a ring around the z axis, thus it takes the sum over phi
             volgrid = cellvolumes.sum(axis=2)
@@ -630,7 +631,7 @@ def map_to_spherical_artis_model(
         exit_with_error("--ngrid-phi applies to a 3D spherical grid only", "Give --mapto3D, or remove --ngrid-phi")
 
     vmax_cmps = float(args.vmax_on_c) * CLIGHT
-    r_edges_cm, theta_edges, phi_edges = get_spherical_grid_edges(
+    r_edges_cm, costheta_edges, phi_edges = get_spherical_grid_edges(
         vmax_cmps * t_model_init_s, ngrid_r, ngrid_theta, ngrid_phi
     )
     gridshape = (ngrid_r, ngrid_theta, ngrid_phi)[:model_dim]
@@ -642,7 +643,7 @@ def map_to_spherical_artis_model(
     print(
         "Map method: the kernel sum at the mid-point of each cell, with the same steps and the same normalisation to"
         f" the tracer masses as the {'Cartesian' if model_dim == 3 else 'cylindrical'} grid. The mid-point of a cell"
-        " is the mean of its edges in r and in theta"
+        " is the mean of its edges in r and in cos(theta)"
     )
 
     *griddata, eqsymfac, dfgridcontributions = get_grid(
@@ -655,7 +656,7 @@ def map_to_spherical_artis_model(
         args.nohmns,
         args.notorus,
         no_nu_trapping=args.nonutrapping,
-        sphericaledges_cm=(r_edges_cm, theta_edges, phi_edges),
+        sphericaledges_cm=(r_edges_cm, costheta_edges, phi_edges),
     )
     # the 3D result also holds the binary state, which only --replacedyn reads
     rho_interpol, X_cells, isot_table, q_ergperg, ye_interpol = griddata[:5]
@@ -680,7 +681,7 @@ def map_to_spherical_artis_model(
         "t_model_init_days": t_model_init_s / day_to_s,
         "vmax_cmps": vmax_cmps,
         "vel_r_edges_kmps": (r_edges_cm / t_model_init_s / km_to_cm).tolist(),
-        "theta_edges_radians": theta_edges.tolist(),
+        "costheta_edges": costheta_edges.tolist(),
         "firstinputcellid": 0,
     }
     if model_dim == 3:

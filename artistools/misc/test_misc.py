@@ -1661,7 +1661,7 @@ def test_server_protocol_changes_with_the_readers(package_modules: list[Path]) -
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (29, "69e24cb9f926002e"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (30, "69e24cb9f926002e"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )
@@ -2145,14 +2145,10 @@ def test_escaped_arrivalrange_takes_all_timesteps_for_a_deposition_file_of_a_dif
 ESCAPE_SURFACE_MODELS: t.Final = {
     "spherical1d": ("vel_r_edges_kmps 0 1000 3000",),
     "cylindrical2d": ("vel_rcyl_edges_kmps 0 1500 3000", "vel_z_edges_kmps -3000 0 3000"),
-    "spherical2d": ("vel_r_edges_kmps 0 1000 3000", f"theta_edges_radians 0 1.5 {math.pi!r}"),
+    "spherical2d": ("vel_r_edges_kmps 0 1000 3000", "costheta_edges -1 0.1 1"),
     # the two cells of a mirror pair have the same model cell
     "cylindrical2d mirror": ("vel_rcyl_edges_kmps 0 1500 3000", "vel_z_edges_kmps 0 3000", "mirror_plane z=0"),
-    "spherical2d mirror": (
-        "vel_r_edges_kmps 0 1000 3000",
-        f"theta_edges_radians 0 {math.pi / 2!r}",
-        "mirror_plane z=0",
-    ),
+    "spherical2d mirror": ("vel_r_edges_kmps 0 1000 3000", "costheta_edges 0 1", "mirror_plane z=0"),
 }
 DIRECT_GRID_OUT: t.Final = "0 0\n1 1\n"
 # a model cell with two propagation cells shows a Cartesian grid

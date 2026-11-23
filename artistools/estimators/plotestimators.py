@@ -2400,14 +2400,14 @@ def get_spherical_image_values(
     The image is a grid of points with equal steps, and each point takes the value of the cell that holds it (see
     get_spherical_image_cell_indices). With a sliceaxis, the points are in the plane normal to that axis at
     slicevelocity_cmps. With no sliceaxis, the image has the cylindrical radius and z as its axes. A spherical2d cell
-    is a ring around the z axis. For a spherical3d model, the value of a ring of r and theta is then the mean over
+    is a ring around the z axis. For a spherical3d model, the value of a ring of r and cos(theta) is then the mean over
     its cells in phi. get_panel_means gives the weight.
     """
     if sliceaxis is not None:
         # get_cells_of_slice moves the plane in the same way, thus each point has a cell that the reader read
         slicevelocity_cmps = get_spherical_slice_velocity_cmps(slicevelocity_cmps, float(modelmeta["vmax_cmps"]))
     cellindices = get_spherical_image_cell_indices(modelmeta, sliceaxis, slicevelocity_cmps)
-    ringcount = (len(modelmeta["vel_r_edges_kmps"]) - 1) * (len(modelmeta["theta_edges_radians"]) - 1)
+    ringcount = (len(modelmeta["vel_r_edges_kmps"]) - 1) * (len(modelmeta["costheta_edges"]) - 1)
     # the points of an image with no sliceaxis are in the first cell of phi, thus their cell index is a ring index
     imagecell = pl.col("modelgridindex") % ringcount if sliceaxis is None else pl.col("modelgridindex")
     dfcells = (

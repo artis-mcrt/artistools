@@ -4520,7 +4520,7 @@ def test_image_of_a_spherical_model_gives_each_point_the_value_of_its_cell(tmp_p
     """An image of a spherical3d model is a grid of points, and each point takes the value of the cell that holds it.
 
     A model with spherical edges has no cell with straight edges on the axes of an image. The cells at +x, -y, and +z
-    give the orientation of each image. The image with no slice is the mean over phi of each ring of r and theta.
+    give the orientation of each image. The image with no slice is the mean over phi of each ring of r and cos(theta).
     """
     vmax_cmps = 2.0e9
     modelmeta: dict[str, t.Any] = {
@@ -4528,7 +4528,7 @@ def test_image_of_a_spherical_model_gives_each_point_the_value_of_its_cell(tmp_p
         "dimensions": 3,
         "t_model_init_days": 1.0,
         "vel_r_edges_kmps": [0.0, 1.0e4, 2.0e4],
-        "theta_edges_radians": [0.0, 1.0, 2.0, math.pi],
+        "costheta_edges": [-1.0, -0.4, 0.5, 1.0],
         "phi_edges_radians": [0.0, 1.5, 3.0, 4.5, 2.0 * math.pi],
         "vmax_cmps": vmax_cmps,
         "npts_model": 24,
@@ -4545,7 +4545,8 @@ def test_image_of_a_spherical_model_gives_each_point_the_value_of_its_cell(tmp_p
     def get_point_index(velocity_cmps: float, pointcount: int, lowest_cmps: float = -vmax_cmps) -> int:
         return int((velocity_cmps - lowest_cmps) / ((vmax_cmps - lowest_cmps) / pointcount))
 
-    # the index of a cell is i_r + 2 * (i_theta + 3 * i_phi), and each of these points is in the outer shell (i_r = 1)
+    # the index of a cell is i_r + 2 * (i_costheta + 3 * i_phi), and each of these points is in the outer shell
+    # (i_r = 1)
     (gridxy,), plotaxes = plotestimators.get_image_values(estimators, panels, modelmeta, "z", [5], 0.0)
     assert plotaxes == ("x", "y")
     assert gridxy.shape == (400, 400)
@@ -4563,9 +4564,9 @@ def test_image_of_a_spherical_model_gives_each_point_the_value_of_its_cell(tmp_p
 
     (gridyz,), plotaxes = plotestimators.get_image_values(estimators, panels, modelmeta, "x", [5], 0.0)
     assert plotaxes == ("y", "z")
-    # +z with a small positive y: the polar cell is 0, and phi = pi / 2 is in the azimuthal cell 1
+    # +z with a small positive y: the polar cell is 2, and phi = pi / 2 is in the azimuthal cell 1
     assert np.isclose(
-        gridyz[get_point_index(1.5e9, 400), get_point_index(1.0e7, 400)], 1000.0 + 1 + 2 * (0 + 3 * 1), rtol=1e-12
+        gridyz[get_point_index(1.5e9, 400), get_point_index(1.0e7, 400)], 1000.0 + 1 + 2 * (2 + 3 * 1), rtol=1e-12
     )
     # -y with a small positive z: the polar cell is 1, and phi = 3 pi / 2 is in the azimuthal cell 3
     assert np.isclose(
@@ -4575,8 +4576,8 @@ def test_image_of_a_spherical_model_gives_each_point_the_value_of_its_cell(tmp_p
     (gridrz,), plotaxes = plotestimators.get_image_values(estimators, panels, modelmeta, None, [5])
     assert plotaxes == ("rcyl", "z")
     assert gridrz.shape == (400, 200)
-    # the ring of the outer shell at the lowest polar angles (-z is the polar cell 2) holds four cells in phi
-    ringcells = [1 + 2 * (2 + 3 * index_phi) for index_phi in range(4)]
+    # the ring of the outer shell at the lowest values of cos(theta) (-z is the polar cell 0) holds four cells in phi
+    ringcells = [1 + 2 * (0 + 3 * index_phi) for index_phi in range(4)]
     ringmean = sum((1000.0 + cellindex) * cellweights[cellindex] for cellindex in ringcells) / sum(
         cellweights[cellindex] for cellindex in ringcells
     )
@@ -4602,7 +4603,7 @@ def test_slice_of_a_spherical_model_on_cell_edges_takes_the_cells_on_the_positiv
         "dimensions": 3,
         "t_model_init_days": 1.0,
         "vel_r_edges_kmps": [0.0, 1.0e4, 2.0e4],
-        "theta_edges_radians": [0.0, math.pi / 2, math.pi],
+        "costheta_edges": [-1.0, 0.0, 1.0],
         "phi_edges_radians": np.linspace(0.0, 2.0 * math.pi, 5).tolist(),
         "vmax_cmps": vmax_cmps,
         "npts_model": 16,
@@ -4615,9 +4616,9 @@ def test_slice_of_a_spherical_model_on_cell_edges_takes_the_cells_on_the_positiv
         "Te": [1000.0 + cellindex for cellindex in range(16)],
     })
 
-    def get_te_of_cell(index_theta: int, index_phi: int) -> float:
+    def get_te_of_cell(index_costheta: int, index_phi: int) -> float:
         # each of the points below is in the outer shell (index_r = 1)
-        return 1000.0 + 1 + 2 * (index_theta + 2 * index_phi)
+        return 1000.0 + 1 + 2 * (index_costheta + 2 * index_phi)
 
     def get_point_index(velocity_cmps: float) -> int:
         return int((velocity_cmps + vmax_cmps) / (2.0 * vmax_cmps / 400))
@@ -4626,11 +4627,11 @@ def test_slice_of_a_spherical_model_on_cell_edges_takes_the_cells_on_the_positiv
     (gridyz,), _ = plotestimators.get_image_values(estimators, panels, modelmeta, "x", [5], 0.0)
     for y_cmps, index_phi in ((1.5e9, 0), (-1.5e9, 3)):
         te = gridyz[get_point_index(1.0e7), get_point_index(y_cmps)]
-        assert np.isclose(te, get_te_of_cell(0, index_phi), rtol=1e-12, atol=0.0), y_cmps
-    # on z = 0, the +z side is the polar cell 0
+        assert np.isclose(te, get_te_of_cell(1, index_phi), rtol=1e-12, atol=0.0), y_cmps
+    # on z = 0, the +z side is the polar cell 1
     (gridxy,), _ = plotestimators.get_image_values(estimators, panels, modelmeta, "z", [5], 0.0)
     assert np.isclose(
-        gridxy[get_point_index(1.0e7), get_point_index(1.5e9)], get_te_of_cell(0, 0), rtol=1e-12, atol=0.0
+        gridxy[get_point_index(1.0e7), get_point_index(1.5e9)], get_te_of_cell(1, 0), rtol=1e-12, atol=0.0
     )
 
     # --slice reads the cells of the same points

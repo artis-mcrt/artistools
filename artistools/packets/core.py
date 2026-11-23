@@ -392,12 +392,12 @@ def get_spherical_modelgridindex_expr(
     """Return the index of the cell of a spherical2d or spherical3d model that holds a velocity vector [cm/s].
 
     A velocity at or above the outer edge of the grid, and a velocity of NaN, give null. A cell holds its lower
-    edge on each axis. The last polar cell also holds the angle pi. An azimuthal angle that rounds to 2 pi is the
+    edge on each axis. The last polar cell also holds cos(theta) = 1. An azimuthal angle that rounds to 2 pi is the
     angle 0. A velocity of zero has no direction, and it gets the first polar cell and the first azimuthal cell.
     sn3d uses the same rules.
     """
     ncoordgridr = len(modelmeta["vel_r_edges_kmps"]) - 1
-    ncoordgridtheta = len(modelmeta["theta_edges_radians"]) - 1
+    ncoordgridcostheta = len(modelmeta["costheta_edges"]) - 1
     # a velocity with z < 0 of a mirrored model is in the mirror cell of its mirror velocity
     if has_mirror_plane(modelmeta):
         vel_z = vel_z.abs()
@@ -405,16 +405,18 @@ def get_spherical_modelgridindex_expr(
     index_r = get_bin_index_expr(vel_r, [edge * km_to_cm for edge in modelmeta["vel_r_edges_kmps"]])
     index_r = pl.when(index_r.is_between(0, ncoordgridr - 1)).then(index_r)
 
-    theta = pl.when(vel_r > 0.0).then((vel_z / vel_r).clip(-1.0, 1.0).arccos()).otherwise(0.0)
-    index_theta = get_bin_index_expr(theta, modelmeta["theta_edges_radians"])
-    index_theta = pl.when(index_theta >= ncoordgridtheta).then(ncoordgridtheta - 1).otherwise(index_theta)
+    costheta = pl.when(vel_r > 0.0).then((vel_z / vel_r).clip(-1.0, 1.0)).otherwise(modelmeta["costheta_edges"][0])
+    index_costheta = get_bin_index_expr(costheta, modelmeta["costheta_edges"])
+    index_costheta = (
+        pl.when(index_costheta >= ncoordgridcostheta).then(ncoordgridcostheta - 1).otherwise(index_costheta)
+    )
 
-    cellindex = index_theta * ncoordgridr + index_r
+    cellindex = index_costheta * ncoordgridr + index_r
     if "phi_edges_radians" in modelmeta:
         phi = pl.arctan2(vel_y, vel_x)
         phi = pl.when(phi < 0.0).then(phi + 2.0 * math.pi).otherwise(phi)
         phi = pl.when(phi >= 2.0 * math.pi).then(0.0).otherwise(phi)
-        cellindex += get_bin_index_expr(phi, modelmeta["phi_edges_radians"]) * (ncoordgridr * ncoordgridtheta)
+        cellindex += get_bin_index_expr(phi, modelmeta["phi_edges_radians"]) * (ncoordgridr * ncoordgridcostheta)
     return cellindex
 
 

@@ -4113,7 +4113,7 @@ def get_random_spherical_model(coordinates: str) -> tuple[pl.DataFrame, dict[str
         "dimensions": int(coordinates[-2]),
         "t_model_init_days": 0.5,
         "vel_r_edges_kmps": [0.0, 2000.0, 4500.0, 9000.0, 30000.0],
-        "theta_edges_radians": [*np.arccos([1.0, 0.4, -0.2]).tolist(), math.pi],
+        "costheta_edges": [-1.0, -0.2, 0.4, 1.0],
         "vmax_cmps": 30000.0 * at.constants.km_to_cm,
         "firstinputcellid": 0,
         "headercommentlines": ["a comment of the user"],
@@ -4149,7 +4149,7 @@ def test_spherical_model_round_trip(tmp_path: Path, coordinates: str) -> None:
     dfmodel = dfmodel.with_columns(
         rho=pl.when(pl.col("inputcellid") == 0).then(1.04083036e-13).otherwise(pl.col("rho"))
     ).with_columns(cs.float().cast(pl.Float32))
-    edgekeys = [key for key in ("vel_r_edges_kmps", "theta_edges_radians", "phi_edges_radians") if key in modelmeta]
+    edgekeys = [key for key in ("vel_r_edges_kmps", "costheta_edges", "phi_edges_radians") if key in modelmeta]
     edges_written = {key: list(modelmeta[key]) for key in edgekeys}
 
     # a version 2 model has no opacity.txt. The file can hold the only copy of its values, thus the writer deletes it
@@ -4220,7 +4220,7 @@ SPHERICAL2D_MODEL_LINES = (
     "t_model_init_days 1.0  # an inline comment",
     "cell_line_count 4",
     "vel_r_edges_kmps 0 1000 3000",
-    f"theta_edges_radians 0 1.5 {math.pi!r}",
+    "costheta_edges -1 0.1 1",
     "columns inputcellid rho X_Fegroup",
     "0 1e-12 1",
     "1 2e-12 1",
@@ -4249,7 +4249,7 @@ def test_spherical_model_reader_takes_cell_ids_from_zero(tmp_path: Path, capsys:
     )
     dfreordered, metareordered = at.inputmodel.scan_modeldata(tmp_path)
     pltest.assert_frame_equal(dfreordered.collect(), lzmodel.collect())
-    assert metareordered["theta_edges_radians"] == modelmeta["theta_edges_radians"]
+    assert metareordered["costheta_edges"] == modelmeta["costheta_edges"]
     captured = capsys.readouterr()
     assert "does not know the key key_of_a_later_version" in captured.out + captured.err
 
@@ -4289,7 +4289,7 @@ def test_spherical_model_reader_takes_cell_ids_from_zero(tmp_path: Path, capsys:
     dfderived = at.inputmodel.add_derived_cols_to_modeldata(lzmodel.drop("modelgridindex"), modelmeta).collect()
     # the radial index changes fastest, thus the cells 0 and 2 are in the inner shell
     assert dfderived["vel_r_max"].to_list() == pytest.approx([1e8, 3e8, 1e8, 3e8])
-    assert dfderived["theta_min_radians"].to_list() == pytest.approx([0.0, 0.0, 1.5, 1.5])
+    assert dfderived["costheta_min"].to_list() == pytest.approx([-1.0, -1.0, 0.1, 0.1])
     # metadata with no key firstinputcellid gave the first cell the edges of the last cell. The cell ids of format
     # version 2 start at 0
     metawithoutkey = {key: value for key, value in modelmeta.items() if key != "firstinputcellid"}
@@ -4330,20 +4330,21 @@ def get_mirrored_model_and_twin(
         halfindex1 = np.where(twinindex1 >= nhalf, twinindex1 - nhalf, nhalf - 1 - twinindex1)
     else:
         n0, nhalf, n2 = 4, 2, 3
-        halfthetaedges = [0.0, 0.6, math.pi / 2.0]
+        halfcosthetaedges = [0.0, 0.6, 1.0]
         common = {
             "coordinates": coordinates,
             "t_model_init_days": 0.5,
             "vel_r_edges_kmps": [0.0, 2000.0, 4500.0, 9000.0, 30000.0],
             "phi_edges_radians": [0.0, 1.0, 4.5, 2.0 * math.pi],
         }
-        mirrormeta = common | {"theta_edges_radians": halfthetaedges, "mirror_plane": "z=0"}
-        twinmeta = common | {"theta_edges_radians": [*halfthetaedges, math.pi - 0.6, math.pi]}
+        mirrormeta = common | {"costheta_edges": halfcosthetaedges, "mirror_plane": "z=0"}
+        twinmeta = common | {"costheta_edges": [-1.0, -0.6, *halfcosthetaedges]}
         mirrorpos = dict[str, np.ndarray[t.Any, np.dtype[np.floating]]]()
         twinpos = mirrorpos
         twinindex0 = np.arange(n0 * 2 * nhalf * n2) % n0
         twinindex1 = (np.arange(n0 * 2 * nhalf * n2) // n0) % (2 * nhalf)
-        halfindex1 = np.where(twinindex1 < nhalf, twinindex1, 2 * nhalf - 1 - twinindex1)
+        # the polar index of the half also starts at the plane z = 0
+        halfindex1 = np.where(twinindex1 >= nhalf, twinindex1 - nhalf, nhalf - 1 - twinindex1)
     twinindex2 = np.arange(n0 * 2 * nhalf * n2) // (n0 * 2 * nhalf)
     halfcell = twinindex0 + n0 * (halfindex1 + nhalf * twinindex2)
     ncells = n0 * nhalf * n2
@@ -4492,8 +4493,8 @@ def test_spherical_cell_search_of_an_image_agrees_with_the_cell_search_of_the_pa
 def test_plotinitialcomposition_of_a_spherical_model_gives_each_point_the_value_of_its_cell(tmp_path: Path) -> None:
     """The image of a spherical2d model is a grid of points, and each point has the density of the cell that holds it.
 
-    The model has two shells with the outer velocities 1000 and 3000 km/s and two polar cells with the edge at 1.5
-    rad. The index of a cell is i_r + 2 * i_theta, and its density is (index + 1) * 1e-12 g/cm3.
+    The model has two shells with the outer velocities 1000 and 3000 km/s and two polar cells with the edge at
+    cos(theta) = 0.1. The index of a cell is i_r + 2 * i_costheta, and its density is (index + 1) * 1e-12 g/cm3.
     """
     (tmp_path / "model.txt").write_text("\n".join(SPHERICAL2D_MODEL_LINES) + "\n", encoding="utf-8")
     with mock.patch.object(mplax.Axes, "imshow", side_effect=mplax.Axes.imshow, autospec=True) as mockimshow:
@@ -4508,11 +4509,11 @@ def test_plotinitialcomposition_of_a_spherical_model_gives_each_point_the_value_
     def get_density(vel_rcyl_kmps: float, vel_z_kmps: float) -> float:
         return float(valuegrid[int((vel_z_kmps + 3000.0) / (6000.0 / 400)), int(vel_rcyl_kmps / (3000.0 / 200))])
 
-    # +z is the first polar cell, and -z is the second one
-    assert get_density(100.0, 500.0) == pytest.approx(1e-12, rel=1e-6)
-    assert get_density(100.0, 2000.0) == pytest.approx(2e-12, rel=1e-6)
-    assert get_density(100.0, -500.0) == pytest.approx(3e-12, rel=1e-6)
-    assert get_density(2000.0, -500.0) == pytest.approx(4e-12, rel=1e-6)
+    # the first polar cell has cos(theta) < 0.1, which holds -z, and the second one holds +z
+    assert get_density(100.0, -500.0) == pytest.approx(1e-12, rel=1e-6)
+    assert get_density(2000.0, -500.0) == pytest.approx(2e-12, rel=1e-6)
+    assert get_density(100.0, 500.0) == pytest.approx(3e-12, rel=1e-6)
+    assert get_density(100.0, 2000.0) == pytest.approx(4e-12, rel=1e-6)
     # a point outside the sphere has no cell
     assert np.ma.is_masked(valuegrid[399, 199])
 
@@ -4541,11 +4542,11 @@ def test_plotinitialcomposition_of_a_spherical_model_gives_each_point_the_value_
         # a cell with no line is empty, thus only the count finds a file that lost its last line
         ("3 4e-12 1", (), "the key cell_line_count gives 4 cell lines, but the file has 3"),
         ("cell_line_count 4", ("cell_line_count 5",), "cell_line_count must have one integer from 1 to 4"),
-        # the polar axis of a mirrored model ends at pi / 2
+        # the polar axis of a mirrored model starts at the plane z = 0
         (
             "cell_line_count 4",
             ("cell_line_count 4", "mirror_plane z=0"),
-            r"the last value of theta_edges_radians must be 1\.5707963267948966 \(pi / 2\)",
+            "the values of costheta_edges must go from 0 to 1, not from -1.0 to 1.0",
         ),
         (
             "cell_line_count 4",
@@ -4568,29 +4569,20 @@ def test_plotinitialcomposition_of_a_spherical_model_gives_each_point_the_value_
         ("t_model_init_days 1.0  # an inline comment", ("t_model_init_days inf",), "one finite value above 0"),
         ("vel_r_edges_kmps 0 1000 3000", ("vel_r_edges_kmps 0 3000 1000",), "must increase"),
         (
-            f"theta_edges_radians 0 1.5 {math.pi!r}",
-            (f"theta_edges_radians 0 5e-5 1.5 {math.pi!r}",),
-            "the polar edge 5e-05 rad is less than 0.0001 rad from the z axis",
-        ),
-        (
-            f"theta_edges_radians 0 1.5 {math.pi!r}",
-            (f"theta_edges_radians 0 1.5 {1.5 + 1e-10!r} {math.pi!r}",),
-            "each cell of theta_edges_radians must be wider than 1e-08 rad",
+            "costheta_edges -1 0.1 1",
+            ("costheta_edges -1 0.1 0.1000000001 1",),
+            "each cell of costheta_edges must be wider than 1e-08",
         ),
         ("format_version 2", (), "needs the line 'format_version 2' as the first line"),
         ("format_version 2", ("# a comment", "format_version 2"), "must be the first line of the file"),
         ("format_version 2", ("format_version 3",), "the format version '3' is not known"),
+        # the list of cos(theta) goes from exactly -1 to exactly 1, and it increases
         (
-            f"theta_edges_radians 0 1.5 {math.pi!r}",
-            ("theta_edges_radians 0 1.5 3.0",),
-            "the last value of theta_edges_radians",
+            "costheta_edges -1 0.1 1",
+            ("costheta_edges -1 0.1 0.9",),
+            "the values of costheta_edges must go from -1 to 1",
         ),
-        # both edges become exactly pi / 2, as in sn3d, and the cell between them then has no volume
-        (
-            f"theta_edges_radians 0 1.5 {math.pi!r}",
-            (f"theta_edges_radians 0 {math.pi / 2 - 4e-9!r} {math.pi / 2 + 4e-9!r} {math.pi!r}",),
-            "theta_edges_radians must increase",
-        ),
+        ("costheta_edges -1 0.1 1", ("costheta_edges -1 0.5 0.1 1",), "costheta_edges must increase"),
     ],
 )
 def test_spherical_model_reader_stops_for_a_wrong_file(
@@ -4915,7 +4907,7 @@ def test_ye_merge_and_version_2_writer_follow_the_rules_of_sn3d(tmp_path: Path) 
             "coordinates": "spherical2d",
             "t_model_init_days": 1.0,
             "vel_r_edges_kmps": [0.0, 1000.0, 2000.0],
-            "theta_edges_radians": [0.0, math.pi],
+            "costheta_edges": [-1.0, 1.0],
         },
         deletecellidfiles=True,
     )
@@ -4927,19 +4919,18 @@ def test_ye_merge_and_version_2_writer_follow_the_rules_of_sn3d(tmp_path: Path) 
         "coordinates": "spherical2d",
         "t_model_init_days": 1.0,
         "vel_r_edges_kmps": [0.0, 1000.0, 2000.0],
-        "theta_edges_radians": [0.0, math.pi],
+        "costheta_edges": [-1.0, 1.0],
     }
     yefolder = tmp_path / "ye"
-    yetext = "\n".join([
+    yelines = [
         "format_version 2",
         "coordinates spherical2d",
         "t_model_init_days 1.0",
         "vel_r_edges_kmps 0 1000 2000",
-        f"theta_edges_radians 0 {math.pi!r}",
+        "costheta_edges -1 1",
         "columns inputcellid rho Ye",
         "0 1e-12 0.4",
-        "1 1e-12 {}",
-    ])
+    ]
     yefolder.mkdir()
     for invalidye in (float("nan"), float("inf"), 1.5, -0.1):
         with pytest.raises(ValueError, match="Each value of the column Ye must be a finite number from 0 to 1"):
@@ -4948,7 +4939,7 @@ def test_ye_merge_and_version_2_writer_follow_the_rules_of_sn3d(tmp_path: Path) 
                 outpath=yefolder,
                 modelmeta=dict(yemeta),
             )
-        (yefolder / "model.txt").write_text(yetext.format(invalidye) + "\n", encoding="utf-8")
+        (yefolder / "model.txt").write_text("\n".join([*yelines, f"1 1e-12 {invalidye}"]) + "\n", encoding="utf-8")
         with pytest.raises(ValueError, match="Each value of the column Ye must be a finite number from 0 to 1"):
             at.inputmodel.scan_modeldata(yefolder)
     # a null Ye is not known, and the writer gave it as 0.0
@@ -4969,9 +4960,7 @@ def test_ye_merge_and_version_2_writer_follow_the_rules_of_sn3d(tmp_path: Path) 
     with pytest.raises(ValueError, match="but the model has 3 cells"):
         at.inputmodel.core.get_version2_headerlines(pl.Series([0, 1, 2], dtype=pl.Int64), dict(yemeta))
     # sn3d checks the range of Ye in a cell with density only, thus an empty cell can have Ye = -1
-    (yefolder / "model.txt").write_text(
-        yetext.format(-1.0).replace("1 1e-12 -1.0", "1 0 -1.0") + "\n", encoding="utf-8"
-    )
+    (yefolder / "model.txt").write_text("\n".join([*yelines, "1 0 -1.0"]) + "\n", encoding="utf-8")
     assert at.inputmodel.scan_modeldata(yefolder)[0].collect()["Ye"].to_list() == pytest.approx([0.4, -1.0])
 
 
@@ -5044,7 +5033,7 @@ def test_version_2_writer_stops_for_a_value_that_the_reader_rejects(
         "coordinates": "spherical2d",
         "t_model_init_days": 1.0,
         "vel_r_edges_kmps": [0.0, 1000.0, 2000.0],
-        "theta_edges_radians": [0.0, math.pi],
+        "costheta_edges": [-1.0, 1.0],
     }
     dfmodel = pl.DataFrame({"inputcellid": [0, 1], "rho": [1e-12, 1e-12]})
     if "t_model_init_days" not in change:
@@ -5068,7 +5057,7 @@ def test_version_2_writer_gives_zeros_to_the_kept_line_of_a_model_with_no_densit
             "coordinates": "spherical2d",
             "t_model_init_days": 1.0,
             "vel_r_edges_kmps": [0.0, 1000.0, 2000.0],
-            "theta_edges_radians": [0.0, math.pi],
+            "costheta_edges": [-1.0, 1.0],
         },
     )
     dfread = at.inputmodel.scan_modeldata(tmp_path, printwarningsonly=True)[0].collect()
@@ -5391,14 +5380,10 @@ def test_spherical_deposit_agrees_with_a_sum_over_all_cells(normalisekernelweigh
     # a cell with only such pairs got 0 / 0 as the fraction of its mass
     assert (pairmass > 0.0).all()
 
-    r_mid, theta_mid, phi_mid = np.meshgrid(*((edge[:-1] + edge[1:]) / 2.0 for edge in edges), indexing="ij")
+    r_mid, costheta_mid, phi_mid = np.meshgrid(*((edge[:-1] + edge[1:]) / 2.0 for edge in edges), indexing="ij")
+    sintheta_mid = np.sqrt(1.0 - costheta_mid**2)
     cellposition = np.stack(
-        (
-            r_mid * np.sin(theta_mid) * np.cos(phi_mid),
-            r_mid * np.sin(theta_mid) * np.sin(phi_mid),
-            r_mid * np.cos(theta_mid),
-        ),
-        axis=-1,
+        (r_mid * sintheta_mid * np.cos(phi_mid), r_mid * sintheta_mid * np.sin(phi_mid), r_mid * costheta_mid), axis=-1
     ).reshape((-1, 3), order="F")
     volumes = get_spherical_cell_volumes(*edges).ravel(order="F")
     expected = np.zeros((len(h), volumes.size))
@@ -5415,19 +5400,15 @@ def test_spherical_deposit_agrees_with_a_sum_over_all_cells(normalisekernelweigh
             expected[n] = mass[n] * weights / weights.sum()
         else:
             radius = float(np.linalg.norm(position[n]))
-            index_r, index_theta, index_phi = (
+            index_r, index_costheta, index_phi = (
                 int(np.searchsorted(edge, value, side="right")) - 1
                 for edge, value in zip(
                     edges,
-                    (
-                        radius,
-                        math.acos(position[n, 2] / radius),
-                        math.atan2(position[n, 1], position[n, 0]) % (2.0 * math.pi),
-                    ),
+                    (radius, position[n, 2] / radius, math.atan2(position[n, 1], position[n, 0]) % (2.0 * math.pi)),
                     strict=True,
                 )
             )
-            expected[n, index_r + 6 * (index_theta + 5 * index_phi)] = mass[n]
+            expected[n, index_r + 6 * (index_costheta + 5 * index_phi)] = mass[n]
 
     actual = np.zeros_like(expected)
     np.add.at(actual, (pairparticle, paircell), pairmass)
@@ -5452,7 +5433,7 @@ def test_spherical_deposit_agrees_with_a_sum_over_all_cells(normalisekernelweigh
 def test_spherical_map_gives_each_particle_the_cell_of_its_direction(tmp_path: Path) -> None:
     """The cell order and the angles of the spherical map agree with the reader of the model.
 
-    A particle on the +z axis has theta = 0. A particle near the -y axis has phi = atan2(y, x) near 3 pi / 2. The
+    A particle on the +z axis has cos(theta) = 1. A particle near the -y axis has phi = atan2(y, x) near 3 pi / 2. The
     kernels hold no cell mid-point. With normalised kernel weights, each particle then gives its mass to the cell
     that holds it.
     """
@@ -5491,7 +5472,7 @@ def test_spherical_map_gives_each_particle_the_cell_of_its_direction(tmp_path: P
     )
 
     lzmodel, modelmeta = at.inputmodel.scan_modeldata(tmp_path / "model")
-    assert tuple(modelmeta[f"ncoordgrid{axis}"] for axis in ("r", "theta", "phi")) == gridshape
+    assert tuple(modelmeta[f"ncoordgrid{axis}"] for axis in ("r", "costheta", "phi")) == gridshape
     dfcells = (
         at.inputmodel
         .add_derived_cols_to_modeldata(lzmodel, modelmeta)
@@ -5499,9 +5480,9 @@ def test_spherical_map_gives_each_particle_the_cell_of_its_direction(tmp_path: P
         .sort("modelgridindex")
         .collect()
     )
-    # both particles are in the third shell. The first one is in the first cell of theta and of phi. The second one
-    # is in the cell with 60 <= theta < 90 degrees and 270 <= phi < 315 degrees
-    assert dfcells["modelgridindex"].to_list() == [2, 2 + 4 * (1 + 4 * 6)]
+    # both particles are in the third shell. The first one is in the last cell of cos(theta) and the first cell of
+    # phi. The second one is in the cell with 0 <= cos(theta) < 0.5 and 270 <= phi < 315 degrees
+    assert dfcells["modelgridindex"].to_list() == [2 + 4 * (3 + 4 * 0), 2 + 4 * (2 + 4 * 6)]
     onaxis, nearminusy = dfcells.rows(named=True)
     assert onaxis["vel_z_mid"] > onaxis["vel_rcyl_mid"] > 0.0
     assert nearminusy["vel_y_mid"] < 0.0 < nearminusy["vel_x_mid"] < -nearminusy["vel_y_mid"]
@@ -5574,8 +5555,8 @@ def test_spherical_map_and_cartesian_map_give_the_same_shell_masses(
     cellmass_cartesian = dfcartesian["rho"].to_numpy() * cellwidth**3
 
     headerlines = (tmp_path / "spherical" / "grid_spherical.dat").read_text(encoding="utf-8").splitlines()[2:5]
-    r_edges, theta_edges, phi_edges = (np.array(line.split()[1:], dtype=np.float64) for line in headerlines)
-    cellvolumes = get_spherical_cell_volumes(r_edges, theta_edges, phi_edges).ravel(order="F")
+    r_edges, costheta_edges, phi_edges = (np.array(line.split()[1:], dtype=np.float64) for line in headerlines)
+    cellvolumes = get_spherical_cell_volumes(r_edges, costheta_edges, phi_edges).ravel(order="F")
     shellmass_cartesian, _ = np.histogram(cellradius, bins=r_edges, weights=cellmass_cartesian)
 
     particlemass = float(np.sum(pmass * rho_on_rho_rst))
@@ -5703,7 +5684,8 @@ def test_from_e2e_model_spherical_grid_holds_both_halves_of_a_symmetric_model(tm
 
     tracermass_g = ntraj * 1e-3 * at.constants.Msun_to_g
     assert math.isclose(cellmass.sum(), 2.0 * tracermass_g, rel_tol=1e-6)
-    # the polar cells are uniform in cos(theta), thus cell i_theta and cell n_theta - 1 - i_theta are mirror cells
+    # the polar cells are uniform in cos(theta), thus cell i_costheta and cell n_costheta - 1 - i_costheta are mirror
+    # cells
     np.testing.assert_allclose(cellmass, cellmass[:, ::-1], rtol=1e-6)
     if mapto3d:
         # the tracers have rotational symmetry around the z axis
