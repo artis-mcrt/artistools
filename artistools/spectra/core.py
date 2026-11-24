@@ -2382,25 +2382,23 @@ def get_flux_contributions_from_packets(
     def bin_by_type(dfpkts: pl.DataFrame, typecolumn: str, nucolumn: str) -> pl.DataFrame:
         """Return the packet energy of each type and wavelength bin.
 
-        The type is an emission code, an absorption code, or the index of a shell. The Rust function gives the bins of
-        the spectrum kernel. The type and its bin then form one Int64 key, because one key groups faster than two.
-        Times for 65 million packets of a 3D kilonova model (polars 1.44 / polars 2.0):
+        The type is an emission code, an absorption code, or the index of a shell. A bin holds its lower edge, and the
+        last bin also holds its upper edge, which are the rules of the spectrum kernel. The type and its bin then form
+        one Int64 key, because one key groups faster than two.
+        Times of plotspectra for a 3D kilonova model with 1e8 packets, 1 to 10 days, polars 2.2 (ion / line / shell):
 
-        - this method: 0.35 s / 0.16 s;
-        - a group_by of the code and the bin from cut(): 0.63 s / 0.36 s;
-        - a group_by of the code and the bin from bin_intervals(): 0.37 s with polars 2.0;
-        - a Rust sum for each label after a gather of the label of each line: 0.72 s.
+        - this method: 0.76 s / 1.05 s / 0.74 s;
+        - the bins from the Rust function get_bin_indices before the query: 0.83 s / 1.13 s / 0.79 s.
         """
-        from artistools.rustext import get_bin_indices
-
         dfinrange = dfpkts.select(
             typecolumn, energy_column, lambda_angstroms=constants.c_ang_per_s / pl.col(nucolumn)
         ).filter(
             pl.col(typecolumn).is_not_null() & pl.col("lambda_angstroms").is_between(sorted_edges[0], sorted_edges[-1])
         )
-        binindex = get_bin_indices(dfinrange, "lambda_angstroms", sorted_edges.tolist())["binindex"]
         typedtype = dfinrange.schema[typecolumn]
         nbins = len(sorted_edges) - 1
+        # the filter above keeps the last edge, and get_bin_index_expr puts it above the last bin
+        binindex = get_bin_index_expr(pl.col("lambda_angstroms"), sorted_edges.tolist()).clip(upper_bound=nbins - 1)
         code = pl.col("key").floordiv(nbins)
         return (
             dfinrange
