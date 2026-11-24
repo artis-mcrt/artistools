@@ -29,6 +29,8 @@ from artistools.misc import addarg_output
 from artistools.misc import confirm_overwrite
 from artistools.misc import exit_with_error
 from artistools.misc import get_file_copies
+from artistools.misc import get_viewingdirection_costhetabincount
+from artistools.misc import get_viewingdirection_phibincount
 from artistools.misc import parse_cli_args
 from artistools.misc import write_text_file_atomic
 
@@ -83,11 +85,18 @@ def kernelvals2(
 # the default cell counts of each coordinate system, in the order of the axes of model.txt. A spherical grid has the
 # spatial scale of the 50^3 Cartesian grid of half width R, dx = 2R/50: dr = dx, and r dtheta and r dphi are
 # approximately dx at the equator at r = 0.8R, which divides the volume of the sphere into halves
+NCOSTHETA_CELLS_PER_DIRECTION_BIN: t.Final = 4
+# 12 cells for each phi bin also put cell edges on the planes x = 0 and y = 0, as in the Cartesian grid
+NPHI_CELLS_PER_DIRECTION_BIN: t.Final = 12
 NCOORDGRID_DEFAULTS: t.Final[Mapping[str, tuple[int, ...]]] = MappingProxyType({
     "cartesian3d": (50, 50, 50),
     "cylindrical2d": (25, 50),
-    "spherical2d": (25, 40),
-    "spherical3d": (25, 40, 128),
+    "spherical2d": (25, NCOSTHETA_CELLS_PER_DIRECTION_BIN * get_viewingdirection_costhetabincount()),
+    "spherical3d": (
+        25,
+        NCOSTHETA_CELLS_PER_DIRECTION_BIN * get_viewingdirection_costhetabincount(),
+        NPHI_CELLS_PER_DIRECTION_BIN * get_viewingdirection_phibincount(),
+    ),
 })
 NCOORDGRID_AXES: t.Final[Mapping[str, tuple[str, ...]]] = MappingProxyType({
     "cartesian3d": ("x", "y", "z"),
@@ -134,7 +143,8 @@ def addarg_ncoordgrid(parser: argparse.ArgumentParser, coordinateschoices: Seque
         help="The number of cells on each axis of the grid, in the order of the axes of model.txt."
         + (" One value N gives N^3 cells for cartesian3d." if "cartesian3d" in coordinateschoices else "")
         + f" The orders are {orders}. The default spherical cells have the width of a default Cartesian cell in r,"
-        " and in theta and phi at the equator at 0.8 times the outer radius",
+        " and approximately in theta and phi at the equator at 0.8 times the outer radius. Each viewing-direction bin"
+        " of the spectra then holds a whole number of default cells",
     )
 
 

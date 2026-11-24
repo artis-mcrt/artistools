@@ -1826,6 +1826,46 @@ def test_from_e2e_model_2d_equatorial_symmetry_contributions_name_the_cells_with
     assert set(dfcontribs["cellindex"].to_list()) == cellswithmass
 
 
+@pytest.mark.parametrize(("ncoordgrid", "isaligned"), [(None, True), ((25, 40, 128), False)])
+def test_spherical_cells_each_lie_in_one_direction_bin(
+    ncoordgrid: tuple[int, int, int] | None, isaligned: bool
+) -> None:
+    """Each cell of the default spherical3d grid is in one viewing-direction bin, and a grid of 128 phi cells is not.
+
+    The grid and the bins measure theta from +z (syn_dir of ARTIS) and phi from +x towards +y. The test bins points
+    near the corners of each cell with the bin code of the packets. A point at 2 % of a cell width from an edge stays
+    clear of the Float32 rounding of cos(phi) near phi = pi.
+    """
+    from artistools.inputmodel.maptogrid import get_spherical_grid_edges
+    from artistools.inputmodel.maptogrid import NCOORDGRID_DEFAULTS
+
+    shape = NCOORDGRID_DEFAULTS["spherical3d"] if ncoordgrid is None else ncoordgrid
+    _, costheta_edges, phi_edges = get_spherical_grid_edges(1.0, *shape)
+    fractions = np.array([0.02, 0.5, 0.98])
+    costhetapoints = costheta_edges[:-1, np.newaxis] + np.diff(costheta_edges)[:, np.newaxis] * fractions
+    phipoints = phi_edges[:-1, np.newaxis] + np.diff(phi_edges)[:, np.newaxis] * fractions
+    ncostheta, nphi = len(costheta_edges) - 1, len(phi_edges) - 1
+    icostheta, ipointcostheta, iphi, ipointphi = np.meshgrid(
+        np.arange(ncostheta), np.arange(3), np.arange(nphi), np.arange(3), indexing="ij"
+    )
+    costheta = costhetapoints[icostheta, ipointcostheta].ravel()
+    phi = phipoints[iphi, ipointphi].ravel()
+    sintheta = np.sqrt(1.0 - costheta**2)
+    dfpoints = pl.DataFrame({
+        "cell": (icostheta + ncostheta * iphi).ravel(),
+        "x": sintheta * np.cos(phi),
+        "y": sintheta * np.sin(phi),
+        "z": costheta,
+    })
+    # the packet code casts cos(theta) and cos(phi) to Float32, as get_cell_direction_selection does
+    cosphi = (pl.col("x") / (pl.col("x") ** 2 + pl.col("y") ** 2).sqrt()).cast(pl.Float32)
+    dirbin = at.misc.get_costhetabin_expr(pl.col("z").cast(pl.Float32)) * at.misc.get_viewingdirection_phibincount()
+    dirbin += at.misc.get_phibin_expr(cosphi, -pl.col("y"))
+    nbinsofcell = dfpoints.group_by("cell").agg(dirbin.n_unique().alias("nbins"))["nbins"]
+    assert (nbinsofcell.max() == 1) == isaligned
+    assert dfpoints.select(dirbin.n_unique()).item() == at.misc.get_viewingdirectionbincount()
+
+
 def test_cell_width_lines_give_the_widths_of_the_uniform_costheta_cells() -> None:
     """The log gives the widths in theta of the cells at the equator and at a pole of the uniform cos(theta) edges.
 

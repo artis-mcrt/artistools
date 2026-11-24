@@ -430,8 +430,8 @@ subcommandtree: CommandTree = {
             examples=(
                 ("-i . --ncoordgrid 50", "a cartesian3d grid of 50 cells on each axis from ejectasnapshot.dat"),
                 (
-                    "-i . --coordinates spherical3d --ncoordgrid 25 40 128",
-                    "a spherical3d grid of 25 cells in r, 40 cells in cos(theta), and 128 cells in phi",
+                    "-i . --coordinates spherical3d --ncoordgrid 25 40 120",
+                    "a spherical3d grid of 25 cells in r, 40 cells in cos(theta), and 120 cells in phi",
                 ),
             ),
             exampletestfolder="kilonova",
