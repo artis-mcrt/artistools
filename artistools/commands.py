@@ -347,8 +347,12 @@ subcommandtree: CommandTree = {
             examples=(
                 ("--npz model.npz -o artismodel", "an ARTIS model from the end-to-end model in model.npz"),
                 (
-                    "--npz model.npz --coordinates spherical --ngrid-r 25 --ngrid-theta 16 -o artismodel",
-                    "a 2D spherical model of 25 shells and 16 polar cells",
+                    "--npz model.npz --coordinates cylindrical2d --ncoordgrid 25 50 -o artismodel",
+                    "a cylindrical2d model of 25 cells in rcyl and 50 cells in z",
+                ),
+                (
+                    "--npz model.npz --coordinates spherical2d --ncoordgrid 25 40 -o artismodel",
+                    "a spherical2d model of 25 cells in r and 40 cells in cos(theta)",
                 ),
             ),
             # the test data has no npz file of an end-to-end model
@@ -424,10 +428,10 @@ subcommandtree: CommandTree = {
             "inputmodel.maptogrid",
             helptext="Map tracer particle trajectories to a Cartesian grid or a spherical grid.",
             examples=(
-                ("-i . --ncoordgrid 50", "a grid of 50 cells on each axis from ejectasnapshot.dat"),
+                ("-i . --ncoordgrid 50", "a cartesian3d grid of 50 cells on each axis from ejectasnapshot.dat"),
                 (
-                    "-i . --coordinates spherical --ngrid-r 25 --ngrid-theta 16 --ngrid-phi 32",
-                    "a spherical grid of 25 shells, 16 polar cells, and 32 azimuthal cells",
+                    "-i . --coordinates spherical3d --ncoordgrid 25 40 120",
+                    "a spherical3d grid of 25 cells in r, 40 cells in cos(theta), and 120 cells in phi",
                 ),
             ),
             exampletestfolder="kilonova",

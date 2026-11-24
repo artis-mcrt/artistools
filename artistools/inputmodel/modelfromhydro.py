@@ -593,11 +593,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-d",
         default=3,
         type=int,
+        choices=[0, 1, 2, 3],
         help=(
             "The number of dimensions: 0 for one-zone spherical, 1 for spherically symmetric 1D, 2 for 2D, and 3 for"
-            " 3D. The grid.dat of a Cartesian map gives a 2D cylindrical model or a 3D Cartesian model. The"
-            " grid_spherical.dat of maptogrid --coordinates spherical gives a 2D spherical model or a 3D spherical"
-            " model"
+            " 3D. The grid.dat of a cartesian3d map of N^3 cells gives a cylindrical2d model of N/2 x N cells"
+            " (n_rcyl n_z) or a cartesian3d model. The grid_spherical.dat of maptogrid --coordinates spherical3d gives"
+            " a spherical2d model with the same edges in r and cos(theta), or a spherical3d model"
         ),
     )
     # -t means -timedays on every command, thus the time of the snapshot takes that name

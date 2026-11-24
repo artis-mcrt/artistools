@@ -32,9 +32,12 @@ from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.core import scan_initelemabundances
 from artistools.inputmodel.core import scan_modeldata
 from artistools.inputmodel.core import with_cell_ids_from_zero
+from artistools.inputmodel.maptogrid import addarg_ncoordgrid
+from artistools.inputmodel.maptogrid import get_cell_width_lines
+from artistools.inputmodel.maptogrid import get_ncoordgrid
 from artistools.inputmodel.maptogrid import get_spherical_cell_volumes
 from artistools.inputmodel.maptogrid import get_spherical_grid_edges
-from artistools.inputmodel.maptogrid import SPHERICAL_GRID_SHAPE_DEFAULT
+from artistools.inputmodel.maptogrid import NCOORDGRID_DEFAULTS
 from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
 from artistools.misc import addarg_force
 from artistools.misc import addarg_output
@@ -268,6 +271,11 @@ def get_grid(
     elif model_dim == 2:
         # ... cylindrical coordinates of the grid onto which we want to map
         nvr = grid_dims[0]
+        if grid_dims[1] % eqsymfac:
+            msg = (
+                f"The tracers have equatorial symmetry, thus n_z of --ncoordgrid must be even, but it is {grid_dims[1]}"
+            )
+            raise ValueError(msg)
         # equatorial symmetry maps the particles onto the upper half of the z range only
         nvz = grid_dims[1] // eqsymfac
 
@@ -297,7 +305,10 @@ def get_grid(
         # an odd count in x or y puts a cell centre on the symmetry axis, where the mapping divides
         # by the cylindrical radius
         if numb_cells_ARTIS_x % 2 or numb_cells_ARTIS_y % 2:
-            msg = f"--ngridx and --ngridy must be even, got {numb_cells_ARTIS_x} and {numb_cells_ARTIS_y}"
+            msg = (
+                "The counts n_x and n_y of --ncoordgrid must be even, but they are"
+                f" {numb_cells_ARTIS_x} and {numb_cells_ARTIS_y}"
+            )
             raise ValueError(msg)
 
         vminr, vmaxr = -vmax_on_c, vmax_on_c
@@ -603,8 +614,9 @@ def map_to_spherical_artis_model(
     """Map the tracers to a 2D spherical or a 3D spherical grid.
 
     The function returns the model, the abundances, the metadata, and the contributions of the particles. The grid
-    is uniform in r to vmax, in cos(theta), and in phi. --mapto3D gives a grid of r, theta, and phi. The
-    tracers have rotational symmetry around the z axis, thus the cells of one r and theta then have equal values.
+    is uniform in r to vmax, in cos(theta), and in phi. spherical3d gives a grid of r, cos(theta), and phi. The
+    tracers have rotational symmetry around the z axis, thus all the cells of one r and one cos(theta) have equal
+    values.
     """
     for flag, value in (
         ("--replacedyn", args.replacedyn),
@@ -613,30 +625,20 @@ def map_to_spherical_artis_model(
     ):
         if value:
             exit_with_error(
-                f"{flag} reads the cells of a cylindrical grid or a Cartesian grid, and --coordinates is spherical",
-                f"Remove {flag}, or remove --coordinates spherical",
+                f"{flag} reads the cells of a cylindrical grid or a Cartesian grid, and --coordinates is"
+                f" {args.coordinates}",
+                f"Remove {flag}, or give --coordinates cylindrical2d or cartesian3d",
             )
-    model_dim = 3 if args.mapto3D else 2
-    ngrid_r, ngrid_theta, ngrid_phi = (
-        default if count is None else int(count)
-        for count, default in zip(
-            (args.ngrid_r, args.ngrid_theta, args.ngrid_phi if args.mapto3D else 1),
-            SPHERICAL_GRID_SHAPE_DEFAULT,
-            strict=True,
-        )
-    )
-    if min(ngrid_r, ngrid_theta, ngrid_phi) < 1:
-        exit_with_error("--ngrid-r, --ngrid-theta, and --ngrid-phi must each be 1 or more")
-    if not args.mapto3D and args.ngrid_phi is not None:
-        exit_with_error("--ngrid-phi applies to a 3D spherical grid only", "Give --mapto3D, or remove --ngrid-phi")
+    gridshape = tuple(args.ncoordgrid)
+    model_dim = len(gridshape)
+    ngrid_r, ngrid_costheta, ngrid_phi = (*gridshape, 1)[:3]
 
     vmax_cmps = float(args.vmax_on_c) * CLIGHT
     r_edges_cm, costheta_edges, phi_edges = get_spherical_grid_edges(
-        vmax_cmps * t_model_init_s, ngrid_r, ngrid_theta, ngrid_phi
+        vmax_cmps * t_model_init_s, ngrid_r, ngrid_costheta, ngrid_phi
     )
-    gridshape = (ngrid_r, ngrid_theta, ngrid_phi)[:model_dim]
     print(
-        f"Coordinates: spherical{model_dim}d, with n_r x n_theta{' x n_phi' if model_dim == 3 else ''} ="
+        f"Coordinates: spherical{model_dim}d, with n_r x n_costheta{' x n_phi' if model_dim == 3 else ''} ="
         f" {' x '.join(str(count) for count in gridshape)} cells. The radial edges are uniform from 0 to vmax ="
         f" {args.vmax_on_c}c. The polar edges are uniform in cos(theta). theta is the polar angle from the +z axis"
     )
@@ -836,7 +838,7 @@ def map_to_artis(
                 f"The model of --replacedyn has the grid {dyngrid} with vmax {dynvmax_cmps:.6e} cm/s at"
                 f" {dyntmodel_days:g} d, but this model has the grid {thisgrid} with vmax {vmax_on_c * CLIGHT:.6e} cm/s"
                 f" at {t_model_init_s / day_to_s:g} d",
-                "Give a model of the dynamical ejecta at this time, on the grid of --ngridx, --ngridy, and --ngridz",
+                "Give a model of the dynamical ejecta at this time, on the grid of --ncoordgrid",
             )
         # the grid of this model has the cell ids 1 to N, and a model of format version 2 has 0 to N - 1. The joins
         # and the filters below take the cell of an id, thus the ids of the dynamical ejecta must also start at 1
@@ -1087,7 +1089,7 @@ def map_to_artis(
             "vmax_cmps": vmax_on_c * CLIGHT,
         }
     else:
-        # add_derived_cols_to_modeldata reads the cell widths, thus -dimensions 1 after --mapto3D needs them
+        # add_derived_cols_to_modeldata reads the cell widths, thus --dimensions 1 after a 3D map needs them
         wid_init_x, wid_init_y, wid_init_z = (2 * vmax_on_c * CLIGHT * t_model_init_s / ncells for ncells in grid_dims)
         modelmeta = {
             "dimensions": 3,
@@ -1356,56 +1358,15 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     parser.add_argument(
-        "-ngridrcyl",
-        type=int,
-        default=None,
-        help="The number of cells in radial direction the ARTIS model shall have (default 25)",
-    )
-
-    parser.add_argument(
-        "-ngridz",
-        type=int,
-        default=None,
-        help="The number of cells in z direction the ARTIS model shall have (default 50)",
-    )
-
-    parser.add_argument("--mapto3D", action="store_true", help="Final grid will be 3D. Requires --ngridx and --ngridy")
-
-    parser.add_argument(
         "--coordinates",
-        default=None,
-        choices=["cylindrical", "cartesian", "spherical"],
-        help="The coordinates of the grid. The default is cylindrical for a 2D model, and cartesian with --mapto3D."
-        " spherical gives a 2D spherical model of the radius r and the polar angle theta from the +z axis. With"
-        " --mapto3D, it gives a 3D spherical model with the azimuthal angle phi. A spherical grid is uniform in r to"
-        " vmax, in cos(theta), and in phi, and its map has the method of the cylindrical grid (2D) or of the"
-        " Cartesian grid (3D)",
+        default="cylindrical2d",
+        choices=list(NCOORDGRID_DEFAULTS),
+        help="The coordinates of the grid, with the names of model.txt. spherical2d gives cells in the radius r and in"
+        " cos(theta) of the polar angle theta from the +z axis. spherical3d also gives cells in the azimuthal angle"
+        " phi. A spherical grid is uniform in r to vmax, in cos(theta), and in phi. The map of a spherical grid uses"
+        " the deposit method of the cylindrical grid (2D) or of the Cartesian grid (3D)",
     )
-    for (axis, description), default in zip(
-        (("r", "radial shells"), ("theta", "cells along the polar angle"), ("phi", "cells along the azimuthal angle")),
-        SPHERICAL_GRID_SHAPE_DEFAULT,
-        strict=True,
-    ):
-        parser.add_argument(
-            f"--ngrid-{axis}",
-            type=int,
-            default=None,
-            help=f"The number of {description} of a spherical grid (default: {default})",
-        )
-
-    parser.add_argument(
-        "-ngridx",
-        type=int,
-        default=None,
-        help="The number of cells in x direction the ARTIS model shall have (from -vmax to +vmax, default 50)",
-    )
-
-    parser.add_argument(
-        "-ngridy",
-        type=int,
-        default=None,
-        help="The number of cells in y direction the ARTIS model shall have (from -vmax to +vmax, default 50)",
-    )
+    addarg_ncoordgrid(parser, list(NCOORDGRID_DEFAULTS))
 
     parser.add_argument("--nonutrapping", action="store_true", help="Exclude neutrino energy from the snapshot energy")
 
@@ -1490,7 +1451,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 def writes_format_version_2(args: argparse.Namespace) -> bool:
     """Return True if the command writes a model.txt of format version 2, as for a spherical model with 2 or 3 axes."""
-    return args.coordinates == "spherical" and (args.dimensions is None or args.dimensions >= 2)
+    return args.coordinates.startswith("spherical") and (args.dimensions is None or args.dimensions >= 2)
 
 
 def get_output_file_names(args: argparse.Namespace) -> tuple[str, ...]:
@@ -1501,48 +1462,22 @@ def get_output_file_names(args: argparse.Namespace) -> tuple[str, ...]:
     opacity.txt beside such a model. -dimensions 0 or 1 gives a model of format version 1, and the command does not
     change these two files beside such a model.
     """
-    if args.coordinates == "spherical":
+    if args.coordinates.startswith("spherical"):
         return (*MODEL_FILE_NAMES, *CELL_ID_FILE_NAMES) if writes_format_version_2(args) else MODEL_FILE_NAMES
-    writesdynfiles = args.mapto3D and args.replacedyn and args.interpolate
+    writesdynfiles = args.coordinates == "cartesian3d" and args.replacedyn and args.interpolate
     return (*MODEL_FILE_NAMES, *DYN_CHECK_FILE_NAMES) if writesdynfiles else MODEL_FILE_NAMES
 
 
-def validate_grid_dimensions(args: argparse.Namespace) -> None:
-    """Stop at grid arguments that do not agree, before the command does its work.
+def resolve_grid_arguments(args: argparse.Namespace) -> None:
+    """Set args.ncoordgrid to the cell counts of --coordinates, and stop at counts that do not agree.
 
-    --coordinates must agree with --mapto3D, and a flag of a spherical grid needs --coordinates spherical. A
-    spherical grid takes no cell count of a cylindrical or a Cartesian grid. A Cartesian model that stays 3D needs
-    equal dimensions, because the model writer needs a cubic grid. The function also gives each cell count that
-    the user did not give its default value.
+    A Cartesian model that stays 3D needs equal counts, because the model writer needs a cubic grid.
     """
-    defaultcoordinates = "cartesian" if args.mapto3D else "cylindrical"
-    if args.coordinates not in {None, "spherical", defaultcoordinates}:
-        exit_with_error(
-            f"--coordinates {args.coordinates} does not agree with {'--mapto3D' if args.mapto3D else 'a 2D model'}",
-            "A 2D model is cylindrical or spherical, and a model with --mapto3D is cartesian or spherical",
-        )
-    # a flag with no value gets its default here, thus the check knows the flags that the user gave
-    griddefaults = {"ngridrcyl": 25, "ngridz": 50, "ngridx": 50, "ngridy": 50}
-    givenflags = [f"--{name}" for name in griddefaults if getattr(args, name) is not None]
-    for name, defaultcount in griddefaults.items():
-        if getattr(args, name) is None:
-            setattr(args, name, defaultcount)
-    if args.coordinates == "spherical":
-        if givenflags:
-            exit_with_error(
-                f"{', '.join(givenflags)} {'applies' if len(givenflags) == 1 else 'apply'} to a cylindrical or a"
-                " Cartesian grid, and --coordinates spherical makes a spherical grid",
-                "Give --ngrid-r, --ngrid-theta, and --ngrid-phi for a spherical grid",
-            )
-        return
-    if any(count is not None for count in (args.ngrid_r, args.ngrid_theta, args.ngrid_phi)):
-        exit_with_error(
-            "--ngrid-r, --ngrid-theta, and --ngrid-phi apply to a spherical grid only", "Give --coordinates spherical"
-        )
-    if args.mapto3D and args.dimensions is None and not (args.ngridx == args.ngridy == args.ngridz):
+    args.ncoordgrid = get_ncoordgrid(args.coordinates, args.ncoordgrid)
+    if args.coordinates == "cartesian3d" and args.dimensions is None and len(set(args.ncoordgrid)) > 1:
         msg = (
-            "A 3D model needs equal --ngridx, --ngridy, and --ngridz values,"
-            f" got {args.ngridx}, {args.ngridy}, and {args.ngridz}"
+            "A 3D model needs the same number of cells on each axis, but --ncoordgrid gives"
+            f" {' '.join(str(count) for count in args.ncoordgrid)}"
         )
         raise ValueError(msg)
 
@@ -1550,7 +1485,9 @@ def validate_grid_dimensions(args: argparse.Namespace) -> None:
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Prepare data for an ARTIS kilonova calculation from end-to-end hydro models."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
-    validate_grid_dimensions(args)
+    resolve_grid_arguments(args)
+    for line in get_cell_width_lines(args.coordinates, args.ncoordgrid, float(args.vmax_on_c), "c"):
+        print(line)
 
     if args.iso is None:
         args.iso = Path(args.npz).parent / "iso_table.npy"
@@ -1559,11 +1496,11 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         modelname = Path(args.npz).name.replace(".npz", "")
         if args.dimensions is not None and args.dimensions < 2:
             modelname += f"_{args.dimensions}d"
-        elif args.mapto3D:
+        elif args.coordinates.endswith("3d"):
             modelname += "_3d"
         else:
             modelname += "_2d"
-        if args.coordinates == "spherical":
+        if args.coordinates.startswith("spherical"):
             modelname += "_spherical"
         args.outputfile = Path(args.npz).parent / "artis_inputmodels" / modelname
         print(args.outputfile)
@@ -1574,17 +1511,18 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     Path(args.outputfile).mkdir(parents=True, exist_ok=True)
 
     # model_dim = 1 not covered in this script
-    model_dim = 3 if args.mapto3D else 2
+    model_dim = 3 if args.coordinates.endswith("3d") else 2
 
-    if args.coordinates == "spherical":
+    if args.coordinates.startswith("spherical"):
         dfmodel, dfelabundances, modelmeta, dfgridcontributions = map_to_spherical_artis_model(args)
     elif model_dim == 2:
         if args.perturb3Dmodel:
             print_warning("Density perturbations only work on 3D models. Skip.")
         if args.replacedyn:
-            print_warning("--replacedyn only works on 3D models, thus the dynamical ejecta stay. Give --mapto3D.")
-        ngrid_rcyl = int(args.ngridrcyl)
-        ngrid_z = int(args.ngridz)
+            print_warning(
+                "--replacedyn only works on 3D models, thus the dynamical ejecta stay. Give --coordinates cartesian3d."
+            )
+        ngrid_rcyl, ngrid_z = args.ncoordgrid
         (
             pos_t_s_grid_rad,
             pos_t_s_grid_z,
@@ -1648,7 +1586,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             args.iso,
             float(args.vmax_on_c),
             model_dim,
-            np.array([int(args.ngridx), int(args.ngridy), int(args.ngridz)]),
+            np.array(args.ncoordgrid),
             args.nodyn,
             args.nohmns,
             args.notorus,
@@ -1657,7 +1595,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
         dfmodel, dfelabundances, modelmeta = map_to_artis(
             model_dim,
-            np.array([int(args.ngridx), int(args.ngridy), int(args.ngridz)]),
+            np.array(args.ncoordgrid),
             float(args.vmax_on_c),
             rhoint,
             xint,
