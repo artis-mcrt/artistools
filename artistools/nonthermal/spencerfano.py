@@ -298,7 +298,10 @@ class ArtisCellData(t.NamedTuple):
     """The value of NTEXCITATION_MAXNLEVELS_UPPER. An excitation has an upper level below this number."""
 
     use_km1993_auger: bool
-    """True if ARTIS adds the Auger electrons of an inner-shell ionisation to the source term (KM93 data)."""
+    """True if ARTIS adds the Auger electrons of an inner-shell ionisation to the source term.
+
+    get_artis_auger_treatment gives the source of the Auger data.
+    """
 
     max_auger_electrons: int
     """The value of NT_MAX_AUGER_ELECTRONS, which is the largest number of Auger electrons of one ionisation."""
@@ -473,24 +476,25 @@ def get_artis_cell_data(
 def get_artis_auger_treatment(artisoptions: Mapping[str, str]) -> tuple[bool, int]:
     """Return use_km1993_auger and max_auger_electrons of SpencerFanoSolver that agree with artisoptions.h.
 
-    ARTIS reads the Auger data only if NT_MAX_AUGER_ELECTRONS is above zero (nonthermal.cc). The data are table 2 of
+    ARTIS reads the Auger data only if NT_MAX_AUGER_ELECTRONS is above zero (nonthermal.cc). It adds the Auger
+    electrons to the source term only if SF_AUGER_CONTRIBUTION_ON is also true. Without that source, the ionisation
+    keeps the full shell potential, which is the result of the solver without the Auger data. The data are table 2 of
     Kaastra & Mewe (1993, A&AS, 97, 443-482, ADS 1993A&AS...97..443K).
-    It adds the Auger electrons to the source term only if SF_AUGER_CONTRIBUTION_ON is also true. Without that source,
-    the ionisation keeps the full shell potential, which is the result of the solver without the Auger data.
     """
-    maxaugeroption = artisoptions.get("NT_MAX_AUGER_ELECTRONS")
-    contributionoption = artisoptions.get("SF_AUGER_CONTRIBUTION_ON")
     # an older artisoptions.h has no such option, thus the value is the ARTIS default
-    max_auger_electrons = int(maxaugeroption or "2")
-    use_km1993_auger = max_auger_electrons > 0 and contributionoption != "false"
-    optionsource = (
-        "artisoptions.h"
-        if None not in {maxaugeroption, contributionoption}
-        else "the ARTIS defaults for an option that artisoptions.h does not define"
-    )
+    optiontexts = {
+        name: (
+            f"{artisoptions[name]} (artisoptions.h)"
+            if name in artisoptions
+            else f"{default} (the ARTIS default, because artisoptions.h does not define it)"
+        )
+        for name, default in (("NT_MAX_AUGER_ELECTRONS", "2"), ("SF_AUGER_CONTRIBUTION_ON", "true"))
+    }
+    max_auger_electrons = int(artisoptions.get("NT_MAX_AUGER_ELECTRONS", "2"))
+    use_km1993_auger = max_auger_electrons > 0 and artisoptions.get("SF_AUGER_CONTRIBUTION_ON") != "false"
     print(
-        f"  NT_MAX_AUGER_ELECTRONS is {max_auger_electrons} and SF_AUGER_CONTRIBUTION_ON is"
-        f" {contributionoption or 'true'} ({optionsource})"
+        f"  NT_MAX_AUGER_ELECTRONS is {optiontexts['NT_MAX_AUGER_ELECTRONS']} and SF_AUGER_CONTRIBUTION_ON is"
+        f" {optiontexts['SF_AUGER_CONTRIBUTION_ON']}"
     )
     if use_km1993_auger:
         print(
@@ -501,6 +505,13 @@ def get_artis_auger_treatment(artisoptions: Mapping[str, str]) -> tuple[bool, in
         )
     else:
         print("  The solver adds no Auger electrons, because ARTIS with these options adds none")
+    # artis-mcrt/artis#385 moved this option from artisoptions.h to nonthermal.cc, where it is false
+    if use_km1993_auger and artisoptions.get("SF_AUGER_CONTRIBUTION_DISTRIBUTE_EN") == "true":
+        print_warning(
+            "artisoptions.h sets SF_AUGER_CONTRIBUTION_DISTRIBUTE_EN to true. ARTIS then gives the Auger energy only to"
+            " the ionisations with one or more Auger electrons. The solver gives the mean Auger energy to each"
+            " ionisation, thus its result differs from the run"
+        )
     return use_km1993_auger, max_auger_electrons
 
 

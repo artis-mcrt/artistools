@@ -83,6 +83,8 @@ def test_spencerfano_excitation(tmp_path: Path) -> None:
 
     gridkwargs = mockinit.call_args.kwargs
     assert (gridkwargs["emin_ev"], gridkwargs["emax_ev"], gridkwargs["npts"]) == pytest.approx((1.0, 999.512, 200))
+    # the test model has no artisoptions.h, thus the solver takes the Auger treatment of the ARTIS defaults
+    assert (gridkwargs["use_km1993_auger"], gridkwargs["max_auger_electrons"]) == (True, 2)
     assert {call.args[1:3] for call in mockionisation.call_args_list} == {
         (26, 1),
         (26, 2),
