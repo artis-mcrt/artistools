@@ -1826,8 +1826,44 @@ def test_from_e2e_model_2d_equatorial_symmetry_contributions_name_the_cells_with
     assert set(dfcontribs["cellindex"].to_list()) == cellswithmass
 
 
+@pytest.mark.parametrize(
+    ("gridargs", "expected"),
+    [
+        (["-ngridz", "8"], ("cylindrical2d", (25, 8))),
+        (["--mapto3D", "-ngridx", "4", "-ngridy", "4", "-ngridz", "4"], ("cartesian3d", (4, 4, 4))),
+        (["--coordinates", "cylindrical"], ("cylindrical2d", (25, 50))),
+        (["--coordinates", "spherical3d"], ("spherical3d", (50, 35, 70))),
+        (["--coordinates", "cartesian3d", "-ncoordgrid", "6"], ("cartesian3d", (6, 6, 6))),
+        (["-ncoordgrid", "8"], None),
+        (["-ngridrcyl", "4", "-ncoordgrid", "4", "8"], None),
+        (["--coordinates", "spherical2d", "-ngridz", "8"], None),
+        (["--mapto3D", "--coordinates", "spherical3d"], None),
+    ],
+)
+def test_from_e2e_model_resolves_the_older_grid_flags(
+    gridargs: list[str], expected: tuple[str, tuple[int, ...]] | None
+) -> None:
+    """The older flags --mapto3D and -ngridrcyl/x/y/z set --coordinates and the counts of their axes.
+
+    Each older count replaces the default count of its axis. A wrong number of counts, a mix of the older and the new
+    flags, and an older count for a spherical grid stop the command.
+    """
+    from artistools.inputmodel.from_e2e_model import addargs
+    from artistools.inputmodel.from_e2e_model import resolve_grid_arguments
+
+    parser = argparse.ArgumentParser()
+    addargs(parser)
+    args = parser.parse_args(["-npz", "model.npz", *gridargs])
+    if expected is None:
+        with pytest.raises(SystemExit):
+            resolve_grid_arguments(args)
+        return
+    resolve_grid_arguments(args)
+    assert (args.coordinates, args.ncoordgrid) == expected
+
+
 def test_from_e2e_model_3d_grid_takes_the_arguments(tmp_path: Path) -> None:
-    """The 3D mapping grid comes from -vmax_on_c and -ngridx/y/z.
+    """The 3D grid of the map comes from -vmax_on_c and --ncoordgrid.
 
     The 3D branch held vminr, vmaxr, nvr = -0.5, 0.5, 50, thus the arguments had no effect, and a
     grid size other than 50 stopped with a broadcast error.
@@ -2943,7 +2979,7 @@ def test_maptogrid_keeps_the_mirror_symmetry_of_the_particles(tmp_path: Path) ->
     maptogrid(
         snapshotpath,
         tmp_path,
-        ncoordgrid=ncoordgrid,
+        ncoordgrid=(ncoordgrid,) * 3,
         dtextra_seconds=0.0,
         setgrid_fractionrmax=1.0,
         modifysmoothinglength="False",
@@ -3638,13 +3674,13 @@ def test_from_e2e_model_main(
     workingfolder.mkdir()
     monkeypatch.chdir(workingfolder)
 
-    gridargs = ["-npz", str(datpath), "-vmax_on_c", "0.4", "-ngridrcyl", "4", "-ngridz", "8"]
-    at.inputmodel.from_e2e_model.main(argsraw=[*gridargs, "-o", str(tmp_path / "model2d")])
+    gridargs = ["-npz", str(datpath), "-vmax_on_c", "0.4"]
+    at.inputmodel.from_e2e_model.main(argsraw=[*gridargs, "--ncoordgrid", "4", "8", "-o", str(tmp_path / "model2d")])
     _, modelmeta2d = at.inputmodel.scan_modeldata(tmp_path / "model2d", printwarningsonly=True)
     assert modelmeta2d["dimensions"] == 2
     assert modelmeta2d["npts_model"] == 32
 
-    gridargs3d = [*gridargs, "--mapto3D", "-ngridx", "4", "-ngridy", "4", "-ngridz", "4"]
+    gridargs3d = [*gridargs, "--coordinates", "cartesian3d", "--ncoordgrid", "4"]
     at.inputmodel.from_e2e_model.main(argsraw=[*gridargs3d, "-o", str(tmp_path / "dyn3d")])
     at.inputmodel.from_e2e_model.main(
         argsraw=[
@@ -4093,9 +4129,20 @@ def test_from_e2e_model_rejects_unequal_3d_dimensions_before_a_write(tmp_path: P
     """
     datpath = tmp_path / "e2emodel.npz"
     write_e2e_model(datpath, tmp_path / "iso_table.npy")
-    gridargs = ["-npz", str(datpath), "-vmax_on_c", "0.4", "--mapto3D", "-ngridx", "4", "-ngridy", "6", "-ngridz", "8"]
+    gridargs = [
+        "-npz",
+        str(datpath),
+        "-vmax_on_c",
+        "0.4",
+        "--coordinates",
+        "cartesian3d",
+        "--ncoordgrid",
+        "4",
+        "6",
+        "8",
+    ]
 
-    with pytest.raises(ValueError, match="equal --ngridx"):
+    with pytest.raises(ValueError, match="same number of cells on each axis"):
         at.inputmodel.from_e2e_model.main(argsraw=[*gridargs, "-o", str(tmp_path / "model3d")])
     # parse_cli_args makes the -o folder of each command, thus the folder exists
     assert not list((tmp_path / "model3d").iterdir())
@@ -5476,8 +5523,8 @@ def test_spherical_map_gives_each_particle_the_cell_of_its_direction(tmp_path: P
         dtextra_seconds=0.0,
         setgrid_fractionrmax=1.5,
         modifysmoothinglength="False",
-        coordinates="spherical",
-        sphericalgridshape=gridshape,
+        coordinates="spherical3d",
+        ncoordgrid=gridshape,
         normalisekernelweights=True,
     )
     at.inputmodel.modelfromhydro.main(
@@ -5541,9 +5588,9 @@ def test_spherical_map_and_cartesian_map_give_the_same_shell_masses(
         snapshotlines.append(" ".join(str(value) for value in values))
 
     for foldername, coordinates, normalisekernelweights in (
-        ("cartesian", "cartesian", False),
-        ("spherical", "spherical", False),
-        ("spherical_normalised", "spherical", True),
+        ("cartesian", "cartesian3d", False),
+        ("spherical", "spherical3d", False),
+        ("spherical_normalised", "spherical3d", True),
     ):
         folder = tmp_path / foldername
         folder.mkdir()
@@ -5551,12 +5598,11 @@ def test_spherical_map_and_cartesian_map_give_the_same_shell_masses(
         maptogrid(
             folder / "ejectasnapshot.dat",
             folder,
-            ncoordgrid=ncoordgrid,
+            ncoordgrid=(ncoordgrid,) * 3 if coordinates == "cartesian3d" else (ncoordgrid // 2, 10, 20),
             dtextra_seconds=0.0,
             setgrid_fractionrmax=r_outer / 600.0,
             modifysmoothinglength="False",
             coordinates=coordinates,
-            sphericalgridshape=(ncoordgrid // 2, 10, 20),
             normalisekernelweights=normalisekernelweights,
         )
 
@@ -5630,12 +5676,11 @@ def test_spherical_map_and_cartesian_map_give_the_same_shell_masses(
         maptogrid(
             tmp_path / "spherical" / "ejectasnapshot.dat",
             tmp_path / "spherical",
-            ncoordgrid=ncoordgrid,
+            ncoordgrid=(ncoordgrid // 2, 10, 20),
             dtextra_seconds=0.0,
             setgrid_fractionrmax=r_outer / 600.0,
             modifysmoothinglength="False",
-            coordinates="spherical",
-            sphericalgridshape=(ncoordgrid // 2, 10, 20),
+            coordinates="spherical3d",
         )
     assert not list((tmp_path / "spherical").glob("*grid_spherical.dat*"))
 
@@ -5648,7 +5693,7 @@ def test_spherical_map_and_cartesian_map_give_the_same_shell_masses(
         maptogrid(
             tmp_path / "spherical_normalised" / "ejectasnapshot.dat",
             tmp_path / "spherical_normalised",
-            ncoordgrid=ncoordgrid,
+            ncoordgrid=(ncoordgrid,) * 3,
             dtextra_seconds=0.0,
             setgrid_fractionrmax=r_outer / 600.0,
             modifysmoothinglength="False",
@@ -5686,8 +5731,8 @@ def test_from_e2e_model_spherical_grid_holds_both_halves_of_a_symmetric_model(tm
     np.save(tmp_path / "iso_table.npy", np.array([[2, 2], [26, 30]]))
 
     gridshape = (6, 8, 4) if mapto3d else (6, 8)
-    argsraw = ["-npz", str(datpath), "-vmax_on_c", "0.4", "--coordinates", "spherical"]
-    argsraw += ["--ngrid-r", "6", "--ngrid-theta", "8", *(["--mapto3D", "--ngrid-phi", "4"] if mapto3d else [])]
+    argsraw = ["-npz", str(datpath), "-vmax_on_c", "0.4", "--coordinates", "spherical3d" if mapto3d else "spherical2d"]
+    argsraw += ["--ncoordgrid", *(str(count) for count in gridshape)]
     at.inputmodel.from_e2e_model.main(argsraw=[*argsraw, "-o", str(tmp_path / "model")])
 
     lzmodel, modelmeta = at.inputmodel.scan_modeldata(tmp_path / "model", printwarningsonly=True)
@@ -5722,7 +5767,7 @@ def test_from_e2e_model_of_version_1_stops_for_a_ye_file_of_an_earlier_model(tmp
     (outputfolder / "Ye.txt").write_text("1\n1 0.3\n", encoding="utf-8")
     with pytest.raises(SystemExit):
         at.inputmodel.from_e2e_model.main(
-            argsraw=["-npz", str(datpath), "-vmax_on_c", "0.4", "--coordinates", "spherical", "-dimensions", "1"],
+            argsraw=["-npz", str(datpath), "-vmax_on_c", "0.4", "--coordinates", "spherical2d", "-dimensions", "1"],
             outputfile=outputfolder,
             force=True,
         )
@@ -5741,8 +5786,8 @@ def test_from_e2e_model_spherical_grid_agrees_with_the_cylindrical_grid(tmp_path
     write_e2e_model(datpath, tmp_path / "iso_table.npy")
     baseargs = ["-npz", str(datpath), "-vmax_on_c", "0.4"]
     gridargs = {
-        "cylindrical": ["-ngridrcyl", "24", "-ngridz", "48"],
-        "spherical": ["--coordinates", "spherical", "--ngrid-r", "24", "--ngrid-theta", "24"],
+        "cylindrical": ["--ncoordgrid", "24", "48"],
+        "spherical": ["--coordinates", "spherical2d", "--ncoordgrid", "24", "24"],
     }
     shelledges_on_c = np.linspace(0.0, 0.4, 9)
     shellmassfractions = {}
