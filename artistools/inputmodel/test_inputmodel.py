@@ -1826,6 +1826,23 @@ def test_from_e2e_model_2d_equatorial_symmetry_contributions_name_the_cells_with
     assert set(dfcontribs["cellindex"].to_list()) == cellswithmass
 
 
+def test_cell_width_lines_give_the_widths_of_the_uniform_costheta_cells() -> None:
+    """The log gives the widths in theta of the cells at the equator and at a pole of the uniform cos(theta) edges.
+
+    With 35 cells, the equatorial cell goes from cos(theta) = -1/35 to 1/35, and a polar cell from 1 - 2/35 to 1.
+    """
+    from artistools.inputmodel.maptogrid import get_cell_width_lines
+
+    lines = get_cell_width_lines("spherical3d", (50, 35, 70), 1000.0, "km")
+    equatorwidth = 1000.0 * 2.0 * math.asin(1.0 / 35)
+    polewidth = 1000.0 * math.acos(1.0 - 2.0 / 35)
+    assert lines[0].startswith("Cell widths: 20 km in r")
+    assert f"{equatorwidth:.3g} km" in lines[1]
+    assert f"{polewidth:.3g} km" in lines[1]
+    assert f"{1000.0 * 2.0 * math.pi / 70:.3g} km" in lines[2]
+    assert lines[3].endswith("cell width 40 km")
+
+
 def test_from_e2e_model_3d_grid_takes_the_arguments(tmp_path: Path) -> None:
     """The 3D grid of the map comes from -vmax_on_c and --ncoordgrid.
 
@@ -2946,7 +2963,7 @@ def test_maptogrid_keeps_the_mirror_symmetry_of_the_particles(tmp_path: Path) ->
         ncoordgrid=(ncoordgrid,) * 3,
         dtextra_seconds=0.0,
         setgrid_fractionrmax=1.0,
-        modifysmoothinglength="False",
+        modifysmoothinglength="none",
     )
 
     dfgrid = at.misc.read_wsv(tmp_path / "grid.dat", skip_rows=3)
@@ -5486,7 +5503,7 @@ def test_spherical_map_gives_each_particle_the_cell_of_its_direction(tmp_path: P
         tmp_path,
         dtextra_seconds=0.0,
         setgrid_fractionrmax=1.5,
-        modifysmoothinglength="False",
+        modifysmoothinglength="none",
         coordinates="spherical3d",
         ncoordgrid=gridshape,
         normalisekernelweights=True,
@@ -5565,7 +5582,7 @@ def test_spherical_map_and_cartesian_map_give_the_same_shell_masses(
             ncoordgrid=(ncoordgrid,) * 3 if coordinates == "cartesian3d" else (ncoordgrid // 2, 10, 20),
             dtextra_seconds=0.0,
             setgrid_fractionrmax=r_outer / 600.0,
-            modifysmoothinglength="False",
+            modifysmoothinglength="none",
             coordinates=coordinates,
             normalisekernelweights=normalisekernelweights,
         )
@@ -5643,7 +5660,7 @@ def test_spherical_map_and_cartesian_map_give_the_same_shell_masses(
             ncoordgrid=(ncoordgrid // 2, 10, 20),
             dtextra_seconds=0.0,
             setgrid_fractionrmax=r_outer / 600.0,
-            modifysmoothinglength="False",
+            modifysmoothinglength="none",
             coordinates="spherical3d",
         )
     assert not list((tmp_path / "spherical").glob("*grid_spherical.dat*"))
@@ -5660,7 +5677,7 @@ def test_spherical_map_and_cartesian_map_give_the_same_shell_masses(
             ncoordgrid=(ncoordgrid,) * 3,
             dtextra_seconds=0.0,
             setgrid_fractionrmax=r_outer / 600.0,
-            modifysmoothinglength="False",
+            modifysmoothinglength="none",
         )
     assert not list((tmp_path / "spherical_normalised").glob("grid*.dat*"))
 

@@ -33,6 +33,7 @@ from artistools.inputmodel.core import scan_initelemabundances
 from artistools.inputmodel.core import scan_modeldata
 from artistools.inputmodel.core import with_cell_ids_from_zero
 from artistools.inputmodel.maptogrid import addarg_ncoordgrid
+from artistools.inputmodel.maptogrid import get_cell_width_lines
 from artistools.inputmodel.maptogrid import get_ncoordgrid
 from artistools.inputmodel.maptogrid import get_spherical_cell_volumes
 from artistools.inputmodel.maptogrid import get_spherical_grid_edges
@@ -1480,6 +1481,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     """Prepare data for an ARTIS kilonova calculation from end-to-end hydro models."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
     resolve_grid_arguments(args)
+    for line in get_cell_width_lines(args.coordinates, args.ncoordgrid, float(args.vmax_on_c), "c"):
+        print(line)
 
     if args.iso is None:
         args.iso = Path(args.npz).parent / "iso_table.npy"

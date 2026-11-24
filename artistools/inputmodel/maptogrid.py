@@ -4,6 +4,7 @@
 
 import argparse
 import math
+import shlex
 import typing as t
 from collections.abc import Callable
 from collections.abc import Sequence
@@ -13,6 +14,7 @@ import numpy as np
 import numpy.typing as npt
 import polars as pl
 
+from artistools.constants import geometric_length_to_km
 from artistools.constants import geometric_time_to_s
 from artistools.inputmodel.core import savetologfile
 from artistools.inputmodel.modelfromhydro import GRID_FILE_NAMES
@@ -124,7 +126,7 @@ def addarg_ncoordgrid(parser: argparse.ArgumentParser, coordinateschoices: Seque
         type=int,
         nargs="+",
         default=None,
-        metavar="N",
+        metavar="COUNT",
         help="The number of cells on each axis of the grid, in the order of the axes of model.txt."
         + (" One value N gives N^3 cells for cartesian3d." if "cartesian3d" in coordinateschoices else "")
         + f" The orders are {orders}",
@@ -156,6 +158,29 @@ def get_ncoordgrid(coordinates: str, counts: Sequence[int] | int | None) -> tupl
     return tuple(counts)
 
 
+# the rules of --modifysmoothinglength, with the older name of each rule as the key
+SMOOTHING_LENGTH_RULE_ALIASES: t.Final[dict[str, str]] = {
+    "False": "none",
+    "option1": "min-1.5-cellwidths",
+    "option2": "min-0.25-radius",
+    "option3": "min-0.4-radius-beyond-1.5-rmean",
+    "option4": "min-1.5-hmean-beyond-rmean",
+    "option5": "0.75-cellwidths-to-2500-beyond-rmean",
+    "option6": "min-0.75-cellwidths-beyond-rmean",
+}
+# a spherical map has no cell width, thus it cannot apply these rules
+CELL_WIDTH_RULES: t.Final = frozenset({
+    "min-1.5-cellwidths",
+    "0.75-cellwidths-to-2500-beyond-rmean",
+    "min-0.75-cellwidths-beyond-rmean",
+})
+
+
+def get_smoothing_length_rule(value: str) -> str:
+    """Return the rule of --modifysmoothinglength for a value, e.g. min-1.5-hmean-beyond-rmean for option4."""
+    return SMOOTHING_LENGTH_RULE_ALIASES.get(value, value)
+
+
 def get_modified_smoothing_lengths(
     h: npt.NDArray[np.float64],
     dis: npt.NDArray[np.float64],
@@ -164,39 +189,99 @@ def get_modified_smoothing_lengths(
     modifysmoothinglength: str,
     cellwidth: float | None = None,
 ) -> npt.NDArray[np.float64]:
-    """Return the smoothing length of each particle after the option of --modifysmoothinglength.
+    """Return the smoothing length of each particle after the rule of --modifysmoothinglength.
 
-    The options are:
+    The rules are:
 
-    - option1: a minimum of 1.5 cell widths, thus no particle is lost;
-    - option2: a minimum of 0.25 times the radius of the particle;
-    - option3: a minimum of 0.4 times the radius, beyond 1.5 times the mean radius;
-    - option4 (default): a minimum of 1.5 times the mean length, beyond the mean radius;
-    - option5: a minimum of 0.75 cell widths and a maximum of 2500, beyond the mean radius;
-    - option6: a minimum of 0.75 cell widths, beyond the mean radius.
+    - none: no change;
+    - min-1.5-cellwidths: a minimum of 1.5 cell widths, thus no particle is lost;
+    - min-0.25-radius: a minimum of 0.25 times the radius of the particle;
+    - min-0.4-radius-beyond-1.5-rmean: a minimum of 0.4 times the radius, beyond 1.5 times the mean radius;
+    - min-1.5-hmean-beyond-rmean (default): a minimum of 1.5 times the mean length, beyond the mean radius;
+    - 0.75-cellwidths-to-2500-beyond-rmean: a minimum of 0.75 cell widths and a maximum of 2500, beyond the mean
+      radius;
+    - min-0.75-cellwidths-beyond-rmean: a minimum of 0.75 cell widths, beyond the mean radius.
 
-    cellwidth is the width of a Cartesian cell. A spherical map gives no cell width, thus it stops for option1,
-    option5, and option6.
+    cellwidth is the width of a Cartesian cell. A spherical map gives no cell width, thus it stops for each rule
+    in CELL_WIDTH_RULES. The function also accepts the older names of the rules, e.g. option4.
     """
-    if modifysmoothinglength == "False":
+    rule = get_smoothing_length_rule(modifysmoothinglength)
+    if rule == "none":
         return h
-    if modifysmoothinglength == "option2":
+    if rule == "min-0.25-radius":
         return np.maximum(h, 0.25 * dis)
-    if modifysmoothinglength == "option3":
+    if rule == "min-0.4-radius-beyond-1.5-rmean":
         return np.where(dis > 1.5 * rmean, np.maximum(h, 0.4 * dis), h)
-    if modifysmoothinglength == "option4":
+    if rule == "min-1.5-hmean-beyond-rmean":
         return np.where(dis > rmean, np.maximum(h, 1.5 * hmean), h)
-    if cellwidth is not None and modifysmoothinglength == "option1":
+    if cellwidth is not None and rule == "min-1.5-cellwidths":
         return np.maximum(h, 1.5 * cellwidth)
-    if cellwidth is not None and modifysmoothinglength == "option5":
+    if cellwidth is not None and rule == "0.75-cellwidths-to-2500-beyond-rmean":
         return np.where(dis > rmean, np.minimum(np.maximum(h, 0.75 * cellwidth), 2500), h)
-    if cellwidth is not None and modifysmoothinglength == "option6":
+    if cellwidth is not None and rule == "min-0.75-cellwidths-beyond-rmean":
         return np.where(dis > rmean, np.maximum(h, 0.75 * cellwidth), h)
     msg = (
-        f"--modifysmoothinglength {modifysmoothinglength} sets the smoothing length from the width of a Cartesian"
-        " cell. For --coordinates spherical3d, give False, option2, option3, or option4"
+        f"--modifysmoothinglength {rule} sets the smoothing length from the width of a Cartesian cell. For"
+        f" --coordinates spherical3d, give {get_spherical_smoothing_rules_text()}"
     )
     raise ValueError(msg)
+
+
+def get_spherical_smoothing_rules_text() -> str:
+    """Return the rules of --modifysmoothinglength that a spherical map can apply, as a list for a message."""
+    rules = [rule for rule in SMOOTHING_LENGTH_RULE_ALIASES.values() if rule not in CELL_WIDTH_RULES]
+    return f"{', '.join(rules[:-1])}, or {rules[-1]}"
+
+
+def get_cell_width_lines(coordinates: str, ncoordgrid: Sequence[int], outersize: float, unit: str) -> list[str]:
+    """Return the lines of the log that give the cell widths of a grid, and a Cartesian grid for comparison.
+
+    outersize is the half width of a Cartesian grid and the outer radius of a spherical grid. A cylindrical grid
+    goes from 0 to outersize in rcyl and from -outersize to outersize in z. An angular width is the arc at the
+    outer radius.
+    """
+
+    def get_width_text(width: float) -> str:
+        return f"{width:.3g} {unit}"
+
+    ncartesian = NCOORDGRID_DEFAULTS["cartesian3d"][0]
+    comparisonline = (
+        f"For comparison, a cartesian3d grid of {ncartesian}^3 cells with the same outer size has the cell width"
+        f" {get_width_text(2.0 * outersize / ncartesian)}"
+    )
+    if coordinates == "cartesian3d":
+        widths = ", ".join(
+            f"{get_width_text(2.0 * outersize / count)} in {axis}"
+            for axis, count in zip("xyz", ncoordgrid, strict=True)
+        )
+        return [f"Cell widths: {widths}. Each axis goes from -{outersize:.4g} to {outersize:.4g} {unit}"]
+    if coordinates == "cylindrical2d":
+        ngrid_rcyl, ngrid_z = ncoordgrid
+        widthline = (
+            f"Cell widths: {get_width_text(outersize / ngrid_rcyl)} in rcyl from 0 to {outersize:.4g} {unit}, and"
+            f" {get_width_text(2.0 * outersize / ngrid_z)} in z from -{outersize:.4g} to {outersize:.4g} {unit}"
+        )
+        return [widthline, comparisonline]
+    ngrid_r, ngrid_costheta, ngrid_phi = (*ncoordgrid, 1)[:3]
+    _, costheta_edges, _ = get_spherical_grid_edges(outersize, ngrid_r, ngrid_costheta, ngrid_phi)
+    thetawidths = np.abs(np.diff(np.arccos(costheta_edges)))
+    thetaline = (
+        f"Width in theta at the outer radius: {get_width_text(outersize * thetawidths.min())}"
+        f" ({math.degrees(thetawidths.min()):.3g} degrees) at the equator, and"
+        f" {get_width_text(outersize * thetawidths.max())} ({math.degrees(thetawidths.max()):.3g} degrees) at a pole"
+    )
+    lines = [f"Cell widths: {get_width_text(outersize / ngrid_r)} in r from 0 to {outersize:.4g} {unit}", thetaline]
+    if coordinates == "spherical3d":
+        phiwidth = 2.0 * math.pi / ngrid_phi
+        # the mid-point of a cell is the mean of its edges in cos(theta)
+        sintheta_polarcell = math.sqrt(1.0 - ((costheta_edges[-1] + costheta_edges[-2]) / 2.0) ** 2)
+        lines.append(
+            f"Width in phi at the outer radius: {get_width_text(outersize * phiwidth)}"
+            f" ({math.degrees(phiwidth):.3g} degrees) at the equator, and"
+            f" {get_width_text(outersize * sintheta_polarcell * phiwidth)} at the mid-point of a polar cell"
+        )
+    lines.append(comparisonline)
+    return lines
 
 
 def get_spherical_grid_edges(
@@ -519,7 +604,7 @@ def maptogrid(
     downsamplefactor: int = 1,
     dtextra_seconds: float = 0.5,
     setgrid_fractionrmax: float = 0.5,
-    modifysmoothinglength: str = "option4",
+    modifysmoothinglength: str = "min-1.5-hmean-beyond-rmean",
     samplelowercorner: bool = False,
     coordinates: str = "cartesian3d",
     normalisekernelweights: bool = False,
@@ -637,6 +722,10 @@ def maptogrid(
         f"setgrid_fractionrmax={setgrid_fractionrmax}: gridmax is set to {setgrid_fractionrmax}*rmax"
         " of the SPH particles"
     )
+    outersize_km = setgrid_fractionrmax * rmax * geometric_length_to_km
+    for line in get_cell_width_lines(coordinates, ncoordgrid, outersize_km, "km"):
+        logprint(line)
+    modifysmoothinglength = get_smoothing_length_rule(modifysmoothinglength)
     if coordinates == "spherical3d":
         ngrid_r, ngrid_costheta, ngrid_phi = ncoordgrid
         logprint(f"Modifysmoothinglength: {modifysmoothinglength}")
@@ -900,18 +989,13 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "-modifysmoothinglength",
-        default="option4",
-        choices=[
-            "option1",
-            "option2",
-            "option3",
-            "option4",
-            "option5",
-            "option6",
-            "False",
-        ],  # We should choose if the default should be false and how we want to name these
-        help="Option to modify smoothing length h. Choose from options. "
-        "Default modifies h. Set to False for no modifications to h",
+        type=get_smoothing_length_rule,
+        default="min-1.5-hmean-beyond-rmean",
+        choices=list(SMOOTHING_LENGTH_RULE_ALIASES.values()),
+        help="The rule that changes the smoothing length h of each particle before the map. min-X gives a minimum of"
+        " X, and X-to-Y gives a range. beyond-rmean applies the rule only to a particle beyond the mean radius rmean."
+        " hmean is the mean smoothing length, and cellwidths are widths of a Cartesian cell. A rule with cellwidths"
+        " needs --coordinates cartesian3d. none keeps each h",
     )
 
     parser.add_argument(
@@ -939,11 +1023,11 @@ def get_map_ncoordgrid(args: argparse.Namespace) -> tuple[int, ...]:
                 "--sample-cell-lower-corner applies to a Cartesian grid only",
                 "Remove --sample-cell-lower-corner, or give --coordinates cartesian3d",
             )
-        if args.modifysmoothinglength in {"option1", "option5", "option6"}:
+        if get_smoothing_length_rule(args.modifysmoothinglength) in CELL_WIDTH_RULES:
             exit_with_error(
                 f"--modifysmoothinglength {args.modifysmoothinglength} sets the smoothing length from the width of a"
                 " Cartesian cell",
-                "For --coordinates spherical3d, give False, option2, option3, or option4",
+                f"For --coordinates spherical3d, give {get_spherical_smoothing_rules_text()}",
             )
         return ncoordgrid
     if args.normalise_kernel_weights:
@@ -978,4 +1062,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         samplelowercorner=args.sample_cell_lower_corner,
         coordinates=args.coordinates,
         normalisekernelweights=args.normalise_kernel_weights,
+    )
+    print(
+        "Next step: artistools inputmodel makeartismodelfromparticlegridmap"
+        f" -i {shlex.quote(str(args.outputfile))} --dimensions 3 --trajroot TRAJECTORYFOLDER"
+    )
+    print(
+        f"For a {'cylindrical2d' if args.coordinates == 'cartesian3d' else 'spherical2d'} model, give --dimensions 2."
+        " --trajroot names the folder of the particle trajectories, which give the abundances"
     )
