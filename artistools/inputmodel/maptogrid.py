@@ -90,21 +90,13 @@ NCOORDGRID_AXES: t.Final[dict[str, tuple[str, ...]]] = {
     "spherical2d": ("r", "costheta"),
     "spherical3d": ("r", "costheta", "phi"),
 }
-# the older values of --coordinates, before it took the coordinate names of model.txt
-COORDINATES_ALIASES: t.Final[dict[str, str]] = {"cartesian": "cartesian3d", "cylindrical": "cylindrical2d"}
 
 
-def get_coordinates_from_alias(value: str) -> str:
-    """Return the model.txt name of a value of --coordinates, e.g. cartesian3d for the older value cartesian."""
-    return COORDINATES_ALIASES.get(value, value)
-
-
-def get_map_coordinates(value: str) -> str:
-    """Return the coordinates of a map for a value of --coordinates, and stop for the coordinates of a 2D model.
+def get_map_coordinates(coordinates: str) -> str:
+    """Return the value of --coordinates for a map, and stop for the coordinates of a 2D model.
 
     maptogrid maps the particles in 3D, and makeartismodelfromparticlegridmap --dimensions 2 makes the 2D model.
     """
-    coordinates = get_coordinates_from_alias(value)
     if coordinates in {"cylindrical2d", "spherical2d"}:
         mapcoordinates = "cartesian3d" if coordinates == "cylindrical2d" else "spherical3d"
         msg = (
@@ -155,7 +147,8 @@ def get_ncoordgrid(coordinates: str, counts: Sequence[int] | int | None) -> tupl
         counts = [counts[0]] * naxes
     if len(counts) != naxes:
         exit_with_error(
-            f"--ncoordgrid has {len(counts)} values, but --coordinates {coordinates} has {naxes} axes",
+            f"--ncoordgrid has {len(counts)} {'value' if len(counts) == 1 else 'values'}, but --coordinates"
+            f" {coordinates} has {naxes} axes",
             f"Give --ncoordgrid {get_axis_counts_text(coordinates)}",
         )
     if min(counts) < 1:

@@ -33,11 +33,9 @@ from artistools.inputmodel.core import scan_initelemabundances
 from artistools.inputmodel.core import scan_modeldata
 from artistools.inputmodel.core import with_cell_ids_from_zero
 from artistools.inputmodel.maptogrid import addarg_ncoordgrid
-from artistools.inputmodel.maptogrid import get_coordinates_from_alias
 from artistools.inputmodel.maptogrid import get_ncoordgrid
 from artistools.inputmodel.maptogrid import get_spherical_cell_volumes
 from artistools.inputmodel.maptogrid import get_spherical_grid_edges
-from artistools.inputmodel.maptogrid import NCOORDGRID_AXES
 from artistools.inputmodel.maptogrid import NCOORDGRID_DEFAULTS
 from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
 from artistools.misc import addarg_force
@@ -1355,19 +1353,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument(
         "--coordinates",
-        type=get_coordinates_from_alias,
-        default=None,
+        default="cylindrical2d",
         choices=list(NCOORDGRID_DEFAULTS),
         help="The coordinates of the grid, with the names of model.txt. spherical2d gives cells in the radius r and in"
         " cos(theta) of the polar angle theta from the +z axis. spherical3d also gives cells in the azimuthal angle"
         " phi. A spherical grid is uniform in r to vmax, in cos(theta), and in phi. The map of a spherical grid uses"
-        " the deposit method of the cylindrical grid (2D) or of the Cartesian grid (3D). (default: cylindrical2d)",
+        " the deposit method of the cylindrical grid (2D) or of the Cartesian grid (3D)",
     )
     addarg_ncoordgrid(parser, list(NCOORDGRID_DEFAULTS))
-    # the older spellings of --coordinates cartesian3d and of the counts of --ncoordgrid
-    parser.add_argument("--mapto3D", action="store_true", help=argparse.SUPPRESS)
-    for axis in ("rcyl", "x", "y", "z"):
-        parser.add_argument(f"-ngrid{axis}", type=int, default=None, help=argparse.SUPPRESS)
 
     parser.add_argument("--nonutrapping", action="store_true", help="Exclude neutrino energy from the snapshot energy")
 
@@ -1470,38 +1463,10 @@ def get_output_file_names(args: argparse.Namespace) -> tuple[str, ...]:
 
 
 def resolve_grid_arguments(args: argparse.Namespace) -> None:
-    """Set args.coordinates and args.ncoordgrid from the grid arguments, and stop at arguments that do not agree.
+    """Set args.ncoordgrid to the cell counts of --coordinates, and stop at counts that do not agree.
 
-    --mapto3D, -ngridrcyl, -ngridx, -ngridy, and -ngridz are the older spellings. --mapto3D selects cartesian3d, and
-    each older count replaces the default count of its axis. A Cartesian model that stays 3D needs equal counts,
-    because the model writer needs a cubic grid.
+    A Cartesian model that stays 3D needs equal counts, because the model writer needs a cubic grid.
     """
-    if args.coordinates is None:
-        args.coordinates = "cartesian3d" if args.mapto3D else "cylindrical2d"
-    elif args.mapto3D and args.coordinates != "cartesian3d":
-        exit_with_error(
-            f"--mapto3D is the older spelling of --coordinates cartesian3d, and --coordinates is {args.coordinates}",
-            "Remove --mapto3D",
-        )
-    axes = NCOORDGRID_AXES[args.coordinates]
-    oldercounts = {axis: getattr(args, f"ngrid{axis}") for axis in ("rcyl", "x", "y", "z")}
-    givenflags = [f"-ngrid{axis}" for axis, count in oldercounts.items() if count is not None]
-    if givenflags and (args.ncoordgrid is not None or args.coordinates.startswith("spherical")):
-        exit_with_error(
-            f"{', '.join(givenflags)} {'is an older spelling' if len(givenflags) == 1 else 'are older spellings'} of"
-            f" --ncoordgrid for a cylindrical2d grid or a cartesian3d grid",
-            f"Give --ncoordgrid {' '.join(f'n_{axis}' for axis in axes)} alone",
-        )
-    if givenflags:
-        ignoredflags = [
-            f"-ngrid{axis}" for axis, count in oldercounts.items() if count is not None and axis not in axes
-        ]
-        if ignoredflags:
-            print_warning(f"--coordinates {args.coordinates} has no axis for {', '.join(ignoredflags)}. Skip.")
-        args.ncoordgrid = [
-            default if oldercounts[axis] is None else oldercounts[axis]
-            for axis, default in zip(axes, NCOORDGRID_DEFAULTS[args.coordinates], strict=True)
-        ]
     args.ncoordgrid = get_ncoordgrid(args.coordinates, args.ncoordgrid)
     if args.coordinates == "cartesian3d" and args.dimensions is None and len(set(args.ncoordgrid)) > 1:
         msg = (

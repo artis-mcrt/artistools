@@ -1826,42 +1826,6 @@ def test_from_e2e_model_2d_equatorial_symmetry_contributions_name_the_cells_with
     assert set(dfcontribs["cellindex"].to_list()) == cellswithmass
 
 
-@pytest.mark.parametrize(
-    ("gridargs", "expected"),
-    [
-        (["-ngridz", "8"], ("cylindrical2d", (25, 8))),
-        (["--mapto3D", "-ngridx", "4", "-ngridy", "4", "-ngridz", "4"], ("cartesian3d", (4, 4, 4))),
-        (["--coordinates", "cylindrical"], ("cylindrical2d", (25, 50))),
-        (["--coordinates", "spherical3d"], ("spherical3d", (50, 35, 70))),
-        (["--coordinates", "cartesian3d", "-ncoordgrid", "6"], ("cartesian3d", (6, 6, 6))),
-        (["-ncoordgrid", "8"], None),
-        (["-ngridrcyl", "4", "-ncoordgrid", "4", "8"], None),
-        (["--coordinates", "spherical2d", "-ngridz", "8"], None),
-        (["--mapto3D", "--coordinates", "spherical3d"], None),
-    ],
-)
-def test_from_e2e_model_resolves_the_older_grid_flags(
-    gridargs: list[str], expected: tuple[str, tuple[int, ...]] | None
-) -> None:
-    """The older flags --mapto3D and -ngridrcyl/x/y/z set --coordinates and the counts of their axes.
-
-    Each older count replaces the default count of its axis. A wrong number of counts, a mix of the older and the new
-    flags, and an older count for a spherical grid stop the command.
-    """
-    from artistools.inputmodel.from_e2e_model import addargs
-    from artistools.inputmodel.from_e2e_model import resolve_grid_arguments
-
-    parser = argparse.ArgumentParser()
-    addargs(parser)
-    args = parser.parse_args(["-npz", "model.npz", *gridargs])
-    if expected is None:
-        with pytest.raises(SystemExit):
-            resolve_grid_arguments(args)
-        return
-    resolve_grid_arguments(args)
-    assert (args.coordinates, args.ncoordgrid) == expected
-
-
 def test_from_e2e_model_3d_grid_takes_the_arguments(tmp_path: Path) -> None:
     """The 3D grid of the map comes from -vmax_on_c and --ncoordgrid.
 
