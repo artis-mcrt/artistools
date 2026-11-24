@@ -7,8 +7,10 @@ import math
 import shlex
 import typing as t
 from collections.abc import Callable
+from collections.abc import Mapping
 from collections.abc import Sequence
 from pathlib import Path
+from types import MappingProxyType
 
 import numpy as np
 import numpy.typing as npt
@@ -80,18 +82,18 @@ def kernelvals2(
 
 # the default cell counts of each coordinate system, in the order of the axes of model.txt. spherical3d has 122 500
 # cells, approximately the 125 000 cells of cartesian3d, and its 50 cells in r equal the count on one Cartesian axis
-NCOORDGRID_DEFAULTS: t.Final[dict[str, tuple[int, ...]]] = {
+NCOORDGRID_DEFAULTS: t.Final[Mapping[str, tuple[int, ...]]] = MappingProxyType({
     "cartesian3d": (50, 50, 50),
     "cylindrical2d": (25, 50),
     "spherical2d": (50, 35),
     "spherical3d": (50, 35, 70),
-}
-NCOORDGRID_AXES: t.Final[dict[str, tuple[str, ...]]] = {
+})
+NCOORDGRID_AXES: t.Final[Mapping[str, tuple[str, ...]]] = MappingProxyType({
     "cartesian3d": ("x", "y", "z"),
     "cylindrical2d": ("rcyl", "z"),
     "spherical2d": ("r", "costheta"),
     "spherical3d": ("r", "costheta", "phi"),
-}
+})
 
 
 def get_map_coordinates(coordinates: str) -> str:
@@ -122,6 +124,7 @@ def addarg_ncoordgrid(parser: argparse.ArgumentParser, coordinateschoices: Seque
         for coordinates in coordinateschoices
     )
     parser.add_argument(
+        "--ncoordgrid",
         "-ncoordgrid",
         type=int,
         nargs="+",
@@ -133,17 +136,16 @@ def addarg_ncoordgrid(parser: argparse.ArgumentParser, coordinateschoices: Seque
     )
 
 
-def get_ncoordgrid(coordinates: str, counts: Sequence[int] | int | None) -> tuple[int, ...]:
+def get_ncoordgrid(coordinates: str, counts: Sequence[int] | None) -> tuple[int, ...]:
     """Return the number of cells on each axis of the coordinates for the values of --ncoordgrid.
 
     With no values, the function returns the default counts. One value N gives N cells on each axis of a Cartesian
-    grid. A script can give one value as an int, e.g. main(ncoordgrid=50), as it did before --ncoordgrid took more
-    than one value.
+    grid.
     """
+    if coordinates not in NCOORDGRID_DEFAULTS:
+        exit_with_error(f"Unknown coordinates {coordinates!r}", f"Give --coordinates {', '.join(NCOORDGRID_DEFAULTS)}")
     if counts is None:
         return NCOORDGRID_DEFAULTS[coordinates]
-    if isinstance(counts, int):
-        counts = [counts]
     naxes = len(NCOORDGRID_AXES[coordinates])
     if coordinates == "cartesian3d" and len(counts) == 1:
         counts = [counts[0]] * naxes
@@ -159,7 +161,7 @@ def get_ncoordgrid(coordinates: str, counts: Sequence[int] | int | None) -> tupl
 
 
 # the rules of --modifysmoothinglength, with the older name of each rule as the key
-SMOOTHING_LENGTH_RULE_ALIASES: t.Final[dict[str, str]] = {
+SMOOTHING_LENGTH_RULE_ALIASES: t.Final[Mapping[str, str]] = MappingProxyType({
     "False": "none",
     "option1": "min-1.5-cellwidths",
     "option2": "min-0.25-radius",
@@ -167,7 +169,7 @@ SMOOTHING_LENGTH_RULE_ALIASES: t.Final[dict[str, str]] = {
     "option4": "min-1.5-hmean-beyond-rmean",
     "option5": "0.75-cellwidths-to-2500-beyond-rmean",
     "option6": "min-0.75-cellwidths-beyond-rmean",
-}
+})
 # a spherical map has no cell width, thus it cannot apply these rules
 CELL_WIDTH_RULES: t.Final = frozenset({
     "min-1.5-cellwidths",
@@ -600,7 +602,7 @@ def map_particles_to_spherical_grid(
 def maptogrid(
     ejectasnapshotpath: Path,
     outputfolderpath: Path | str,
-    ncoordgrid: tuple[int, ...] = NCOORDGRID_DEFAULTS["cartesian3d"],
+    ncoordgrid: tuple[int, ...] | None = None,
     downsamplefactor: int = 1,
     dtextra_seconds: float = 0.5,
     setgrid_fractionrmax: float = 0.5,
@@ -613,10 +615,10 @@ def maptogrid(
 
     The grid file is grid.dat for a Cartesian grid and grid_spherical.dat for a spherical grid.
 
-    ncoordgrid gives the number of cells on each axis of the coordinates. The coordinates cartesian3d need the
-    same even count on each axis. The coordinates spherical3d give a grid of r, cos(theta), and phi, and
-    map_particles_to_spherical_grid makes it. Both maps use the same deposit method, unless normalisekernelweights
-    selects the normalised weights for a spherical map.
+    ncoordgrid gives the number of cells on each axis of the coordinates, and None gives the default counts of the
+    coordinates. The coordinates cartesian3d need the same even count on each axis. The coordinates spherical3d give
+    a grid of r, cos(theta), and phi, and map_particles_to_spherical_grid makes it. Both maps use the same deposit
+    method, unless normalisekernelweights selects the normalised weights for a spherical map.
 
     samplelowercorner evaluates the kernel at the lower corner of each cell, as artistools did before. Use it only
     to make a grid.dat again that an older version of artistools wrote.
@@ -634,6 +636,8 @@ def maptogrid(
 
     wij = get_wij()
 
+    if ncoordgrid is None:
+        ncoordgrid = NCOORDGRID_DEFAULTS[coordinates]
     if coordinates == "cartesian3d":
         assert len(set(ncoordgrid)) == 1
         assert ncoordgrid[0] % 2 == 0
@@ -994,8 +998,9 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         choices=list(SMOOTHING_LENGTH_RULE_ALIASES.values()),
         help="The rule that changes the smoothing length h of each particle before the map. min-X gives a minimum of"
         " X, and X-to-Y gives a range. beyond-rmean applies the rule only to a particle beyond the mean radius rmean."
-        " hmean is the mean smoothing length, and cellwidths are widths of a Cartesian cell. A rule with cellwidths"
-        " needs --coordinates cartesian3d. none keeps each h",
+        " hmean is the mean smoothing length, and cellwidths are widths of a Cartesian cell. The limit 2500 is in the"
+        f" geometric length unit of the SPH code ({geometric_length_to_km} km). A rule with cellwidths needs"
+        " --coordinates cartesian3d. none keeps each h",
     )
 
     parser.add_argument(

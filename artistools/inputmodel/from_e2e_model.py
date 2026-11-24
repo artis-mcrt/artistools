@@ -271,6 +271,11 @@ def get_grid(
     elif model_dim == 2:
         # ... cylindrical coordinates of the grid onto which we want to map
         nvr = grid_dims[0]
+        if grid_dims[1] % eqsymfac:
+            msg = (
+                f"The tracers have equatorial symmetry, thus n_z of --ncoordgrid must be even, but it is {grid_dims[1]}"
+            )
+            raise ValueError(msg)
         # equatorial symmetry maps the particles onto the upper half of the z range only
         nvz = grid_dims[1] // eqsymfac
 
