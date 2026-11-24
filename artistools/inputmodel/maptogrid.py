@@ -143,7 +143,10 @@ def get_ncoordgrid(coordinates: str, counts: Sequence[int] | None) -> tuple[int,
     grid.
     """
     if coordinates not in NCOORDGRID_DEFAULTS:
-        exit_with_error(f"Unknown coordinates {coordinates!r}", f"Give --coordinates {', '.join(NCOORDGRID_DEFAULTS)}")
+        *othernames, lastname = NCOORDGRID_DEFAULTS
+        exit_with_error(
+            f"Unknown coordinates {coordinates!r}", f"Give --coordinates {', '.join(othernames)}, or {lastname}"
+        )
     if counts is None:
         return NCOORDGRID_DEFAULTS[coordinates]
     naxes = len(NCOORDGRID_AXES[coordinates])
