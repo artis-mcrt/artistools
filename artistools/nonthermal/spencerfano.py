@@ -297,6 +297,12 @@ class ArtisCellData(t.NamedTuple):
     maxnlevelsupper: int
     """The value of NTEXCITATION_MAXNLEVELS_UPPER. An excitation has an upper level below this number."""
 
+    use_km1993_auger: bool
+    """True if ARTIS adds the Auger electrons of an inner-shell ionisation to the source term (KM93 data)."""
+
+    max_auger_electrons: int
+    """The value of NT_MAX_AUGER_ELECTRONS, which is the largest number of Auger electrons of one ionisation."""
+
 
 class PlasmaConditions(t.NamedTuple):
     """The conditions of one Spencer-Fano solution."""
@@ -452,13 +458,50 @@ def get_artis_cell_data(
         f" ({maxnlevelssource})"
     )
 
+    use_km1993_auger, max_auger_electrons = get_artis_auger_treatment(artisoptions)
     return ArtisCellData(
         topionstages=topionstages,
         dfnltepops=dfnltepops,
         T_exc=T_exc,
         maxnlevelslower=maxnlevelslower,
         maxnlevelsupper=maxnlevelsupper,
+        use_km1993_auger=use_km1993_auger,
+        max_auger_electrons=max_auger_electrons,
     )
+
+
+def get_artis_auger_treatment(artisoptions: Mapping[str, str]) -> tuple[bool, int]:
+    """Return use_km1993_auger and max_auger_electrons of SpencerFanoSolver that agree with artisoptions.h.
+
+    ARTIS reads the Auger data only if NT_MAX_AUGER_ELECTRONS is above zero (nonthermal.cc). The data are table 2 of
+    Kaastra & Mewe (1993, A&AS, 97, 443-482, ADS 1993A&AS...97..443K).
+    It adds the Auger electrons to the source term only if SF_AUGER_CONTRIBUTION_ON is also true. Without that source,
+    the ionisation keeps the full shell potential, which is the result of the solver without the Auger data.
+    """
+    maxaugeroption = artisoptions.get("NT_MAX_AUGER_ELECTRONS")
+    contributionoption = artisoptions.get("SF_AUGER_CONTRIBUTION_ON")
+    # an older artisoptions.h has no such option, thus the value is the ARTIS default
+    max_auger_electrons = int(maxaugeroption or "2")
+    use_km1993_auger = max_auger_electrons > 0 and contributionoption != "false"
+    optionsource = (
+        "artisoptions.h"
+        if None not in {maxaugeroption, contributionoption}
+        else "the ARTIS defaults for an option that artisoptions.h does not define"
+    )
+    print(
+        f"  NT_MAX_AUGER_ELECTRONS is {max_auger_electrons} and SF_AUGER_CONTRIBUTION_ON is"
+        f" {contributionoption or 'true'} ({optionsource})"
+    )
+    if use_km1993_auger:
+        print(
+            "  An ionisation of an inner subshell adds one electron with the mean Auger energy to the source term, as"
+            " in ARTIS (Shingles et al. 2020, MNRAS, 492, 2029-2043, doi:10.1093/mnras/stz3412). The Auger data are"
+            " table 2 of Kaastra & Mewe (1993, A&AS, 97, 443-482, ADS 1993A&AS...97..443K). ARTIS versions before"
+            " artis-mcrt/artis#813 give the Auger electron the energy of the next grid point above it"
+        )
+    else:
+        print("  The solver adds no Auger electrons, because ARTIS with these options adds none")
+    return use_km1993_auger, max_auger_electrons
 
 
 def get_element_conditions(args: argparse.Namespace, step: int, stepcount: int) -> PlasmaConditions:
@@ -728,7 +771,17 @@ def solve_step(
         key for key in ionpopdict if isinstance(key, tuple) and ionpopdict[key] / conditions.nntot >= ionfractionlimit
     )
 
-    with pynt.SpencerFanoSolver(emin_ev=emin, emax_ev=emax, npts=npts, verbose=True, use_ar1985=args.ar1985) as sf:
+    # an element composition has no ARTIS options, thus it has no Auger electrons, which is the default of the solver
+    artiscell = conditions.artiscell
+    with pynt.SpencerFanoSolver(
+        emin_ev=emin,
+        emax_ev=emax,
+        npts=npts,
+        verbose=True,
+        use_ar1985=args.ar1985,
+        use_km1993_auger=artiscell is not None and artiscell.use_km1993_auger,
+        max_auger_electrons=artiscell.max_auger_electrons if artiscell is not None else 0,
+    ) as sf:
         ionisedions = add_ions_to_solver(sf, args, modelpath, conditions, ions)
 
         # the solver otherwise sums n_e from the charges of the ions that it holds, which leaves out a skipped ion

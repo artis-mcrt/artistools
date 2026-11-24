@@ -207,6 +207,22 @@ def test_spencerfano_skips_a_bare_nucleus(tmp_path: Path) -> None:
     assert dfstats["frac_ionization_HeII"].item() > 0.0
 
 
+@pytest.mark.parametrize(
+    ("artisoptions", "expected"),
+    [
+        ({}, (True, 2)),
+        ({"NT_MAX_AUGER_ELECTRONS": "3", "SF_AUGER_CONTRIBUTION_ON": "true"}, (True, 3)),
+        ({"NT_MAX_AUGER_ELECTRONS": "0", "SF_AUGER_CONTRIBUTION_ON": "true"}, (False, 0)),
+        ({"NT_MAX_AUGER_ELECTRONS": "2", "SF_AUGER_CONTRIBUTION_ON": "false"}, (False, 2)),
+    ],
+)
+def test_auger_treatment_follows_artisoptions(artisoptions: dict[str, str], expected: tuple[bool, int]) -> None:
+    """Give the solver the Auger electrons only if ARTIS reads the Auger data and adds them to the source term."""
+    from artistools.nonthermal.spencerfano import get_artis_auger_treatment
+
+    assert get_artis_auger_treatment(artisoptions) == expected
+
+
 def test_ntlepton_deposition_rate_density_follows_artis() -> None:
     """ARTIS normalises the solution with the deposition of the gamma rays, the positrons, and the electrons.
 
