@@ -80,13 +80,14 @@ def kernelvals2(
     return (wijlow + dwdx * dxx) * hmean31
 
 
-# the default cell counts of each coordinate system, in the order of the axes of model.txt. spherical3d has 122 500
-# cells, approximately the 125 000 cells of cartesian3d, and its 50 cells in r equal the count on one Cartesian axis
+# the default cell counts of each coordinate system, in the order of the axes of model.txt. A spherical grid has the
+# spatial scale of the 50^3 Cartesian grid of half width R, dx = 2R/50: dr = dx, and r dtheta and r dphi are
+# approximately dx at the equator at r = 0.8R, which divides the volume of the sphere into halves
 NCOORDGRID_DEFAULTS: t.Final[Mapping[str, tuple[int, ...]]] = MappingProxyType({
     "cartesian3d": (50, 50, 50),
     "cylindrical2d": (25, 50),
-    "spherical2d": (50, 35),
-    "spherical3d": (50, 35, 70),
+    "spherical2d": (25, 40),
+    "spherical3d": (25, 40, 128),
 })
 NCOORDGRID_AXES: t.Final[Mapping[str, tuple[str, ...]]] = MappingProxyType({
     "cartesian3d": ("x", "y", "z"),
@@ -132,7 +133,8 @@ def addarg_ncoordgrid(parser: argparse.ArgumentParser, coordinateschoices: Seque
         metavar="COUNT",
         help="The number of cells on each axis of the grid, in the order of the axes of model.txt."
         + (" One value N gives N^3 cells for cartesian3d." if "cartesian3d" in coordinateschoices else "")
-        + f" The orders are {orders}",
+        + f" The orders are {orders}. The default spherical cells have the width of a default Cartesian cell in r,"
+        " and in theta and phi at the equator at 0.8 times the outer radius",
     )
 
 
