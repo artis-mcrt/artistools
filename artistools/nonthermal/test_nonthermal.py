@@ -83,6 +83,8 @@ def test_spencerfano_excitation(tmp_path: Path) -> None:
 
     gridkwargs = mockinit.call_args.kwargs
     assert (gridkwargs["emin_ev"], gridkwargs["emax_ev"], gridkwargs["npts"]) == pytest.approx((1.0, 999.512, 200))
+    # the test model has no artisoptions.h, thus the solver takes the Auger treatment of the ARTIS defaults
+    assert (gridkwargs["use_km1993_auger"], gridkwargs["max_auger_electrons"]) == (True, 2)
     assert {call.args[1:3] for call in mockionisation.call_args_list} == {
         (26, 1),
         (26, 2),
@@ -205,6 +207,22 @@ def test_spencerfano_skips_a_bare_nucleus(tmp_path: Path) -> None:
     dfstats = read_ntstats(ostatfile)
     assert dfstats["frac_ionization_HeIII"].item() == pytest.approx(0.0)
     assert dfstats["frac_ionization_HeII"].item() > 0.0
+
+
+@pytest.mark.parametrize(
+    ("artisoptions", "expected"),
+    [
+        ({}, (True, 2)),
+        ({"NT_MAX_AUGER_ELECTRONS": "3", "SF_AUGER_CONTRIBUTION_ON": "true"}, (True, 3)),
+        ({"NT_MAX_AUGER_ELECTRONS": "0", "SF_AUGER_CONTRIBUTION_ON": "true"}, (False, 0)),
+        ({"NT_MAX_AUGER_ELECTRONS": "2", "SF_AUGER_CONTRIBUTION_ON": "false"}, (False, 2)),
+    ],
+)
+def test_auger_treatment_follows_artisoptions(artisoptions: dict[str, str], expected: tuple[bool, int]) -> None:
+    """Give the solver the Auger electrons only if ARTIS reads the Auger data and adds them to the source term."""
+    from artistools.nonthermal.spencerfano import get_artis_auger_treatment
+
+    assert get_artis_auger_treatment(artisoptions) == expected
 
 
 def test_ntlepton_deposition_rate_density_follows_artis() -> None:
