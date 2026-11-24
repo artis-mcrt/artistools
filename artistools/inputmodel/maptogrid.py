@@ -76,8 +76,9 @@ def kernelvals2(
     return (wijlow + dwdx * dxx) * hmean31
 
 
-# the default cell counts n_r, n_theta, and n_phi of a spherical grid
-SPHERICAL_GRID_SHAPE_DEFAULT = (25, 16, 32)
+# the default cell counts n_r, n_theta, and n_phi of a spherical grid. The 122 500 cells are near the 50^3 cells of the
+# default Cartesian grid, and the 50 shells have the same count as the cells on one Cartesian axis
+SPHERICAL_GRID_SHAPE_DEFAULT = (50, 35, 70)
 
 
 def get_modified_smoothing_lengths(

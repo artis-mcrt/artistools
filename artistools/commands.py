@@ -347,8 +347,8 @@ subcommandtree: CommandTree = {
             examples=(
                 ("--npz model.npz -o artismodel", "an ARTIS model from the end-to-end model in model.npz"),
                 (
-                    "--npz model.npz --coordinates spherical --ngrid-r 25 --ngrid-theta 16 -o artismodel",
-                    "a 2D spherical model of 25 shells and 16 polar cells",
+                    "--npz model.npz --coordinates spherical --ngrid-r 50 --ngrid-theta 35 -o artismodel",
+                    "a 2D spherical model of 50 shells and 35 polar cells",
                 ),
             ),
             # the test data has no npz file of an end-to-end model
@@ -426,8 +426,8 @@ subcommandtree: CommandTree = {
             examples=(
                 ("-i . --ncoordgrid 50", "a grid of 50 cells on each axis from ejectasnapshot.dat"),
                 (
-                    "-i . --coordinates spherical --ngrid-r 25 --ngrid-theta 16 --ngrid-phi 32",
-                    "a spherical grid of 25 shells, 16 polar cells, and 32 azimuthal cells",
+                    "-i . --coordinates spherical --ngrid-r 50 --ngrid-theta 35 --ngrid-phi 70",
+                    "a spherical grid of 50 shells, 35 polar cells, and 70 azimuthal cells",
                 ),
             ),
             exampletestfolder="kilonova",
