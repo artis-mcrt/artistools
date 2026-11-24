@@ -137,7 +137,7 @@ def addarg_ncoordgrid(parser: argparse.ArgumentParser, coordinateschoices: Seque
         + (" One value N gives N^3 cells for cartesian3d." if "cartesian3d" in coordinateschoices else "")
         + f" The orders are {orders}. The default spherical cells have the width of a default Cartesian cell in r,"
         " and approximately in theta and phi at the equator at 0.8 times the outer radius. Each viewing-direction bin"
-        " of the spectra then holds a whole number of default cells",
+        " of the spectra then holds a whole number of default spherical cells",
     )
 
 
@@ -216,6 +216,12 @@ def get_modified_smoothing_lengths(
     in CELL_WIDTH_RULES. The function also accepts the older names of the rules, e.g. option4.
     """
     rule = get_smoothing_length_rule(modifysmoothinglength)
+    if rule not in SMOOTHING_LENGTH_RULE_ALIASES.values():
+        msg = (
+            f"Unknown --modifysmoothinglength {modifysmoothinglength!r}. The rules are"
+            f" {', '.join(SMOOTHING_LENGTH_RULE_ALIASES.values())}"
+        )
+        raise ValueError(msg)
     if rule == "none":
         return h
     if rule == "min-0.25-radius":
@@ -295,7 +301,7 @@ def get_cell_width_lines(coordinates: str, ncoordgrid: Sequence[int], outersize:
 
 
 def get_spherical_grid_edges(
-    r_outer: float, ngridr: int, ngridtheta: int, ngridphi: int
+    r_outer: float, ngridr: int, ngridcostheta: int, ngridphi: int
 ) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]:
     """Return the edges of the cells of a spherical grid in the radius, cos(theta), and the azimuthal angle.
 
@@ -311,7 +317,7 @@ def get_spherical_grid_edges(
     phi_edges = np.linspace(0.0, 2.0 * math.pi, ngridphi + 1)
     # the last value of linspace can differ from 2 pi in the last bit
     phi_edges[-1] = 2.0 * math.pi
-    return np.linspace(0.0, r_outer, ngridr + 1), np.linspace(-1.0, 1.0, ngridtheta + 1), phi_edges
+    return np.linspace(0.0, r_outer, ngridr + 1), np.linspace(-1.0, 1.0, ngridcostheta + 1), phi_edges
 
 
 def get_spherical_cell_volumes(
@@ -352,13 +358,13 @@ def get_spherical_deposit(
     grid to that radius, and it is inside the grid.
     """
     r_edges, costheta_edges, phi_edges = edges
-    ngridr, ngridtheta, ngridphi = (len(axisedges) - 1 for axisedges in edges)
+    ngridr, ngridcostheta, ngridphi = (len(axisedges) - 1 for axisedges in edges)
     r_mid, costheta_mid, phi_mid = ((axisedges[:-1] + axisedges[1:]) / 2.0 for axisedges in edges)
     sintheta_mid = np.sqrt(1.0 - costheta_mid**2)
     # a search of three copies of the azimuthal mid-points finds a range that goes through phi = 0
     phi_mid_periodic = np.concatenate((phi_mid - 2.0 * math.pi, phi_mid, phi_mid + 2.0 * math.pi))
     volumes = get_spherical_cell_volumes(r_edges, costheta_edges, phi_edges)
-    alltheta, allphi = np.arange(ngridtheta), np.arange(ngridphi)
+    alltheta, allphi = np.arange(ngridcostheta), np.arange(ngridphi)
 
     r_particle = np.sqrt(np.sum(position**2, axis=1))
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -413,7 +419,7 @@ def get_spherical_deposit(
         # A cell mid-point at the edge of the kernel has a weight of zero. Such a pair gives no mass, thus it is not a
         # tracer of the cell, and a cell with only such pairs would get 0 / 0 as the fraction of its mass
         hasweight = weights > 0.0
-        cellsofparticle = (cell_r + ngridr * (cell_theta + ngridtheta * cell_phi))[hasweight]
+        cellsofparticle = (cell_r + ngridr * (cell_theta + ngridcostheta * cell_phi))[hasweight]
         if not normalisekernelweights:
             paircells.append(cellsofparticle)
             pairmasses.append(mass[n] * weights[hasweight])
@@ -426,7 +432,9 @@ def get_spherical_deposit(
                 min(int(np.searchsorted(axisedges, value, side="right")) - 1, len(axisedges) - 2)
                 for axisedges, value in zip(edges, (r_p, math.cos(theta_p), phi_p), strict=True)
             )
-            paircells.append(np.array([index_r + ngridr * (index_costheta + ngridtheta * index_phi)], dtype=np.int64))
+            paircells.append(
+                np.array([index_r + ngridr * (index_costheta + ngridcostheta * index_phi)], dtype=np.int64)
+            )
             pairmasses.append(np.array([mass[n]]))
         pairparticles.append(np.full(paircells[-1].size, n, dtype=np.int64))
 
@@ -644,11 +652,17 @@ def maptogrid(
 
     wij = get_wij()
 
+    if coordinates not in {"cartesian3d", "spherical3d"}:
+        msg = f"maptogrid makes a cartesian3d or a spherical3d grid, but the coordinates are {coordinates!r}"
+        raise ValueError(msg)
     if ncoordgrid is None:
         ncoordgrid = NCOORDGRID_DEFAULTS[coordinates]
-    if coordinates == "cartesian3d":
-        assert len(set(ncoordgrid)) == 1
-        assert ncoordgrid[0] % 2 == 0
+    if len(ncoordgrid) != 3 or (coordinates == "cartesian3d" and (len(set(ncoordgrid)) > 1 or ncoordgrid[0] % 2)):
+        msg = (
+            f"The cell counts {ncoordgrid} do not suit {coordinates}. A grid needs three counts, and a cartesian3d grid"
+            " needs the same even count on each axis"
+        )
+        raise ValueError(msg)
 
     snapshot_columns_used = ["id", "h", "x", "y", "z", "vx", "vy", "vz", "pmass", "rho", "p", "rho_rst", "ye"]
 
