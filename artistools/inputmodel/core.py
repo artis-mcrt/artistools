@@ -37,7 +37,6 @@ from artistools.misc import folder_is_artis_model
 from artistools.misc import get_bin_index_expr
 from artistools.misc import get_cell_counts_of_edges
 from artistools.misc import get_cell_direction_range
-from artistools.misc import get_costheta_phi_exprs
 from artistools.misc import get_costhetabin_expr
 from artistools.misc import get_file_copies
 from artistools.misc import get_file_identity
@@ -45,6 +44,7 @@ from artistools.misc import get_model_coordinates
 from artistools.misc import get_model_folder
 from artistools.misc import get_model_format_version
 from artistools.misc import get_parquet_cache_name
+from artistools.misc import get_phi_expr
 from artistools.misc import get_phibin_expr
 from artistools.misc import has_mirror_plane
 from artistools.misc import is_remote_path
@@ -3417,21 +3417,20 @@ def get_cell_direction_selection(directionrange: CellDirectionRange, columns: Se
     vel_x = pl.col("vel_x_mid_on_c")
     vel_y = pl.col("vel_y_mid_on_c")
     vel_z = pl.col("vel_z_mid_on_c")
-    # add_packet_directions_lazypolars takes |v| of the three parts. vel_r_mid_on_c can differ in the last bit, and
-    # then a cell on the edge of a bin goes to a different bin
+    # a velocity is no unit vector, thus cos θ is v_z / |v| of the three parts. vel_r_mid_on_c can differ in the last
+    # bit, and then a cell on the edge of a bin goes to a different bin
     vel_r = (vel_x**2 + vel_y**2 + vel_z**2).sqrt() if is3d else pl.col("vel_r_mid_on_c")
-    costheta, phi = get_costheta_phi_exprs(vel_x, vel_y, vel_z)
     # the cell at the origin has no direction
     conditions = [vel_r > 0.0]
     if directionrange.costhetabin is not None:
         # the packet code casts cos θ and ϕ to Float32, thus this code does too
-        costheta = costheta if is3d else vel_z / vel_r
-        conditions.append(get_costhetabin_expr(costheta.cast(pl.Float32)) == directionrange.costhetabin)
+        conditions.append(get_costhetabin_expr((vel_z / vel_r).cast(pl.Float32)) == directionrange.costhetabin)
     if directionrange.phibin is not None:
         if not is3d:
             msg = "A ϕ bin needs the columns vel_x_mid_on_c and vel_y_mid_on_c. For a 2D model, give phibin=None"
             raise ValueError(msg)
-        conditions.append(get_phibin_expr(phi.cast(pl.Float32), vel_y) == directionrange.phibin)
+        phi = get_phi_expr(vel_x, vel_y, vel_z).cast(pl.Float32)
+        conditions.append(get_phibin_expr(phi, vel_y) == directionrange.phibin)
     return pl.all_horizontal(conditions).fill_null(value=False)
 
 

@@ -355,6 +355,7 @@ def test_packets_cache_scans_each_folder_once(tmp_path: Path, virtual: bool) -> 
     """Keep the number of directory scans independent of the number of ranks."""
     from artistools.packets.core import CACHEVERSION
     from artistools.packets.core import get_packets_rankbatch_parquetfile
+    from artistools.packets.core import VIRTUAL_CACHEVERSION
 
     sourcefolder = tmp_path / "run1"
     sourcefolder.mkdir()
@@ -370,7 +371,7 @@ def test_packets_cache_scans_each_folder_once(tmp_path: Path, virtual: bool) -> 
         pl.DataFrame({"number": [0]}),
         cachepath,
         metadata={
-            "cacheversion": str(CACHEVERSION),
+            "cacheversion": str(VIRTUAL_CACHEVERSION if virtual else CACHEVERSION),
             "textsource_mtime": str(max(path.stat().st_mtime for path in sourcefiles)),
         },
     )
@@ -449,18 +450,6 @@ def test_packets_source_index_matches_the_reader(tmp_path: Path) -> None:
     mtimes = at.packets.get_packets_textsource_mtimes(tmp_path, [*filenames, "packets00_0002.out"])
     expected = [at.firstexisting(filename, folder=tmp_path).stat().st_mtime for filename in filenames]
     assert sorted(mtimes) == pytest.approx(sorted(expected))
-
-
-def test_add_packet_directions_accepts_a_frame_that_holds_the_angles() -> None:
-    """A frame that already carries phi must pass through, because the parquet cache stores it."""
-    dfpackets = pl.LazyFrame({"dirx": [0.6, 0.0], "diry": [0.0, 0.8], "dirz": [0.8, 0.6]})
-
-    dfonce = at.packets.add_packet_directions_lazypolars(dfpackets).collect()
-    assert "phi" in dfonce.columns
-
-    dftwice = at.packets.add_packet_directions_lazypolars(dfonce).collect()
-
-    pltest.assert_frame_equal(dfonce, dftwice)
 
 
 def test_add_derived_columns_gives_the_timestep_of_the_thermal_emission() -> None:
@@ -925,7 +914,13 @@ def test_scan_packets_gives_one_name_and_type_to_the_flag_of_the_particle_origin
     The cache keeps the name and the type of its text file, thus the two formats gave two names and two types.
     """
     cachepath = tmp_path / "packetsbatch00_0000_0000.out.parquet.tmp"
-    pl.DataFrame({"type_id": [32, 32], columnname: values}).write_parquet(cachepath)
+    pl.DataFrame({
+        "type_id": [32, 32],
+        "dirx": [1.0, 0.0],
+        "diry": [0.0, 1.0],
+        "dirz": [0.0, 0.0],
+        columnname: values,
+    }).write_parquet(cachepath)
 
     with mock.patch("artistools.packets.core.get_packets_batch_parquet_paths", return_value=(1, [cachepath])):
         _, dfpackets = at.packets.scan_packets(tmp_path)

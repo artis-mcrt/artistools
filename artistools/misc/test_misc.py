@@ -1819,20 +1819,26 @@ def test_model_readers_of_a_remote_model_run_on_the_server(tmp_path: Path) -> No
     A read of all the NLTE populations can send several GB through ssh, thus a remote read needs a timestep or a
     modelgridindex.
     """
-    from artistools.cache import make_caches
     from artistools.check import get_check_results
     from artistools.describemodel import get_model_summary
     from artistools.logs.core import get_log_summary
     from artistools.logs.core import get_logfiles
     from artistools.logs.corehours import read_model_core_hours
 
-    modelpath = at.get_path("testartismodel").resolve()
-    # check counts the caches of the model, and other workers of pytest write caches into this shared folder. A cache
-    # that a worker wrote between the remote check and the local check gave two different counts
-    make_caches(modelpath)
-    modellink = tmp_path / "testmodel"
-    modellink.symlink_to(modelpath)
-    remotepath = Path(f"testhost:{modellink}")
+    def link_files(sourcefolder: Path, folder: Path) -> None:
+        folder.mkdir()
+        for source in sourcefolder.iterdir():
+            if source.is_dir():
+                link_files(source, folder / source.name)
+            elif not source.name.startswith("."):
+                (folder / source.name).symlink_to(source)
+
+    # check counts the caches of the model, and other workers of pytest write caches into the shared test model. A
+    # cache that a worker wrote between the remote check and the local check gave two counts. A folder of links keeps
+    # the files of one moment, and a reader writes a new cache into tmp_path
+    modelpath = tmp_path / "testmodel"
+    link_files(at.get_path("testartismodel").resolve(), modelpath)
+    remotepath = Path(f"testhost:{modelpath}")
     # the 1D test model has no artisoptions.h, thus a folder of its own holds one
     optionsfolder = tmp_path / "optionsmodel"
     optionsfolder.mkdir()
@@ -1897,7 +1903,7 @@ def test_model_readers_of_a_remote_model_run_on_the_server(tmp_path: Path) -> No
     assert remotemintemp == "3500."
     # scan_modeldata stopped with an error for a remote path, thus the summary said only that the model was missing
     assert remotesummary == get_model_summary(modelpath)
-    pltest.assert_frame_equal(dfremotechecks, get_check_results(modellink))
+    pltest.assert_frame_equal(dfremotechecks, get_check_results(modelpath))
     assert remotelogfiles == [Path(f"testhost:{logfolder / 'output_0-0.txt'}")]
     pltest.assert_frame_equal(dfremotelogsummary, get_log_summary(get_logfiles(logfolder, [0])))
     assert dfremotelogsummary["level"].to_list() == ["warning"]

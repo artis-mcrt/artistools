@@ -1851,19 +1851,17 @@ def test_spherical_cells_each_lie_in_one_direction_bin(
     costheta = costhetapoints[icostheta, ipointcostheta].ravel()
     phi = phipoints[iphi, ipointphi].ravel()
     sintheta = np.sqrt(1.0 - costheta**2)
-    dfpoints = pl.DataFrame({
-        "cell": (icostheta + ncostheta * iphi).ravel(),
-        "x": sintheta * np.cos(phi),
-        "y": sintheta * np.sin(phi),
-        "z": costheta,
-    })
-    # the packet code casts cos(theta) and phi to Float32, as get_cell_direction_selection does
-    costheta, phi = at.misc.get_costheta_phi_exprs(pl.col("x"), pl.col("y"), pl.col("z"))
-    dirbin = at.misc.get_costhetabin_expr(costheta.cast(pl.Float32)) * at.misc.get_viewingdirection_phibincount()
-    dirbin += at.misc.get_phibin_expr(phi.cast(pl.Float32), pl.col("y"))
-    nbinsofcell = dfpoints.group_by("cell").agg(dirbin.n_unique().alias("nbins"))["nbins"]
+    dfpoints = at.packets.bin_packet_directions_polars(
+        pl.DataFrame({
+            "cell": (icostheta + ncostheta * iphi).ravel(),
+            "dirx": sintheta * np.cos(phi),
+            "diry": sintheta * np.sin(phi),
+            "dirz": costheta,
+        })
+    ).collect()
+    nbinsofcell = dfpoints.group_by("cell").agg(pl.col("dirbin").n_unique().alias("nbins"))["nbins"]
     assert (nbinsofcell.max() == 1) == isaligned
-    assert dfpoints.select(dirbin.n_unique()).item() == at.misc.get_viewingdirectionbincount()
+    assert dfpoints["dirbin"].n_unique() == at.misc.get_viewingdirectionbincount()
 
 
 def test_cell_width_lines_give_the_widths_of_the_uniform_costheta_cells() -> None:

@@ -36,13 +36,13 @@ from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_artis_option
 from artistools.misc import get_bin_index_expr
-from artistools.misc import get_costheta_phi_exprs
 from artistools.misc import get_costhetabin_expr
 from artistools.misc import get_file_identity
 from artistools.misc import get_file_state
 from artistools.misc import get_model_coordinates
 from artistools.misc import get_nprocs
 from artistools.misc import get_parquet_cache_name
+from artistools.misc import get_phi_expr
 from artistools.misc import get_phibin_expr
 from artistools.misc import get_progress_class
 from artistools.misc import get_timestep_times
@@ -677,14 +677,19 @@ def get_vpackets_text_columns(vpacketsfiletext: Path) -> list[str]:
 
 
 # The version of the packets parquet cache format. Increase it for a change that makes an older
-# cache file incorrect, e.g. a new column, a removed column, or a different data type. A cache keeps the
-# names of the Stokes columns of its text file, e.g. stokes1/2/3 of an older ARTIS, and scan_packets renames them
+# cache file incorrect, or a newer file that an older reader cannot read, e.g. a new column, a removed column, or a
+# different data type. A cache keeps the names of the Stokes columns of its text file, e.g. stokes1/2/3 of an older
+# ARTIS, and scan_packets renames them
 CACHEVERSION = 2
 
 # scan_packets also reads these versions. Version 1 stores dirbin, costhetabin, phibin, costheta, phi, cosphi, and
 # testphi, and version 2 stores only dirbin_costheta10_phi10 and phi. An older artistools reads only version 1, thus
 # it converts a batch of version 2 again and does not stop with a missing column
 CACHE_OLDVERSIONS: t.Final = (1,)
+
+# the version of the virtual packets parquet cache format. The packets of version 2 changed no column of the virtual
+# packets, thus an older artistools keeps each cache of the virtual packets
+VIRTUAL_CACHEVERSION: t.Final = 1
 
 # the number of ranks in each parquet cache of the packets
 RANKS_PER_BATCH: t.Final = 100
@@ -869,10 +874,10 @@ def get_packets_rankbatch_parquetfile(
         allranksfound = len(textsource_mtimes) == len(batch_mpiranks)
         stalereason = rankbatch_parquet_staleness(
             parquetfilepath,
-            CACHEVERSION,
+            VIRTUAL_CACHEVERSION if virtual else CACHEVERSION,
             max(textsource_mtimes, default=None),
             textsource_complete=allranksfound,
-            oldversions=CACHE_OLDVERSIONS,
+            oldversions=() if virtual else CACHE_OLDVERSIONS,
         )
 
         if stalereason is None:
@@ -966,12 +971,7 @@ def get_packets_rankbatch_parquetfile(
                 ).cast(pl.Float32)
             ).sort(by=["type_id", "escape_type_id", "t_arrive_d"])
 
-            # the phi bins of plotspherical took 0.67 s with an atan2 for each packet and 0.47 s with a stored phi,
-            # for 7e7 packets. phi takes about 4 % of the file
-            _, phi = get_packet_angle_exprs([])
-            pldf_batch = pldf_batch.with_columns(phi.alias("phi")).with_columns(
-                get_dirbin_expr(columns=["phi"]).alias(get_dirbin_column_name())
-            )
+            pldf_batch = add_cache_direction_columns(pldf_batch.lazy()).collect()
 
         print(
             f"   Took {time.perf_counter() - time_start_load:.1f} seconds. Writing parquet file...", end="", flush=True
@@ -982,7 +982,7 @@ def get_packets_rankbatch_parquetfile(
             parquetfilepath,
             metadata={
                 "creationtimeutc": str(dt.datetime.now(dt.UTC)),
-                "cacheversion": str(CACHEVERSION),
+                "cacheversion": str(VIRTUAL_CACHEVERSION if virtual else CACHEVERSION),
                 "textsource_mtime": str(textsource_mtime),
             },
             replaces=outdatedparquet,
@@ -1156,14 +1156,15 @@ def scan_packets_batch_parquet(packetsparquetfile: Path) -> pl.LazyFrame:
     """Return a LazyFrame of one batch cache of the packets, with the columns of the current cache version.
 
     The batches of one model can have different cache versions, and a scan of all the files together needs one
-    schema. A cache of version 1 holds a dirbin of 10 cos θ bins and 10 ϕ bins, and its stored angles and bins come
-    again from the directions. A cache with no column for the current bin counts gets the bins from the directions.
+    schema. A cache of version 1 holds a dirbin of 10 cos θ bins and 10 ϕ bins, and its other bins and angles come
+    again from dirbin and the directions. A cache with no column for the current bin counts gets the bins from the
+    directions.
     """
     # an older ARTIS names the Stokes columns stokes1/2/3, where stokes1 holds the redundant I=1.0. Thus stokes2 is
     # the stokes_q and stokes3 is the stokes_u of the current ARTIS. An older ARTIS names the flag
     # originated_from_particlenotgamma as originated_from_positron. A cache keeps the names and the types of its text
     # file, because a different cache needs a new cache version, and every older cache must then have a new conversion
-    dfbatch = (
+    return add_cache_direction_columns(
         pl
         .scan_parquet(packetsparquetfile, glob=False)
         .rename(
@@ -1177,15 +1178,6 @@ def scan_packets_batch_parquet(packetsparquetfile: Path) -> pl.LazyFrame:
         )
         .drop(["costhetabin", "phibin", "costheta", "cosphi", "testphi"], strict=False)
     )
-    columns = dfbatch.collect_schema().names()
-    if not {"dirx", "diry", "dirz"} <= set(columns):
-        return dfbatch
-    if "phi" not in columns:
-        dfbatch = dfbatch.with_columns(get_packet_angle_exprs(columns)[1].alias("phi"))
-    dirbincolumn = get_dirbin_column_name()
-    if dirbincolumn not in columns:
-        dfbatch = dfbatch.with_columns(get_dirbin_expr(columns=["phi"]).alias(dirbincolumn))
-    return dfbatch
 
 
 def scan_packets(
@@ -1228,8 +1220,10 @@ def scan_packets(
     pldfpackets = pl.concat(
         [scan_packets_batch_parquet(packetsparquetfile) for packetsparquetfile in packetsparquetfiles], how="diagonal"
     )
-    if {"dirx", "diry", "dirz"} <= set(pldfpackets.collect_schema().names()):
-        pldfpackets = add_packet_directions_lazypolars(bin_packet_directions_polars(pldfpackets))
+    # bin_packet_directions_polars gives the stored bins the name dirbin, thus the cache column is a copy
+    pldfpackets = add_packet_directions_lazypolars(bin_packet_directions_polars(pldfpackets)).drop(
+        get_dirbin_column_name()
+    )
     if "originated_from_particlenotgamma" in pldfpackets.collect_schema().names():
         pldfpackets = pldfpackets.with_columns(pl.col("originated_from_particlenotgamma").cast(pl.Boolean))
 
@@ -1270,37 +1264,50 @@ def get_dirbin_column_name(ncosthetabins: int | None = None, nphibins: int | Non
     return f"dirbin_costheta{ncosthetabins}_phi{nphibins}"
 
 
-def get_packet_angle_exprs(columns: Collection[str]) -> tuple[pl.Expr, pl.Expr]:
-    """Return the Float32 cos θ and ϕ of the direction of each packet, from dirx, diry, and dirz.
+def get_packet_phi_expr(columns: Collection[str]) -> pl.Expr:
+    """Return the Float32 ϕ of the direction of each packet: the column phi if columns holds it, else an atan2."""
+    # the phi bins of plotspherical took 0.67 s with an atan2 for each packet and 0.47 s with a stored phi, for 7e7
+    # packets. Thus the cache stores phi, which takes about 4 % of the file
+    if "phi" in columns:
+        return pl.col("phi")
+    return get_phi_expr(pl.col("dirx"), pl.col("diry"), pl.col("dirz")).cast(pl.Float32)
 
-    ARTIS writes each direction as a unit vector with 6 significant digits, thus cos θ is dirz. A column phi in
-    columns gives ϕ, and the expression then does no atan2.
+
+def get_packet_costheta_expr() -> pl.Expr:
+    """Return the Float32 cos θ of the direction of each packet.
+
+    ARTIS writes each direction as a unit vector with 6 significant digits, thus cos θ is dirz.
     """
     # |dir| differs from 1 by at most 8.9e-7 for 9.6e7 packets of the 3D SFHo model. A division by |dir| reads dirx
     # and diry, and the phi bins of plotspherical then took 0.93 s and not 0.75 s for 3.5e8 packets
-    _, phi = get_costheta_phi_exprs(pl.col("dirx"), pl.col("diry"), pl.col("dirz"))
-    return pl.col("dirz").cast(pl.Float32), pl.col("phi") if "phi" in columns else phi.cast(pl.Float32)
+    return pl.col("dirz").cast(pl.Float32)
 
 
-def get_dirbin_expr(
-    ncosthetabins: int | None = None, nphibins: int | None = None, columns: Collection[str] = ()
-) -> pl.Expr:
-    """Return the direction bin of ARTIS of each packet, from dirx, diry, dirz, and the column phi in columns."""
-    if ncosthetabins is None:
-        ncosthetabins = get_viewingdirection_costhetabincount()
-    if nphibins is None:
-        nphibins = get_viewingdirection_phibincount()
-    costheta, phi = get_packet_angle_exprs(columns)
+def get_dirbin_expr(costheta: pl.Expr, phi: pl.Expr, ncosthetabins: int, nphibins: int) -> pl.Expr:
+    """Return the direction bin of ARTIS of each packet, from cos θ, ϕ, and the sign of diry."""
     return (
         get_costhetabin_expr(costheta, ncosthetabins) * nphibins + get_phibin_expr(phi, pl.col("diry"), nphibins)
     ).cast(pl.Int32)
 
 
+def add_cache_direction_columns(dfpackets: pl.LazyFrame) -> pl.LazyFrame:
+    """Add the direction columns of the cache, phi and the dirbin of the current bin counts, if the frame has none."""
+    columns = dfpackets.collect_schema().names()
+    if "phi" not in columns:
+        dfpackets = dfpackets.with_columns(phi=get_packet_phi_expr(columns))
+    dirbincolumn = get_dirbin_column_name()
+    if dirbincolumn not in columns:
+        ncosthetabins, nphibins = get_viewingdirection_costhetabincount(), get_viewingdirection_phibincount()
+        dirbin = get_dirbin_expr(get_packet_costheta_expr(), pl.col("phi"), ncosthetabins, nphibins)
+        dfpackets = dfpackets.with_columns(dirbin.alias(dirbincolumn))
+    return dfpackets
+
+
 def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame:
     """Add the Float32 costheta and phi angles of each packet. A frame that holds phi keeps it."""
     dfpackets = dfpackets.lazy()
-    costheta, phi = get_packet_angle_exprs(dfpackets.collect_schema().names())
-    return dfpackets.with_columns(costheta=costheta, phi=phi)
+    phi = get_packet_phi_expr(dfpackets.collect_schema().names())
+    return dfpackets.with_columns(costheta=get_packet_costheta_expr(), phi=phi)
 
 
 def bin_packet_directions_polars(
@@ -1326,8 +1333,8 @@ def bin_packet_directions_polars(
         ncosthetabins = get_viewingdirection_costhetabincount()
 
     columns = dfpackets.collect_schema().names()
+    costheta, phi = get_packet_costheta_expr(), get_packet_phi_expr(columns)
     if phibintype == "phibinmonotonicasc":
-        costheta, phi = get_packet_angle_exprs(columns)
         # phi can reach exactly 2 pi when diry < 0, so clamp to the last bin
         return dfpackets.with_columns(
             costhetabin=get_costhetabin_expr(costheta, ncosthetabins),
@@ -1337,7 +1344,9 @@ def bin_packet_directions_polars(
         )
 
     dirbincolumn = get_dirbin_column_name(ncosthetabins, nphibins)
-    dirbin = pl.col(dirbincolumn) if dirbincolumn in columns else get_dirbin_expr(ncosthetabins, nphibins, columns)
+    dirbin = (
+        pl.col(dirbincolumn) if dirbincolumn in columns else get_dirbin_expr(costheta, phi, ncosthetabins, nphibins)
+    )
     return dfpackets.with_columns(dirbin=dirbin).with_columns(
         costhetabin=pl.col("dirbin") // nphibins, phibin=pl.col("dirbin") % nphibins
     )

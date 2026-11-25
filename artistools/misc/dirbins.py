@@ -486,16 +486,14 @@ def check_dirbin(
         exit_with_error(f"{optionname} {dirbin} is no direction bin", f"Give {alltext}a bin from 0 to {ndirbins - 1}")
 
 
-def get_costheta_phi_exprs(x: pl.Expr, y: pl.Expr, z: pl.Expr) -> tuple[pl.Expr, pl.Expr]:
-    """Return cos θ = z / |r| and ϕ = atan2(y, x) of each direction, with ϕ from 0 to 2π, as in ARTIS.
+def get_phi_expr(x: pl.Expr, y: pl.Expr, z: pl.Expr) -> pl.Expr:
+    """Return ϕ = atan2(y, x) of each direction, from 0 to 2π, with ϕ from +x towards +y, as in ARTIS.
 
     ARTIS takes cos ϕ = 1 for a direction with sin θ < 1e-12 (get_escapedirectionbin in vectors.h), where ϕ has no
     definition. Thus such a direction gets ϕ = 0, or ϕ = 2π for a negative y, and the bin of ARTIS.
     """
-    dirmag = (x**2 + y**2 + z**2).sqrt()
-    isonzaxis = (x**2 + y**2).sqrt() <= 1e-12 * dirmag
-    phi = pl.when(~isonzaxis).then(pl.arctan2(y, x) % (2 * math.pi)).when(y < 0).then(2 * math.pi).otherwise(0.0)
-    return z / dirmag, phi
+    isonzaxis = x**2 + y**2 <= 1e-24 * (x**2 + y**2 + z**2)
+    return pl.when(~isonzaxis).then(pl.arctan2(y, x) % (2 * math.pi)).when(y < 0).then(2 * math.pi).otherwise(0.0)
 
 
 def get_costhetabin_expr(costheta: pl.Expr, ncosthetabins: int | None = None) -> pl.Expr:
