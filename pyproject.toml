@@ -85,7 +85,7 @@ dev = [
     "pytest-cov>=7.1.0",
     "pytest-xdist[psutil]>=3.8.0",
     "ruff>=0.17.5,<0.18",
-    "ty>=0.0.107",
+    "ty>=0.0.110",
     "types-pyyaml>=6.0.12.20261103",
     "types-tqdm>=4.70.0.20261102",
     "vulture>=2.16",
@@ -418,6 +418,10 @@ strict = true
 [tool.ruff.lint.isort]
 force-single-line = true
 order-by-type = false
+
+[tool.ty.project-manager]
+# ty asks uv for the workspace root, the environment, and the dependencies. This setting is a preview feature
+project = "uv"
 
 [tool.ty.analysis]
 # the same list as ignore-missing-imports of pyrefly. A plain `uv sync` installs none of these packages,
