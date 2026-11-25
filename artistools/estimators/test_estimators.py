@@ -3024,6 +3024,18 @@ def test_estimator_image_table_holds_only_the_drawn_cells() -> None:
     assert dfcut.filter(pl.col("panel") == 1)["vel_x_on_c"].to_list() == pytest.approx([-0.05], rel=1e-9)
 
 
+def test_image_of_a_selector_keeps_the_columns_that_it_reads(tmp_path: Path) -> None:
+    """A colour image keeps each column that a selector reads, although polars names no root column for a selector.
+
+    The image kept only the root columns of each panel, thus a sum over pl.col("^(Te|TR)$") read no column.
+    """
+    ((_, _, _, selectorgrid),) = get_image_panel_calls(
+        {"plotlist": [['pl.sum_horizontal(pl.col("^(Te|TR)$"))']], "dimensionreduce": 2}, tmp_path
+    )
+    ((_, _, _, sumgrid),) = get_image_panel_calls({"plotlist": [["=Te + TR"]], "dimensionreduce": 2}, tmp_path)
+    assert np.allclose(selectorgrid.filled(np.nan), sumgrid.filled(np.nan), rtol=1e-12, atol=0, equal_nan=True)
+
+
 def test_estimator_plot_of_2_dimensions_gives_the_average_around_the_z_axis(
     tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
 ) -> None:
@@ -5323,6 +5335,12 @@ def test_expression_gives_numbers_in_a_subplot_of_variables() -> None:
     assert "does not suit the types" in typeresult[0]
     assert plotitems.get_expression_problem('pl.col("timestep") & 1', schema) is None
     assert plotitems.get_expression_problem('pl.col("timestep") & 1', ["Te", "timestep"]) is None
+
+    # a series takes one value for each row, or one value for all the rows, thus a filter changes the series
+    filterresult = plotitems.get_expression_problem('pl.col("Te").filter(pl.col("Te") > 0)', columns)
+    assert filterresult is not None
+    assert "changes the number of rows" in filterresult[0]
+    assert plotitems.get_expression_problem('pl.col("Te") - pl.col("Te").mean()', columns) is None
 
     with pytest.raises(SystemExit):
         plotitems.normalise_plotitems(["populations", "Fe II", "=Te"], columns)

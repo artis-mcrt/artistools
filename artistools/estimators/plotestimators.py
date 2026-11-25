@@ -58,6 +58,7 @@ from artistools.estimators.plotitems import DIRECTIVES
 from artistools.estimators.plotitems import evaluate_expression_text
 from artistools.estimators.plotitems import get_column_name
 from artistools.estimators.plotitems import get_directive_name
+from artistools.estimators.plotitems import get_input_columns
 from artistools.estimators.plotitems import get_iontuple
 from artistools.estimators.plotitems import get_iontuple_sortkey
 from artistools.estimators.plotitems import get_item_directive
@@ -3404,12 +3405,14 @@ def prepare_snapshot(
     if args.dimensionreduce == 2:
         panels = get_image_panels(plotlist, estimators.collect_schema().names(), args.poptype)
         # an image reads a small number of the columns, and a set of frames writes a copy of the estimators
+        # a selector names no root column, e.g. pl.col("^heating_.*$"), thus the columns of the model resolve it
+        estimatorschema = estimators.collect_schema()
         panelcolumns = {
             name
             for panel in panels
             for expr in (panel.colexpr, panel.weightexpr)
             if expr is not None
-            for name in expr.meta.root_names()
+            for name in get_input_columns(expr, estimatorschema)
         }
         estimators = estimators.select(
             cs.by_name("timestep", "modelgridindex", "deltavol_deltat", *sorted(panelcolumns)) | cs.starts_with("vel_")

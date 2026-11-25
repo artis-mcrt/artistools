@@ -499,7 +499,7 @@ def get_expression_problem(text: str, estimatorcolumns: Collection[str]) -> tupl
             or "Run with --listvariables to see the variables of this model",
         )
     try:
-        outputcolumns = get_output_schema(expr, estimatorcolumns)
+        result = run_on_sample_frame(expr, estimatorcolumns)
     except pl.exceptions.PolarsError as exc:
         # with the names alone, each column takes the type Float64, thus an error can come from that guess
         if not isinstance(estimatorcolumns, pl.Schema):
@@ -509,14 +509,21 @@ def get_expression_problem(text: str, estimatorcolumns: Collection[str]) -> tupl
             f"The plot item '{text}' does not suit the types of the estimator columns: {reason}",
             "Give an expression of the columns that gives a number, e.g. =Te / 1e4",
         )
-    if len(outputcolumns) != 1:
+    if result.width != 1:
         hint = (
             "Give one plot item for each column, e.g. =Te and =TR, or join the columns, e.g."
             ' pl.sum_horizontal(pl.col("^heating_.*$"))'
         )
-        return f"The plot item '{text}' gives {len(outputcolumns)} columns, and a series takes one column", hint
+        return f"The plot item '{text}' gives {result.width} columns, and a series takes one column", hint
+    # a series has one value for each row of the estimators, or one value for all the rows
+    if result.height not in {1, len(SAMPLE_VALUES)}:
+        problem = (
+            f"The plot item '{text}' changes the number of rows, e.g. with a filter, and a series takes one value for"
+            " each cell and timestep"
+        )
+        return problem, 'Give a condition with pl.when, e.g. pl.when(pl.col("Te") > 1e4).then(pl.col("Te"))'
     # the plot multiplies the values by the weights, thus a text gives no series. A boolean gives 0 and 1
-    if not ((dtype := outputcolumns.dtypes()[0]).is_numeric() or dtype == pl.Boolean):
+    if not ((dtype := result.dtypes[0]).is_numeric() or dtype == pl.Boolean):
         return (
             f"The plot item '{text}' gives values of the type {dtype}, and a series takes numbers",
             "Give an expression of the columns that gives a number, e.g. =Te / 1e4",
@@ -524,17 +531,54 @@ def get_expression_problem(text: str, estimatorcolumns: Collection[str]) -> tupl
     return None
 
 
-def get_output_schema(expr: pl.Expr, estimatorcolumns: Collection[str]) -> pl.Schema:
-    """Return the names and the types of the output columns of an expression. A fault gives a PolarsError.
+# the values of each column of the sample frame: a null, zeros, negative values, and repeated values. A filter, a
+# unique(), or a head() then changes the number of rows, which a series must keep
+SAMPLE_VALUES: t.Final = (*(float(index % 7 - 3) for index in range(22)), None)
 
-    A selector such as pl.col("^heating_.*$") names no root column, thus only the columns of the model give its outputs.
-    The expression runs on an empty frame, because the schema alone does not find a type error, e.g. a str method on a
-    float. A pl.Schema gives the types of the columns, and each column of a list of names takes the type Float64.
+
+def get_column_schema(estimatorcolumns: Collection[str]) -> pl.Schema:
+    """Return the schema of the estimator columns. A list of names gives each column the type Float64."""
+    if isinstance(estimatorcolumns, pl.Schema):
+        return estimatorcolumns
+    return pl.Schema(dict.fromkeys(estimatorcolumns, pl.Float64))
+
+
+def get_input_columns(expr: pl.Expr, estimatorcolumns: Collection[str]) -> list[str]:
+    """Return the estimator columns that an expression reads. A fault, e.g. an absent column, gives a PolarsError.
+
+    polars names no root column for a selector, e.g. pl.col("^heating_.*$"). Thus each selection in the expression runs
+    on the columns of the model.
     """
-    schema = (
-        estimatorcolumns if isinstance(estimatorcolumns, pl.Schema) else dict.fromkeys(estimatorcolumns, pl.Float64)
-    )
-    return pl.LazyFrame(schema=schema).select(expr).collect().schema
+    schema = get_column_schema(estimatorcolumns)
+    inputcolumns: dict[str, None] = {}
+    pending = [expr]
+    while pending:
+        node = pending.pop()
+        if node.meta.is_column_selection(allow_aliasing=True):
+            inputcolumns.update(dict.fromkeys(pl.LazyFrame(schema=schema).select(node).collect_schema().names()))
+        else:
+            pending.extend(node.meta.pop())
+    return list(inputcolumns)
+
+
+def get_sample_column(name: str, dtype: pl.DataType) -> pl.Series:
+    """Return a column of the sample frame with the type of an estimator column, or a column of nulls of that type."""
+    try:
+        return pl.Series(name, SAMPLE_VALUES, dtype=pl.Float64).cast(dtype, strict=False)
+    except pl.exceptions.PolarsError:
+        return pl.Series(name, [None] * len(SAMPLE_VALUES), dtype=dtype)
+
+
+def run_on_sample_frame(expr: pl.Expr, estimatorcolumns: Collection[str]) -> pl.DataFrame:
+    """Return the result of an expression on a sample frame of the columns that it reads. A fault gives a PolarsError.
+
+    The schema alone does not find a type error, e.g. a str method on a float, or a filter that changes the number of
+    rows. A pl.Schema gives the types of the columns, and each column of a list of names takes the type Float64.
+    """
+    schema = get_column_schema(estimatorcolumns)
+    inputcolumns = get_input_columns(expr, schema)
+    sample = pl.DataFrame([get_sample_column(name, schema[name]) for name in inputcolumns])
+    return sample.lazy().select(expr).collect()
 
 
 def get_typed_item_problem(item: str, estimatorcolumns: Collection[str]) -> tuple[str, str] | None:
@@ -617,7 +661,7 @@ def get_series_variables(colexpr: pl.Expr, estimatorcolumns: Collection[str]) ->
         return seriesname, seriesname, seriesname
     unaliased = colexpr.meta.undo_aliases()
     try:
-        outputnames = get_output_schema(unaliased, estimatorcolumns).names()
+        outputnames = run_on_sample_frame(unaliased, estimatorcolumns).columns
     except pl.exceptions.PolarsError:
         outputnames: list[str] = []
     # polars names 2 * pl.col("init_X_Fe56") after the literal, thus the name of the result is not the first column.
