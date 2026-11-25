@@ -2586,7 +2586,17 @@ def get_image_figure_data(
     """
     # the mean of a pixel groups the cells. An aggregation in an expression, e.g. pl.col("Te").mean(), thus takes the
     # selected cells of the timesteps of this frame first, as a line does, and not only the cells of a pixel
-    estimators = estimators.filter(pl.col("timestep").is_in(timestepslist)).with_columns(
+    estimators = estimators.filter(pl.col("timestep").is_in(timestepslist))
+    # the average around the z axis leaves out each cell in a corner of the cube, see get_image_values, thus an
+    # aggregation takes only the cells that the image shows
+    if (
+        args.sliceaxis is None
+        and modelmeta["dimensions"] == 3
+        and get_model_coordinates(modelmeta) not in SPHERICAL_EDGE_COORDINATES
+    ):
+        vel_rcyl_mid = (pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2).sqrt()
+        estimators = estimators.filter(vel_rcyl_mid < float(modelmeta["vmax_cmps"]))
+    estimators = estimators.with_columns(
         panel.colexpr.alias(f"panelvalue{index}") for index, panel in enumerate(panels)
     )
     panels = [panel._replace(colexpr=pl.col(f"panelvalue{index}")) for index, panel in enumerate(panels)]

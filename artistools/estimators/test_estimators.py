@@ -3048,7 +3048,21 @@ def test_image_of_an_aggregation_takes_all_the_selected_cells(tmp_path: Path) ->
     # each pixel takes the same mean of all the cells away. The grids hold Float32 values of Te
     offsets = (tegrid - deviationgrid).compressed()
     assert np.allclose(offsets, offsets[0], rtol=1e-6, atol=0)
-    assert offsets[0] > 1000.0
+
+    # the image leaves out the cells in the corners of the cube, and the mean takes only the cells that it shows
+    lzmodel, modelmeta = at.scan_modeldata(modelpath_classic_3d)
+    lzmodel = at.inputmodel.add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
+    shownmean = (
+        at
+        .scan_estimators(modelpath_classic_3d, timestep=8)
+        .select("modelgridindex", "Te")
+        .join(lzmodel.select("modelgridindex", "vel_x_mid", "vel_y_mid"), on="modelgridindex", how="inner")
+        .filter((pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2).sqrt() < modelmeta["vmax_cmps"])
+        .select(pl.col("Te").mean())
+        .collect()
+        .item()
+    )
+    assert np.isclose(offsets[0], shownmean, rtol=1e-6, atol=0)
 
 
 def test_image_frames_take_the_aggregation_of_their_timestep(tmp_path: Path) -> None:
