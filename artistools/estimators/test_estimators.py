@@ -5237,9 +5237,34 @@ def test_plot_item_gives_a_polars_expression(
     assert np.isclose(np.asarray(lines[1].get_ydata())[0], 5776.620000000001, rtol=1e-6)
 
     # an unknown column, more than one column, and a Python error each give a message and no traceback
-    for baditem in ('pl.col("heatin_coll") * 2', 'pl.col("Te", "TR")', 'pl.col("Te") / (1 / 0)'):
+    for baditem in ('pl.col("heatin_coll") * 2', 'pl.col("Te", "TR")', 'pl.col("Te") / (1 / 0)', 'pl.col(["Te"][1])'):
         with pytest.raises(SystemExit):
             get_plotestimators_figure(["--timedays", "300", "--plot", baditem, str(modelpath)], tmp_path / "e.pdf")
+
+
+def test_expression_item_can_hold_the_style_mark() -> None:
+    """The style of an expression starts at the first @ that a style key follows, thus a string can hold an @.
+
+    The first @ ended the name, thus pl.col("Te").alias("T@e") gave an error for the style 'e")'.
+    """
+    expression = 'pl.col("Te").alias("T@e")'
+    assert plotitems.read_series_style(f"{expression}@color=C3,label=T@e") == (
+        expression,
+        {"color": "C3", "label": "T@e"},
+    )
+    assert plotitems.get_series_name(expression) == expression
+    # an item that is not an expression keeps its first @, thus an unknown key gives an error that names the style
+    with pytest.raises(ValueError, match="is not a series style"):
+        plotitems.read_series_style("Te@colour=C3")
+
+
+def test_plot_item_that_argparse_reads_as_a_flag() -> None:
+    """The add field of the viewer rejects only an item that argparse reads as a flag, e.g. -pl.col as -p."""
+    parser = argparse.ArgumentParser()
+    plotestimators.addargs(parser)
+    for item in ('-pl.col("TR")', '-(pl.col("TR"))', '- pl.col("TR")', '-1 * pl.col("TR")', '-.5*pl.col("TR")'):
+        args, extras = parser.parse_known_args(["-plot", item])
+        assert plotitems.starts_like_a_flag(item) == (args.plotlist != [[item]] or bool(extras)), item
 
 
 def test_default_plotlist_keeps_an_expression_subplot() -> None:
@@ -5285,6 +5310,10 @@ def test_expression_series_keeps_the_weight_of_its_first_column() -> None:
     massfraction = plotitems.parse_expression_item('pl.col("init_X_Fe56")', estimatorcolumns)
     assert plotitems.get_series_variables(massfraction) == ('pl.col("init_X_Fe56")', "init_X_Fe56", "init_X_Fe56")
     assert plotestimators.is_quantity_per_unit_mass(plotitems.get_series_variables(massfraction)[2])
+
+    # polars names this expression after the literal
+    doubled = plotitems.parse_expression_item('2 * pl.col("init_X_Fe56")', estimatorcolumns)
+    assert plotitems.get_series_variables(doubled)[2] == "init_X_Fe56"
 
     scaled = plotitems.parse_expression_item('pl.col("Te") / 1e4', estimatorcolumns)
     assert plotitems.get_series_variables(scaled) == ('pl.col("Te") / 1e4', 'pl.col("Te") / 1e4', "Te")

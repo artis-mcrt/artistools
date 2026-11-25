@@ -238,6 +238,10 @@ def replace_directives(subplot: Sequence[str], directives: Mapping[str, str | No
     return (*kept, *(f"{name}={value}" for name, value in directives.items() if value is not None))
 
 
+# a plot item that holds "pl." is the Python text of a polars expression, e.g. 'pl.col("Te") / 1e4'. No estimator
+# variable, ion, or directive holds this text
+EXPRESSION_PATTERN: t.Final = re.compile(r"\bpl\.")
+
 # A series name can have its style after this mark, e.g. "Fe II@color=C3,linewidth=2". The mark needs no quotes
 # in a shell, and zsh reads square brackets as a file pattern
 SERIES_STYLE_MARK: t.Final = "@"
@@ -274,6 +278,22 @@ def get_series_style_problem(key: str, value: str) -> str | None:
     return None
 
 
+def partition_series_style(item: str) -> tuple[str, str, str]:
+    """Return the name of a plot item, the style mark, and the text of the style, as str.partition gives them.
+
+    The text of an expression can hold the mark, e.g. pl.col("Te").alias("T@e"). Thus the style of an expression starts
+    at the first mark that a style key and an "=" follow. Each other item takes its first mark, thus an unknown key
+    gives an error that names the style.
+    """
+    if EXPRESSION_PATTERN.search(item) is None:
+        return item.partition(SERIES_STYLE_MARK)
+    for match in re.finditer(re.escape(SERIES_STYLE_MARK), item):
+        styletext = item[match.end() :]
+        if any(styletext.startswith(f"{key}=") for key in SERIES_STYLE_KEYS):
+            return item[: match.start()], SERIES_STYLE_MARK, styletext
+    return item, "", ""
+
+
 def read_series_style(item: str) -> tuple[str, dict[str, str]]:
     """Return the name of a plot item and the style after its @, e.g. ("Fe II", {"color": "C3"}) for "Fe II@color=C3".
 
@@ -282,7 +302,7 @@ def read_series_style(item: str) -> tuple[str, dict[str, str]]:
     a label can hold a comma and an "=", e.g. "Te@color=C3,label=T, electrons". An item with no @ gives an empty style.
     A style that is not valid gives ValueError, and the message of the error names the problem.
     """
-    name, mark, styletext = item.partition(SERIES_STYLE_MARK)
+    name, mark, styletext = partition_series_style(item)
     style: dict[str, str] = {}
     if not mark:
         return item, style
@@ -320,7 +340,7 @@ def join_series_style(name: str, style: Mapping[str, str | None]) -> str:
 
 def get_series_name(item: str) -> str:
     """Return the name of a series item without its style, e.g. "Fe II" for "Fe II@color=C3"."""
-    return item.partition(SERIES_STYLE_MARK)[0]
+    return partition_series_style(item)[0]
 
 
 def get_item_style(item: str) -> dict[str, str]:
@@ -394,14 +414,17 @@ def get_styles_of_subplots(args: argparse.Namespace, count: int) -> list[dict[st
     return [*styles, *({} for _ in range(count - len(styles)))]
 
 
-# a plot item that holds "pl." is the Python text of a polars expression, e.g. 'pl.col("Te") / 1e4'. No estimator
-# variable, ion, or directive holds this text
-EXPRESSION_PATTERN: t.Final = re.compile(r"\bpl\.")
-
-
 def is_expression_item(item: t.Any) -> bool:
     """Return True if a plot item is the Python text of a polars expression, e.g. 'pl.col("Te") / 1e4@color=C3'."""
     return isinstance(item, str) and EXPRESSION_PATTERN.search(get_series_name(item)) is not None
+
+
+def starts_like_a_flag(item: str) -> bool:
+    """Return True if argparse reads the start of a plot item as a flag, e.g. -pl.col("TR") as -p.
+
+    A space after the minus sign, or a number after it, gives a plot item, e.g. - pl.col("TR") or -1 * pl.col("TR").
+    """
+    return re.match(r"-[^\s\d.]", item) is not None
 
 
 def evaluate_expression_text(text: str) -> pl.Expr:
@@ -412,15 +435,8 @@ def evaluate_expression_text(text: str) -> pl.Expr:
     try:
         # the user typed the text, thus it runs with the rights of the user. The name pl alone is in scope
         expr = eval(text, {"__builtins__": {}, "pl": pl})  # ruff:ignore[suspicious-eval-usage]
-    except (
-        SyntaxError,
-        NameError,
-        AttributeError,
-        TypeError,
-        ValueError,
-        ArithmeticError,
-        pl.exceptions.PolarsError,
-    ) as exc:
+    # the text can raise any exception, e.g. IndexError for pl.col(["Te"][1])
+    except Exception as exc:
         msg = f"The plot item '{text}' is not a valid polars expression: {exc}"
         raise ValueError(msg) from exc
     if not isinstance(expr, pl.Expr):
@@ -467,7 +483,8 @@ def get_series_variables(colexpr: pl.Expr) -> tuple[str, str, str]:
     if not is_expression_item(seriesname):
         return seriesname, seriesname, seriesname
     unaliased = colexpr.meta.undo_aliases()
-    firstcolumn = unaliased.meta.output_name()
+    # polars names 2 * pl.col("init_X_Fe56") after the literal, thus the name of the result is not the first column
+    firstcolumn = next(iter(unaliased.meta.root_names()), unaliased.meta.output_name())
     return seriesname, firstcolumn if unaliased.meta.is_column() else seriesname, firstcolumn
 
 

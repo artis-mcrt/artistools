@@ -3002,8 +3002,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             "cooling_coll --plot cooling_coll 'Fe II'. The Python text of a polars expression gives a series, "
             'e.g. --plot \'pl.col("heating_coll") - pl.col("cooling_coll")\'. The command runs this text as Python '
             "code, on the model host for a remote model. It evaluates the expression for each cell and timestep, "
-            "before the mean of a bin. Write 0 - pl.col(...) in place of -pl.col(...), because argparse reads "
-            "-pl as the flag -p. Quote an ion that holds "
+            "before the mean of a bin. Write 0 - pl.col(...) in place of -pl.col(...). argparse reads -pl as "
+            "the flag -p. Quote an ion that holds "
             f"a space. The directives are {', '.join(f'{name}=' for name in DIRECTIVES)}, e.g. "
             "--plot Te TR yscale=lin --plot rho yscale=log ymin=1e-17 --plot 'Fe II' 'Fe III' ionpoptype=elpop. "
             "The directive ionpoptype= sets the normalisation of an ion population series to one of "

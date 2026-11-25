@@ -42,6 +42,7 @@ from artistools.estimators.plotitems import remove_item_styles
 from artistools.estimators.plotitems import replace_directives
 from artistools.estimators.plotitems import resolve_item_alias
 from artistools.estimators.plotitems import set_item_style
+from artistools.estimators.plotitems import starts_like_a_flag
 from artistools.nltepops import read_nltepops
 from artistools.plottools import plain_label
 from artistools.viewertools.core import get_row_values
@@ -1322,8 +1323,10 @@ def add_subplot_section(
                 show_error(f"Give a value after {item}, e.g. {directive}=1e-16")
                 return
             set_subplot(row, replace_directives(subplot, {directive: value}))
-        elif item.startswith("-") and is_expression_item(item):
-            show_error(f"Write 0 {item.replace('-', '- ', 1)} in place of {item}, because the command reads -pl as -p")
+        elif starts_like_a_flag(item) and is_expression_item(item):
+            show_error(
+                f"Write 0 {item.replace('-', '- ', 1)} in place of {item}. The command reads {item[:2]} as a flag."
+            )
         elif get_series_name(item) in get_subplot_names(subplot):
             show_error(f"The subplot already shows {get_series_name(item)}")
         else:
