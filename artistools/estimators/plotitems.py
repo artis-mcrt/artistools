@@ -558,7 +558,7 @@ def get_evaluated_expression_problem(
 
 # the polars methods that depend on the order of the rows or that select rows, as the text of an expression names them
 ORDER_METHOD_PATTERN: t.Final = re.compile(
-    r"sort|sort_by|reverse|shift|gather|gather_every|shuffle|sample|arg_sort|top_k|bottom_k|top_k_by|bottom_k_by"
+    r"sort|sort_by|reverse|shift|gather|gather_every|shuffle|sample|arg_sort|top_k|bottom_k|top_k_by|bottom_k_by|int_range"
     r"|cum_\w+|cumulative_eval|diff|pct_change|rolling\w*|ewm_\w+|fill_null_with_strategy|forward_fill"
     r"|backward_fill|interpolate\w*|rle\w*|filter|slice|head|tail|drop_nulls|drop_nans|unique|explode|arg_true"
 )
@@ -694,9 +694,12 @@ def keeps_row_order(expr: pl.Expr, estimatorcolumns: Collection[str]) -> bool:
     expected = values.gather(permutation)
     if not (values.dtype.is_numeric() or values.dtype == pl.Boolean):
         return reorderedvalues.equals(expected)
-    # the sample values are of order 1, thus a sum in a different order differs by approximately 1e-16
     reordered, wanted = reorderedvalues.cast(pl.Float64).to_numpy(), expected.cast(pl.Float64).to_numpy()
-    return np.allclose(reordered, wanted, rtol=0, atol=1e-9, equal_nan=True)
+    # a sum in a different order differs by approximately 1e-16 of the scale of the values, thus the tolerance takes
+    # that scale, also for small values, e.g. pl.int_range(pl.len()) * 1e-12
+    finitevalues = np.abs(wanted[np.isfinite(wanted)])
+    scale = float(finitevalues.max()) if finitevalues.size else 0.0
+    return np.allclose(reordered, wanted, rtol=0, atol=1e-9 * scale, equal_nan=True)
 
 
 def get_typed_item_problem(item: str, estimatorcolumns: Collection[str]) -> tuple[str, str] | None:
