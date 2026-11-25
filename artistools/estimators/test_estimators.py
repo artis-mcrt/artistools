@@ -5217,10 +5217,36 @@ def test_default_plotitem_keeps_estimator_columns_named_like_elements() -> None:
     assert get_default_plotitem_skip_reason([["initmasses", ["Sr", "Ni_56"]]], estimatorcolumns) is None
 
 
-def test_default_plotlist_keeps_an_expression_subplot() -> None:
-    """A default subplot can start with a polars expression, as an example in get_default_plotlist shows.
+def test_plot_item_gives_a_polars_expression(
+    tmp_path: Path, get_plotestimators_figure: Callable[[Sequence[str], Path], mplfig.Figure]
+) -> None:
+    """The text of a polars expression gives a series, and its "=" and its style do not make a directive.
 
-    The skip test compared the first item of the subplot with a string, and an expression has no truth value.
+    An expression with no alias takes the name of its first column. Thus the command gives the text of the item to the
+    expression as its name.
+    """
+    difference = 'pl.col("heating_coll") - pl.col("cooling_coll")'
+    clipped = 'pl.col("Te").clip(lower_bound=0)'
+    fig = get_plotestimators_figure(
+        ["--timedays", "300", "--plot", f"{difference}@label=net collisional", clipped, str(modelpath)],
+        tmp_path / "estimators.pdf",
+    )
+    lines = fig.axes[0].get_lines()
+    assert [line.get_label() for line in lines] == ["net collisional", clipped]
+    assert np.isclose(np.asarray(lines[0].get_ydata())[0], -6.4962990e-10, rtol=1e-6)
+    assert np.isclose(np.asarray(lines[1].get_ydata())[0], 5776.620000000001, rtol=1e-6)
+
+    # an unknown column, more than one column, and a Python error each give a message and no traceback
+    for baditem in ('pl.col("heatin_coll") * 2', 'pl.col("Te", "TR")', 'pl.col("Te") / (1 / 0)'):
+        with pytest.raises(SystemExit):
+            get_plotestimators_figure(["--timedays", "300", "--plot", baditem, str(modelpath)], tmp_path / "e.pdf")
+
+
+def test_default_plotlist_keeps_an_expression_subplot() -> None:
+    """A default subplot can start with a polars expression.
+
+    get_default_plotitem_skip_reason compared the first item of the subplot with a string. The result of that comparison
+    for an expression has no truth value.
     """
     expressionsubplot = [
         (pl.col("heating_coll") - pl.col("cooling_coll")).alias("collisional heating - cooling"),

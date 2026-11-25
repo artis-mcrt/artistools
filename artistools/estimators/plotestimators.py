@@ -62,6 +62,7 @@ from artistools.estimators.plotitems import get_iontuple_sortkey
 from artistools.estimators.plotitems import get_item_directive
 from artistools.estimators.plotitems import get_series_name
 from artistools.estimators.plotitems import get_styles_of_subplots
+from artistools.estimators.plotitems import is_expression_item
 from artistools.estimators.plotitems import is_ionseriestype
 from artistools.estimators.plotitems import normalise_plotitems
 from artistools.estimators.plotitems import resolve_item_alias
@@ -1042,6 +1043,9 @@ def get_default_plotitem_skip_reason(
     The built-in plot list names particular elements (e.g. Sr), which most models do not contain. This is only
     applied to that default list: an explicitly requested plot item is never dropped, so a typo there still raises.
     """
+    if is_expression_item(plotitems):
+        return None
+
     if isinstance(plotitems, str):
         # an estimator variable always wins over the element reading of its name, because several estimator names
         # are also element symbols (Te is tellurium, W is tungsten)
@@ -1055,7 +1059,7 @@ def get_default_plotitem_skip_reason(
         return None
 
     if isinstance(plotitems, (list, tuple)):
-        # a polars expression in the first place has no truth value for a comparison with a string
+        # a polars expression as the first item has no truth value for a comparison with a string
         seriestype = plotitems[0] if len(plotitems) == 2 and isinstance(plotitems[0], str) else None
 
         # initabundances/initmasses series read the input model file, not the estimators, so the element names in
@@ -2985,7 +2989,11 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             "an estimator that names an ion, e.g. --plot gamma_NT 'Fe II' or --plot cooling_coll 'Fe II'. "
             "A name that also gives a total of the cell, e.g. cooling_coll, gives the ions when the "
             "model holds a column for one of them. Give the total its own subplot, e.g. --plot "
-            "cooling_coll --plot cooling_coll 'Fe II'. Quote an ion that holds "
+            "cooling_coll --plot cooling_coll 'Fe II'. The Python text of a polars expression gives a series, "
+            'e.g. --plot \'pl.col("heating_coll") - pl.col("cooling_coll")\'. The command runs this text as Python '
+            "code, on the model host for a remote model. It evaluates the expression for each cell and timestep, "
+            "before the mean of a bin. Write 0 - pl.col(...) in place of -pl.col(...), because argparse reads "
+            "-pl as the flag -p. Quote an ion that holds "
             f"a space. The directives are {', '.join(f'{name}=' for name in DIRECTIVES)}, e.g. "
             "--plot Te TR yscale=lin --plot rho yscale=log ymin=1e-17 --plot 'Fe II' 'Fe III' ionpoptype=elpop. "
             "The directive ionpoptype= sets the normalisation of an ion population series to one of "
@@ -3308,10 +3316,7 @@ def get_default_plotlist() -> list[t.Any]:
         #  ['_yscale', 'linear']],
         # ['cooling_adiabatic', 'cooling_coll', 'cooling_fb', 'cooling_ff',
         #  ['_yscale', 'linear']],
-        # [
-        #     (pl.col("heating_coll") - pl.col("cooling_coll")).alias("collisional heating - cooling"),
-        #     ["_yscale", "linear"],
-        # ],
+        # ['pl.col("heating_coll") - pl.col("cooling_coll")', ["_yscale", "linear"]],
         # [['initmasses', ['Ni_56', 'He', 'C', 'Mg']]],
         # ['heating_gamma/gamma_dep'],
         # ["nne", ["_ymin", 1e5], ["_ymax", 1e10]],
@@ -3470,9 +3475,15 @@ def get_missing_folder_hint(lastitem: str) -> str:
     # each of these is a plot item, even when a folder has a close name:
     # - a known variable, or an alias such as T_e;
     # - an ion;
-    # - a directive.
+    # - a directive;
+    # - a polars expression.
     name = get_series_name(resolve_item_alias(lastitem))
-    if name in VARIABLES or could_be_ion(lastitem) or get_item_directive(lastitem) is not None:
+    if (
+        name in VARIABLES
+        or could_be_ion(lastitem)
+        or get_item_directive(lastitem) is not None
+        or is_expression_item(lastitem)
+    ):
         return ""
 
     # a path that exists, e.g. "./" for the working folder, has no error in its name

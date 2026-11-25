@@ -35,6 +35,7 @@ from artistools.estimators.plotitems import get_series_items
 from artistools.estimators.plotitems import get_series_name
 from artistools.estimators.plotitems import get_subplot_names
 from artistools.estimators.plotitems import get_subplot_seriestype
+from artistools.estimators.plotitems import is_expression_item
 from artistools.estimators.plotitems import is_seriestype
 from artistools.estimators.plotitems import is_valid_ion
 from artistools.estimators.plotitems import remove_item_styles
@@ -930,7 +931,7 @@ def add_subplot_section(
         # the field takes the name first, and then this handler adds it
         addcompleter.activated.connect(partial(on_complete_item, row, addedit))
         if currenttype == VARIABLES_TYPE:
-            addedit.setPlaceholderText(f"Add a variable{example}")
+            addedit.setPlaceholderText(f"Add a variable or a polars expression{example}")
         elif currenttype.startswith("levelpopulation"):
             addedit.setPlaceholderText(f"Add a level: an ion and the index of its level{example}")
         elif currenttype == "populations":
@@ -939,7 +940,8 @@ def add_subplot_section(
             addedit.setPlaceholderText(f"Add a species{example}")
         addedit.setToolTip(
             "Press Return to add the name. A part of a name shows the names that hold it. A directive such as"
-            " ymin=1e-16 also goes here."
+            " ymin=1e-16 also goes here. The Python text of a polars expression gives a series, e.g."
+            ' pl.col("heating_coll") - pl.col("cooling_coll").'
         )
         addedit.returnPressed.connect(partial(on_add_item, row, addedit))
         listbutton = make_glyph_button("chevron.down", "Show each name that the subplot can take", "Show All Names")
@@ -1320,6 +1322,8 @@ def add_subplot_section(
                 show_error(f"Give a value after {item}, e.g. {directive}=1e-16")
                 return
             set_subplot(row, replace_directives(subplot, {directive: value}))
+        elif item.startswith("-") and is_expression_item(item):
+            show_error(f"Write 0 {item.replace('-', '- ', 1)} in place of {item}, because the command reads -pl as -p")
         elif get_series_name(item) in get_subplot_names(subplot):
             show_error(f"The subplot already shows {get_series_name(item)}")
         else:

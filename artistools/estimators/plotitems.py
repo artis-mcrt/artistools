@@ -7,6 +7,7 @@ the viewer holds the --plot tokens of the command, e.g. ("populations", "Fe II@c
 import argparse
 import contextlib
 import math
+import re
 import typing as t
 from collections.abc import Collection
 from collections.abc import Mapping
@@ -109,7 +110,7 @@ def could_be_ion(plotvar: t.Any) -> bool:
     if isinstance(plotvar, (list, int)):
         return True
 
-    if not isinstance(plotvar, str):
+    if not isinstance(plotvar, str) or is_expression_item(plotvar):
         return False
 
     # get_iontuple reads a digit string as an atomic number, and normalise_plotitems has already taken
@@ -393,6 +394,57 @@ def get_styles_of_subplots(args: argparse.Namespace, count: int) -> list[dict[st
     return [*styles, *({} for _ in range(count - len(styles)))]
 
 
+# a plot item that holds "pl." is the Python text of a polars expression, e.g. 'pl.col("Te") / 1e4'. No estimator
+# variable, ion, or directive holds this text
+EXPRESSION_PATTERN: t.Final = re.compile(r"\bpl\.")
+
+
+def is_expression_item(item: t.Any) -> bool:
+    """Return True if a plot item is the Python text of a polars expression, e.g. 'pl.col("Te") / 1e4@color=C3'."""
+    return isinstance(item, str) and EXPRESSION_PATTERN.search(get_series_name(item)) is not None
+
+
+def parse_expression_item(text: str, estimatorcolumns: Collection[str]) -> pl.Expr:
+    """Return the polars expression of the text of a plot item, with the text as the name of the expression.
+
+    An expression with no alias takes the name of its first column, and thus the label and the units of that column.
+    The text also names the series in the styles of the subplot, see split_plotitem_styles.
+    """
+    try:
+        # the user typed the text, thus it runs with the rights of the user. The name pl alone is in scope
+        expr = eval(text, {"__builtins__": {}, "pl": pl})  # ruff:ignore[suspicious-eval-usage]
+    except (
+        SyntaxError,
+        NameError,
+        AttributeError,
+        TypeError,
+        ValueError,
+        ArithmeticError,
+        pl.exceptions.PolarsError,
+    ) as exc:
+        exit_with_error(
+            f"The plot item '{text}' is not a valid polars expression: {exc}",
+            'Give Python text with pl as the polars module, e.g. \'pl.col("heating_coll") - pl.col("cooling_coll")\'',
+        )
+    if not isinstance(expr, pl.Expr):
+        exit_with_error(
+            f"The plot item '{text}' gives a {type(expr).__name__} and not a polars expression",
+            "Give a polars expression, e.g. 'pl.col(\"Te\") / 1e4'",
+        )
+    if expr.meta.has_multiple_outputs():
+        exit_with_error(
+            f"The plot item '{text}' gives more than one column, and a series takes one column",
+            "Give one --plot item for each column, e.g. 'pl.col(\"Te\")' and 'pl.col(\"TR\")'",
+        )
+    if absentcolumns := [name for name in expr.meta.root_names() if name not in estimatorcolumns]:
+        exit_with_error(
+            f"The plot item '{text}' reads '{absentcolumns[0]}', which is not an estimator variable",
+            suggest_names(absentcolumns[0], estimatorcolumns)
+            or "Run with --listvariables to see the variables of this model",
+        )
+    return expr.alias(text)
+
+
 def get_series_items(subplot: Sequence[str]) -> list[str]:
     """Return the items of a subplot that are not a directive, with the style of each series, e.g. "Fe II@color=C3"."""
     return [item for item in subplot if get_item_directive(item) is None]
@@ -417,7 +469,7 @@ def get_seriestype_of_names(names: Sequence[t.Any], estimatorcolumns: Collection
     if not names:
         return None
     first = names[0]
-    if not isinstance(first, str):
+    if not isinstance(first, str) or is_expression_item(first):
         return None
     if is_seriestype(first, estimatorcolumns) or is_ionseriestype(first, estimatorcolumns, names[1:]):
         return first
@@ -440,22 +492,33 @@ def normalise_plotitems(plotitems: t.Any, estimatorcolumns: Collection[str]) -> 
     """Resolve variable aliases and move any 'key=value' plot directives to the end of the plot item list.
 
     A list of ions such as ["Sr I", "Sr II"] is rewritten as a populations plot [["populations", ["Sr I", "Sr II"]]].
+    The text of a polars expression becomes the expression, see parse_expression_item.
     """
     # the client draws the series styles, see draw_line_figure, thus the data needs the names alone
     plotitems, _ = split_plotitem_styles(plotitems)
 
+    # an expression can hold an "=", e.g. pl.col("Te").clip(lower_bound=0), and it is never a directive
+    isdirective = [
+        isinstance(plotvar, str) and "=" in plotvar and not is_expression_item(plotvar) for plotvar in plotitems
+    ]
     # the underscore of a directive is optional, thus "-p rho yscale=log" and "_yscale=log" are the same.
     # One shape here lets get_subplot_plans find an unknown directive whichever spelling the user gave
     plot_directives = [
         ["_" + key.removeprefix("_"), value]
         for key, value in (
-            plotvar.split("=", maxsplit=1) for plotvar in plotitems if isinstance(plotvar, str) and "=" in plotvar
+            plotvar.split("=", maxsplit=1)
+            for plotvar, directive in zip(plotitems, isdirective, strict=True)
+            if directive
         )
     ]
     plotvars = [
-        VARIABLE_ALIASES.get(plotvar, plotvar) if isinstance(plotvar, str) else plotvar
-        for plotvar in plotitems
-        if not isinstance(plotvar, str) or "=" not in plotvar
+        parse_expression_item(plotvar, estimatorcolumns)
+        if is_expression_item(plotvar)
+        else VARIABLE_ALIASES.get(plotvar, plotvar)
+        if isinstance(plotvar, str)
+        else plotvar
+        for plotvar, directive in zip(plotitems, isdirective, strict=True)
+        if not directive
     ]
 
     # a subplot with no series draws an empty frame, e.g. in the viewer after the user removed its last series
