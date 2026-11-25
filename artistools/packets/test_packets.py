@@ -937,8 +937,9 @@ def test_scan_packets_gives_one_name_and_type_to_the_flag_of_the_particle_origin
 def test_scan_packets_reads_a_batch_of_each_cache_version(tmp_path: Path) -> None:
     """A model can hold a batch of cache version 1 and a batch of version 2, and both give the same direction bins.
 
-    Version 2 stores only dirbin_costheta10_phi10, and version 1 stores dirbin and the angles. A scan of files with
-    two schemas stops with a SchemaError, thus each batch gets the columns of version 2 before the concatenation.
+    Version 2 stores only dirbin_costheta10_phi10 and phi, and version 1 stores dirbin, the angles, and the bins. A
+    scan of files with two schemas stops with a SchemaError, thus each batch gets the columns of version 2 before the
+    concatenation.
     """
     import shutil
 
@@ -950,8 +951,8 @@ def test_scan_packets_reads_a_batch_of_each_cache_version(tmp_path: Path) -> Non
     newcache = get_packets_rankbatch_parquetfile(tmp_path, batch_mpiranks=[0, 1], batchindex=0, virtual=False)
     assert pl.read_parquet_metadata(newcache)["cacheversion"] == "2"
     newcolumns = list(pl.read_parquet_schema(newcache))
-    assert "dirbin_costheta10_phi10" in newcolumns
-    assert not {"dirbin", "costhetabin", "phibin", "costheta", "phi", "cosphi", "testphi"} & set(newcolumns)
+    assert {"dirbin_costheta10_phi10", "phi"} <= set(newcolumns)
+    assert not {"dirbin", "costhetabin", "phibin", "costheta", "cosphi", "testphi"} & set(newcolumns)
 
     dfnew = pl.read_parquet(newcache)
     oldcache = tmp_path / "packetsbatch01_0002_0003.out.parquet.tmp"
@@ -959,7 +960,6 @@ def test_scan_packets_reads_a_batch_of_each_cache_version(tmp_path: Path) -> Non
         costhetabin=pl.col("dirbin") // 10,
         phibin=pl.col("dirbin") % 10,
         costheta=pl.lit(2.0, dtype=pl.Float32),
-        phi=pl.lit(-1.0, dtype=pl.Float32),
         cosphi=pl.lit(2.0, dtype=pl.Float32),
         testphi=pl.lit(0.0, dtype=pl.Float32),
     ).write_parquet(oldcache)
@@ -972,7 +972,7 @@ def test_scan_packets_reads_a_batch_of_each_cache_version(tmp_path: Path) -> Non
     nrows = dfnew.height
     pltest.assert_frame_equal(dfdirections.head(nrows), dfdirections.tail(nrows))
     expected = at.packets.add_packet_directions_lazypolars(
-        at.packets.bin_packet_directions_polars(dfnew.drop("dirbin_costheta10_phi10"))
+        at.packets.bin_packet_directions_polars(dfnew.drop("dirbin_costheta10_phi10", "phi"))
     )
     pltest.assert_frame_equal(dfdirections.head(nrows), expected.select(directioncolumns).collect())
 
@@ -988,6 +988,19 @@ def test_direction_bins_of_other_bin_counts_come_from_the_directions() -> None:
 
     assert get_dirbin(10, 10) == 7
     assert get_dirbin(4, 8) == get_reference_dirbin(dirx, diry, dirz, nphibins=8, ncosthetabins=4)
+
+
+def test_a_stored_phi_gives_the_phi_bins() -> None:
+    """A frame that holds phi gives the phi bins from that column, because an atan2 of each packet is slow."""
+    dfpackets = pl.LazyFrame(
+        {"dirx": [1.0], "diry": [0.0], "dirz": [0.0], "phi": [4.0]}, schema_overrides={"phi": pl.Float32}
+    )
+    binned = at.packets.bin_packet_directions_polars(
+        dfpackets, nphibins=8, ncosthetabins=4, phibintype="phibinmonotonicasc"
+    ).collect()
+
+    assert binned["phibinmonotonicasc"].item() == int(4.0 / (2 * math.pi) * 8)
+    assert at.packets.add_packet_directions_lazypolars(dfpackets).collect()["phi"].item() == pytest.approx(4.0)
 
 
 def test_lastpacketinteraction_main_writes_the_plot_to_the_output_folder(tmp_path: Path) -> None:

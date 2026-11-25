@@ -10,6 +10,7 @@ import time
 import typing as t
 import warnings
 from collections.abc import Callable
+from collections.abc import Collection
 from collections.abc import Mapping
 from collections.abc import Sequence
 from functools import lru_cache
@@ -681,8 +682,8 @@ def get_vpackets_text_columns(vpacketsfiletext: Path) -> list[str]:
 CACHEVERSION = 2
 
 # scan_packets also reads these versions. Version 1 stores dirbin, costhetabin, phibin, costheta, phi, cosphi, and
-# testphi, and version 2 stores only dirbin_costheta10_phi10. An older artistools reads only version 1, thus it
-# converts a batch of version 2 again and does not stop with a missing column
+# testphi, and version 2 stores only dirbin_costheta10_phi10 and phi. An older artistools reads only version 1, thus
+# it converts a batch of version 2 again and does not stop with a missing column
 CACHE_OLDVERSIONS: t.Final = (1,)
 
 # the number of ranks in each parquet cache of the packets
@@ -965,7 +966,12 @@ def get_packets_rankbatch_parquetfile(
                 ).cast(pl.Float32)
             ).sort(by=["type_id", "escape_type_id", "t_arrive_d"])
 
-            pldf_batch = pldf_batch.with_columns(get_dirbin_expr().alias(get_dirbin_column_name()))
+            # the phi bins of plotspherical took 0.67 s with an atan2 for each packet and 0.47 s with a stored phi,
+            # for 7e7 packets. phi takes about 4 % of the file
+            _, phi = get_packet_angle_exprs([])
+            pldf_batch = pldf_batch.with_columns(phi.alias("phi")).with_columns(
+                get_dirbin_expr(columns=["phi"]).alias(get_dirbin_column_name())
+            )
 
         print(
             f"   Took {time.perf_counter() - time_start_load:.1f} seconds. Writing parquet file...", end="", flush=True
@@ -1169,12 +1175,16 @@ def scan_packets_batch_parquet(packetsparquetfile: Path) -> pl.LazyFrame:
             },
             strict=False,
         )
-        .drop(["costhetabin", "phibin", "costheta", "phi", "cosphi", "testphi"], strict=False)
+        .drop(["costhetabin", "phibin", "costheta", "cosphi", "testphi"], strict=False)
     )
     columns = dfbatch.collect_schema().names()
+    if not {"dirx", "diry", "dirz"} <= set(columns):
+        return dfbatch
+    if "phi" not in columns:
+        dfbatch = dfbatch.with_columns(get_packet_angle_exprs(columns)[1].alias("phi"))
     dirbincolumn = get_dirbin_column_name()
-    if dirbincolumn not in columns and {"dirx", "diry", "dirz"} <= set(columns):
-        dfbatch = dfbatch.with_columns(get_dirbin_expr().alias(dirbincolumn))
+    if dirbincolumn not in columns:
+        dfbatch = dfbatch.with_columns(get_dirbin_expr(columns=["phi"]).alias(dirbincolumn))
     return dfbatch
 
 
@@ -1260,28 +1270,34 @@ def get_dirbin_column_name(ncosthetabins: int | None = None, nphibins: int | Non
     return f"dirbin_costheta{ncosthetabins}_phi{nphibins}"
 
 
-def get_packet_angle_exprs() -> tuple[pl.Expr, pl.Expr]:
-    """Return the Float32 cos θ and ϕ of the direction of each packet, from dirx, diry, and dirz."""
+def get_packet_angle_exprs(columns: Collection[str]) -> tuple[pl.Expr, pl.Expr]:
+    """Return the Float32 cos θ and ϕ of the direction of each packet, from dirx, diry, and dirz.
+
+    A column phi in columns gives ϕ, and the expression then does no atan2.
+    """
     costheta, phi = get_costheta_phi_exprs(pl.col("dirx"), pl.col("diry"), pl.col("dirz"))
-    return costheta.cast(pl.Float32), phi.cast(pl.Float32)
+    return costheta.cast(pl.Float32), pl.col("phi") if "phi" in columns else phi.cast(pl.Float32)
 
 
-def get_dirbin_expr(ncosthetabins: int | None = None, nphibins: int | None = None) -> pl.Expr:
-    """Return the direction bin of ARTIS of each packet, from dirx, diry, and dirz."""
+def get_dirbin_expr(
+    ncosthetabins: int | None = None, nphibins: int | None = None, columns: Collection[str] = ()
+) -> pl.Expr:
+    """Return the direction bin of ARTIS of each packet, from dirx, diry, dirz, and the column phi in columns."""
     if ncosthetabins is None:
         ncosthetabins = get_viewingdirection_costhetabincount()
     if nphibins is None:
         nphibins = get_viewingdirection_phibincount()
-    costheta, phi = get_packet_angle_exprs()
+    costheta, phi = get_packet_angle_exprs(columns)
     return (
         get_costhetabin_expr(costheta, ncosthetabins) * nphibins + get_phibin_expr(phi, pl.col("diry"), nphibins)
     ).cast(pl.Int32)
 
 
 def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame:
-    """Add the Float32 costheta and phi angles of each packet."""
-    costheta, phi = get_packet_angle_exprs()
-    return dfpackets.lazy().with_columns(costheta=costheta, phi=phi)
+    """Add the Float32 costheta and phi angles of each packet. A frame that holds phi keeps it."""
+    dfpackets = dfpackets.lazy()
+    costheta, phi = get_packet_angle_exprs(dfpackets.collect_schema().names())
+    return dfpackets.with_columns(costheta=costheta, phi=phi)
 
 
 def bin_packet_directions_polars(
@@ -1306,8 +1322,9 @@ def bin_packet_directions_polars(
     if ncosthetabins is None:
         ncosthetabins = get_viewingdirection_costhetabincount()
 
+    columns = dfpackets.collect_schema().names()
     if phibintype == "phibinmonotonicasc":
-        costheta, phi = get_packet_angle_exprs()
+        costheta, phi = get_packet_angle_exprs(columns)
         # phi can reach exactly 2 pi when diry < 0, so clamp to the last bin
         return dfpackets.with_columns(
             costhetabin=get_costhetabin_expr(costheta, ncosthetabins),
@@ -1317,11 +1334,7 @@ def bin_packet_directions_polars(
         )
 
     dirbincolumn = get_dirbin_column_name(ncosthetabins, nphibins)
-    dirbin = (
-        pl.col(dirbincolumn)
-        if dirbincolumn in dfpackets.collect_schema().names()
-        else get_dirbin_expr(ncosthetabins, nphibins)
-    )
+    dirbin = pl.col(dirbincolumn) if dirbincolumn in columns else get_dirbin_expr(ncosthetabins, nphibins, columns)
     return dfpackets.with_columns(dirbin=dirbin).with_columns(
         costhetabin=pl.col("dirbin") // nphibins, phibin=pl.col("dirbin") % nphibins
     )
