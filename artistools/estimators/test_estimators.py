@@ -5242,6 +5242,73 @@ def test_plot_item_gives_a_polars_expression(
             get_plotestimators_figure(["--timedays", "300", "--plot", baditem, str(modelpath)], tmp_path / "e.pdf")
 
 
+def test_plot_item_gives_a_sql_expression(
+    tmp_path: Path, get_plotestimators_figure: Callable[[Sequence[str], Path], mplfig.Figure]
+) -> None:
+    """A plot item that starts with "=" is polars SQL of the columns, and it takes a style as each item does."""
+    fig = get_plotestimators_figure(
+        [
+            "--timedays",
+            "300",
+            "--plot",
+            "=heating_coll - cooling_coll@label=net collisional",
+            "=Te / 1000",
+            str(modelpath),
+        ],
+        tmp_path / "estimators.pdf",
+    )
+    lines = fig.axes[0].get_lines()
+    assert [line.get_label() for line in lines] == ["net collisional", "=Te / 1000"]
+    assert np.isclose(np.asarray(lines[0].get_ydata())[0], -6.4962990e-10, rtol=1e-6)
+    assert np.isclose(np.asarray(lines[1].get_ydata())[0], 5.776620000000001, rtol=1e-6)
+
+    # polars names this expression after the literal, and the column gives the weight
+    doubled = plotitems.parse_expression_item("=2 * init_X_Fe56", ["init_X_Fe56"])
+    assert plotitems.get_series_variables(doubled)[2] == "init_X_Fe56"
+
+    with pytest.raises(SystemExit):
+        get_plotestimators_figure(["--timedays", "300", "--plot", "=Te ^ 2", str(modelpath)], tmp_path / "e.pdf")
+
+
+def test_typed_item_problem_names_the_fault_of_an_expression() -> None:
+    """The window shows the problem of an expression before it adds the item, and the command finds other problems."""
+    columns = ["Te", "TR"]
+    for item in ("=Te - TR", "=Te@color=C3", 'pl.col("Te") / 1e4', '- pl.col("Te")', "Te", "nonsense"):
+        assert plotitems.get_typed_item_problem(item, columns) is None, item
+
+    problems = {
+        "=Te ^ 2": "operator `^` is not currently supported",
+        "=te * 2": "reads 'te', which is not an estimator variable",
+        '-pl.col("Te")': "The command reads -p as a flag",
+        # a style with an unknown key stays in the expression, and the hint names the keys
+        "=Te@colour=C3": "reads 'Te@colour'",
+        "=Te, TR": "is not a valid polars expression",
+    }
+    for item, problem in problems.items():
+        result = plotitems.get_typed_item_problem(item, columns)
+        assert result is not None, item
+        assert problem in result[0], (item, result)
+    assert "The keys of a style" in (plotitems.get_typed_item_problem("=Te@colour=C3", columns) or ("", ""))[1]
+
+
+def test_expression_completion_puts_a_column_name_at_the_end() -> None:
+    """The window completes the column name at the end of an expression, and it adds the quotes that the form needs."""
+    cases = [
+        ('pl.col("heat', "heating_coll", 'pl.col("heating_coll")'),
+        ("pl.col('heat", "heating_coll", "pl.col('heating_coll')"),
+        ("=Te - cool", "cooling_coll", "=Te - cooling_coll"),
+        ("=", "heating_dep/total_dep", '="heating_dep/total_dep"'),
+        ('=2 * "heating_d', "heating_dep/total_dep", '=2 * "heating_dep/total_dep"'),
+    ]
+    for text, name, completed in cases:
+        assert plotitems.get_expression_name_start(text) is not None, text
+        assert plotitems.complete_expression_name(text, name) == completed, text
+
+    # a plain name or the method of an expression is not a column name in an expression
+    for text in ("heat", "pl.co", 'pl.col("Te").cl'):
+        assert plotitems.get_expression_name_start(text) is None, text
+
+
 def test_expression_item_can_hold_the_style_mark() -> None:
     """The style of an expression starts at the first @ that a style key follows, thus a string can hold an @.
 

@@ -238,9 +238,13 @@ def replace_directives(subplot: Sequence[str], directives: Mapping[str, str | No
     return (*kept, *(f"{name}={value}" for name, value in directives.items() if value is not None))
 
 
+# A plot item that starts with this mark is a polars SQL expression of the estimator columns, as a formula of a
+# spreadsheet, e.g. "=heating_coll - cooling_coll". No estimator variable, ion, or directive starts with "="
+SQL_EXPRESSION_MARK: t.Final = "="
+
 # a plot item that holds "pl." is the Python text of a polars expression, e.g. 'pl.col("Te") / 1e4'. No estimator
 # variable, ion, or directive holds this text
-EXPRESSION_PATTERN: t.Final = re.compile(r"\bpl\.")
+PYTHON_EXPRESSION_PATTERN: t.Final = re.compile(r"\bpl\.")
 
 # A series name can have its style after this mark, e.g. "Fe II@color=C3,linewidth=2". The mark needs no quotes
 # in a shell, and zsh reads square brackets as a file pattern
@@ -278,6 +282,11 @@ def get_series_style_problem(key: str, value: str) -> str | None:
     return None
 
 
+def is_expression_text(text: str) -> bool:
+    """Return True if the text is a polars expression in the SQL form, e.g. "=Te / 1e4", or in the Python form."""
+    return text.startswith(SQL_EXPRESSION_MARK) or PYTHON_EXPRESSION_PATTERN.search(text) is not None
+
+
 def partition_series_style(item: str) -> tuple[str, str, str]:
     """Return the name of a plot item, the style mark, and the text of the style, as str.partition gives them.
 
@@ -285,7 +294,7 @@ def partition_series_style(item: str) -> tuple[str, str, str]:
     at the first mark that a style key and an "=" follow. Each other item takes its first mark, thus an unknown key
     gives an error that names the style.
     """
-    if EXPRESSION_PATTERN.search(item) is None:
+    if not is_expression_text(item):
         return item.partition(SERIES_STYLE_MARK)
     for match in re.finditer(re.escape(SERIES_STYLE_MARK), item):
         styletext = item[match.end() :]
@@ -415,8 +424,8 @@ def get_styles_of_subplots(args: argparse.Namespace, count: int) -> list[dict[st
 
 
 def is_expression_item(item: t.Any) -> bool:
-    """Return True if a plot item is the Python text of a polars expression, e.g. 'pl.col("Te") / 1e4@color=C3'."""
-    return isinstance(item, str) and EXPRESSION_PATTERN.search(get_series_name(item)) is not None
+    """Return True if a plot item is a polars expression, e.g. "=Te / 1e4@color=C3" or 'pl.col("Te") / 1e4'."""
+    return isinstance(item, str) and is_expression_text(get_series_name(item))
 
 
 def starts_like_a_flag(item: str) -> bool:
@@ -430,19 +439,80 @@ def starts_like_a_flag(item: str) -> bool:
 def evaluate_expression_text(text: str) -> pl.Expr:
     """Return the polars expression of the text of a plot item.
 
-    Text that Python cannot evaluate gives ValueError, and a result that is not an expression gives TypeError.
+    The SQL form is polars SQL after the "=", e.g. "=heating_coll - cooling_coll", and it runs no Python code. Text
+    that gives no expression gives ValueError, and a Python result that is not an expression gives TypeError.
     """
     try:
-        # the user typed the text, thus it runs with the rights of the user. The name pl alone is in scope
-        expr = eval(text, {"__builtins__": {}, "pl": pl})  # ruff:ignore[suspicious-eval-usage]
+        if text.startswith(SQL_EXPRESSION_MARK):
+            expr = pl.sql_expr(text.removeprefix(SQL_EXPRESSION_MARK))
+        else:
+            # the user typed the text, thus it runs with the rights of the user. The name pl alone is in scope
+            expr = eval(text, {"__builtins__": {}, "pl": pl})  # ruff:ignore[suspicious-eval-usage]
     # the text can raise any exception, e.g. IndexError for pl.col(["Te"][1])
     except Exception as exc:
-        msg = f"The plot item '{text}' is not a valid polars expression: {exc}"
+        # a polars SQL error holds the text again on more lines, with a mark under the problem
+        reason = next((line for line in str(exc).splitlines() if line.strip()), type(exc).__name__)
+        msg = f"The plot item '{text}' is not a valid polars expression: {reason}"
         raise ValueError(msg) from exc
     if not isinstance(expr, pl.Expr):
         msg = f"The plot item '{text}' gives a {type(expr).__name__} and not a polars expression"
         raise TypeError(msg)
     return expr
+
+
+def get_expression_problem(text: str, estimatorcolumns: Collection[str]) -> tuple[str, str] | None:
+    """Return the problem of the text of an expression item and a hint, or None for an expression that gives a series.
+
+    The text holds no style. The window shows the problem while the user types, and the command stops with it.
+    """
+    try:
+        expr = evaluate_expression_text(text)
+    except (ValueError, TypeError) as exc:
+        hint = (
+            "Give polars SQL after an =, e.g. =heating_coll - cooling_coll, or Python text with pl as the polars"
+            ' module, e.g. pl.col("heating_coll") - pl.col("cooling_coll")'
+        )
+        return str(exc), hint
+    if expr.meta.has_multiple_outputs():
+        return (
+            f"The plot item '{text}' gives more than one column, and a series takes one column",
+            "Give one plot item for each column, e.g. =Te and =TR",
+        )
+    if absentcolumns := [name for name in expr.meta.root_names() if name not in estimatorcolumns]:
+        # a style with an unknown key stays in the text of an expression, see partition_series_style
+        stylehint = (
+            f"The keys of a style after {SERIES_STYLE_MARK} are {', '.join(SERIES_STYLE_KEYS)}"
+            if SERIES_STYLE_MARK in absentcolumns[0]
+            else ""
+        )
+        return (
+            f"The plot item '{text}' reads '{absentcolumns[0]}', which is not an estimator variable",
+            stylehint
+            or suggest_names(absentcolumns[0], estimatorcolumns)
+            or "Run with --listvariables to see the variables of this model",
+        )
+    return None
+
+
+def get_typed_item_problem(item: str, estimatorcolumns: Collection[str]) -> tuple[str, str] | None:
+    """Return the problem of an expression item that the user types in the window, and the problem with a hint.
+
+    The window shows the problem before it adds the item. Each item that is not an expression gives None, because the
+    command finds its problems.
+    """
+    if not is_expression_item(item):
+        return None
+    if starts_like_a_flag(item):
+        problem = f"The command reads {item[:2]} as a flag"
+        return problem, f"{problem}. Write 0 {item.replace('-', '- ', 1)} in place of {item}."
+    try:
+        name, _ = read_series_style(item)
+    except ValueError as exc:
+        return str(exc), str(exc)
+    if (expressionproblem := get_expression_problem(name, estimatorcolumns)) is None:
+        return None
+    problem, hint = expressionproblem
+    return problem, f"{problem}. {hint}"
 
 
 def parse_expression_item(text: str, estimatorcolumns: Collection[str]) -> pl.Expr:
@@ -451,25 +521,45 @@ def parse_expression_item(text: str, estimatorcolumns: Collection[str]) -> pl.Ex
     The text names the series in the styles of the subplot, see split_plotitem_styles. get_series_variables gives the
     units and the weight of the series.
     """
-    try:
-        expr = evaluate_expression_text(text)
-    except (ValueError, TypeError) as exc:
-        exit_with_error(
-            str(exc),
-            'Give Python text with pl as the polars module, e.g. \'pl.col("heating_coll") - pl.col("cooling_coll")\'',
-        )
-    if expr.meta.has_multiple_outputs():
-        exit_with_error(
-            f"The plot item '{text}' gives more than one column, and a series takes one column",
-            "Give one --plot item for each column, e.g. 'pl.col(\"Te\")' and 'pl.col(\"TR\")'",
-        )
-    if absentcolumns := [name for name in expr.meta.root_names() if name not in estimatorcolumns]:
-        exit_with_error(
-            f"The plot item '{text}' reads '{absentcolumns[0]}', which is not an estimator variable",
-            suggest_names(absentcolumns[0], estimatorcolumns)
-            or "Run with --listvariables to see the variables of this model",
-        )
-    return expr.alias(text)
+    if (problem := get_expression_problem(text, estimatorcolumns)) is not None:
+        exit_with_error(*problem)
+    return evaluate_expression_text(text).alias(text)
+
+
+# a name that SQL reads without quotes, e.g. heating_coll. A name such as heating_dep/total_dep needs double quotes
+SQL_PLAIN_NAME_PATTERN: t.Final = re.compile(r"[A-Za-z_]\w*")
+
+
+def get_expression_name_start(text: str) -> tuple[str, str] | None:
+    """Return the text before the column name at the end of an expression, and the start of that name, or None.
+
+    The window completes the name. In the Python form, the name follows pl.col(" or pl.col('. In the SQL form, the
+    name is the last word, or the text after a double quote with no end.
+    """
+    if not text.startswith(SQL_EXPRESSION_MARK):
+        match = re.fullmatch(r"(?s)(.*\bpl\.col\(\s*[\"'])([^\"']*)", text)
+        return None if match is None else (match[1], match[2])
+    if text.count('"') % 2 == 1:
+        head, _, start = text.rpartition('"')
+        return f'{head}"', start
+    match = re.fullmatch(r"(?s)(.*?)([A-Za-z_]\w*)?", text)
+    return None if match is None else (match[1], match[2] or "")
+
+
+def complete_expression_name(text: str, name: str) -> str:
+    """Return the text of an expression with the column name in place of the start of the name at its end.
+
+    The Python form closes the call, e.g. pl.col("heating_coll"). The SQL form puts a name in double quotes when SQL
+    needs them, e.g. "heating_dep/total_dep".
+    """
+    if (parts := get_expression_name_start(text)) is None:
+        return text
+    head = parts[0]
+    if not text.startswith(SQL_EXPRESSION_MARK):
+        return f"{head}{name}{head[-1]})"
+    if head.endswith('"') and head.count('"') % 2 == 1:
+        return f'{head}{name}"'
+    return f"{head}{name}" if SQL_PLAIN_NAME_PATTERN.fullmatch(name) else f'{head}"{name}"'
 
 
 def get_series_variables(colexpr: pl.Expr) -> tuple[str, str, str]:

@@ -26,7 +26,9 @@ from artistools.estimators.core import split_species_suffix
 from artistools.estimators.plotestimators import get_panel_axes_label
 from artistools.estimators.plotestimators import get_ylabel
 from artistools.estimators.plotestimators import POPTYPE_YLABELS
+from artistools.estimators.plotitems import complete_expression_name
 from artistools.estimators.plotitems import get_directive_value
+from artistools.estimators.plotitems import get_expression_name_start
 from artistools.estimators.plotitems import get_iontuple
 from artistools.estimators.plotitems import get_iontuple_sortkey
 from artistools.estimators.plotitems import get_item_directive
@@ -35,6 +37,7 @@ from artistools.estimators.plotitems import get_series_items
 from artistools.estimators.plotitems import get_series_name
 from artistools.estimators.plotitems import get_subplot_names
 from artistools.estimators.plotitems import get_subplot_seriestype
+from artistools.estimators.plotitems import get_typed_item_problem
 from artistools.estimators.plotitems import is_expression_item
 from artistools.estimators.plotitems import is_seriestype
 from artistools.estimators.plotitems import is_valid_ion
@@ -42,7 +45,6 @@ from artistools.estimators.plotitems import remove_item_styles
 from artistools.estimators.plotitems import replace_directives
 from artistools.estimators.plotitems import resolve_item_alias
 from artistools.estimators.plotitems import set_item_style
-from artistools.estimators.plotitems import starts_like_a_flag
 from artistools.nltepops import read_nltepops
 from artistools.plottools import plain_label
 from artistools.viewertools.core import get_row_values
@@ -61,6 +63,7 @@ from artistools.viewertools.widgets import make_glyph_button
 from artistools.viewertools.widgets import make_grip
 from artistools.viewertools.widgets import make_note_label
 from artistools.viewertools.widgets import make_row_layout
+from artistools.viewertools.widgets import make_word_completer
 from artistools.viewertools.widgets import set_disclosure_symbol
 from artistools.viewertools.widgets import set_edit_text
 from artistools.viewertools.widgets import set_note_text
@@ -613,13 +616,15 @@ def make_chip(
     tooltip: str,
     on_remove: "Callable[[], None]",
     swatchbutton: "QtWidgets.QToolButton | None",
+    on_edit: "Callable[[], None] | None" = None,
 ) -> None:
     """Fill a chip that shows one item of a subplot, with a button that removes the item.
 
     chip comes from make_drag_header, thus the user can drag it, move it with Alt-Up and Alt-Down, and click it.
     swatchbutton shows the line of the series at the start of the chip, and a colour image gives None.
     show_card_directives puts a dot after the text of a series that has a style of its own. get_subplot_style_sheet
-    gives the chip its tint.
+    gives the chip its tint. on_edit gives an expression chip a button that puts its text back in the field of the
+    card.
     """
     from PySide6 import QtWidgets
 
@@ -638,6 +643,10 @@ def make_chip(
     removebutton = make_glyph_button("xmark", f"Remove {text} from the subplot", f"Remove {text}")
     removebutton.clicked.connect(on_remove)
     layout.addWidget(label)
+    if on_edit is not None:
+        editbutton = make_glyph_button("pencil", f"Edit {text} in the field of the card", f"Edit {text}")
+        editbutton.clicked.connect(on_edit)
+        layout.addWidget(editbutton)
     layout.addWidget(removebutton)
 
 
@@ -748,6 +757,8 @@ def add_subplot_section(
 
     # the cards of the subplots on the screen, and the key of the suggestions of a new subplot
     cards: list[SubplotCard] = []
+    # the position and the text of the expression chip that the field of each row edits, see on_edit_item
+    editeditems: dict[int, tuple[int, str]] = {}
     shownnewkey: tuple[object, ...] = ()
     # the row of a card, the name of its control, and the position of a chip, which take the focus when show_subplots
     # runs next. Each chip has the name "chip", thus the position selects one
@@ -901,7 +912,14 @@ def add_subplot_section(
                 partial(on_move_chip, row, position),
                 None if isimage else partial(on_click_chip, row, position),
             )
-            make_chip(chip, name, tooltip, partial(on_remove_item, row, position), swatchbutton)
+            make_chip(
+                chip,
+                name,
+                tooltip,
+                partial(on_remove_item, row, position),
+                swatchbutton,
+                partial(on_edit_item, row, position) if is_expression_item(item) else None,
+            )
             chip.setProperty("chipposition", position)
             chipslayout.addWidget(chip)
             chips.append((position, chip))
@@ -927,12 +945,19 @@ def add_subplot_section(
         example = f", e.g. {suggestions[0]}" if suggestions else ""
         addedit = QtWidgets.QLineEdit()
         addedit.setObjectName("add")
-        addcompleter = make_completer(choices, addedit)
+        # a new field edits no chip
+        editeditems.pop(row, None)
+        # a column name inside an expression also takes the completer, e.g. heat in =Te - heat
+        addcompleter = (
+            make_word_completer(choices, addedit, get_expression_name_start, complete_expression_name)
+            if currenttype == VARIABLES_TYPE
+            else make_completer(choices, addedit)
+        )
         addedit.setCompleter(addcompleter)
         # the field takes the name first, and then this handler adds it
         addcompleter.activated.connect(partial(on_complete_item, row, addedit))
         if currenttype == VARIABLES_TYPE:
-            addedit.setPlaceholderText(f"Add a variable or a polars expression{example}")
+            addedit.setPlaceholderText(f"Add an expression such as =Te / 1e4 or a variable{example}")
         elif currenttype.startswith("levelpopulation"):
             addedit.setPlaceholderText(f"Add a level: an ion and the index of its level{example}")
         elif currenttype == "populations":
@@ -941,8 +966,8 @@ def add_subplot_section(
             addedit.setPlaceholderText(f"Add a species{example}")
         addedit.setToolTip(
             "Press Return to add the name. A part of a name shows the names that hold it. A directive such as"
-            " ymin=1e-16 also goes here. The Python text of a polars expression gives a series, e.g."
-            ' pl.col("heating_coll") - pl.col("cooling_coll").'
+            " ymin=1e-16 also goes here. A polars expression after an = gives a series, e.g. =heating_coll -"
+            ' cooling_coll. Python text such as pl.col("Te") / 1e4 also gives a series.'
         )
         addedit.returnPressed.connect(partial(on_add_item, row, addedit))
         listbutton = make_glyph_button("chevron.down", "Show each name that the subplot can take", "Show All Names")
@@ -954,6 +979,16 @@ def add_subplot_section(
         addrow.addWidget(addedit, 1)
         addrow.addWidget(listbutton)
         cardlayout.addLayout(addrow)
+        # the note shows the problem of an expression while the user types, before the plot fails
+        itemnote = make_note_label()
+        cardlayout.addWidget(itemnote)
+        itemchecktimer = QtCore.QTimer(addedit)
+        itemchecktimer.setSingleShot(True)
+        # the check waits for a pause in the typing, because a check after each key runs the Python text of an
+        # incomplete expression
+        itemchecktimer.setInterval(400)
+        itemchecktimer.timeout.connect(partial(show_typed_item_problem, addedit, itemnote))
+        addedit.textChanged.connect(partial(restart_timer, itemchecktimer))
 
         if suggestions:
             suggestionsbox = QtWidgets.QWidget()
@@ -1313,6 +1348,40 @@ def add_subplot_section(
             subplot = viewer.values.subplots[row]
             set_subplot(row, replace_directives(subplot, {"ymin": texts[0] or None, "ymax": texts[1] or None}))
 
+    def restart_timer(timer: QtCore.QTimer, *_: object) -> None:
+        timer.start()
+
+    def show_typed_item_problem(edit: QtWidgets.QLineEdit, note: QtWidgets.QLabel) -> None:
+        problem = get_typed_item_problem(edit.text().strip(), viewer.modeldata.estimatorcolumns)
+        # the note shows the problem, and its More link shows the hint
+        summary, detail = problem or ("", "")
+        set_note_text(note, summary, detail)
+
+    def on_edit_item(row: int, position: int) -> None:
+        """Put the text of an expression chip in the field of its card. A press of Return then changes the chip."""
+        if row >= len(cards) or (edit := cards[row].frame.findChild(QtWidgets.QLineEdit, "add")) is None:
+            return
+        item = viewer.values.subplots[row][position]
+        editeditems[row] = (position, item)
+        edit.setText(item)
+        edit.setFocus()
+
+    def replace_edited_item(row: int, item: str) -> bool:
+        """Put an item in place of the chip that the field of the card edits, and return False if it edits no chip.
+
+        A drag or an Undo can move the chip, thus the item replaces the chip only if the chip is still at its place.
+        """
+        subplot = viewer.values.subplots[row]
+        position, olditem = editeditems.pop(row, (-1, ""))
+        if not 0 <= position < len(subplot) or subplot[position] != olditem:
+            return False
+        others = (*subplot[:position], *subplot[position + 1 :])
+        if get_series_name(item) in get_subplot_names(others):
+            show_error(f"The subplot already shows {get_series_name(item)}")
+        else:
+            set_subplot(row, (*subplot[:position], item, *subplot[position + 1 :]))
+        return True
+
     def add_item(row: int, item: str) -> None:
         subplot = viewer.values.subplots[row]
         item = resolve_item_alias(item)
@@ -1323,10 +1392,8 @@ def add_subplot_section(
                 show_error(f"Give a value after {item}, e.g. {directive}=1e-16")
                 return
             set_subplot(row, replace_directives(subplot, {directive: value}))
-        elif starts_like_a_flag(item) and is_expression_item(item):
-            show_error(
-                f"Write 0 {item.replace('-', '- ', 1)} in place of {item}. The command reads {item[:2]} as a flag."
-            )
+        elif replace_edited_item(row, item):
+            return
         elif get_series_name(item) in get_subplot_names(subplot):
             show_error(f"The subplot already shows {get_series_name(item)}")
         else:
@@ -1351,12 +1418,20 @@ def add_subplot_section(
         if popup_has_pick(edit) or not is_shown_card(row, edit):
             return
         item = edit.text().strip()
+        # the field keeps an expression with a problem, thus the user can correct it
+        if (problem := get_typed_item_problem(item, viewer.modeldata.estimatorcolumns)) is not None:
+            show_error(problem[1])
+            return
         edit.clear()
         if item:
             add_item(row, item)
 
     def on_complete_item(row: int, edit: QtWidgets.QLineEdit, item: str) -> None:
         if not is_shown_card(row, edit):
+            return
+        # a completion inside an expression changes only the column name, thus the user can type the remaining text
+        if is_expression_item(edit.text()):
+            edit.setText(complete_expression_name(edit.text(), item) if not is_expression_item(item) else item)
             return
         edit.clear()
         add_item(row, item)

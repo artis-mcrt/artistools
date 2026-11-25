@@ -225,6 +225,7 @@ SYMBOL_STROKES: t.Final = MappingProxyType({
     "chevron.down": (((0.15, 0.32), (0.5, 0.68), (0.85, 0.32)),),
     "chevron.right": (((0.32, 0.15), (0.68, 0.5), (0.32, 0.85)),),
     "line.3.horizontal": (((0.12, 0.25), (0.88, 0.25)), ((0.12, 0.5), (0.88, 0.5)), ((0.12, 0.75), (0.88, 0.75))),
+    "pencil": (((0.18, 0.82), (0.72, 0.28)), ((0.62, 0.18), (0.82, 0.38)), ((0.18, 0.82), (0.12, 0.88))),
 })
 
 
@@ -1411,6 +1412,52 @@ def make_completer(names: "Sequence[str]", parent: "QtWidgets.QWidget") -> "QtWi
     from PySide6 import QtWidgets
 
     completer = QtWidgets.QCompleter(list(names), parent)
+    set_search_completion(completer)
+    return completer
+
+
+@cache
+def get_word_completer_class() -> "type[QtWidgets.QCompleter]":
+    """Return the class of the completers of make_word_completer.
+
+    PySide keeps approximately 1.5 KB of memory for each class, thus the viewers make the class one time.
+    """
+    from PySide6 import QtCore
+    from PySide6 import QtWidgets
+
+    class WordCompleter(QtWidgets.QCompleter):
+        """A completer that completes the word at the end of a text, or else the whole text."""
+
+        @t.override
+        def splitPath(self, path: str, /) -> list[str]:
+            parts = self.property("get_word_start")(path)
+            return [path if parts is None else parts[1]]
+
+        @t.override
+        def pathFromIndex(self, index: QtCore.QModelIndex | QtCore.QPersistentModelIndex, /) -> str:
+            name = str(index.data())
+            widget = self.widget()
+            text = widget.text() if isinstance(widget, QtWidgets.QLineEdit) else ""
+            return name if self.property("get_word_start")(text) is None else self.property("complete_word")(text, name)
+
+    return WordCompleter
+
+
+def make_word_completer(
+    names: "Sequence[str]",
+    parent: "QtWidgets.QWidget",
+    get_word_start: "Callable[[str], tuple[str, str] | None]",
+    complete_word: "Callable[[str, str], str]",
+) -> "QtWidgets.QCompleter":
+    """Return a completer that finds each name that holds the start of the word at the end of a text.
+
+    get_word_start returns the text before the word and the start of the word, or None for a text with no such word.
+    The completer then completes the whole text, as make_completer does. complete_word returns the text with the name
+    in place of the word, e.g. pl.col("heating_coll") for pl.col("heat.
+    """
+    completer = get_word_completer_class()(list(names), parent)
+    completer.setProperty("get_word_start", get_word_start)
+    completer.setProperty("complete_word", complete_word)
     set_search_completion(completer)
     return completer
 

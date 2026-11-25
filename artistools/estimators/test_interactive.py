@@ -596,13 +596,13 @@ def test_interactive_command_keeps_a_polars_expression(
     make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer],
 ) -> None:
     """The command of the viewer must give the text of an expression unchanged, with its quotes, "=", and comma."""
-    expression = 'pl.max_horizontal(pl.col("Te"), pl.col("TR")).clip(lower_bound=0)'
-    viewer = make_viewer("estimators", [str(modelpath), "--timestep", "50", "--plot", expression, "--interactive"])
-    assert viewer.values.subplots == ((expression,),)
+    for expression in ('pl.max_horizontal(pl.col("Te"), pl.col("TR")).clip(lower_bound=0)', '=GREATEST(Te, TR) / "TR"'):
+        viewer = make_viewer("estimators", [str(modelpath), "--timestep", "50", "--plot", expression, "--interactive"])
+        assert viewer.values.subplots == ((expression,),)
 
-    tokens = shlex.split(viewer.get_command())[2:]
-    assert make_viewer("estimators", [*tokens, "--interactive"]).values.subplots == ((expression,),)
-    assert_same_lines(viewer.fig, get_plotestimators_figure(tokens, tmp_path / "estimators.pdf"))
+        tokens = shlex.split(viewer.get_command())[2:]
+        assert make_viewer("estimators", [*tokens, "--interactive"]).values.subplots == ((expression,),)
+        assert_same_lines(viewer.fig, get_plotestimators_figure(tokens, tmp_path / "estimators.pdf"))
 
 
 def test_interactive_command_gives_the_default_subplots(
