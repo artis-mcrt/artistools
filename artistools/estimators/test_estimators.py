@@ -5520,6 +5520,7 @@ def test_expression_gives_numbers_in_a_subplot_of_variables() -> None:
 
     # the plot puts the values next to the cells by position, thus a change of the order gives wrong values
     for reordering in (
+        'pl.col("Te").map_batches(lambda s: s.sort() if s.max() > 10 else s, return_dtype=pl.Float64)',
         'pl.col("Te").over((pl.col("Te") > 10000).fill_null(False), mapping_strategy="explode")',
         'pl.col("Te").forward_fill()',
         "pl.int_range(pl.len()) * 1e-12",

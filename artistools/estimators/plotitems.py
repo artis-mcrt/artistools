@@ -542,7 +542,11 @@ def get_evaluated_expression_problem(
         return problem, 'Give a condition with pl.when, e.g. pl.when(pl.col("Te") > 1e4).then(pl.col("Te"))'
     # the plot puts the values next to the cells by position, thus a sort gives each cell the value of a different cell
     if not keepsroworder or ordermethod is not None:
-        methodtext = f" with {ordermethod}()" if ordermethod is not None else ", e.g. with sort() or shift()"
+        methodtext = ", e.g. with sort() or shift()"
+        if ordermethod == "python_udf":
+            methodtext = " with a Python function of map_batches() or map_elements()"
+        elif ordermethod is not None:
+            methodtext = f" with {ordermethod}()"
         problem = (
             f"The plot item '{text}' changes the order or the number of the rows{methodtext}, and each value of a"
             " series belongs to its own cell and timestep"
@@ -558,11 +562,12 @@ def get_evaluated_expression_problem(
 
 
 # the polars methods that depend on the order of the rows or that select rows, as the text of an expression names them.
-# The text of fill_null(strategy=...) does not give the strategy. keeps_row_order finds a forward or a backward fill
+# The text of fill_null(strategy=...) does not give the strategy. keeps_row_order finds a forward or a backward fill.
+# A Python function of map_batches() or map_elements() gives python_udf, and it can sort only the rows of the model
 ORDER_METHOD_PATTERN: t.Final = re.compile(
     r"sort|sort_by|reverse|shift|gather|gather_every|shuffle|sample|arg_sort|top_k|bottom_k|top_k_by|bottom_k_by|int_range"
     r"|cum_\w+|cumulative_eval|diff|pct_change|rolling\w*|ewm_\w+|interpolate\w*|rle\w*|filter|slice|head|tail"
-    r"|drop_nulls|drop_nans|unique|explode|arg_true"
+    r"|drop_nulls|drop_nans|unique|explode|arg_true|python_udf"
 )
 
 
