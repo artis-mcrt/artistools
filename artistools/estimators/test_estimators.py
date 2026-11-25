@@ -5217,6 +5217,23 @@ def test_default_plotitem_keeps_estimator_columns_named_like_elements() -> None:
     assert get_default_plotitem_skip_reason([["initmasses", ["Sr", "Ni_56"]]], estimatorcolumns) is None
 
 
+def test_default_plotlist_keeps_an_expression_subplot() -> None:
+    """A default subplot can start with a polars expression, as an example in get_default_plotlist shows.
+
+    The skip test compared the first item of the subplot with a string, and an expression has no truth value.
+    """
+    expressionsubplot = [
+        (pl.col("heating_coll") - pl.col("cooling_coll")).alias("collisional heating - cooling"),
+        ["_yscale", "linear"],
+    ]
+    estimatorcolumns = ["timestep", "modelgridindex", "TR", "heating_coll", "cooling_coll"]
+    with mock.patch.object(plotestimators, "get_default_plotlist", return_value=[expressionsubplot, ["TR"]]):
+        plotlist, skippedplotlist = plotestimators.get_model_default_plotlist(estimatorcolumns, modelpath)
+
+    assert [plotitems[0] is expressionsubplot[0] for plotitems in plotlist] == [True, False]
+    assert not skippedplotlist
+
+
 def test_averageexcitation_spreads_the_superlevel_over_the_kept_levels(monkeypatch: pytest.MonkeyPatch) -> None:
     """The superlevel holds the levels that ARTIS keeps, thus a level above nlevelsmax takes no part."""
     keptlevelcount = 80

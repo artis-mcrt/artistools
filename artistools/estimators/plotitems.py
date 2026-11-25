@@ -13,6 +13,8 @@ from collections.abc import Mapping
 from collections.abc import Sequence
 from types import MappingProxyType
 
+import polars as pl
+
 from artistools.atomic import decode_roman_numeral
 from artistools.atomic import get_atomic_number
 from artistools.atomic import get_elsymbol
@@ -501,12 +503,15 @@ def get_plotitem_tokens(plotitems: Sequence[t.Any]) -> tuple[str, ...]:
     """Return the --plot tokens of the items of one subplot of the default plot list.
 
     A directive has the form ["_yscale", "log"], and it becomes "yscale=log". A type of series has the form
-    ["populations", ["Fe II", "Fe III"]], and its names follow it.
+    ["populations", ["Fe II", "Fe III"]], and its names follow it. A polars expression gives its output name, which
+    --plot cannot read.
     """
     tokens: list[str] = []
     for plotitem in plotitems:
         if isinstance(plotitem, str):
             tokens.append(plotitem)
+        elif isinstance(plotitem, pl.Expr):
+            tokens.append(plotitem.meta.output_name())
         elif str(plotitem[0]).startswith("_"):
             tokens.append(f"{str(plotitem[0]).removeprefix('_')}={plotitem[1]}")
         else:

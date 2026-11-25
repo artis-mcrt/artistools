@@ -452,7 +452,14 @@ def read_model_data(modelpath: Path, args: argparse.Namespace, ntimesteps: int) 
         .collect()
     )
     cells: list[int] = dfcells["modelgridindex"].to_list()
-    defaultplotlist, skippedplotlist = get_model_default_plotlist(estimatorcolumns, modelpath)
+    modeldefaultplotlist, skippedplotlist = get_model_default_plotlist(estimatorcolumns, modelpath)
+    # the window gives each subplot to the command as --plot tokens, and --plot has no syntax for a polars expression
+    defaultplotlist: list[t.Any] = []
+    for plotitems in modeldefaultplotlist:
+        if any(isinstance(item, pl.Expr) for item in plotitems):
+            skippedplotlist.append((plotitems, "--plot has no syntax for a polars expression"))
+        else:
+            defaultplotlist.append(plotitems)
     return ModelData(
         batchcaches=batchcaches,
         estimatorcolumns=tuple(estimatorcolumns),

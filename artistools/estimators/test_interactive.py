@@ -573,6 +573,23 @@ def test_interactive_session_keeps_an_empty_last_subplot(
     assert make_viewer("estimators", [*tokens, "--interactive"]).values.subplots == subplots
 
 
+def test_interactive_leaves_out_an_expression_subplot(
+    make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer],
+) -> None:
+    """The window gives each subplot to the command as --plot tokens, and --plot has no syntax for an expression."""
+    expressionsubplot = [
+        (pl.col("heating_coll") - pl.col("cooling_coll")).alias("collisional heating - cooling"),
+        ["_yscale", "linear"],
+    ]
+    with mock.patch.object(plotestimators, "get_default_plotlist", return_value=[expressionsubplot, ["TR"]]):
+        viewer = make_viewer("estimators", [str(modelpath), "--timestep", "50", "--interactive"])
+
+    assert viewer.modeldata.defaultsubplots == (("TR",),)
+    assert viewer.modeldata.skippeddefaults == (
+        "collisional heating - cooling yscale=linear: --plot has no syntax for a polars expression",
+    )
+
+
 def test_interactive_command_gives_the_default_subplots(
     tmp_path: Path,
     get_plotestimators_figure: Callable[[Sequence[str], Path], mplfig.Figure],

@@ -1055,13 +1055,16 @@ def get_default_plotitem_skip_reason(
         return None
 
     if isinstance(plotitems, (list, tuple)):
+        # a polars expression in the first place has no truth value for a comparison with a string
+        seriestype = plotitems[0] if len(plotitems) == 2 and isinstance(plotitems[0], str) else None
+
         # initabundances/initmasses series read the input model file, not the estimators, so the element names in
         # those items say nothing about which estimator columns exist
-        if len(plotitems) == 2 and isinstance(plotitems[0], str) and plotitems[0] in {"initabundances", "initmasses"}:
+        if seriestype in {"initabundances", "initmasses"}:
             return None
 
         # averageexcitation reads the NLTE population files, which a model need not have written
-        if len(plotitems) == 2 and plotitems[0] == "averageexcitation" and modelpath is not None:
+        if seriestype == "averageexcitation" and modelpath is not None:
             if not has_nlte_populations(modelpath):
                 return "the model has no NLTE population files (nlte_*.out)"
             plotitems = plotitems[1]
