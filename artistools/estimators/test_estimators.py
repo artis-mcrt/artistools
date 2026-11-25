@@ -21,6 +21,7 @@ import polars.testing as pltest
 import pytest
 
 import artistools as at
+from artistools.constants import km_to_cm
 from artistools.estimators import plotestimators
 from artistools.estimators import plotitems
 
@@ -3024,6 +3025,129 @@ def test_estimator_image_table_holds_only_the_drawn_cells() -> None:
     assert dfcut.filter(pl.col("panel") == 1)["vel_x_on_c"].to_list() == pytest.approx([-0.05], rel=1e-9)
 
 
+def test_image_of_a_selector_keeps_the_columns_that_it_reads(tmp_path: Path) -> None:
+    """A colour image keeps each column that a selector reads, although polars names no root column for a selector.
+
+    The image kept only the root columns of each panel, thus a sum over pl.col("^(Te|TR)$") read no column.
+    """
+    ((_, _, _, selectorgrid),) = get_image_panel_calls(
+        {"plotlist": [['pl.sum_horizontal(pl.col("^(Te|TR)$"))']], "dimensionreduce": 2}, tmp_path
+    )
+    ((_, _, _, sumgrid),) = get_image_panel_calls({"plotlist": [["=Te + TR"]], "dimensionreduce": 2}, tmp_path)
+    assert np.allclose(selectorgrid.filled(np.nan), sumgrid.filled(np.nan), rtol=1e-12, atol=0, equal_nan=True)
+
+
+def test_image_of_an_aggregation_takes_all_the_selected_cells(tmp_path: Path) -> None:
+    """An aggregation in an expression takes all the selected cells, as a line does, and not only the cells of a pixel.
+
+    The mean of each pixel evaluated the expression, thus pl.col("Te") - pl.col("Te").mean() gave 0 in each pixel.
+    """
+    ((_, _, _, tegrid),) = get_image_panel_calls({"plotlist": [["Te"]], "dimensionreduce": 2}, tmp_path)
+    ((_, _, _, deviationgrid),) = get_image_panel_calls(
+        {"plotlist": [['pl.col("Te") - pl.col("Te").mean()']], "dimensionreduce": 2}, tmp_path
+    )
+    # each pixel takes the same mean of all the cells away. The grids hold Float32 values of Te
+    offsets = (tegrid - deviationgrid).compressed()
+    assert np.allclose(offsets, offsets[0], rtol=1e-6, atol=0)
+
+    # the image leaves out the cells in the corners of the cube, and the mean takes only the cells that it shows
+    lzmodel, modelmeta = at.scan_modeldata(modelpath_classic_3d)
+    lzmodel = at.inputmodel.add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
+    shownmean = (
+        at
+        .scan_estimators(modelpath_classic_3d, timestep=8)
+        .select("modelgridindex", "Te")
+        .join(lzmodel.select("modelgridindex", "vel_x_mid", "vel_y_mid"), on="modelgridindex", how="inner")
+        .filter((pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2).sqrt() < modelmeta["vmax_cmps"])
+        .select(pl.col("Te").mean())
+        .collect()
+        .item()
+    )
+    assert np.isclose(offsets[0], shownmean, rtol=1e-6, atol=0)
+
+
+def test_image_frames_take_the_aggregation_of_their_timestep(tmp_path: Path) -> None:
+    """With --multiplot, an aggregation in an expression takes the cells of the timestep of each frame, as a line does.
+
+    The image took the mean of all the timesteps, thus each frame took the same mean away.
+    """
+    framekwargs = {"dimensionreduce": 2, "timestep": "8-9", "multiplot": True}
+    tegrids = [call[3] for call in get_image_panel_calls({"plotlist": [["Te"]]} | framekwargs, tmp_path)]
+    deviationgrids = [
+        call[3]
+        for call in get_image_panel_calls(
+            {"plotlist": [['pl.col("Te") - pl.col("Te").mean()']]} | framekwargs, tmp_path
+        )
+    ]
+    frameoffsets = []
+    for tegrid, deviationgrid in zip(tegrids, deviationgrids, strict=True):
+        offsets = (tegrid - deviationgrid).compressed()
+        assert np.allclose(offsets, offsets[0], rtol=1e-6, atol=0)
+        frameoffsets.append(offsets[0])
+    assert len(frameoffsets) == 2
+    assert not np.isclose(frameoffsets[0], frameoffsets[1], rtol=1e-6, atol=0)
+
+
+def test_image_aggregation_takes_the_cells_inside_the_x_range(tmp_path: Path) -> None:
+    """An aggregation of an image takes the cells inside --xmax, as a line does, and not the cells that the crop hides.
+
+    The image took the mean of each cell, thus pl.col("Te") - pl.col("Te").mean() differed from the line.
+    """
+    xmax_kmps = 15000.0
+    ((_, _, _, tegrid),) = get_image_panel_calls(
+        {"plotlist": [["Te"]], "dimensionreduce": 2, "xmax": xmax_kmps}, tmp_path
+    )
+    ((_, _, _, deviationgrid),) = get_image_panel_calls(
+        {"plotlist": [['pl.col("Te") - pl.col("Te").mean()']], "dimensionreduce": 2, "xmax": xmax_kmps}, tmp_path
+    )
+    offsets = (tegrid - deviationgrid).compressed()
+    lzmodel, modelmeta = at.scan_modeldata(modelpath_classic_3d)
+    lzmodel = at.inputmodel.add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
+    vel_rcyl_mid = (pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2).sqrt()
+    insidemean = (
+        at
+        .scan_estimators(modelpath_classic_3d, timestep=8)
+        .select("modelgridindex", "Te")
+        .join(lzmodel.select("modelgridindex", "vel_x_mid", "vel_y_mid"), on="modelgridindex", how="inner")
+        .filter(vel_rcyl_mid < modelmeta["vmax_cmps"], vel_rcyl_mid <= xmax_kmps * km_to_cm)
+        .select(pl.col("Te").mean())
+        .collect()
+        .item()
+    )
+    assert np.allclose(offsets, insidemean, rtol=1e-6, atol=0)
+
+
+def test_image_of_a_1d_model_takes_the_shells_inside_the_x_range(tmp_path: Path) -> None:
+    """An image of a 1D model keeps each shell that gives a point at or beyond --xmin, before an aggregation.
+
+    The image of a 1D model applied no x range before an aggregation, thus the mean took the hidden inner shells.
+    """
+    lzmodel, modelmeta = at.scan_modeldata(CLASSIC1DPATH)
+    dfshells = (
+        at
+        .scan_estimators(CLASSIC1DPATH, timestep=24, classicartis=True)
+        .select("modelgridindex", "Te")
+        .join(
+            at.inputmodel.add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta).select(
+                "modelgridindex", "vel_r_max"
+            ),
+            on="modelgridindex",
+            how="inner",
+        )
+        .collect()
+    )
+    xmin_kmps = float(np.median(dfshells["vel_r_max"].to_numpy())) / km_to_cm
+    imagekwargs = {"modelpath": CLASSIC1DPATH, "timestep": "24", "classicartis": True, "dimensionreduce": 2}
+    ((_, _, _, tegrid),) = get_image_panel_calls({"plotlist": [["Te"]], "xmin": xmin_kmps} | imagekwargs, tmp_path)
+    ((_, _, _, deviationgrid),) = get_image_panel_calls(
+        {"plotlist": [['pl.col("Te") - pl.col("Te").mean()']], "xmin": xmin_kmps} | imagekwargs, tmp_path
+    )
+    offsets = (tegrid - deviationgrid).compressed()
+    shownmean = float(np.mean(dfshells.filter(pl.col("vel_r_max") > xmin_kmps * km_to_cm)["Te"].to_numpy()))
+    assert np.allclose(offsets, shownmean, rtol=1e-6, atol=0)
+    assert not np.isclose(shownmean, float(np.mean(dfshells["Te"].to_numpy())), rtol=1e-6, atol=0)
+
+
 def test_estimator_plot_of_2_dimensions_gives_the_average_around_the_z_axis(
     tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
 ) -> None:
@@ -4516,6 +4640,29 @@ def test_projection_is_the_mean_of_each_line_of_cells() -> None:
     assert np.isnan(grid[0, 0])
 
 
+def test_image_of_a_spherical_model_takes_the_cells_inside_the_x_range() -> None:
+    """A model with spherical edges keeps each cell with a point of the image inside --xmin, before an aggregation.
+
+    The image of such a model applied no x range before an aggregation, thus the mean took the hidden cells.
+    """
+    modelmeta: dict[str, t.Any] = {
+        "coordinates": "spherical3d",
+        "dimensions": 3,
+        "vel_r_edges_kmps": [0.0, 1.0e4, 2.0e4],
+        "costheta_edges": [-1.0, -0.4, 0.5, 1.0],
+        "phi_edges_radians": [0.0, 1.5, 3.0, 4.5, 2.0 * math.pi],
+        "vmax_cmps": 2.0e9,
+        "npts_model": 24,
+    }
+    args = argparse.Namespace(x="velocity", xmin=1.5e4, xmax=None, sliceaxis=None, slicevelocity_cmps=0.0)
+    selection = plotestimators.get_image_xrange_selection(args, modelmeta)
+    assert selection is not None
+    # a point at a cylindrical radius of 15000 km/s or more is in the outer shell. The index of a cell is
+    # i_r + 2 * (i_costheta + 3 * i_phi), thus the outer shell holds the odd indices
+    selected = pl.DataFrame({"modelgridindex": list(range(24))}).filter(selection)["modelgridindex"].to_list()
+    assert selected == list(range(1, 24, 2))
+
+
 def test_image_of_a_spherical_model_gives_each_point_the_value_of_its_cell(tmp_path: Path) -> None:
     """An image of a spherical3d model is a grid of points, and each point takes the value of the cell that holds it.
 
@@ -5215,6 +5362,370 @@ def test_default_plotitem_keeps_estimator_columns_named_like_elements() -> None:
     # initabundances/initmasses come from the input model file, so they must not be gated on estimator columns
     assert get_default_plotitem_skip_reason([["initabundances", ["Sr", "Ni_stable"]]], estimatorcolumns) is None
     assert get_default_plotitem_skip_reason([["initmasses", ["Sr", "Ni_56"]]], estimatorcolumns) is None
+
+
+def test_plot_item_gives_a_polars_expression(
+    tmp_path: Path, get_plotestimators_figure: Callable[[Sequence[str], Path], mplfig.Figure]
+) -> None:
+    """The text of a polars expression gives a series, and its "=" and its style do not make a directive.
+
+    An expression with no alias takes the name of its first column. Thus the command gives the text of the item to the
+    expression as its name.
+    """
+    difference = 'pl.col("heating_coll") - pl.col("cooling_coll")'
+    clipped = 'pl.col("Te").clip(lower_bound=0)'
+    fig = get_plotestimators_figure(
+        ["--timedays", "300", "--plot", f"{difference}@label=net collisional", clipped, str(modelpath)],
+        tmp_path / "estimators.pdf",
+    )
+    lines = fig.axes[0].get_lines()
+    assert [line.get_label() for line in lines] == ["net collisional", clipped]
+    assert np.isclose(np.asarray(lines[0].get_ydata())[0], -6.4962990e-10, rtol=1e-6)
+    assert np.isclose(np.asarray(lines[1].get_ydata())[0], 5776.620000000001, rtol=1e-6)
+
+    # an unknown column, more than one column, and a Python error each give a message and no traceback
+    for baditem in ('pl.col("heatin_coll") * 2', 'pl.col("Te", "TR")', 'pl.col("Te") / (1 / 0)', 'pl.col(["Te"][1])'):
+        with pytest.raises(SystemExit):
+            get_plotestimators_figure(["--timedays", "300", "--plot", baditem, str(modelpath)], tmp_path / "e.pdf")
+
+
+def test_plot_item_gives_a_sql_expression(
+    tmp_path: Path, get_plotestimators_figure: Callable[[Sequence[str], Path], mplfig.Figure]
+) -> None:
+    """A plot item that starts with "=" is polars SQL of the columns, and it takes a style as each item does."""
+    fig = get_plotestimators_figure(
+        [
+            "--timedays",
+            "300",
+            "--plot",
+            "=heating_coll - cooling_coll@label=net collisional",
+            "=Te / 1000",
+            str(modelpath),
+        ],
+        tmp_path / "estimators.pdf",
+    )
+    lines = fig.axes[0].get_lines()
+    assert [line.get_label() for line in lines] == ["net collisional", "=Te / 1000"]
+    assert np.isclose(np.asarray(lines[0].get_ydata())[0], -6.4962990e-10, rtol=1e-6)
+    assert np.isclose(np.asarray(lines[1].get_ydata())[0], 5.776620000000001, rtol=1e-6)
+
+    # polars names this expression after the literal, and the column gives the weight
+    doubled = plotitems.parse_expression_item("=2 * init_X_Fe56", ["init_X_Fe56"])
+    assert plotitems.get_series_variables(doubled, ["init_X_Fe56"])[2] == "init_X_Fe56"
+
+    with pytest.raises(SystemExit):
+        get_plotestimators_figure(["--timedays", "300", "--plot", "=Te ^ 2", str(modelpath)], tmp_path / "e.pdf")
+
+    # the filter keeps each sample value, and the check finds the method filter() in the text of the expression
+    filterkeepsamples = 'pl.col("Te").filter(pl.col("Te").is_between(-10, 10).fill_null(True))'
+    filterresult = plotitems.get_expression_problem(filterkeepsamples, ["Te"])
+    assert filterresult is not None
+    assert "with filter()" in filterresult[0]
+
+    # the map holds each sample value, thus only the values of the model give the error of replace_strict
+    replacemissing = 'pl.col("Te").replace_strict([-3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0], [1.0] * 7)'
+    assert plotitems.get_expression_problem(replacemissing, ["Te"]) is None
+    xtokenlists: list[list[str]] = [[], ["-x", "time"]]
+    for xtokens in xtokenlists:
+        with pytest.raises(SystemExit):
+            get_plotestimators_figure(
+                [*xtokens, "--timestep", "50-54", "--plot", replacemissing, str(modelpath)], tmp_path / "e.pdf"
+            )
+
+    # a ShapeError of an expression on the rows of the model gives a message, and another one keeps its traceback
+    with pytest.raises(SystemExit):
+        plotestimators.stop_with_expression_error(pl.exceptions.ShapeError("lengths differ"), [[pl.col("Te")]])
+    with pytest.raises(pl.exceptions.ShapeError):
+        plotestimators.stop_with_expression_error(pl.exceptions.ShapeError("lengths differ"), [["Te"]])
+
+
+def test_expression_selector_takes_the_columns_of_the_model() -> None:
+    """A selector such as pl.col("^heating_.*$") names no root column, thus the columns of the model give its outputs.
+
+    The check rejected pl.sum_horizontal(pl.col("^heating_.*$")) as more than one column.
+    """
+    columns = ["Te", "heating_coll", "heating_dep", "init_X_Fe56", "init_X_Ni56"]
+    heatingsum = 'pl.sum_horizontal(pl.col("^heating_.*$"))'
+    assert plotitems.get_expression_problem(heatingsum, columns) is None
+    assert plotitems.get_series_variables(plotitems.parse_expression_item(heatingsum, columns), columns) == (
+        heatingsum,
+        heatingsum,
+        "heating_coll",
+    )
+
+    # an alias names the output and not the column, thus the expression reads Te
+    assert plotitems.get_input_columns(pl.col("Te").alias("temperature"), columns) == ["Te"]
+    assert plotitems.get_expression_problem('pl.col("Te").alias("temperature") / 2', columns) is None
+
+    # a selector of one column is the variable itself, thus it keeps the units of the column
+    assert (
+        plotitems.get_series_variables(plotitems.parse_expression_item('pl.col("^Te$")', columns), columns)[1] == "Te"
+    )
+
+    # the first column that a selector takes gives the weight, thus a sum of mass fractions takes the cell mass
+    massfractionsum = 'pl.sum_horizontal(pl.col("^init_X_.*$"))'
+    massfractionexpr = plotitems.parse_expression_item(massfractionsum, columns)
+    assert plotestimators.is_quantity_per_unit_mass(plotitems.get_series_variables(massfractionexpr, columns)[2])
+    # polars names this expression after the literal and names no root column, thus the inputs give the weight
+    doubledsum = plotitems.parse_expression_item('2 * pl.sum_horizontal(pl.col("^init_X_.*$"))', columns)
+    assert plotestimators.is_quantity_per_unit_mass(plotitems.get_series_variables(doubledsum, columns)[2])
+    # root_names() leaves out the selector and names Te, thus the first input column from the left gives the weight
+    mixedsum = plotitems.parse_expression_item('pl.sum_horizontal(pl.col("^init_X_.*$")) + 0 * pl.col("Te")', columns)
+    assert plotitems.get_series_variables(mixedsum, columns)[2] == "init_X_Fe56"
+    for expression, problem in (('pl.col("^heating_.*$")', "gives 2 columns"), ('pl.col("^x_.*$").sum()', "gives 0")):
+        result = plotitems.get_expression_problem(expression, columns)
+        assert result is not None
+        assert problem in result[0], expression
+
+
+def test_expression_gives_numbers_in_a_subplot_of_variables() -> None:
+    """An expression gives numbers, and it takes a subplot of variables. Each other case stops with a clear message.
+
+    pl.lit("x") passed the check, and then the plot stopped in polars. An expression in a subplot of ions broke the
+    grouping of the subplot, thus the command read "populations" as a variable.
+    """
+    columns = ["Te", "nnion_Fe_II"]
+    textresult = plotitems.get_expression_problem('pl.lit("x")', columns)
+    assert textresult is not None
+    assert "values of the type String" in textresult[0]
+    # a boolean gives 0 and 1
+    assert plotitems.get_expression_problem("=Te > 1000", columns) is None
+
+    # the schema of the estimators gives the types, thus a str method on a float column gives a problem. With the
+    # names alone, each column takes the type Float64, and the check leaves the type to the plot
+    schema = pl.Schema({"Te": pl.Float32, "timestep": pl.Int32})
+    uppercase = 'pl.col("Te").str.to_uppercase()'
+    typeresult = plotitems.get_expression_problem(uppercase, schema)
+    assert typeresult is not None
+    assert "does not suit the types" in typeresult[0]
+    assert plotitems.get_expression_problem('pl.col("timestep") & 1', schema) is None
+    assert plotitems.get_expression_problem('pl.col("timestep") & 1', ["Te", "timestep"]) is None
+
+    # a series takes one value for each row, or one value for all the rows, thus a filter changes the series
+    filterresult = plotitems.get_expression_problem('pl.col("Te").filter(pl.col("Te") > 0)', columns)
+    assert filterresult is not None
+    assert "changes the number of rows" in filterresult[0]
+    # each sample column has a different shift of the values, thus a comparison of two columns changes the rows
+    crossfilter = 'pl.col("Te").filter((pl.col("Te") >= pl.col("TR")).fill_null(True))'
+    crossresult = plotitems.get_expression_problem(crossfilter, ["Te", "TR"])
+    assert crossresult is not None
+    assert "changes the number of rows" in crossresult[0]
+    # head(n) gives n rows, thus a sample of exactly n rows does not show the change
+    headresult = plotitems.get_expression_problem('pl.col("Te").head(23)', columns)
+    assert headresult is not None
+    assert "changes the number of rows" in headresult[0]
+    assert plotitems.get_expression_problem('pl.col("Te") - pl.col("Te").mean()', columns) is None
+    # an expression that reads no column can still give one value for each row
+    assert plotitems.get_expression_problem("pl.repeat(1.0, pl.len())", columns) is None
+
+    # the plot puts the values next to the cells by position, thus a change of the order gives wrong values
+    for reordering in (
+        'pl.col("Te").map_batches(lambda s: s.sort() if s.max() > 10 else s, return_dtype=pl.Float64)',
+        'pl.col("Te").over((pl.col("Te") > 10000).fill_null(False), mapping_strategy="explode")',
+        'pl.col("Te").forward_fill()',
+        "pl.int_range(pl.len()) * 1e-12",
+        'pl.col("Te").sort_by((pl.col("Te") > 10000).fill_null(False))',
+        'pl.col("Te").gather((pl.int_range(pl.len()) + 1) % pl.len())',
+        'pl.col("Te").sort()',
+        'pl.col("Te").reverse()',
+        'pl.col("Te").shift(1)',
+        "pl.int_range(pl.len())",
+    ):
+        orderresult = plotitems.get_expression_problem(reordering, columns)
+        assert orderresult is not None, reordering
+        assert "changes the order or the number of the rows" in orderresult[0], reordering
+    for rowwise in (
+        'pl.col("Te").rank()',
+        'pl.when(pl.col("Te") > 0).then(pl.col("Te"))',
+        "=Te / 2",
+        'pl.col("Te") - pl.col("Te").filter(pl.col("Te") > 0).mean()',
+        'pl.col("Te").fill_null(strategy="zero")',
+        'pl.col("Te") - pl.col("Te").mean().over(pl.col("Te") > 0)',
+    ):
+        assert plotitems.get_expression_problem(rowwise, columns) is None, rowwise
+
+    with pytest.raises(SystemExit):
+        plotitems.normalise_plotitems(["populations", "Fe II", "=Te"], columns)
+
+
+def test_long_expression_of_a_column_keeps_its_units(
+    tmp_path: Path, get_plotestimators_figure: Callable[[Sequence[str], Path], mplfig.Figure]
+) -> None:
+    """A long plain column expression shows its text in a legend, and the vertical axis shows the units of the column.
+
+    The y label read the text of the expression, which has no units, thus the units were in no place.
+    """
+    expression = 'pl.col("heating_coll").alias("heating_coll")'
+    fig = get_plotestimators_figure(
+        ["--timedays", "300", "--plot", expression, str(modelpath)], tmp_path / "estimators.pdf"
+    )
+    assert fig.axes[0].get_legend() is not None
+    assert "erg/s/cm" in fig.axes[0].get_ylabel()
+
+
+def test_window_runs_no_python_text_of_an_expression() -> None:
+    """The window checks the syntax of Python text alone. The command runs the text, e.g. on the host of a model.
+
+    The check of the window ran the text after each pause in the typing, thus a side effect ran on the client.
+    """
+    columns = ["Te"]
+    # the text reads a file that does not exist, thus only a run of the text gives an error
+    assert plotitems.get_typed_item_problem('(pl.read_csv("/no/such/file.csv"), pl.col("Te"))[1]', columns) is None
+    syntaxresult = plotitems.get_typed_item_problem('pl.col("Te"', columns)
+    assert syntaxresult is not None
+    assert "is not valid Python" in syntaxresult[0]
+
+
+def test_typed_item_problem_names_the_fault_of_an_expression() -> None:
+    """The window shows the problem of an expression before it adds the item, and the command finds other problems."""
+    columns = ["Te", "TR"]
+    for item in ("=Te - TR", "=Te@color=C3", 'pl.col("Te") / 1e4', '- pl.col("Te")', "Te", "nonsense"):
+        assert plotitems.get_typed_item_problem(item, columns) is None, item
+
+    problems = {
+        "=Te ^ 2": "operator `^` is not currently supported",
+        "=te * 2": "reads 'te', which is not an estimator variable",
+        '-pl.col("Te")': "The command reads -p as a flag",
+        # a style with an unknown key stays in the expression, and the hint names the keys
+        "=Te@colour=C3": "reads 'Te@colour'",
+        "=Te, TR": "is not a valid polars expression",
+    }
+    for item, problem in problems.items():
+        result = plotitems.get_typed_item_problem(item, columns)
+        assert result is not None, item
+        assert problem in result[0], (item, result)
+    assert "The keys of a style" in (plotitems.get_typed_item_problem("=Te@colour=C3", columns) or ("", ""))[1]
+
+
+def test_expression_completion_puts_a_column_name_at_the_end() -> None:
+    """The window completes the column name at the end of an expression, and it adds the quotes that the form needs."""
+    cases = [
+        ('pl.col("heat', "heating_coll", 'pl.col("heating_coll")'),
+        ("pl.col('heat", "heating_coll", "pl.col('heating_coll')"),
+        ("=Te - cool", "cooling_coll", "=Te - cooling_coll"),
+        ("=", "heating_dep/total_dep", '="heating_dep/total_dep"'),
+        ('=2 * "heating_d', "heating_dep/total_dep", '=2 * "heating_dep/total_dep"'),
+    ]
+    for text, name, completed in cases:
+        assert plotitems.get_expression_name_start(text) is not None, text
+        assert plotitems.complete_expression_name(text, name) == completed, text
+
+    assert plotitems.get_expression_name_start("=Te * ") == ("=Te * ", "")
+    # a plain name, the method of an expression, and a place after a number or a bracket take no column name
+    for text in ("heat", "pl.co", 'pl.col("Te").cl', "=LOG10(Te)", "=Te * 2", "=Te * 1e", '="Te" '):
+        assert plotitems.get_expression_name_start(text) is None, text
+
+
+def test_expression_item_can_hold_the_style_mark() -> None:
+    """The style of an expression starts at the first @ that a style key follows, thus a string can hold an @.
+
+    The first @ ended the name, thus pl.col("Te").alias("T@e") gave an error for the style 'e")'.
+    """
+    expression = 'pl.col("Te").alias("T@e")'
+    assert plotitems.read_series_style(f"{expression}@color=C3,label=T@e") == (
+        expression,
+        {"color": "C3", "label": "T@e"},
+    )
+    assert plotitems.get_series_name(expression) == expression
+    # an item that is not an expression keeps its first @, thus an unknown key gives an error that names the style
+    with pytest.raises(ValueError, match="is not a series style"):
+        plotitems.read_series_style("Te@colour=C3")
+
+    # a mark and a style key inside a string, also after an escaped quote, are part of the string
+    for expression in ('pl.col("Te").alias("T@color=C3")', 'pl.col("Te").alias("a\\"@color=b")'):
+        assert plotitems.partition_series_style(f"{expression}@linewidth=2") == (expression, "@", "linewidth=2")
+
+
+def test_plot_item_that_argparse_reads_as_a_flag() -> None:
+    """The add field of the viewer accepts an item that starts with a minus sign only when argparse keeps the item.
+
+    Python 3.13 reads -.5*pl.col("TR") as a flag, and Python 3.14 reads it as a value. Thus the field rejects it.
+    """
+    parser = argparse.ArgumentParser()
+    plotestimators.addargs(parser)
+    isflag = {
+        '-pl.col("TR")': True,
+        '-(pl.col("TR"))': True,
+        '-.5*pl.col("TR")': True,
+        '- pl.col("TR")': False,
+        '-1 * pl.col("TR")': False,
+        '-(pl.col("TR") * 2)': False,
+    }
+    for item, expected in isflag.items():
+        assert plotitems.starts_like_a_flag(item) == expected, item
+        if not expected:
+            args, extras = parser.parse_known_args(["-plot", item])
+            assert (args.plotlist, extras) == ([[item]], []), item
+
+
+def test_default_plotlist_keeps_an_expression_subplot() -> None:
+    """A default subplot can start with a polars expression.
+
+    get_default_plotitem_skip_reason compared the first item of the subplot with a string. The result of that comparison
+    for an expression has no truth value.
+    """
+    expressionsubplot = [
+        (pl.col("heating_coll") - pl.col("cooling_coll")).alias("collisional heating - cooling"),
+        ["_yscale", "linear"],
+    ]
+    estimatorcolumns = ["timestep", "modelgridindex", "TR", "heating_coll", "cooling_coll"]
+    with mock.patch.object(plotestimators, "get_default_plotlist", return_value=[expressionsubplot, ["TR"]]):
+        plotlist, skippedplotlist = plotestimators.get_model_default_plotlist(estimatorcolumns, modelpath)
+
+    assert [plotitems[0] is expressionsubplot[0] for plotitems in plotlist] == [True, False]
+    assert not skippedplotlist
+
+
+def test_default_plotlist_skips_an_expression_with_an_absent_column() -> None:
+    """The default list leaves out an expression that reads a column of no estimator, as it does for an element.
+
+    The command evaluated the text of the expression, and it stopped with an error for the absent column.
+    """
+    textsubplot = ['pl.col("heating_coll") - pl.col("cooling_coll")', ["_yscale", "linear"]]
+    exprsubplot = [pl.col("heating_coll") - pl.col("cooling_coll")]
+    estimatorcolumns = ["timestep", "modelgridindex", "TR", "heating_coll"]
+    # a selector names no root column, thus only the check of the expression finds that it matches no column. The
+    # command gives the schema of the estimators, and the types make the error of the empty sum certain
+    selectorsubplot = ['pl.sum_horizontal(pl.col("^cooling_.*$"))']
+    selectorexprsubplot = [pl.sum_horizontal(pl.col("^cooling_.*$"))]
+    estimatorschema = pl.Schema(dict.fromkeys(estimatorcolumns, pl.Float64))
+    defaultplotlist = [textsubplot, exprsubplot, selectorsubplot, selectorexprsubplot, ["TR"]]
+    with mock.patch.object(plotestimators, "get_default_plotlist", return_value=defaultplotlist):
+        plotlist, skippedplotlist = plotestimators.get_model_default_plotlist(estimatorschema, modelpath)
+
+    assert plotlist == [["TR"]]
+    reasons = [reason for _, reason in skippedplotlist]
+    assert reasons[:2] == ["the estimators have no cooling_coll"] * 2
+    assert all("expected at least 1 input" in reason for reason in reasons[2:])
+
+
+def test_expression_series_keeps_the_weight_of_its_first_column() -> None:
+    """The text names an expression series, and the first column gives its weight. A plain column keeps its units.
+
+    The text replaced the name of the column, thus pl.col("init_X_Fe56") took the cell volume as the weight.
+    """
+    estimatorcolumns = ["init_X_Fe56", "Te"]
+    massfraction = plotitems.parse_expression_item('pl.col("init_X_Fe56")', estimatorcolumns)
+    assert plotitems.get_series_variables(massfraction, estimatorcolumns) == (
+        'pl.col("init_X_Fe56")',
+        "init_X_Fe56",
+        "init_X_Fe56",
+    )
+
+    # polars names this expression after the literal
+    doubled = plotitems.parse_expression_item('2 * pl.col("init_X_Fe56")', estimatorcolumns)
+    assert plotitems.get_series_variables(doubled, estimatorcolumns)[2] == "init_X_Fe56"
+
+    scaled = plotitems.parse_expression_item('pl.col("Te") / 1e4', estimatorcolumns)
+    assert plotitems.get_series_variables(scaled, estimatorcolumns) == (
+        'pl.col("Te") / 1e4',
+        'pl.col("Te") / 1e4',
+        "Te",
+    )
+
+    # an alias of the Python plot list keeps its meaning
+    aliased = (pl.col("Te") * 2).alias("double Te")
+    assert plotitems.get_series_variables(aliased, estimatorcolumns) == ("double Te", "double Te", "double Te")
 
 
 def test_averageexcitation_spreads_the_superlevel_over_the_kept_levels(monkeypatch: pytest.MonkeyPatch) -> None:

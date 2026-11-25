@@ -406,6 +406,9 @@ class ModelData(t.NamedTuple):
 
     batchcaches: "list[EstimatorBatchCache] | None"
     estimatorcolumns: tuple[str, ...]
+    # an empty frame with the columns of the estimators. Its types let the field of a card find a type error of polars
+    # SQL, e.g. =LOWER(Te). The server of a remote model sends a frame, but not a pl.Schema
+    emptyestimatorframe: pl.DataFrame
     validtimesteps: list[int]
     cells: list[int]
     cellvelocities: dict[int, float]
@@ -439,7 +442,7 @@ def read_model_data(modelpath: Path, args: argparse.Namespace, ntimesteps: int) 
         estimators=scan_estimators(modelpath=modelpath, classicartis=classicartis, batchcaches=batchcaches),
         modelpath=modelpath,
     )
-    _, estimatorcolumns = add_plot_columns(args, estimators, modelmeta)
+    _, estimatorschema = add_plot_columns(args, estimators, modelmeta)
     # a run that stopped early has no estimators for the last timesteps, and a plot of those timesteps fails
     validtimesteps = get_estimator_timesteps(modelpath, estimators) or list(range(ntimesteps))
     # ARTIS writes the estimators of each cell that holds matter
@@ -452,10 +455,18 @@ def read_model_data(modelpath: Path, args: argparse.Namespace, ntimesteps: int) 
         .collect()
     )
     cells: list[int] = dfcells["modelgridindex"].to_list()
-    defaultplotlist, skippedplotlist = get_model_default_plotlist(estimatorcolumns, modelpath)
+    modeldefaultplotlist, skippedplotlist = get_model_default_plotlist(estimatorschema, modelpath)
+    # the window gives each subplot to the command as --plot tokens, and --plot has no syntax for a polars expression
+    defaultplotlist: list[t.Any] = []
+    for plotitems in modeldefaultplotlist:
+        if any(isinstance(item, pl.Expr) for item in plotitems):
+            skippedplotlist.append((plotitems, "--plot has no syntax for a polars expression"))
+        else:
+            defaultplotlist.append(plotitems)
     return ModelData(
         batchcaches=batchcaches,
-        estimatorcolumns=tuple(estimatorcolumns),
+        estimatorcolumns=tuple(estimatorschema),
+        emptyestimatorframe=pl.DataFrame(schema=estimatorschema),
         validtimesteps=validtimesteps,
         cells=cells,
         cellvelocities=dict(zip(cells, dfcells["vel_r_mid"].to_list(), strict=True)),

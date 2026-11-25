@@ -6,12 +6,17 @@ the viewer holds the --plot tokens of the command, e.g. ("populations", "Fe II@c
 
 import argparse
 import contextlib
+import json
 import math
+import re
 import typing as t
 from collections.abc import Collection
 from collections.abc import Mapping
 from collections.abc import Sequence
 from types import MappingProxyType
+
+import numpy as np
+import polars as pl
 
 from artistools.atomic import decode_roman_numeral
 from artistools.atomic import get_atomic_number
@@ -107,7 +112,7 @@ def could_be_ion(plotvar: t.Any) -> bool:
     if isinstance(plotvar, (list, int)):
         return True
 
-    if not isinstance(plotvar, str):
+    if not isinstance(plotvar, str) or is_expression_item(plotvar):
         return False
 
     # get_iontuple reads a digit string as an atomic number, and normalise_plotitems has already taken
@@ -235,6 +240,14 @@ def replace_directives(subplot: Sequence[str], directives: Mapping[str, str | No
     return (*kept, *(f"{name}={value}" for name, value in directives.items() if value is not None))
 
 
+# A plot item that starts with this mark is a polars SQL expression of the estimator columns, as a formula of a
+# spreadsheet, e.g. "=heating_coll - cooling_coll". No estimator variable, ion, or directive starts with "="
+SQL_EXPRESSION_MARK: t.Final = "="
+
+# a plot item that holds "pl." is the Python text of a polars expression, e.g. 'pl.col("Te") / 1e4'. No estimator
+# variable, ion, or directive holds this text
+PYTHON_EXPRESSION_PATTERN: t.Final = re.compile(r"\bpl\.")
+
 # A series name can have its style after this mark, e.g. "Fe II@color=C3,linewidth=2". The mark needs no quotes
 # in a shell, and zsh reads square brackets as a file pattern
 SERIES_STYLE_MARK: t.Final = "@"
@@ -271,6 +284,38 @@ def get_series_style_problem(key: str, value: str) -> str | None:
     return None
 
 
+def is_expression_text(text: str) -> bool:
+    """Return True if the text is a polars expression in the SQL form, e.g. "=Te / 1e4", or in the Python form."""
+    return text.startswith(SQL_EXPRESSION_MARK) or PYTHON_EXPRESSION_PATTERN.search(text) is not None
+
+
+def partition_series_style(item: str) -> tuple[str, str, str]:
+    """Return the name of a plot item, the style mark, and the text of the style, as str.partition gives them.
+
+    The text of an expression can hold the mark, e.g. pl.col("Te").alias("T@e"). Thus the style of an expression starts
+    at the first mark that a style key and an "=" follow. Each other item takes its first mark, thus an unknown key
+    gives an error that names the style.
+    """
+    if not is_expression_text(item):
+        return item.partition(SERIES_STYLE_MARK)
+    # a mark inside a string of the expression is part of the string, e.g. pl.col("Te").alias("T@color=C3")
+    openquote = ""
+    escaped = False
+    for index, char in enumerate(item):
+        if openquote:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == openquote:
+                openquote = ""
+        elif char in "\"'":
+            openquote = char
+        elif char == SERIES_STYLE_MARK and any(item.startswith(f"{key}=", index + 1) for key in SERIES_STYLE_KEYS):
+            return item[:index], SERIES_STYLE_MARK, item[index + 1 :]
+    return item, "", ""
+
+
 def read_series_style(item: str) -> tuple[str, dict[str, str]]:
     """Return the name of a plot item and the style after its @, e.g. ("Fe II", {"color": "C3"}) for "Fe II@color=C3".
 
@@ -279,7 +324,7 @@ def read_series_style(item: str) -> tuple[str, dict[str, str]]:
     a label can hold a comma and an "=", e.g. "Te@color=C3,label=T, electrons". An item with no @ gives an empty style.
     A style that is not valid gives ValueError, and the message of the error names the problem.
     """
-    name, mark, styletext = item.partition(SERIES_STYLE_MARK)
+    name, mark, styletext = partition_series_style(item)
     style: dict[str, str] = {}
     if not mark:
         return item, style
@@ -317,7 +362,7 @@ def join_series_style(name: str, style: Mapping[str, str | None]) -> str:
 
 def get_series_name(item: str) -> str:
     """Return the name of a series item without its style, e.g. "Fe II" for "Fe II@color=C3"."""
-    return item.partition(SERIES_STYLE_MARK)[0]
+    return partition_series_style(item)[0]
 
 
 def get_item_style(item: str) -> dict[str, str]:
@@ -391,6 +436,406 @@ def get_styles_of_subplots(args: argparse.Namespace, count: int) -> list[dict[st
     return [*styles, *({} for _ in range(count - len(styles)))]
 
 
+def is_expression_item(item: object) -> bool:
+    """Return True if a plot item is a polars expression, e.g. "=Te / 1e4@color=C3" or 'pl.col("Te") / 1e4'."""
+    return isinstance(item, str) and is_expression_text(get_series_name(item))
+
+
+def starts_like_a_flag(item: str) -> bool:
+    """Return True if argparse can read the start of a plot item as a flag, e.g. -pl.col("TR") as -p.
+
+    A letter after the minus sign gives a flag. An item with a space and no letter there gives a plot item, e.g.
+    - pl.col("TR") or -1 * pl.col("TR"). Python 3.13 reads an item with no space as a flag, e.g. -.5*pl.col("TR").
+    """
+    return re.match(r"-(?:[A-Za-z]|\S*$)", item) is not None
+
+
+def evaluate_expression_text(text: str) -> pl.Expr:
+    """Return the polars expression of the text of a plot item.
+
+    The SQL form is polars SQL after the "=", e.g. "=heating_coll - cooling_coll", and it runs no Python code. Text
+    that gives no expression gives ValueError, and a Python result that is not an expression gives TypeError.
+    """
+    try:
+        if text.startswith(SQL_EXPRESSION_MARK):
+            expr = pl.sql_expr(text.removeprefix(SQL_EXPRESSION_MARK))
+        else:
+            # the user typed the text, thus it runs with the rights of the user. The name pl alone is in scope
+            expr = eval(text, {"__builtins__": {}, "pl": pl})  # ruff:ignore[suspicious-eval-usage]
+    # the text can raise any exception, e.g. IndexError for pl.col(["Te"][1])
+    except Exception as exc:
+        # a polars SQL error holds the text again on more lines, with a mark under the problem
+        reason = next((line for line in str(exc).splitlines() if line.strip()), type(exc).__name__)
+        msg = f"The plot item '{text}' is not a valid polars expression: {reason}"
+        raise ValueError(msg) from exc
+    if not isinstance(expr, pl.Expr):
+        msg = f"The plot item '{text}' gives a {type(expr).__name__} and not a polars expression"
+        raise TypeError(msg)
+    return expr
+
+
+EXPRESSION_HINT: t.Final = (
+    "Give polars SQL after an =, e.g. =heating_coll - cooling_coll, or Python text with pl as the polars module, e.g."
+    ' pl.col("heating_coll") - pl.col("cooling_coll")'
+)
+
+
+def get_expression_problem(text: str, estimatorcolumns: Collection[str]) -> tuple[str, str] | None:
+    """Return the problem of the text of an expression item and a hint, or None for an expression that gives a series.
+
+    The text holds no style. The command stops with the problem.
+    """
+    try:
+        expr = evaluate_expression_text(text)
+    except (ValueError, TypeError) as exc:
+        return str(exc), EXPRESSION_HINT
+    return get_evaluated_expression_problem(expr, text, estimatorcolumns)
+
+
+def get_evaluated_expression_problem(
+    expr: pl.Expr, text: str, estimatorcolumns: Collection[str]
+) -> tuple[str, str] | None:
+    """Return the problem of an expression that the text of a plot item gave and a hint, or None for a valid series."""
+    if absentcolumns := [name for name in expr.meta.root_names() if name not in estimatorcolumns]:
+        # a style with an unknown key stays in the text of an expression, see partition_series_style
+        stylehint = (
+            f"The keys of a style after {SERIES_STYLE_MARK} are {', '.join(SERIES_STYLE_KEYS)}"
+            if SERIES_STYLE_MARK in absentcolumns[0]
+            else ""
+        )
+        return (
+            f"The plot item '{text}' reads '{absentcolumns[0]}', which is not an estimator variable",
+            stylehint
+            or suggest_names(absentcolumns[0], estimatorcolumns)
+            or "Run with --listvariables to see the variables of this model",
+        )
+    try:
+        results = [run_on_sample_frame(expr, estimatorcolumns, rowcount) for rowcount in SAMPLE_ROWCOUNTS]
+        keepsroworder = keeps_row_order(expr, estimatorcolumns)
+        # a sort key can be constant on the sample and change on the rows of the model, e.g. pl.col("Te") > 1e4
+        ordermethod = get_unaggregated_order_method(expr, estimatorcolumns)
+    except pl.exceptions.PolarsError as exc:
+        # with the names alone, each column takes the type Float64, thus an error can come from that guess
+        if not isinstance(estimatorcolumns, pl.Schema):
+            return None
+        reason = next((line for line in str(exc).splitlines() if line.strip()), type(exc).__name__)
+        return (
+            f"The plot item '{text}' does not suit the types of the estimator columns: {reason}",
+            "Give an expression of the columns that gives a number, e.g. =Te / 1e4",
+        )
+    result = results[0]
+    if result.width != 1:
+        hint = (
+            "Give one plot item for each column, e.g. =Te and =TR, or join the columns, e.g."
+            ' pl.sum_horizontal(pl.col("^heating_.*$"))'
+        )
+        return f"The plot item '{text}' gives {result.width} columns, and a series takes one column", hint
+    # a series has one value for each row of the estimators, or one value for all the rows
+    if any(
+        sampleresult.height not in {1, rowcount}
+        for sampleresult, rowcount in zip(results, SAMPLE_ROWCOUNTS, strict=True)
+    ):
+        problem = (
+            f"The plot item '{text}' changes the number of rows, e.g. with a filter, and a series takes one value for"
+            " each cell and timestep"
+        )
+        return problem, 'Give a condition with pl.when, e.g. pl.when(pl.col("Te") > 1e4).then(pl.col("Te"))'
+    # the plot puts the values next to the cells by position, thus a sort gives each cell the value of a different cell
+    if not keepsroworder or ordermethod is not None:
+        methodtext = ", e.g. with sort() or shift()"
+        if ordermethod == "python_udf":
+            methodtext = " with a Python function of map_batches() or map_elements()"
+        elif ordermethod is not None:
+            methodtext = f" with {ordermethod}()"
+        problem = (
+            f"The plot item '{text}' changes the order or the number of the rows{methodtext}, and each value of a"
+            " series belongs to its own cell and timestep"
+        )
+        return problem, 'Give an expression of each row, or an aggregation, e.g. pl.col("Te") - pl.col("Te").mean()'
+    # the plot multiplies the values by the weights, thus a text gives no series. A boolean gives 0 and 1
+    if not ((dtype := result.dtypes[0]).is_numeric() or dtype == pl.Boolean):
+        return (
+            f"The plot item '{text}' gives values of the type {dtype}, and a series takes numbers",
+            "Give an expression of the columns that gives a number, e.g. =Te / 1e4",
+        )
+    return None
+
+
+# the polars methods that depend on the order of the rows or that select rows, as the text of an expression names them.
+# The text of fill_null(strategy=...) does not give the strategy. keeps_row_order finds a forward or a backward fill.
+# A Python function of map_batches() or map_elements() gives python_udf, and it can sort only the rows of the model
+ORDER_METHOD_PATTERN: t.Final = re.compile(
+    r"sort|sort_by|reverse|shift|gather|gather_every|shuffle|sample|arg_sort|top_k|bottom_k|top_k_by|bottom_k_by|int_range"
+    r"|cum_\w+|cumulative_eval|diff|pct_change|rolling\w*|ewm_\w+|interpolate\w*|rle\w*|filter|slice|head|tail"
+    r"|drop_nulls|drop_nans|unique|explode|arg_true|python_udf"
+)
+
+
+def get_outer_method(expr: pl.Expr) -> str | None:
+    """Return the name of the last method of an expression outside each bracket, e.g. mean for c.filter(...).mean()."""
+    depth = 0
+    method = None
+    for match in re.finditer(r'"(?:[^"\\]|\\.)*"|\.(\w+)\(|[(\[]|[)\]]', str(expr)):
+        part = match[0]
+        if part.startswith('"'):
+            continue
+        if match[1] is not None:
+            if depth == 0:
+                method = match[1]
+            depth += 1
+        else:
+            depth += 1 if part in "([" else -1
+    return method
+
+
+def is_explode_window(expr: pl.Expr) -> bool:
+    """Return True for a window function with mapping_strategy="explode", which puts the rows of each group together.
+
+    The text of an expression does not give the strategy of a window, thus the JSON form of the expression gives it.
+    """
+    try:
+        serialized = json.loads(expr.meta.serialize(format="json"))
+    except (ValueError, pl.exceptions.PolarsError):
+        return False
+    window = serialized.get("Over") if isinstance(serialized, dict) else None
+    return isinstance(window, dict) and window.get("mapping") == "Explode"
+
+
+def get_unaggregated_order_method(expr: pl.Expr, estimatorcolumns: Collection[str]) -> str | None:
+    """Return a method that depends on the order of the rows and that reaches the series with no aggregation, or None.
+
+    A node that gives one value on a sample frame is an aggregation, e.g. pl.col("Te").filter(...).mean(), and the
+    rows of its inputs then do not reach the series. A fault gives a PolarsError.
+    """
+    pending = [expr]
+    while pending:
+        node = pending.pop()
+        if run_on_sample_frame(node, estimatorcolumns).height == 1:
+            continue
+        method = get_outer_method(node)
+        if method is not None and (ORDER_METHOD_PATTERN.fullmatch(method) or is_explode_window(node)):
+            return method
+        pending.extend(node.meta.pop())
+    return None
+
+
+# the numbers of rows of the sample frames. A head(n) or a slice gives a fixed number of rows, thus a series must keep
+# two different numbers of rows
+SAMPLE_ROWCOUNTS: t.Final = (23, 4099)
+
+
+def get_sample_values(rowcount: int, columnposition: int) -> list[float | None]:
+    """Return the values of a column of a sample frame: a null, zeros, negative values, and repeated values.
+
+    A filter or a unique() then changes the number of rows, which a series must keep. Each column has a different shift
+    of the values, thus a comparison of two columns, e.g. pl.col("Te") >= pl.col("TR"), changes from row to row.
+    """
+    return [*(float((index + 3 * columnposition) % 7 - 3) for index in range(rowcount - 1)), None]
+
+
+def get_column_schema(estimatorcolumns: Collection[str]) -> pl.Schema:
+    """Return the schema of the estimator columns. A list of names gives each column the type Float64."""
+    if isinstance(estimatorcolumns, pl.Schema):
+        return estimatorcolumns
+    return pl.Schema(dict.fromkeys(estimatorcolumns, pl.Float64))
+
+
+def get_input_columns(expr: pl.Expr, estimatorcolumns: Collection[str]) -> list[str]:
+    """Return the estimator columns that an expression reads. A fault, e.g. an absent column, gives a PolarsError.
+
+    polars names no root column for a selector, e.g. pl.col("^heating_.*$"). Thus each selection in the expression runs
+    on the columns of the model.
+    """
+    schema = get_column_schema(estimatorcolumns)
+    inputcolumns: dict[str, None] = {}
+    pending = [expr]
+    while pending:
+        node = pending.pop()
+        if node.meta.is_column_selection(allow_aliasing=True):
+            # an alias names the output, e.g. temperature in pl.col("Te").alias("temperature"), and not the column
+            selection = node.meta.undo_aliases()
+            inputcolumns.update(dict.fromkeys(pl.LazyFrame(schema=schema).select(selection).collect_schema().names()))
+        else:
+            pending.extend(node.meta.pop())
+    return list(inputcolumns)
+
+
+def get_sample_column(name: str, dtype: pl.DataType, rowcount: int, columnposition: int) -> pl.Series:
+    """Return a column of a sample frame with the type of an estimator column, or a column of nulls of that type."""
+    try:
+        return pl.Series(name, get_sample_values(rowcount, columnposition), dtype=pl.Float64).cast(dtype, strict=False)
+    except pl.exceptions.PolarsError:
+        return pl.Series(name, [None] * rowcount, dtype=dtype)
+
+
+def run_on_sample_frame(
+    expr: pl.Expr, estimatorcolumns: Collection[str], rowcount: int = SAMPLE_ROWCOUNTS[0]
+) -> pl.DataFrame:
+    """Return the result of an expression on a sample frame of the columns that it reads. A fault gives a PolarsError.
+
+    The schema alone does not find a type error, e.g. a str method on a float, or a filter that changes the number of
+    rows. A pl.Schema gives the types of the columns, and each column of a list of names takes the type Float64.
+    """
+    return get_sample_frame(expr, estimatorcolumns, rowcount).lazy().select(expr).collect()
+
+
+def get_sample_frame(expr: pl.Expr, estimatorcolumns: Collection[str], rowcount: int) -> pl.DataFrame:
+    """Return a sample frame of the columns that an expression reads, with the types of the estimator columns."""
+    schema = get_column_schema(estimatorcolumns)
+    inputcolumns = get_input_columns(expr, schema)
+    samplecolumns = [
+        get_sample_column(name, schema[name], rowcount, columnposition)
+        for columnposition, name in enumerate(inputcolumns)
+    ]
+    # an expression that reads no column can still give one value for each row, e.g. pl.repeat(1.0, pl.len()). A
+    # column with an empty name gives the rows, because a selector of the expression, e.g. "^cooling_.*$", cannot
+    # match it
+    return pl.DataFrame(samplecolumns or [pl.Series("", range(rowcount))])
+
+
+# a fixed order of the rows of a sample frame with no pattern. A rotation of the rows commutes with a cyclic gather
+SAMPLE_PERMUTATION: t.Final = (8, 2, 19, 13, 0, 21, 5, 16, 11, 3, 22, 7, 14, 1, 18, 9, 20, 6, 12, 4, 17, 10, 15)
+
+
+def keeps_row_order(expr: pl.Expr, estimatorcolumns: Collection[str]) -> bool:
+    """Return True if each value of an expression belongs to its own row, or if the expression gives one value.
+
+    An expression of each row, or an aggregation, gives the same values for a sample with its rows in a different
+    order, in that order. A sort, a reverse(), a shift(), a gather, or a cumulative sum gives different values.
+    """
+    sample = get_sample_frame(expr, estimatorcolumns, len(SAMPLE_PERMUTATION))
+    permutation = list(SAMPLE_PERMUTATION)
+    reorderedsample = sample[permutation]
+    result = sample.lazy().select(expr).collect()
+    # get_evaluated_expression_problem reports a result of more or less than one column, or of a different length
+    if result.width != 1 or result.height != sample.height:
+        return True
+    values = result.to_series()
+    reorderedvalues = reorderedsample.lazy().select(expr).collect().to_series()
+    expected = values.gather(permutation)
+    if not (values.dtype.is_numeric() or values.dtype == pl.Boolean):
+        return reorderedvalues.equals(expected)
+    reordered, wanted = reorderedvalues.cast(pl.Float64).to_numpy(), expected.cast(pl.Float64).to_numpy()
+    # a sum in a different order differs by approximately 1e-16 of the scale of the values, thus the tolerance takes
+    # that scale, also for small values, e.g. pl.int_range(pl.len()) * 1e-12
+    finitevalues = np.abs(wanted[np.isfinite(wanted)])
+    scale = float(finitevalues.max()) if finitevalues.size else 0.0
+    return np.allclose(reordered, wanted, rtol=0, atol=1e-9 * scale, equal_nan=True)
+
+
+def get_typed_item_problem(item: str, estimatorcolumns: Collection[str]) -> tuple[str, str] | None:
+    """Return the problem of an expression item that the user types in the window, and the problem with a hint.
+
+    The window shows the problem before it adds the item. Each item that is not an expression gives None, because the
+    command finds its problems. polars SQL runs no code, thus the window checks it fully, and Python text gets a check
+    of its syntax alone.
+    """
+    if not is_expression_item(item):
+        return None
+    if starts_like_a_flag(item):
+        problem = f"The command reads {item[:2]} as a flag"
+        return problem, f"{problem}. Write 0 {item.replace('-', '- ', 1)} in place of {item}."
+    try:
+        name, _ = read_series_style(item)
+    except ValueError as exc:
+        return str(exc), str(exc)
+    if not name.startswith(SQL_EXPRESSION_MARK):
+        # the window runs no Python text. The command runs it, on the model host for a remote model, and gives the
+        # other problems
+        try:
+            compile(name, "<plot item>", "eval")
+        except SyntaxError as exc:
+            problem = f"The plot item '{name}' is not valid Python: {exc.msg}"
+            return problem, f"{problem}. {EXPRESSION_HINT}"
+        return None
+    if (expressionproblem := get_expression_problem(name, estimatorcolumns)) is None:
+        return None
+    problem, hint = expressionproblem
+    return problem, f"{problem}. {hint}"
+
+
+def parse_expression_item(text: str, estimatorcolumns: Collection[str]) -> pl.Expr:
+    """Return the polars expression of the text of a plot item, with the text as the name of the expression.
+
+    The text names the series in the styles of the subplot, see split_plotitem_styles. get_series_variables gives the
+    units and the weight of the series.
+    """
+    try:
+        expr = evaluate_expression_text(text)
+    except (ValueError, TypeError) as exc:
+        exit_with_error(str(exc), EXPRESSION_HINT)
+    if (problem := get_evaluated_expression_problem(expr, text, estimatorcolumns)) is not None:
+        exit_with_error(*problem)
+    return expr.alias(text)
+
+
+# a name that SQL reads without quotes, e.g. heating_coll. A name such as heating_dep/total_dep needs double quotes
+SQL_PLAIN_NAME_PATTERN: t.Final = re.compile(r"[A-Za-z_]\w*")
+
+
+def get_expression_name_start(text: str) -> tuple[str, str] | None:
+    """Return the text before the column name at the end of an expression, and the start of that name, or None.
+
+    The window completes the name. In the Python form, the name follows pl.col(" or pl.col('. In the SQL form, the
+    name is the last word, or the text after a double quote with no end.
+    """
+    if not text.startswith(SQL_EXPRESSION_MARK):
+        match = re.fullmatch(r"(?s)(.*\bpl\.col\(\s*[\"'])([^\"']*)", text)
+        return None if match is None else (match[1], match[2])
+    if text.count('"') % 2 == 1:
+        head, _, start = text.rpartition('"')
+        return f'{head}"', start
+    match = re.fullmatch(r"(?s)(.*?)([A-Za-z_]\w*)?", text)
+    if match is None:
+        return None
+    head, start = match[1], match[2] or ""
+    # a name cannot follow a number, a closing bracket, or a closed quote, e.g. in =Te * 1e4 or =LOG10(Te)
+    before = head[-1:] if start else head.rstrip()[-1:]
+    return None if before.isdigit() or before in {".", ")", '"'} else (head, start)
+
+
+def complete_expression_name(text: str, name: str) -> str:
+    """Return the text of an expression with the column name in place of the start of the name at its end.
+
+    The Python form closes the call, e.g. pl.col("heating_coll"). The SQL form puts a name in double quotes when SQL
+    needs them, e.g. "heating_dep/total_dep".
+    """
+    if (parts := get_expression_name_start(text)) is None:
+        return text
+    head = parts[0]
+    if not text.startswith(SQL_EXPRESSION_MARK):
+        return f"{head}{name}{head[-1]})"
+    if head.endswith('"') and head.count('"') % 2 == 1:
+        return f'{head}{name}"'
+    return f"{head}{name}" if SQL_PLAIN_NAME_PATTERN.fullmatch(name) else f'{head}"{name}"'
+
+
+def get_series_variables(colexpr: pl.Expr, estimatorcolumns: Collection[str]) -> tuple[str, str, str]:
+    """Return the name of the series of an expression, the variable of its units, and the variable of its weight.
+
+    The text of an expression item names its series, e.g. 'pl.col("Te") / 1e4'. Only a plain column keeps the units
+    of its variable, because an operation can change the units. The first column gives the weight of the mean, as for
+    an expression with no alias. Thus 'pl.col("init_X_Fe56")' takes the cell mass as the weight.
+    """
+    seriesname = colexpr.meta.output_name()
+    if not is_expression_item(seriesname):
+        return seriesname, seriesname, seriesname
+    unaliased = colexpr.meta.undo_aliases()
+    inputcolumns: list[str] = []
+    outputnames: list[str] = []
+    # get_expression_problem gives the error of an expression that polars cannot resolve. Without the columns, the
+    # series takes the text as the variable of its units and of its weight
+    with contextlib.suppress(pl.exceptions.PolarsError):
+        inputcolumns = get_input_columns(unaliased, estimatorcolumns)
+        outputnames = run_on_sample_frame(unaliased, estimatorcolumns).columns
+    # polars names 2 * pl.col("init_X_Fe56") after the literal, and root_names() leaves out a selector, e.g. in
+    # pl.sum_horizontal(pl.col("^init_X_.*$")) + pl.col("Te"). get_input_columns gives the columns from the left
+    firstcolumn = next(iter(inputcolumns), None) or next(iter(unaliased.meta.root_names()), seriesname)
+    # a selection of one column, e.g. pl.col("Te") or pl.col("^Te$"), is the variable itself
+    isonecolumn = unaliased.meta.is_column_selection() and len(outputnames) == 1
+    return seriesname, firstcolumn if isonecolumn else seriesname, firstcolumn
+
+
 def get_series_items(subplot: Sequence[str]) -> list[str]:
     """Return the items of a subplot that are not a directive, with the style of each series, e.g. "Fe II@color=C3"."""
     return [item for item in subplot if get_item_directive(item) is None]
@@ -415,7 +860,7 @@ def get_seriestype_of_names(names: Sequence[t.Any], estimatorcolumns: Collection
     if not names:
         return None
     first = names[0]
-    if not isinstance(first, str):
+    if not isinstance(first, str) or is_expression_item(first):
         return None
     if is_seriestype(first, estimatorcolumns) or is_ionseriestype(first, estimatorcolumns, names[1:]):
         return first
@@ -438,22 +883,33 @@ def normalise_plotitems(plotitems: t.Any, estimatorcolumns: Collection[str]) -> 
     """Resolve variable aliases and move any 'key=value' plot directives to the end of the plot item list.
 
     A list of ions such as ["Sr I", "Sr II"] is rewritten as a populations plot [["populations", ["Sr I", "Sr II"]]].
+    The text of a polars expression becomes the expression, see parse_expression_item.
     """
     # the client draws the series styles, see draw_line_figure, thus the data needs the names alone
     plotitems, _ = split_plotitem_styles(plotitems)
 
+    # an expression can hold an "=", e.g. pl.col("Te").clip(lower_bound=0), and it is never a directive
+    isdirective = [
+        isinstance(plotvar, str) and "=" in plotvar and not is_expression_item(plotvar) for plotvar in plotitems
+    ]
     # the underscore of a directive is optional, thus "-p rho yscale=log" and "_yscale=log" are the same.
     # One shape here lets get_subplot_plans find an unknown directive whichever spelling the user gave
     plot_directives = [
         ["_" + key.removeprefix("_"), value]
         for key, value in (
-            plotvar.split("=", maxsplit=1) for plotvar in plotitems if isinstance(plotvar, str) and "=" in plotvar
+            plotvar.split("=", maxsplit=1)
+            for plotvar, directive in zip(plotitems, isdirective, strict=True)
+            if directive
         )
     ]
     plotvars = [
-        VARIABLE_ALIASES.get(plotvar, plotvar) if isinstance(plotvar, str) else plotvar
-        for plotvar in plotitems
-        if not isinstance(plotvar, str) or "=" not in plotvar
+        parse_expression_item(plotvar, estimatorcolumns)
+        if is_expression_item(plotvar)
+        else VARIABLE_ALIASES.get(plotvar, plotvar)
+        if isinstance(plotvar, str)
+        else plotvar
+        for plotvar, directive in zip(plotitems, isdirective, strict=True)
+        if not directive
     ]
 
     # a subplot with no series draws an empty frame, e.g. in the viewer after the user removed its last series
@@ -461,6 +917,11 @@ def normalise_plotitems(plotitems: t.Any, estimatorcolumns: Collection[str]) -> 
         return plot_directives
 
     seriestype = get_seriestype_of_names(plotvars, estimatorcolumns)
+    if seriestype is not None and any(isinstance(plotvar, pl.Expr) for plotvar in plotvars):
+        exit_with_error(
+            f"A polars expression gives a series of a subplot of variables, and this subplot holds {seriestype}",
+            "Give the expression a --plot of its own",
+        )
     # the grouped form names the type of series first, e.g. -plot populations "Fe II" "Fe III"
     if seriestype is not None and seriestype == plotvars[0]:
         if len(plotvars) == 1:
@@ -501,12 +962,15 @@ def get_plotitem_tokens(plotitems: Sequence[t.Any]) -> tuple[str, ...]:
     """Return the --plot tokens of the items of one subplot of the default plot list.
 
     A directive has the form ["_yscale", "log"], and it becomes "yscale=log". A type of series has the form
-    ["populations", ["Fe II", "Fe III"]], and its names follow it.
+    ["populations", ["Fe II", "Fe III"]], and its names follow it. A polars expression gives its output name, which
+    --plot cannot read.
     """
     tokens: list[str] = []
     for plotitem in plotitems:
         if isinstance(plotitem, str):
             tokens.append(plotitem)
+        elif isinstance(plotitem, pl.Expr):
+            tokens.append(plotitem.meta.output_name())
         elif str(plotitem[0]).startswith("_"):
             tokens.append(f"{str(plotitem[0]).removeprefix('_')}={plotitem[1]}")
         else:

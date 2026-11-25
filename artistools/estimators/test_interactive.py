@@ -26,6 +26,7 @@ from artistools.estimators import interactive
 from artistools.estimators import plotestimators
 from artistools.estimators import plotitems
 from artistools.estimators import subplotcards
+from artistools.misc import remote
 from artistools.viewertools import application as viewerapplication
 from artistools.viewertools import core as viewercore
 from artistools.viewertools import widgets as viewerwidgets
@@ -571,6 +572,56 @@ def test_interactive_session_keeps_an_empty_last_subplot(
     assert apply_values(viewer, dc.replace(viewer.values, subplots=subplots)) is None
     tokens = viewer.get_plot_tokens(modeltoken=str(modelpath_classic_3d.absolute()))
     assert make_viewer("estimators", [*tokens, "--interactive"]).values.subplots == subplots
+
+
+def test_interactive_leaves_out_an_expression_subplot(
+    make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer],
+) -> None:
+    """The window gives each subplot to the command as --plot tokens, and --plot has no syntax for an expression."""
+    expressionsubplot = [
+        (pl.col("heating_coll") - pl.col("cooling_coll")).alias("collisional heating - cooling"),
+        ["_yscale", "linear"],
+    ]
+    with mock.patch.object(plotestimators, "get_default_plotlist", return_value=[expressionsubplot, ["TR"]]):
+        viewer = make_viewer("estimators", [str(modelpath), "--timestep", "50", "--interactive"])
+
+    assert viewer.modeldata.defaultsubplots == (("TR",),)
+    assert viewer.modeldata.skippeddefaults == (
+        "collisional heating - cooling yscale=linear: --plot has no syntax for a polars expression",
+    )
+
+
+def test_interactive_command_keeps_a_polars_expression(
+    tmp_path: Path,
+    get_plotestimators_figure: Callable[[Sequence[str], Path], mplfig.Figure],
+    make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer],
+) -> None:
+    """The command of the viewer must give the text of an expression unchanged, with its quotes, "=", and comma."""
+    for expression in ('pl.max_horizontal(pl.col("Te"), pl.col("TR")).clip(lower_bound=0)', '=GREATEST(Te, TR) / "TR"'):
+        viewer = make_viewer("estimators", [str(modelpath), "--timestep", "50", "--plot", expression, "--interactive"])
+        assert viewer.values.subplots == ((expression,),)
+
+        tokens = shlex.split(viewer.get_command())[2:]
+        assert make_viewer("estimators", [*tokens, "--interactive"]).values.subplots == ((expression,),)
+        assert_same_lines(viewer.fig, get_plotestimators_figure(tokens, tmp_path / "estimators.pdf"))
+
+
+def test_interactive_check_finds_a_type_error_of_polars_sql(
+    make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer],
+) -> None:
+    """The viewer keeps the schema of the estimators, thus the check of a field finds a type error of polars SQL.
+
+    The viewer kept the names of the columns alone, and the check then left each type error to the plot.
+    """
+    viewer = make_viewer("estimators", [str(modelpath), "--timestep", "50", "--interactive"])
+    schema = viewer.modeldata.emptyestimatorframe.schema
+    assert schema.names() == list(viewer.modeldata.estimatorcolumns)
+    typeresult = plotitems.get_typed_item_problem("=LOWER(Te)", schema)
+    assert typeresult is not None
+    assert "does not suit the types" in typeresult[0]
+
+    # the server of a remote model sends the data of the model, and the client accepts each object of it
+    assert remote.load_reply(remote.dump_message(viewer.modeldata)).emptyestimatorframe.schema == schema
 
 
 def test_interactive_command_gives_the_default_subplots(

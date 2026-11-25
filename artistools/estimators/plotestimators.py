@@ -55,13 +55,18 @@ from artistools.estimators.core import VARIABLES
 from artistools.estimators.estimators_classic import has_classic_estimator_format
 from artistools.estimators.plotitems import could_be_ion
 from artistools.estimators.plotitems import DIRECTIVES
+from artistools.estimators.plotitems import evaluate_expression_text
 from artistools.estimators.plotitems import get_column_name
 from artistools.estimators.plotitems import get_directive_name
+from artistools.estimators.plotitems import get_evaluated_expression_problem
+from artistools.estimators.plotitems import get_input_columns
 from artistools.estimators.plotitems import get_iontuple
 from artistools.estimators.plotitems import get_iontuple_sortkey
 from artistools.estimators.plotitems import get_item_directive
 from artistools.estimators.plotitems import get_series_name
+from artistools.estimators.plotitems import get_series_variables
 from artistools.estimators.plotitems import get_styles_of_subplots
+from artistools.estimators.plotitems import is_expression_item
 from artistools.estimators.plotitems import is_ionseriestype
 from artistools.estimators.plotitems import normalise_plotitems
 from artistools.estimators.plotitems import resolve_item_alias
@@ -1042,6 +1047,19 @@ def get_default_plotitem_skip_reason(
     The built-in plot list names particular elements (e.g. Sr), which most models do not contain. This is only
     applied to that default list: an explicitly requested plot item is never dropped, so a typo there still raises.
     """
+    if isinstance(plotitems, pl.Expr) or is_expression_item(plotitems):
+        try:
+            expr = plotitems if isinstance(plotitems, pl.Expr) else evaluate_expression_text(plotitems)
+        except (ValueError, TypeError):
+            # the command evaluates the text again, and it gives the error
+            return None
+        if absentcolumns := [name for name in expr.meta.root_names() if name not in estimatorcolumns]:
+            return f"the estimators have no {absentcolumns[0]}"
+        # an expression can also fail on the columns of the model, e.g. a selector that matches no column
+        text = plotitems if isinstance(plotitems, str) else str(plotitems)
+        problem = get_evaluated_expression_problem(expr, text, estimatorcolumns)
+        return None if problem is None else problem[0][0].lower() + problem[0][1:]
+
     if isinstance(plotitems, str):
         # an estimator variable always wins over the element reading of its name, because several estimator names
         # are also element symbols (Te is tellurium, W is tungsten)
@@ -1055,18 +1073,16 @@ def get_default_plotitem_skip_reason(
         return None
 
     if isinstance(plotitems, (list, tuple)):
+        # a polars expression as the first item has no truth value for a comparison with a string
+        seriestype = plotitems[0] if len(plotitems) == 2 and isinstance(plotitems[0], str) else None
+
         # initabundances/initmasses series read the input model file, not the estimators, so the element names in
         # those items say nothing about which estimator columns exist
-        if len(plotitems) == 2 and isinstance(plotitems[0], str) and plotitems[0] in {"initabundances", "initmasses"}:
+        if seriestype in {"initabundances", "initmasses"}:
             return None
 
         # averageexcitation reads the NLTE population files, which a model need not have written
-        if (
-            len(plotitems) == 2
-            and isinstance(plotitems[0], str)
-            and plotitems[0] == "averageexcitation"
-            and modelpath is not None
-        ):
+        if seriestype == "averageexcitation" and modelpath is not None:
             if not has_nlte_populations(modelpath):
                 return "the model has no NLTE population files (nlte_*.out)"
             plotitems = plotitems[1]
@@ -1338,20 +1354,21 @@ def get_series_plans(
     **plotkwargs: t.Any,
 ) -> list[SeriesPlan]:
     """Return the series of an estimator variable such as Te or TR."""
+    estimatorschema = estimators.collect_schema()
     if isinstance(variable, pl.Expr):
         colexpr = variable
     else:
-        columns = estimators.collect_schema().names()
-        if variable not in columns:
+        if variable not in estimatorschema:
             exit_with_error(
                 f"'{variable}' is not an estimator variable",
-                suggest_names(variable, columns) or "Run with --listvariables to see the variables of this model",
+                suggest_names(variable, estimatorschema.names())
+                or "Run with --listvariables to see the variables of this model",
             )
         colexpr = pl.col(variable)
 
-    variablename = colexpr.meta.output_name()
+    seriesname, variablename, weightvariable = get_series_variables(colexpr, estimatorschema)
 
-    serieslabel = get_varname_formatted(variablename)
+    serieslabel = get_varname_formatted(seriesname)
     units_string = get_units_string(variablename)
 
     if showlegend:
@@ -1362,7 +1379,7 @@ def get_series_plans(
         settings["ylabel"] = serieslabel + units_string
         linelabel = None
 
-    ismassquantity = is_quantity_per_unit_mass(variablename)
+    ismassquantity = is_quantity_per_unit_mass(weightvariable)
     series = estimators.with_columns(
         celltsweight=pl.col("rho") * pl.col("deltavol_deltat") if ismassquantity else pl.col("deltavol_deltat"),
         yvalue=colexpr,
@@ -1372,13 +1389,15 @@ def get_series_plans(
         plotkwargs.setdefault("color", dictcolors[variablename])
     plotkwargs.setdefault("linewidth", 1.5)
 
-    print(f"  Plotting {variablename}")
+    print(f"  Plotting {seriesname}")
+    if weightvariable != seriesname:
+        print(f"  The weight of the mean of {seriesname} is the weight of its first column, {weightvariable}")
     return [
         SeriesPlan(
             label=linelabel,
             dfseries=series,
             plotkwargs=plotkwargs,
-            seriesname=variablename,
+            seriesname=seriesname,
             weightname=(
                 "cell mass times time step duration" if ismassquantity else "cell volume times time step duration"
             ),
@@ -1687,8 +1706,10 @@ def get_subplot_plans(
     The caller collects the series of all the subplots in one call.
     """
     settings: SubplotSettings = {"showlegend": False, "legendncols": 1}
+    # the text of an expression item names its series, and get_series_variables gives the variable of its units
+    exprcolumns = estimators.collect_schema() if any(isinstance(var, pl.Expr) for var in plotitems) else pl.Schema()
     ylabels = [
-        get_ylabel(var.meta.output_name() if isinstance(var, pl.Expr) else var)
+        get_ylabel(get_series_variables(var, exprcolumns)[1] if isinstance(var, pl.Expr) else var)
         for var in plotitems
         if isinstance(var, str | pl.Expr)
     ]
@@ -2296,9 +2317,9 @@ def get_image_panels(plotlist: list[list[t.Any]], estimatorcolumns: Collection[s
                         or "Run with --listvariables to see the variables of this model",
                     )
                 colexpr = pl.col(plotitem) if isinstance(plotitem, str) else plotitem
-                colname = colexpr.meta.output_name()
-                label = f"{get_varname_formatted(colname)}{get_units_string(colname)}"
-                columns.append((colexpr, label, pl.col("rho") if is_quantity_per_unit_mass(colname) else None))
+                seriesname, variablename, weightvariable = get_series_variables(colexpr, estimatorcolumns)
+                label = f"{get_varname_formatted(seriesname)}{get_units_string(variablename)}"
+                columns.append((colexpr, label, pl.col("rho") if is_quantity_per_unit_mass(weightvariable) else None))
             elif get_directive_name(plotitem[0]) is not None:
                 continue
             elif is_ionseriestype(plotitem[0], estimatorcolumns, plotitem[1]):
@@ -2551,6 +2572,47 @@ def get_colour_norm(panel: PanelStyle, grid: "npt.NDArray[np.float64]") -> mc.No
     return mc.Normalize(vmin=panel.vmin, vmax=panel.vmax)
 
 
+def get_image_xrange_selection(args: argparse.Namespace, modelmeta: dict[str, t.Any]) -> pl.Expr | None:
+    """Return the selection of the cells that the image shows inside --xmin and --xmax, or None with no x range.
+
+    A line keeps the rows inside the x range before it evaluates an expression, and an image does the same. Thus an
+    aggregation, e.g. pl.col("Te").mean(), takes the same cells. A cell of a grid with straight edges takes the centre
+    of the cell on the horizontal axis of the image. The other models take each cell that gives a point of the image
+    inside the x range.
+    """
+    xmin_on_c, xmax_on_c = get_image_xlimits_on_c(args)
+    if xmin_on_c is None and xmax_on_c is None:
+        return None
+    vmax_cmps = float(modelmeta["vmax_cmps"])
+    xmin_cmps = -math.inf if xmin_on_c is None else xmin_on_c * C_cm_per_s
+    xmax_cmps = math.inf if xmax_on_c is None else xmax_on_c * C_cm_per_s
+    if modelmeta["dimensions"] == 1:
+        # a point at the cylindrical radius R takes the shell at a radius of R or more, and z reaches vmax
+        return pl.col("vel_r_max") > xmin_cmps
+    if get_model_coordinates(modelmeta) in SPHERICAL_EDGE_COORDINATES:
+        slicevelocity_cmps = (
+            0.0 if args.sliceaxis is None else get_spherical_slice_velocity_cmps(args.slicevelocity_cmps, vmax_cmps)
+        )
+        cellindices = get_spherical_image_cell_indices(modelmeta, args.sliceaxis, slicevelocity_cmps)
+        # the points have equal steps, from 0 to vmax for the cylindrical radius and from -vmax to vmax otherwise
+        pointcount = cellindices.shape[1]
+        axisstart, axiswidth = (0.0, vmax_cmps) if args.sliceaxis is None else (-vmax_cmps, 2 * vmax_cmps)
+        pointvelocity = axisstart + (np.arange(pointcount) + 0.5) * axiswidth / pointcount
+        shownindices = cellindices[:, (pointvelocity >= xmin_cmps) & (pointvelocity <= xmax_cmps)]
+        shownindices = np.unique(shownindices[shownindices >= 0])
+        ringcount = (len(modelmeta["vel_r_edges_kmps"]) - 1) * (len(modelmeta["costheta_edges"]) - 1)
+        imagecell = pl.col("modelgridindex") % ringcount if args.sliceaxis is None else pl.col("modelgridindex")
+        return imagecell.is_in(shownindices.tolist())
+    if args.sliceaxis is not None:
+        axis1 = next(axisname for axisname in "xyz" if axisname != args.sliceaxis)
+        velocity = pl.col(f"vel_{axis1}_mid")
+    elif modelmeta["dimensions"] == 3:
+        velocity = (pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2).sqrt()
+    else:
+        velocity = pl.col("vel_rcyl_mid")
+    return (velocity >= xmin_cmps) & (velocity <= xmax_cmps)
+
+
 def get_image_figure_data(
     modelpath: Path | str,
     timestepslist: Sequence[int],
@@ -2563,6 +2625,24 @@ def get_image_figure_data(
 
     The image shows a plane of a 3D model for --slice, and the model at each cylindrical radius and each z without it.
     """
+    # the mean of a pixel groups the cells. An aggregation in an expression, e.g. pl.col("Te").mean(), thus takes the
+    # selected cells of the timesteps of this frame first, as a line does, and not only the cells of a pixel
+    estimators = estimators.filter(pl.col("timestep").is_in(timestepslist))
+    # the average around the z axis leaves out each cell in a corner of the cube, see get_image_values, thus an
+    # aggregation takes only the cells that the image shows
+    if (
+        args.sliceaxis is None
+        and modelmeta["dimensions"] == 3
+        and get_model_coordinates(modelmeta) not in SPHERICAL_EDGE_COORDINATES
+    ):
+        vel_rcyl_mid = (pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2).sqrt()
+        estimators = estimators.filter(vel_rcyl_mid < float(modelmeta["vmax_cmps"]))
+    if (xrangeselection := get_image_xrange_selection(args, modelmeta)) is not None:
+        estimators = estimators.filter(xrangeselection)
+    estimators = estimators.with_columns(
+        panel.colexpr.alias(f"panelvalue{index}") for index, panel in enumerate(panels)
+    )
+    panels = [panel._replace(colexpr=pl.col(f"panelvalue{index}")) for index, panel in enumerate(panels)]
     grids, (plotaxis1, plotaxis2) = get_image_values(
         estimators, panels, modelmeta, args.sliceaxis, timestepslist, args.slicevelocity_cmps
     )
@@ -2987,7 +3067,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
             "an estimator that names an ion, e.g. --plot gamma_NT 'Fe II' or --plot cooling_coll 'Fe II'. "
             "A name that also gives a total of the cell, e.g. cooling_coll, gives the ions when the "
             "model holds a column for one of them. Give the total its own subplot, e.g. --plot "
-            "cooling_coll --plot cooling_coll 'Fe II'. Quote an ion that holds "
+            "cooling_coll --plot cooling_coll 'Fe II'. A polars expression of the columns gives a series. "
+            "Give polars SQL after an =, e.g. --plot '=heating_coll - cooling_coll' or "
+            "'=POWER(Te, 2)'. Put a column name that holds a / in double quotes. Quote the whole item. zsh "
+            "expands a word that starts with =. Python text with pl as the polars module also gives a series, e.g. "
+            '\'pl.col("heating_coll") - pl.col("cooling_coll")\'. The command runs this text as Python code, on the '
+            "model host for a remote model. Write 0 - pl.col(...) in place of -pl.col(...). argparse reads -pl as "
+            "the flag -p. The command evaluates an expression for each cell and timestep, before the mean of a bin. "
+            "Quote an ion that holds "
             f"a space. The directives are {', '.join(f'{name}=' for name in DIRECTIVES)}, e.g. "
             "--plot Te TR yscale=lin --plot rho yscale=log ymin=1e-17 --plot 'Fe II' 'Fe III' ionpoptype=elpop. "
             "The directive ionpoptype= sets the normalisation of an ion population series to one of "
@@ -3310,10 +3397,7 @@ def get_default_plotlist() -> list[t.Any]:
         #  ['_yscale', 'linear']],
         # ['cooling_adiabatic', 'cooling_coll', 'cooling_fb', 'cooling_ff',
         #  ['_yscale', 'linear']],
-        # [
-        #     (pl.col("heating_coll") - pl.col("cooling_coll")).alias("collisional heating - cooling"),
-        #     ["_yscale", "linear"],
-        # ],
+        # ['pl.col("heating_coll") - pl.col("cooling_coll")', ["_yscale", "linear"]],
         # [['initmasses', ['Ni_56', 'He', 'C', 'Mg']]],
         # ['heating_gamma/gamma_dep'],
         # ["nne", ["_ymin", 1e5], ["_ymax", 1e10]],
@@ -3386,12 +3470,14 @@ def prepare_snapshot(
     if args.dimensionreduce == 2:
         panels = get_image_panels(plotlist, estimators.collect_schema().names(), args.poptype)
         # an image reads a small number of the columns, and a set of frames writes a copy of the estimators
+        # a selector names no root column, e.g. pl.col("^heating_.*$"), thus the columns of the model resolve it
+        estimatorschema = estimators.collect_schema()
         panelcolumns = {
             name
             for panel in panels
             for expr in (panel.colexpr, panel.weightexpr)
             if expr is not None
-            for name in expr.meta.root_names()
+            for name in get_input_columns(expr, estimatorschema)
         }
         estimators = estimators.select(
             cs.by_name("timestep", "modelgridindex", "deltavol_deltat", *sorted(panelcolumns)) | cs.starts_with("vel_")
@@ -3472,9 +3558,15 @@ def get_missing_folder_hint(lastitem: str) -> str:
     # each of these is a plot item, even when a folder has a close name:
     # - a known variable, or an alias such as T_e;
     # - an ion;
-    # - a directive.
+    # - a directive;
+    # - a polars expression.
     name = get_series_name(resolve_item_alias(lastitem))
-    if name in VARIABLES or could_be_ion(lastitem) or get_item_directive(lastitem) is not None:
+    if (
+        name in VARIABLES
+        or could_be_ion(lastitem)
+        or get_item_directive(lastitem) is not None
+        or is_expression_item(lastitem)
+    ):
         return ""
 
     # a path that exists, e.g. "./" for the working folder, has no error in its name
@@ -3580,8 +3672,11 @@ def get_plot_estimators(
 
 def add_plot_columns(
     args: argparse.Namespace, estimators: pl.LazyFrame, modelmeta: dict[str, t.Any]
-) -> tuple[pl.LazyFrame, list[str]]:
-    """Return the estimators with the columns that the plot reads, and the names of all the columns."""
+) -> tuple[pl.LazyFrame, pl.Schema]:
+    """Return the estimators with the columns that the plot reads, and the schema of all the columns.
+
+    The schema gives the names, and its types let the check of an expression item find a type error.
+    """
     # the average around the z axis applies the limit of the cylindrical radius itself. The corners of a cube hold
     # matter, thus get_cell_selection_description gives the limit in the log
     if args.modelgridindex is None and args.dimensionreduce == 1:
@@ -3595,14 +3690,14 @@ def add_plot_columns(
         estimators = estimators.filter(get_cell_direction_selection(directionrange, columns))
 
     estimators = estimators.with_columns(deltavol_deltat=pl.col("volume") * pl.col("twidth_days"))
-    return estimators, estimators.collect_schema().names()
+    return estimators, estimators.collect_schema()
 
 
 @on_model_host
 def get_plot_columns(modelpath: Path, args: argparse.Namespace, timesteps_included: list[int]) -> list[str]:
     """Return the names of the columns that a plot can read, for --listvariables and --listnuclides."""
     estimators, modelmeta = get_plot_estimators(args, modelpath, timesteps_included)
-    return add_plot_columns(args, estimators, modelmeta)[1]
+    return add_plot_columns(args, estimators, modelmeta)[1].names()
 
 
 # the data of each figure of the arguments, and the arguments that the data code changed
@@ -3650,6 +3745,27 @@ def get_data_key(args: argparse.Namespace) -> str:
     return repr(sorted(keyargs.items()))
 
 
+def stop_with_expression_error(exc: pl.exceptions.PolarsError, plotlist: list[list[t.Any]]) -> t.NoReturn:
+    """Stop with a clear message for an error of a polars expression on the estimators, or raise another error again.
+
+    The check of an expression runs on sample values, and an expression can pass on them but fail on the rows of the
+    model, e.g. pl.col("Te").filter(pl.col("Te").is_between(-10, 10)) or a replace_strict with no value for 1e4.
+    """
+    if not any(isinstance(plotvar, pl.Expr) for plotitems in plotlist for plotvar in plotitems):
+        raise exc
+    reason = next((line for line in str(exc).splitlines() if line.strip()), type(exc).__name__)
+    if isinstance(exc, pl.exceptions.ShapeError):
+        exit_with_error(
+            f"A polars expression of a plot item changes the number of rows of the estimators: {reason}",
+            'Give one value for each cell and timestep. Write a condition with pl.when, e.g. pl.when(pl.col("Te") >'
+            ' 1e4).then(pl.col("Te")), in place of a filter',
+        )
+    exit_with_error(
+        f"A polars expression of a plot item failed on the estimators: {reason}",
+        "Correct the expression for the values of this model, e.g. with --print-data of a plot of each column",
+    )
+
+
 @on_model_host
 def get_figures_data(
     modelpath: Path,
@@ -3681,7 +3797,10 @@ def get_figures_data(
 
     assert args.x is not None
     if args.x in TIME_XVARIABLES:
-        figuredata = get_line_figure_data(modelpath, timesteps_included, estimators, args.x, plotlist, args)
+        try:
+            figuredata = get_line_figure_data(modelpath, timesteps_included, estimators, args.x, plotlist, args)
+        except pl.exceptions.PolarsError as exc:
+            stop_with_expression_error(exc, plotlist)
         return [figuredata], get_changed_args()
 
     estimators, panels = prepare_snapshot(args, estimators, modelmeta, plotlist)
@@ -3714,6 +3833,8 @@ def get_figures_data(
             if not args.multiplot:
                 raise
             skippedtimesteps.extend(frame)
+        except pl.exceptions.PolarsError as exc:
+            stop_with_expression_error(exc, plotlist)
 
     if skippedtimesteps:
         print_warning(
