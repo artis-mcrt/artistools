@@ -26,6 +26,7 @@ from artistools.estimators import interactive
 from artistools.estimators import plotestimators
 from artistools.estimators import plotitems
 from artistools.estimators import subplotcards
+from artistools.misc import remote
 from artistools.viewertools import application as viewerapplication
 from artistools.viewertools import core as viewercore
 from artistools.viewertools import widgets as viewerwidgets
@@ -613,10 +614,14 @@ def test_interactive_check_finds_a_type_error_of_polars_sql(
     The viewer kept the names of the columns alone, and the check then left each type error to the plot.
     """
     viewer = make_viewer("estimators", [str(modelpath), "--timestep", "50", "--interactive"])
-    assert viewer.modeldata.estimatorschema.names() == list(viewer.modeldata.estimatorcolumns)
-    typeresult = plotitems.get_typed_item_problem("=LOWER(Te)", viewer.modeldata.estimatorschema)
+    schema = viewer.modeldata.emptyestimatorframe.schema
+    assert schema.names() == list(viewer.modeldata.estimatorcolumns)
+    typeresult = plotitems.get_typed_item_problem("=LOWER(Te)", schema)
     assert typeresult is not None
     assert "does not suit the types" in typeresult[0]
+
+    # the server of a remote model sends the data of the model, and the client accepts each object of it
+    assert remote.load_reply(remote.dump_message(viewer.modeldata)).emptyestimatorframe.schema == schema
 
 
 def test_interactive_command_gives_the_default_subplots(

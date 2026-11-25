@@ -556,11 +556,12 @@ def get_evaluated_expression_problem(
     return None
 
 
-# the polars methods that depend on the order of the rows or that select rows, as the text of an expression names them
+# the polars methods that depend on the order of the rows or that select rows, as the text of an expression names them.
+# The text of fill_null(strategy=...) does not give the strategy. keeps_row_order finds a forward or a backward fill
 ORDER_METHOD_PATTERN: t.Final = re.compile(
     r"sort|sort_by|reverse|shift|gather|gather_every|shuffle|sample|arg_sort|top_k|bottom_k|top_k_by|bottom_k_by|int_range"
-    r"|cum_\w+|cumulative_eval|diff|pct_change|rolling\w*|ewm_\w+|fill_null_with_strategy|forward_fill"
-    r"|backward_fill|interpolate\w*|rle\w*|filter|slice|head|tail|drop_nulls|drop_nans|unique|explode|arg_true"
+    r"|cum_\w+|cumulative_eval|diff|pct_change|rolling\w*|ewm_\w+|interpolate\w*|rle\w*|filter|slice|head|tail"
+    r"|drop_nulls|drop_nans|unique|explode|arg_true"
 )
 
 

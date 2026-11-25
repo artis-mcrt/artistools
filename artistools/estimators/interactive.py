@@ -406,8 +406,9 @@ class ModelData(t.NamedTuple):
 
     batchcaches: "list[EstimatorBatchCache] | None"
     estimatorcolumns: tuple[str, ...]
-    # the types of the columns let the field of a card find a type error of polars SQL, e.g. =LOWER(Te)
-    estimatorschema: pl.Schema
+    # an empty frame with the columns of the estimators. Its types let the field of a card find a type error of polars
+    # SQL, e.g. =LOWER(Te). The server of a remote model sends a frame, but not a pl.Schema
+    emptyestimatorframe: pl.DataFrame
     validtimesteps: list[int]
     cells: list[int]
     cellvelocities: dict[int, float]
@@ -465,7 +466,7 @@ def read_model_data(modelpath: Path, args: argparse.Namespace, ntimesteps: int) 
     return ModelData(
         batchcaches=batchcaches,
         estimatorcolumns=tuple(estimatorschema),
-        estimatorschema=estimatorschema,
+        emptyestimatorframe=pl.DataFrame(schema=estimatorschema),
         validtimesteps=validtimesteps,
         cells=cells,
         cellvelocities=dict(zip(cells, dfcells["vel_r_mid"].to_list(), strict=True)),

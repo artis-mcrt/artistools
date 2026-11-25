@@ -2572,6 +2572,32 @@ def get_colour_norm(panel: PanelStyle, grid: "npt.NDArray[np.float64]") -> mc.No
     return mc.Normalize(vmin=panel.vmin, vmax=panel.vmax)
 
 
+def get_image_xrange_selection(args: argparse.Namespace, modelmeta: dict[str, t.Any]) -> pl.Expr | None:
+    """Return the selection of the cells with a centre inside --xmin and --xmax on the horizontal axis of an image.
+
+    A line keeps the rows inside the x range before it evaluates an expression, and an image does the same. Thus an
+    aggregation, e.g. pl.col("Te").mean(), takes the same cells. A 1D model and a model with spherical edges give None.
+    """
+    xmin_on_c, xmax_on_c = get_image_xlimits_on_c(args)
+    if (xmin_on_c is None and xmax_on_c is None) or modelmeta["dimensions"] == 1:
+        return None
+    if get_model_coordinates(modelmeta) in SPHERICAL_EDGE_COORDINATES:
+        return None
+    if args.sliceaxis is not None:
+        axis1 = next(axisname for axisname in "xyz" if axisname != args.sliceaxis)
+        velocity = pl.col(f"vel_{axis1}_mid")
+    elif modelmeta["dimensions"] == 3:
+        velocity = (pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2).sqrt()
+    else:
+        velocity = pl.col("vel_rcyl_mid")
+    selection = pl.lit(value=True)
+    if xmin_on_c is not None:
+        selection &= velocity >= xmin_on_c * C_cm_per_s
+    if xmax_on_c is not None:
+        selection &= velocity <= xmax_on_c * C_cm_per_s
+    return selection
+
+
 def get_image_figure_data(
     modelpath: Path | str,
     timestepslist: Sequence[int],
@@ -2596,6 +2622,8 @@ def get_image_figure_data(
     ):
         vel_rcyl_mid = (pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2).sqrt()
         estimators = estimators.filter(vel_rcyl_mid < float(modelmeta["vmax_cmps"]))
+    if (xrangeselection := get_image_xrange_selection(args, modelmeta)) is not None:
+        estimators = estimators.filter(xrangeselection)
     estimators = estimators.with_columns(
         panel.colexpr.alias(f"panelvalue{index}") for index, panel in enumerate(panels)
     )

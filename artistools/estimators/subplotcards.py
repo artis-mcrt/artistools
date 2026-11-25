@@ -1358,7 +1358,7 @@ def add_subplot_section(
             # normalise_plotitems groups only names, thus an expression in a subplot of species stops the plot
             problem = "An expression gives a series of a subplot of variables"
             return problem, f"{problem}. Add the expression to a subplot of variables."
-        return get_typed_item_problem(item, viewer.modeldata.estimatorschema)
+        return get_typed_item_problem(item, viewer.modeldata.emptyestimatorframe.schema)
 
     def show_typed_item_problem(row: int, edit: QtWidgets.QLineEdit, note: QtWidgets.QLabel) -> None:
         if not is_shown_card(row, edit):

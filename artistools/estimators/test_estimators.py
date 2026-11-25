@@ -21,6 +21,7 @@ import polars.testing as pltest
 import pytest
 
 import artistools as at
+from artistools.constants import km_to_cm
 from artistools.estimators import plotestimators
 from artistools.estimators import plotitems
 
@@ -3087,6 +3088,35 @@ def test_image_frames_take_the_aggregation_of_their_timestep(tmp_path: Path) -> 
     assert not np.isclose(frameoffsets[0], frameoffsets[1], rtol=1e-6, atol=0)
 
 
+def test_image_aggregation_takes_the_cells_inside_the_x_range(tmp_path: Path) -> None:
+    """An aggregation of an image takes the cells inside --xmax, as a line does, and not the cells that the crop hides.
+
+    The image took the mean of each cell, thus pl.col("Te") - pl.col("Te").mean() differed from the line.
+    """
+    xmax_kmps = 15000.0
+    ((_, _, _, tegrid),) = get_image_panel_calls(
+        {"plotlist": [["Te"]], "dimensionreduce": 2, "xmax": xmax_kmps}, tmp_path
+    )
+    ((_, _, _, deviationgrid),) = get_image_panel_calls(
+        {"plotlist": [['pl.col("Te") - pl.col("Te").mean()']], "dimensionreduce": 2, "xmax": xmax_kmps}, tmp_path
+    )
+    offsets = (tegrid - deviationgrid).compressed()
+    lzmodel, modelmeta = at.scan_modeldata(modelpath_classic_3d)
+    lzmodel = at.inputmodel.add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta)
+    vel_rcyl_mid = (pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2).sqrt()
+    insidemean = (
+        at
+        .scan_estimators(modelpath_classic_3d, timestep=8)
+        .select("modelgridindex", "Te")
+        .join(lzmodel.select("modelgridindex", "vel_x_mid", "vel_y_mid"), on="modelgridindex", how="inner")
+        .filter(vel_rcyl_mid < modelmeta["vmax_cmps"], vel_rcyl_mid <= xmax_kmps * km_to_cm)
+        .select(pl.col("Te").mean())
+        .collect()
+        .item()
+    )
+    assert np.allclose(offsets, insidemean, rtol=1e-6, atol=0)
+
+
 def test_estimator_plot_of_2_dimensions_gives_the_average_around_the_z_axis(
     tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
 ) -> None:
@@ -5436,6 +5466,7 @@ def test_expression_gives_numbers_in_a_subplot_of_variables() -> None:
 
     # the plot puts the values next to the cells by position, thus a change of the order gives wrong values
     for reordering in (
+        'pl.col("Te").forward_fill()',
         "pl.int_range(pl.len()) * 1e-12",
         'pl.col("Te").sort_by((pl.col("Te") > 10000).fill_null(False))',
         'pl.col("Te").gather((pl.int_range(pl.len()) + 1) % pl.len())',
@@ -5452,6 +5483,7 @@ def test_expression_gives_numbers_in_a_subplot_of_variables() -> None:
         'pl.when(pl.col("Te") > 0).then(pl.col("Te"))',
         "=Te / 2",
         'pl.col("Te") - pl.col("Te").filter(pl.col("Te") > 0).mean()',
+        'pl.col("Te").fill_null(strategy="zero")',
     ):
         assert plotitems.get_expression_problem(rowwise, columns) is None, rowwise
 
