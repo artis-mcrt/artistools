@@ -7,6 +7,7 @@ import os
 import sys
 import time
 import typing as t
+from collections.abc import Collection
 from collections.abc import Generator
 from pathlib import Path
 
@@ -125,7 +126,12 @@ def mtime_matches_stamp(foundmtime: str | None, textsource_mtime: float) -> bool
 
 
 def rankbatch_parquet_staleness(
-    parquetfilepath: Path, cacheversion: int, textsource_mtime: float | None, *, textsource_complete: bool
+    parquetfilepath: Path,
+    cacheversion: int,
+    textsource_mtime: float | None,
+    *,
+    textsource_complete: bool,
+    oldversions: Collection[int] = (),
 ) -> str | None:
     """Return the reason why the parquet cache is stale, or None when the cache is current.
 
@@ -147,6 +153,7 @@ def rankbatch_parquet_staleness(
         cacheversion,
         textsource_mtime if textsource_complete else None,
         accept_unstamped=not textsource_complete,
+        oldversions=oldversions,
     )
     if stalereason is not None or textsource_complete or textsource_mtime is None:
         return stalereason
@@ -192,6 +199,7 @@ def read_parquet_cache_metadata(
     accept_unstamped: bool = False,
     textsource: str | None = None,
     textsource_size: int | None = None,
+    oldversions: Collection[int] = (),
 ) -> tuple[dict[str, str] | None, str | None]:
     """Return the metadata of a parquet cache, and the reason why the cache is stale.
 
@@ -218,6 +226,9 @@ def read_parquet_cache_metadata(
     the modification time. Give the same path to such a reader, because two files can have the same modification
     time. A cache without the stamp is then stale.
 
+    oldversions gives the older format versions that the reader also reads. Such a cache is current, and the
+    writer gives each new cache the version cacheversion.
+
     A textsource_mtime of None shows that the text source is absent. The function then compares no
     modification times, but the cache format version and the state of the file still apply.
     """
@@ -229,7 +240,7 @@ def read_parquet_cache_metadata(
         return None, f"the file is not a readable parquet file ({type(exc).__name__}: {exc})"
 
     foundversion = pqmetadata.get("cacheversion", str(cacheversion) if accept_unstamped else None)
-    if foundversion != str(cacheversion):
+    if foundversion not in {str(version) for version in (cacheversion, *oldversions)}:
         return None, (
             f"the cache format version is {foundversion}, but this artistools version writes {cacheversion}"
             if foundversion is not None

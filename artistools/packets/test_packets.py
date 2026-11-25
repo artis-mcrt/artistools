@@ -934,6 +934,62 @@ def test_scan_packets_gives_one_name_and_type_to_the_flag_of_the_particle_origin
     pltest.assert_frame_equal(dfflag, pl.DataFrame({"originated_from_particlenotgamma": [True, False]}))
 
 
+def test_scan_packets_reads_a_batch_of_each_cache_version(tmp_path: Path) -> None:
+    """A model can hold a batch of cache version 1 and a batch of version 2, and both give the same direction bins.
+
+    Version 2 stores only dirbin_costheta10_phi10, and version 1 stores dirbin and the angles. A scan of files with
+    two schemas stops with a SchemaError, thus each batch gets the columns of version 2 before the concatenation.
+    """
+    import shutil
+
+    from artistools.packets.core import get_packets_rankbatch_parquetfile
+
+    sourcedir = at.get_path("testdata") / "test-classicmode_3d" / "packets"
+    for rank in (0, 1):
+        shutil.copy(sourcedir / f"packets00_{rank:04d}.out.zst", tmp_path)
+    newcache = get_packets_rankbatch_parquetfile(tmp_path, batch_mpiranks=[0, 1], batchindex=0, virtual=False)
+    assert pl.read_parquet_metadata(newcache)["cacheversion"] == "2"
+    newcolumns = list(pl.read_parquet_schema(newcache))
+    assert "dirbin_costheta10_phi10" in newcolumns
+    assert not {"dirbin", "costhetabin", "phibin", "costheta", "phi", "cosphi", "testphi"} & set(newcolumns)
+
+    dfnew = pl.read_parquet(newcache)
+    oldcache = tmp_path / "packetsbatch01_0002_0003.out.parquet.tmp"
+    dfnew.rename({"dirbin_costheta10_phi10": "dirbin"}).with_columns(
+        costhetabin=pl.col("dirbin") // 10,
+        phibin=pl.col("dirbin") % 10,
+        costheta=pl.lit(2.0, dtype=pl.Float32),
+        phi=pl.lit(-1.0, dtype=pl.Float32),
+        cosphi=pl.lit(2.0, dtype=pl.Float32),
+        testphi=pl.lit(0.0, dtype=pl.Float32),
+    ).write_parquet(oldcache)
+
+    with mock.patch("artistools.packets.core.get_packets_batch_parquet_paths", return_value=(4, [newcache, oldcache])):
+        _, dfpackets = at.packets.scan_packets(tmp_path)
+    directioncolumns = ["dirbin", "costhetabin", "phibin", "costheta", "phi"]
+    dfdirections = dfpackets.select(directioncolumns).collect()
+
+    nrows = dfnew.height
+    pltest.assert_frame_equal(dfdirections.head(nrows), dfdirections.tail(nrows))
+    expected = at.packets.add_packet_directions_lazypolars(
+        at.packets.bin_packet_directions_polars(dfnew.drop("dirbin_costheta10_phi10"))
+    )
+    pltest.assert_frame_equal(dfdirections.head(nrows), expected.select(directioncolumns).collect())
+
+
+def test_direction_bins_of_other_bin_counts_come_from_the_directions() -> None:
+    """The cache column of 10 cos θ bins and 10 ϕ bins gives only those counts, and other counts use the directions."""
+    dirx, diry, dirz = 0.3, -0.4, 0.5
+    dfpackets = pl.LazyFrame({"dirx": [dirx], "diry": [diry], "dirz": [dirz], "dirbin_costheta10_phi10": [7]})
+
+    def get_dirbin(ncosthetabins: int, nphibins: int) -> int:
+        binned = at.packets.bin_packet_directions_polars(dfpackets, nphibins=nphibins, ncosthetabins=ncosthetabins)
+        return int(binned.select("dirbin").collect().item())
+
+    assert get_dirbin(10, 10) == 7
+    assert get_dirbin(4, 8) == get_reference_dirbin(dirx, diry, dirz, nphibins=8, ncosthetabins=4)
+
+
 def test_lastpacketinteraction_main_writes_the_plot_to_the_output_folder(tmp_path: Path) -> None:
     """The command takes -timedays as the other commands do, and -o gives the folder or the file of the plot.
 

@@ -270,6 +270,8 @@ def test_a_rejected_parquet_cache_gives_the_reason(tmp_path: Path) -> None:
     # skipped every check for such a cache, thus the columns of a new schema became zero
     assert at.misc.read_parquet_cache_metadata(current, cacheversion, None)[1] is None
     assert "cache format version" in str(at.misc.read_parquet_cache_metadata(current, cacheversion + 1, None)[1])
+    # a reader of a new version can also read the older version, e.g. the packets cache of version 1
+    assert at.misc.read_parquet_cache_metadata(current, cacheversion + 1, None, oldversions=(cacheversion,))[1] is None
 
     def get_reason(parquetfilepath: Path, textsource_mtime: float) -> str:
         pqmetadata, stalereason = at.misc.read_parquet_cache_metadata(parquetfilepath, cacheversion, textsource_mtime)
