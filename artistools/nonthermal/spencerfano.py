@@ -5,6 +5,7 @@ import math
 import typing as t
 from collections.abc import Mapping
 from collections.abc import Sequence
+from functools import partial
 from itertools import starmap
 from pathlib import Path
 
@@ -718,7 +719,7 @@ def add_ion_excitation_with_level_pops(
             Z,
             ion_stage,
             levelpops[transition["lower"]],
-            pynt.excitation.get_xs_excitation_vector(sf.engrid, transition),
+            partial(pynt.excitation.get_xs_excitation_vector, row=transition),
             float(transition["epsilon_trans_ev"]),
             transitionkey=(transition["lower"], transition["upper"]),
         )
