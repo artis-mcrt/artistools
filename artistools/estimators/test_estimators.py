@@ -5392,6 +5392,8 @@ def test_expression_gives_numbers_in_a_subplot_of_variables() -> None:
     assert headresult is not None
     assert "changes the number of rows" in headresult[0]
     assert plotitems.get_expression_problem('pl.col("Te") - pl.col("Te").mean()', columns) is None
+    # an expression that reads no column can still give one value for each row
+    assert plotitems.get_expression_problem("pl.int_range(pl.len())", columns) is None
 
     with pytest.raises(SystemExit):
         plotitems.normalise_plotitems(["populations", "Fe II", "=Te"], columns)
@@ -5446,8 +5448,9 @@ def test_expression_completion_puts_a_column_name_at_the_end() -> None:
         assert plotitems.get_expression_name_start(text) is not None, text
         assert plotitems.complete_expression_name(text, name) == completed, text
 
-    # a plain name or the method of an expression is not a column name in an expression
-    for text in ("heat", "pl.co", 'pl.col("Te").cl'):
+    assert plotitems.get_expression_name_start("=Te * ") == ("=Te * ", "")
+    # a plain name, the method of an expression, and a place after a number or a bracket take no column name
+    for text in ("heat", "pl.co", 'pl.col("Te").cl', "=LOG10(Te)", "=Te * 2", "=Te * 1e", '="Te" '):
         assert plotitems.get_expression_name_start(text) is None, text
 
 
@@ -5519,12 +5522,18 @@ def test_default_plotlist_skips_an_expression_with_an_absent_column() -> None:
     textsubplot = ['pl.col("heating_coll") - pl.col("cooling_coll")', ["_yscale", "linear"]]
     exprsubplot = [pl.col("heating_coll") - pl.col("cooling_coll")]
     estimatorcolumns = ["timestep", "modelgridindex", "TR", "heating_coll"]
-    defaultplotlist = [textsubplot, exprsubplot, ["TR"]]
+    # a selector names no root column, thus only the check of the expression finds that it matches no column. The
+    # command gives the schema of the estimators, and the types make the error of the empty sum certain
+    selectorsubplot = ['pl.sum_horizontal(pl.col("^cooling_.*$"))']
+    estimatorschema = pl.Schema(dict.fromkeys(estimatorcolumns, pl.Float64))
+    defaultplotlist = [textsubplot, exprsubplot, selectorsubplot, ["TR"]]
     with mock.patch.object(plotestimators, "get_default_plotlist", return_value=defaultplotlist):
-        plotlist, skippedplotlist = plotestimators.get_model_default_plotlist(estimatorcolumns, modelpath)
+        plotlist, skippedplotlist = plotestimators.get_model_default_plotlist(estimatorschema, modelpath)
 
     assert plotlist == [["TR"]]
-    assert [reason for _, reason in skippedplotlist] == ["the estimators have no cooling_coll"] * 2
+    reasons = [reason for _, reason in skippedplotlist]
+    assert reasons[:2] == ["the estimators have no cooling_coll"] * 2
+    assert "expected at least 1 input" in reasons[2]
 
 
 def test_expression_series_keeps_the_weight_of_its_first_column() -> None:

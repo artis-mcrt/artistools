@@ -58,6 +58,7 @@ from artistools.estimators.plotitems import DIRECTIVES
 from artistools.estimators.plotitems import evaluate_expression_text
 from artistools.estimators.plotitems import get_column_name
 from artistools.estimators.plotitems import get_directive_name
+from artistools.estimators.plotitems import get_expression_problem
 from artistools.estimators.plotitems import get_input_columns
 from artistools.estimators.plotitems import get_iontuple
 from artistools.estimators.plotitems import get_iontuple_sortkey
@@ -1052,8 +1053,11 @@ def get_default_plotitem_skip_reason(
         except (ValueError, TypeError):
             # the command evaluates the text again, and it gives the error
             return None
-        absentcolumns = [name for name in expr.meta.root_names() if name not in estimatorcolumns]
-        return f"the estimators have no {absentcolumns[0]}" if absentcolumns else None
+        if absentcolumns := [name for name in expr.meta.root_names() if name not in estimatorcolumns]:
+            return f"the estimators have no {absentcolumns[0]}"
+        # the text can also fail on the columns of the model, e.g. a selector that matches no column
+        problem = None if isinstance(plotitems, pl.Expr) else get_expression_problem(plotitems, estimatorcolumns)
+        return None if problem is None else problem[0][0].lower() + problem[0][1:]
 
     if isinstance(plotitems, str):
         # an estimator variable always wins over the element reading of its name, because several estimator names
@@ -1349,18 +1353,19 @@ def get_series_plans(
     **plotkwargs: t.Any,
 ) -> list[SeriesPlan]:
     """Return the series of an estimator variable such as Te or TR."""
+    estimatorschema = estimators.collect_schema()
     if isinstance(variable, pl.Expr):
         colexpr = variable
     else:
-        columns = estimators.collect_schema().names()
-        if variable not in columns:
+        if variable not in estimatorschema:
             exit_with_error(
                 f"'{variable}' is not an estimator variable",
-                suggest_names(variable, columns) or "Run with --listvariables to see the variables of this model",
+                suggest_names(variable, estimatorschema.names())
+                or "Run with --listvariables to see the variables of this model",
             )
         colexpr = pl.col(variable)
 
-    seriesname, variablename, weightvariable = get_series_variables(colexpr, estimators.collect_schema())
+    seriesname, variablename, weightvariable = get_series_variables(colexpr, estimatorschema)
 
     serieslabel = get_varname_formatted(seriesname)
     units_string = get_units_string(variablename)

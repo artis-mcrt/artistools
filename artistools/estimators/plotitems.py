@@ -434,7 +434,7 @@ def get_styles_of_subplots(args: argparse.Namespace, count: int) -> list[dict[st
     return [*styles, *({} for _ in range(count - len(styles)))]
 
 
-def is_expression_item(item: t.Any) -> bool:
+def is_expression_item(item: object) -> bool:
     """Return True if a plot item is a polars expression, e.g. "=Te / 1e4@color=C3" or 'pl.col("Te") / 1e4'."""
     return isinstance(item, str) and is_expression_text(get_series_name(item))
 
@@ -594,10 +594,13 @@ def run_on_sample_frame(
     """
     schema = get_column_schema(estimatorcolumns)
     inputcolumns = get_input_columns(expr, schema)
-    sample = pl.DataFrame([
+    samplecolumns = [
         get_sample_column(name, schema[name], rowcount, columnposition)
         for columnposition, name in enumerate(inputcolumns)
-    ])
+    ]
+    # an expression that reads no column can still give one value for each row, e.g. pl.int_range(pl.len()). A column
+    # with an empty name gives the rows, because a selector of the expression, e.g. "^cooling_.*$", cannot match it
+    sample = pl.DataFrame(samplecolumns or [pl.Series("", range(rowcount))])
     return sample.lazy().select(expr).collect()
 
 
@@ -650,7 +653,12 @@ def get_expression_name_start(text: str) -> tuple[str, str] | None:
         head, _, start = text.rpartition('"')
         return f'{head}"', start
     match = re.fullmatch(r"(?s)(.*?)([A-Za-z_]\w*)?", text)
-    return None if match is None else (match[1], match[2] or "")
+    if match is None:
+        return None
+    head, start = match[1], match[2] or ""
+    # a name cannot follow a number, a closing bracket, or a closed quote, e.g. in =Te * 1e4 or =LOG10(Te)
+    before = head[-1:] if start else head.rstrip()[-1:]
+    return None if before.isdigit() or before in {".", ")", '"'} else (head, start)
 
 
 def complete_expression_name(text: str, name: str) -> str:
