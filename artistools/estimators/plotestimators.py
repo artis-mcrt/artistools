@@ -3755,6 +3755,17 @@ def get_figures_data(
             if not args.multiplot:
                 raise
             skippedtimesteps.extend(frame)
+        except pl.exceptions.ShapeError as exc:
+            # the check of an expression runs on sample values, and a filter can keep each of them but not the rows
+            # of the model, e.g. pl.col("Te").filter(pl.col("Te").is_between(-10, 10))
+            if not any(isinstance(plotvar, pl.Expr) for plotitems in plotlist for plotvar in plotitems):
+                raise
+            reason = next((line for line in str(exc).splitlines() if line.strip()), type(exc).__name__)
+            exit_with_error(
+                f"A polars expression of a plot item changes the number of rows of the estimators: {reason}",
+                'Give one value for each cell and timestep. Write a condition with pl.when, e.g. pl.when(pl.col("Te")'
+                ' > 1e4).then(pl.col("Te")), in place of a filter',
+            )
 
     if skippedtimesteps:
         print_warning(

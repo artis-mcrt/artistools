@@ -5318,6 +5318,14 @@ def test_plot_item_gives_a_sql_expression(
     with pytest.raises(SystemExit):
         get_plotestimators_figure(["--timedays", "300", "--plot", "=Te ^ 2", str(modelpath)], tmp_path / "e.pdf")
 
+    # the filter keeps each sample value, thus only the rows of the model show that it changes the number of rows
+    filterkeepsamples = 'pl.col("Te").filter(pl.col("Te").is_between(-10, 10).fill_null(True))'
+    assert plotitems.get_expression_problem(filterkeepsamples, ["Te"]) is None
+    with pytest.raises(SystemExit):
+        get_plotestimators_figure(
+            ["--timestep", "50-54", "--plot", filterkeepsamples, str(modelpath)], tmp_path / "e.pdf"
+        )
+
 
 def test_expression_selector_takes_the_columns_of_the_model() -> None:
     """A selector such as pl.col("^heating_.*$") names no root column, thus the columns of the model give its outputs.
@@ -5349,6 +5357,9 @@ def test_expression_selector_takes_the_columns_of_the_model() -> None:
     # polars names this expression after the literal and names no root column, thus the inputs give the weight
     doubledsum = plotitems.parse_expression_item('2 * pl.sum_horizontal(pl.col("^init_X_.*$"))', columns)
     assert plotestimators.is_quantity_per_unit_mass(plotitems.get_series_variables(doubledsum, columns)[2])
+    # root_names() leaves out the selector and names Te, thus the first input column from the left gives the weight
+    mixedsum = plotitems.parse_expression_item('pl.sum_horizontal(pl.col("^init_X_.*$")) + 0 * pl.col("Te")', columns)
+    assert plotitems.get_series_variables(mixedsum, columns)[2] == "init_X_Fe56"
     for expression, problem in (('pl.col("^heating_.*$")', "gives 2 columns"), ('pl.col("^x_.*$").sum()', "gives 0")):
         result = plotitems.get_expression_problem(expression, columns)
         assert result is not None

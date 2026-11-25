@@ -695,10 +695,9 @@ def get_series_variables(colexpr: pl.Expr, estimatorcolumns: Collection[str]) ->
     with contextlib.suppress(pl.exceptions.PolarsError):
         inputcolumns = get_input_columns(unaliased, estimatorcolumns)
         outputnames = run_on_sample_frame(unaliased, estimatorcolumns).columns
-    # polars names 2 * pl.col("init_X_Fe56") after the literal, thus the name of the result is not the first column.
-    # A selector names no root column, e.g. in 2 * pl.sum_horizontal(pl.col("^init_X_.*$")), thus the first column
-    # that it reads gives the weight
-    firstcolumn = next(iter(unaliased.meta.root_names()), None) or next(iter(inputcolumns), seriesname)
+    # polars names 2 * pl.col("init_X_Fe56") after the literal, and root_names() leaves out a selector, e.g. in
+    # pl.sum_horizontal(pl.col("^init_X_.*$")) + pl.col("Te"). get_input_columns gives the columns from the left
+    firstcolumn = next(iter(inputcolumns), None) or next(iter(unaliased.meta.root_names()), seriesname)
     # a selection of one column, e.g. pl.col("Te") or pl.col("^Te$"), is the variable itself
     isonecolumn = unaliased.meta.is_column_selection() and len(outputnames) == 1
     return seriesname, firstcolumn if isonecolumn else seriesname, firstcolumn
