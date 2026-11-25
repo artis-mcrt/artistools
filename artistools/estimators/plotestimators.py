@@ -1061,7 +1061,7 @@ def get_default_plotitem_skip_reason(
             return None
 
         # averageexcitation reads the NLTE population files, which a model need not have written
-        if len(plotitems) == 2 and plotitems[0] == "averageexcitation" and modelpath is not None:
+        if len(plotitems) == 2 and isinstance(plotitems[0], str) and plotitems[0] == "averageexcitation" and modelpath is not None:
             if not has_nlte_populations(modelpath):
                 return "the model has no NLTE population files (nlte_*.out)"
             plotitems = plotitems[1]
