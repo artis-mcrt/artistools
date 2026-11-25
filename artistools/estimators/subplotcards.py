@@ -1402,6 +1402,8 @@ def add_subplot_section(
             if not value:
                 show_error(f"Give a value after {item}, e.g. {directive}=1e-16")
                 return
+            # a directive ends the edit of a chip, thus the next name adds a series
+            editeditems.pop(row, None)
             set_subplot(row, replace_directives(subplot, {directive: value}))
         elif replace_edited_item(row, item):
             return

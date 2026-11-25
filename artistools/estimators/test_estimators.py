@@ -5359,6 +5359,10 @@ def test_expression_gives_numbers_in_a_subplot_of_variables() -> None:
     filterresult = plotitems.get_expression_problem('pl.col("Te").filter(pl.col("Te") > 0)', columns)
     assert filterresult is not None
     assert "changes the number of rows" in filterresult[0]
+    # head(n) gives n rows, thus a sample of exactly n rows does not show the change
+    headresult = plotitems.get_expression_problem('pl.col("Te").head(23)', columns)
+    assert headresult is not None
+    assert "changes the number of rows" in headresult[0]
     assert plotitems.get_expression_problem('pl.col("Te") - pl.col("Te").mean()', columns) is None
 
     with pytest.raises(SystemExit):

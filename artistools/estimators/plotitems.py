@@ -499,7 +499,7 @@ def get_expression_problem(text: str, estimatorcolumns: Collection[str]) -> tupl
             or "Run with --listvariables to see the variables of this model",
         )
     try:
-        result = run_on_sample_frame(expr, estimatorcolumns)
+        results = [run_on_sample_frame(expr, estimatorcolumns, rowcount) for rowcount in SAMPLE_ROWCOUNTS]
     except pl.exceptions.PolarsError as exc:
         # with the names alone, each column takes the type Float64, thus an error can come from that guess
         if not isinstance(estimatorcolumns, pl.Schema):
@@ -509,6 +509,7 @@ def get_expression_problem(text: str, estimatorcolumns: Collection[str]) -> tupl
             f"The plot item '{text}' does not suit the types of the estimator columns: {reason}",
             "Give an expression of the columns that gives a number, e.g. =Te / 1e4",
         )
+    result = results[0]
     if result.width != 1:
         hint = (
             "Give one plot item for each column, e.g. =Te and =TR, or join the columns, e.g."
@@ -516,7 +517,10 @@ def get_expression_problem(text: str, estimatorcolumns: Collection[str]) -> tupl
         )
         return f"The plot item '{text}' gives {result.width} columns, and a series takes one column", hint
     # a series has one value for each row of the estimators, or one value for all the rows
-    if result.height not in {1, len(SAMPLE_VALUES)}:
+    if any(
+        sampleresult.height not in {1, rowcount}
+        for sampleresult, rowcount in zip(results, SAMPLE_ROWCOUNTS, strict=True)
+    ):
         problem = (
             f"The plot item '{text}' changes the number of rows, e.g. with a filter, and a series takes one value for"
             " each cell and timestep"
@@ -531,9 +535,17 @@ def get_expression_problem(text: str, estimatorcolumns: Collection[str]) -> tupl
     return None
 
 
-# the values of each column of the sample frame: a null, zeros, negative values, and repeated values. A filter, a
-# unique(), or a head() then changes the number of rows, which a series must keep
-SAMPLE_VALUES: t.Final = (*(float(index % 7 - 3) for index in range(22)), None)
+# the numbers of rows of the sample frames. A head(n) or a slice gives a fixed number of rows, thus a series must keep
+# two different numbers of rows
+SAMPLE_ROWCOUNTS: t.Final = (23, 4099)
+
+
+def get_sample_values(rowcount: int) -> list[float | None]:
+    """Return the values of a column of a sample frame: a null, zeros, negative values, and repeated values.
+
+    A filter or a unique() then changes the number of rows, which a series must keep.
+    """
+    return [*(float(index % 7 - 3) for index in range(rowcount - 1)), None]
 
 
 def get_column_schema(estimatorcolumns: Collection[str]) -> pl.Schema:
@@ -563,15 +575,17 @@ def get_input_columns(expr: pl.Expr, estimatorcolumns: Collection[str]) -> list[
     return list(inputcolumns)
 
 
-def get_sample_column(name: str, dtype: pl.DataType) -> pl.Series:
-    """Return a column of the sample frame with the type of an estimator column, or a column of nulls of that type."""
+def get_sample_column(name: str, dtype: pl.DataType, rowcount: int) -> pl.Series:
+    """Return a column of a sample frame with the type of an estimator column, or a column of nulls of that type."""
     try:
-        return pl.Series(name, SAMPLE_VALUES, dtype=pl.Float64).cast(dtype, strict=False)
+        return pl.Series(name, get_sample_values(rowcount), dtype=pl.Float64).cast(dtype, strict=False)
     except pl.exceptions.PolarsError:
-        return pl.Series(name, [None] * len(SAMPLE_VALUES), dtype=dtype)
+        return pl.Series(name, [None] * rowcount, dtype=dtype)
 
 
-def run_on_sample_frame(expr: pl.Expr, estimatorcolumns: Collection[str]) -> pl.DataFrame:
+def run_on_sample_frame(
+    expr: pl.Expr, estimatorcolumns: Collection[str], rowcount: int = SAMPLE_ROWCOUNTS[0]
+) -> pl.DataFrame:
     """Return the result of an expression on a sample frame of the columns that it reads. A fault gives a PolarsError.
 
     The schema alone does not find a type error, e.g. a str method on a float, or a filter that changes the number of
@@ -579,7 +593,7 @@ def run_on_sample_frame(expr: pl.Expr, estimatorcolumns: Collection[str]) -> pl.
     """
     schema = get_column_schema(estimatorcolumns)
     inputcolumns = get_input_columns(expr, schema)
-    sample = pl.DataFrame([get_sample_column(name, schema[name]) for name in inputcolumns])
+    sample = pl.DataFrame([get_sample_column(name, schema[name], rowcount) for name in inputcolumns])
     return sample.lazy().select(expr).collect()
 
 
