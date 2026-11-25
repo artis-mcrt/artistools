@@ -690,11 +690,11 @@ def get_series_variables(colexpr: pl.Expr, estimatorcolumns: Collection[str]) ->
     unaliased = colexpr.meta.undo_aliases()
     inputcolumns: list[str] = []
     outputnames: list[str] = []
-    try:
+    # get_expression_problem gives the error of an expression that polars cannot resolve. Without the columns, the
+    # series takes the text as the variable of its units and of its weight
+    with contextlib.suppress(pl.exceptions.PolarsError):
         inputcolumns = get_input_columns(unaliased, estimatorcolumns)
         outputnames = run_on_sample_frame(unaliased, estimatorcolumns).columns
-    except pl.exceptions.PolarsError:
-        pass
     # polars names 2 * pl.col("init_X_Fe56") after the literal, thus the name of the result is not the first column.
     # A selector names no root column, e.g. in 2 * pl.sum_horizontal(pl.col("^init_X_.*$")), thus the first column
     # that it reads gives the weight
