@@ -5321,10 +5321,11 @@ def test_plot_item_gives_a_sql_expression(
     # the filter keeps each sample value, thus only the rows of the model show that it changes the number of rows
     filterkeepsamples = 'pl.col("Te").filter(pl.col("Te").is_between(-10, 10).fill_null(True))'
     assert plotitems.get_expression_problem(filterkeepsamples, ["Te"]) is None
-    with pytest.raises(SystemExit):
-        get_plotestimators_figure(
-            ["--timestep", "50-54", "--plot", filterkeepsamples, str(modelpath)], tmp_path / "e.pdf"
-        )
+    for xtokens in ([], ["-x", "time"]):
+        with pytest.raises(SystemExit):
+            get_plotestimators_figure(
+                [*xtokens, "--timestep", "50-54", "--plot", filterkeepsamples, str(modelpath)], tmp_path / "e.pdf"
+            )
 
 
 def test_expression_selector_takes_the_columns_of_the_model() -> None:
@@ -5408,6 +5409,7 @@ def test_expression_gives_numbers_in_a_subplot_of_variables() -> None:
 
     # the plot puts the values next to the cells by position, thus a change of the order gives wrong values
     for reordering in (
+        'pl.col("Te").gather((pl.int_range(pl.len()) + 1) % pl.len())',
         'pl.col("Te").sort()',
         'pl.col("Te").reverse()',
         'pl.col("Te").shift(1)',

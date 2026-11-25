@@ -627,26 +627,31 @@ def get_sample_frame(expr: pl.Expr, estimatorcolumns: Collection[str], rowcount:
     return pl.DataFrame(samplecolumns or [pl.Series("", range(rowcount))])
 
 
+# a fixed order of the rows of a sample frame with no pattern. A rotation of the rows commutes with a cyclic gather
+SAMPLE_PERMUTATION: t.Final = (8, 2, 19, 13, 0, 21, 5, 16, 11, 3, 22, 7, 14, 1, 18, 9, 20, 6, 12, 4, 17, 10, 15)
+
+
 def keeps_row_order(expr: pl.Expr, estimatorcolumns: Collection[str]) -> bool:
     """Return True if each value of an expression belongs to its own row, or if the expression gives one value.
 
-    An expression of each row, or an aggregation, gives the same values for a sample with its rows rotated by one, in
-    the rotated order. A sort, a reverse(), a shift(), or a cumulative sum gives different values.
+    An expression of each row, or an aggregation, gives the same values for a sample with its rows in a different
+    order, in that order. A sort, a reverse(), a shift(), a gather, or a cumulative sum gives different values.
     """
-    sample = get_sample_frame(expr, estimatorcolumns, SAMPLE_ROWCOUNTS[0])
-    rotatedsample = pl.concat([sample.slice(1), sample.slice(0, 1)])
+    sample = get_sample_frame(expr, estimatorcolumns, len(SAMPLE_PERMUTATION))
+    permutation = list(SAMPLE_PERMUTATION)
+    reorderedsample = sample[permutation]
     result = sample.lazy().select(expr).collect()
     # get_evaluated_expression_problem reports a result of more or less than one column, or of a different length
     if result.width != 1 or result.height != sample.height:
         return True
     values = result.to_series()
-    rotatedvalues = rotatedsample.lazy().select(expr).collect().to_series()
-    expected = pl.concat([values.slice(1), values.slice(0, 1)])
+    reorderedvalues = reorderedsample.lazy().select(expr).collect().to_series()
+    expected = values.gather(permutation)
     if not (values.dtype.is_numeric() or values.dtype == pl.Boolean):
-        return rotatedvalues.equals(expected)
+        return reorderedvalues.equals(expected)
     # the sample values are of order 1, thus a sum in a different order differs by approximately 1e-16
-    rotated, wanted = rotatedvalues.cast(pl.Float64).to_numpy(), expected.cast(pl.Float64).to_numpy()
-    return np.allclose(rotated, wanted, rtol=0, atol=1e-9, equal_nan=True)
+    reordered, wanted = reorderedvalues.cast(pl.Float64).to_numpy(), expected.cast(pl.Float64).to_numpy()
+    return np.allclose(reordered, wanted, rtol=0, atol=1e-9, equal_nan=True)
 
 
 def get_typed_item_problem(item: str, estimatorcolumns: Collection[str]) -> tuple[str, str] | None:

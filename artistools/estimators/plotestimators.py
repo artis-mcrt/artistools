@@ -3692,6 +3692,22 @@ def get_data_key(args: argparse.Namespace) -> str:
     return repr(sorted(keyargs.items()))
 
 
+def stop_with_expression_shape_error(exc: pl.exceptions.ShapeError, plotlist: list[list[t.Any]]) -> t.NoReturn:
+    """Stop with a clear message for a polars expression that changed the number of rows, or raise another error again.
+
+    The check of an expression runs on sample values, and a filter can keep each of them but not the rows of the model,
+    e.g. pl.col("Te").filter(pl.col("Te").is_between(-10, 10)).
+    """
+    if not any(isinstance(plotvar, pl.Expr) for plotitems in plotlist for plotvar in plotitems):
+        raise exc
+    reason = next((line for line in str(exc).splitlines() if line.strip()), type(exc).__name__)
+    exit_with_error(
+        f"A polars expression of a plot item changes the number of rows of the estimators: {reason}",
+        'Give one value for each cell and timestep. Write a condition with pl.when, e.g. pl.when(pl.col("Te") > 1e4)'
+        '.then(pl.col("Te")), in place of a filter',
+    )
+
+
 @on_model_host
 def get_figures_data(
     modelpath: Path,
@@ -3723,7 +3739,10 @@ def get_figures_data(
 
     assert args.x is not None
     if args.x in TIME_XVARIABLES:
-        figuredata = get_line_figure_data(modelpath, timesteps_included, estimators, args.x, plotlist, args)
+        try:
+            figuredata = get_line_figure_data(modelpath, timesteps_included, estimators, args.x, plotlist, args)
+        except pl.exceptions.ShapeError as exc:
+            stop_with_expression_shape_error(exc, plotlist)
         return [figuredata], get_changed_args()
 
     estimators, panels = prepare_snapshot(args, estimators, modelmeta, plotlist)
@@ -3757,16 +3776,7 @@ def get_figures_data(
                 raise
             skippedtimesteps.extend(frame)
         except pl.exceptions.ShapeError as exc:
-            # the check of an expression runs on sample values, and a filter can keep each of them but not the rows
-            # of the model, e.g. pl.col("Te").filter(pl.col("Te").is_between(-10, 10))
-            if not any(isinstance(plotvar, pl.Expr) for plotitems in plotlist for plotvar in plotitems):
-                raise
-            reason = next((line for line in str(exc).splitlines() if line.strip()), type(exc).__name__)
-            exit_with_error(
-                f"A polars expression of a plot item changes the number of rows of the estimators: {reason}",
-                'Give one value for each cell and timestep. Write a condition with pl.when, e.g. pl.when(pl.col("Te")'
-                ' > 1e4).then(pl.col("Te")), in place of a filter',
-            )
+            stop_with_expression_shape_error(exc, plotlist)
 
     if skippedtimesteps:
         print_warning(
