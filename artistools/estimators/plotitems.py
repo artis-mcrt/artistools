@@ -6,6 +6,7 @@ the viewer holds the --plot tokens of the command, e.g. ("populations", "Fe II@c
 
 import argparse
 import contextlib
+import json
 import math
 import re
 import typing as t
@@ -582,6 +583,19 @@ def get_outer_method(expr: pl.Expr) -> str | None:
     return method
 
 
+def is_explode_window(expr: pl.Expr) -> bool:
+    """Return True for a window function with mapping_strategy="explode", which puts the rows of each group together.
+
+    The text of an expression does not give the strategy of a window, thus the JSON form of the expression gives it.
+    """
+    try:
+        serialized = json.loads(expr.meta.serialize(format="json"))
+    except (ValueError, pl.exceptions.PolarsError):
+        return False
+    window = serialized.get("Over") if isinstance(serialized, dict) else None
+    return isinstance(window, dict) and window.get("mapping") == "Explode"
+
+
 def get_unaggregated_order_method(expr: pl.Expr, estimatorcolumns: Collection[str]) -> str | None:
     """Return a method that depends on the order of the rows and that reaches the series with no aggregation, or None.
 
@@ -593,7 +607,8 @@ def get_unaggregated_order_method(expr: pl.Expr, estimatorcolumns: Collection[st
         node = pending.pop()
         if run_on_sample_frame(node, estimatorcolumns).height == 1:
             continue
-        if (method := get_outer_method(node)) is not None and ORDER_METHOD_PATTERN.fullmatch(method):
+        method = get_outer_method(node)
+        if method is not None and (ORDER_METHOD_PATTERN.fullmatch(method) or is_explode_window(node)):
             return method
         pending.extend(node.meta.pop())
     return None

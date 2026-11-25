@@ -3117,6 +3117,37 @@ def test_image_aggregation_takes_the_cells_inside_the_x_range(tmp_path: Path) ->
     assert np.allclose(offsets, insidemean, rtol=1e-6, atol=0)
 
 
+def test_image_of_a_1d_model_takes_the_shells_inside_the_x_range(tmp_path: Path) -> None:
+    """An image of a 1D model keeps each shell that gives a point at or beyond --xmin, before an aggregation.
+
+    The image of a 1D model applied no x range before an aggregation, thus the mean took the hidden inner shells.
+    """
+    lzmodel, modelmeta = at.scan_modeldata(CLASSIC1DPATH)
+    dfshells = (
+        at
+        .scan_estimators(CLASSIC1DPATH, timestep=24, classicartis=True)
+        .select("modelgridindex", "Te")
+        .join(
+            at.inputmodel.add_derived_cols_to_modeldata(lzmodel, modelmeta=modelmeta).select(
+                "modelgridindex", "vel_r_max"
+            ),
+            on="modelgridindex",
+            how="inner",
+        )
+        .collect()
+    )
+    xmin_kmps = float(np.median(dfshells["vel_r_max"].to_numpy())) / km_to_cm
+    imagekwargs = {"modelpath": CLASSIC1DPATH, "timestep": "24", "classicartis": True, "dimensionreduce": 2}
+    ((_, _, _, tegrid),) = get_image_panel_calls({"plotlist": [["Te"]], "xmin": xmin_kmps} | imagekwargs, tmp_path)
+    ((_, _, _, deviationgrid),) = get_image_panel_calls(
+        {"plotlist": [['pl.col("Te") - pl.col("Te").mean()']], "xmin": xmin_kmps} | imagekwargs, tmp_path
+    )
+    offsets = (tegrid - deviationgrid).compressed()
+    shownmean = float(np.mean(dfshells.filter(pl.col("vel_r_max") > xmin_kmps * km_to_cm)["Te"].to_numpy()))
+    assert np.allclose(offsets, shownmean, rtol=1e-6, atol=0)
+    assert not np.isclose(shownmean, float(np.mean(dfshells["Te"].to_numpy())), rtol=1e-6, atol=0)
+
+
 def test_estimator_plot_of_2_dimensions_gives_the_average_around_the_z_axis(
     tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
 ) -> None:
@@ -4609,6 +4640,29 @@ def test_projection_is_the_mean_of_each_line_of_cells() -> None:
     assert np.isnan(grid[0, 0])
 
 
+def test_image_of_a_spherical_model_takes_the_cells_inside_the_x_range() -> None:
+    """A model with spherical edges keeps each cell with a point of the image inside --xmin, before an aggregation.
+
+    The image of such a model applied no x range before an aggregation, thus the mean took the hidden cells.
+    """
+    modelmeta: dict[str, t.Any] = {
+        "coordinates": "spherical3d",
+        "dimensions": 3,
+        "vel_r_edges_kmps": [0.0, 1.0e4, 2.0e4],
+        "costheta_edges": [-1.0, -0.4, 0.5, 1.0],
+        "phi_edges_radians": [0.0, 1.5, 3.0, 4.5, 2.0 * math.pi],
+        "vmax_cmps": 2.0e9,
+        "npts_model": 24,
+    }
+    args = argparse.Namespace(x="velocity", xmin=1.5e4, xmax=None, sliceaxis=None, slicevelocity_cmps=0.0)
+    selection = plotestimators.get_image_xrange_selection(args, modelmeta)
+    assert selection is not None
+    # a point at a cylindrical radius of 15000 km/s or more is in the outer shell. The index of a cell is
+    # i_r + 2 * (i_costheta + 3 * i_phi), thus the outer shell holds the odd indices
+    selected = pl.DataFrame({"modelgridindex": list(range(24))}).filter(selection)["modelgridindex"].to_list()
+    assert selected == list(range(1, 24, 2))
+
+
 def test_image_of_a_spherical_model_gives_each_point_the_value_of_its_cell(tmp_path: Path) -> None:
     """An image of a spherical3d model is a grid of points, and each point takes the value of the cell that holds it.
 
@@ -5466,6 +5520,7 @@ def test_expression_gives_numbers_in_a_subplot_of_variables() -> None:
 
     # the plot puts the values next to the cells by position, thus a change of the order gives wrong values
     for reordering in (
+        'pl.col("Te").over((pl.col("Te") > 10000).fill_null(False), mapping_strategy="explode")',
         'pl.col("Te").forward_fill()',
         "pl.int_range(pl.len()) * 1e-12",
         'pl.col("Te").sort_by((pl.col("Te") > 10000).fill_null(False))',
@@ -5484,6 +5539,7 @@ def test_expression_gives_numbers_in_a_subplot_of_variables() -> None:
         "=Te / 2",
         'pl.col("Te") - pl.col("Te").filter(pl.col("Te") > 0).mean()',
         'pl.col("Te").fill_null(strategy="zero")',
+        'pl.col("Te") - pl.col("Te").mean().over(pl.col("Te") > 0)',
     ):
         assert plotitems.get_expression_problem(rowwise, columns) is None, rowwise
 

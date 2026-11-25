@@ -2573,16 +2573,36 @@ def get_colour_norm(panel: PanelStyle, grid: "npt.NDArray[np.float64]") -> mc.No
 
 
 def get_image_xrange_selection(args: argparse.Namespace, modelmeta: dict[str, t.Any]) -> pl.Expr | None:
-    """Return the selection of the cells with a centre inside --xmin and --xmax on the horizontal axis of an image.
+    """Return the selection of the cells that the image shows inside --xmin and --xmax, or None with no x range.
 
     A line keeps the rows inside the x range before it evaluates an expression, and an image does the same. Thus an
-    aggregation, e.g. pl.col("Te").mean(), takes the same cells. A 1D model and a model with spherical edges give None.
+    aggregation, e.g. pl.col("Te").mean(), takes the same cells. A cell of a grid with straight edges takes the centre
+    of the cell on the horizontal axis of the image. The other models take each cell that gives a point of the image
+    inside the x range.
     """
     xmin_on_c, xmax_on_c = get_image_xlimits_on_c(args)
-    if (xmin_on_c is None and xmax_on_c is None) or modelmeta["dimensions"] == 1:
+    if xmin_on_c is None and xmax_on_c is None:
         return None
+    vmax_cmps = float(modelmeta["vmax_cmps"])
+    xmin_cmps = -math.inf if xmin_on_c is None else xmin_on_c * C_cm_per_s
+    xmax_cmps = math.inf if xmax_on_c is None else xmax_on_c * C_cm_per_s
+    if modelmeta["dimensions"] == 1:
+        # a point at the cylindrical radius R takes the shell at a radius of R or more, and z reaches vmax
+        return pl.col("vel_r_max") > xmin_cmps
     if get_model_coordinates(modelmeta) in SPHERICAL_EDGE_COORDINATES:
-        return None
+        slicevelocity_cmps = (
+            0.0 if args.sliceaxis is None else get_spherical_slice_velocity_cmps(args.slicevelocity_cmps, vmax_cmps)
+        )
+        cellindices = get_spherical_image_cell_indices(modelmeta, args.sliceaxis, slicevelocity_cmps)
+        # the points have equal steps, from 0 to vmax for the cylindrical radius and from -vmax to vmax otherwise
+        pointcount = cellindices.shape[1]
+        axisstart, axiswidth = (0.0, vmax_cmps) if args.sliceaxis is None else (-vmax_cmps, 2 * vmax_cmps)
+        pointvelocity = axisstart + (np.arange(pointcount) + 0.5) * axiswidth / pointcount
+        shownindices = cellindices[:, (pointvelocity >= xmin_cmps) & (pointvelocity <= xmax_cmps)]
+        shownindices = np.unique(shownindices[shownindices >= 0])
+        ringcount = (len(modelmeta["vel_r_edges_kmps"]) - 1) * (len(modelmeta["costheta_edges"]) - 1)
+        imagecell = pl.col("modelgridindex") % ringcount if args.sliceaxis is None else pl.col("modelgridindex")
+        return imagecell.is_in(shownindices.tolist())
     if args.sliceaxis is not None:
         axis1 = next(axisname for axisname in "xyz" if axisname != args.sliceaxis)
         velocity = pl.col(f"vel_{axis1}_mid")
@@ -2590,12 +2610,7 @@ def get_image_xrange_selection(args: argparse.Namespace, modelmeta: dict[str, t.
         velocity = (pl.col("vel_x_mid") ** 2 + pl.col("vel_y_mid") ** 2).sqrt()
     else:
         velocity = pl.col("vel_rcyl_mid")
-    selection = pl.lit(value=True)
-    if xmin_on_c is not None:
-        selection &= velocity >= xmin_on_c * C_cm_per_s
-    if xmax_on_c is not None:
-        selection &= velocity <= xmax_on_c * C_cm_per_s
-    return selection
+    return (velocity >= xmin_cmps) & (velocity <= xmax_cmps)
 
 
 def get_image_figure_data(
