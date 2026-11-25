@@ -511,6 +511,8 @@ def get_evaluated_expression_problem(
     try:
         results = [run_on_sample_frame(expr, estimatorcolumns, rowcount) for rowcount in SAMPLE_ROWCOUNTS]
         keepsroworder = keeps_row_order(expr, estimatorcolumns)
+        # a sort key can be constant on the sample and change on the rows of the model, e.g. pl.col("Te") > 1e4
+        ordermethod = get_unaggregated_order_method(expr, estimatorcolumns)
     except pl.exceptions.PolarsError as exc:
         # with the names alone, each column takes the type Float64, thus an error can come from that guess
         if not isinstance(estimatorcolumns, pl.Schema):
@@ -538,10 +540,11 @@ def get_evaluated_expression_problem(
         )
         return problem, 'Give a condition with pl.when, e.g. pl.when(pl.col("Te") > 1e4).then(pl.col("Te"))'
     # the plot puts the values next to the cells by position, thus a sort gives each cell the value of a different cell
-    if not keepsroworder:
+    if not keepsroworder or ordermethod is not None:
+        methodtext = f" with {ordermethod}()" if ordermethod is not None else ", e.g. with sort() or shift()"
         problem = (
-            f"The plot item '{text}' changes the order of the rows, e.g. with sort(), reverse(), or shift(), and each"
-            " value of a series belongs to its own cell and timestep"
+            f"The plot item '{text}' changes the order or the number of the rows{methodtext}, and each value of a"
+            " series belongs to its own cell and timestep"
         )
         return problem, 'Give an expression of each row, or an aggregation, e.g. pl.col("Te") - pl.col("Te").mean()'
     # the plot multiplies the values by the weights, thus a text gives no series. A boolean gives 0 and 1
@@ -550,6 +553,48 @@ def get_evaluated_expression_problem(
             f"The plot item '{text}' gives values of the type {dtype}, and a series takes numbers",
             "Give an expression of the columns that gives a number, e.g. =Te / 1e4",
         )
+    return None
+
+
+# the polars methods that depend on the order of the rows or that select rows, as the text of an expression names them
+ORDER_METHOD_PATTERN: t.Final = re.compile(
+    r"sort|sort_by|reverse|shift|gather|gather_every|shuffle|sample|arg_sort|top_k|bottom_k|top_k_by|bottom_k_by"
+    r"|cum_\w+|cumulative_eval|diff|pct_change|rolling\w*|ewm_\w+|fill_null_with_strategy|forward_fill"
+    r"|backward_fill|interpolate\w*|rle\w*|filter|slice|head|tail|drop_nulls|drop_nans|unique|explode|arg_true"
+)
+
+
+def get_outer_method(expr: pl.Expr) -> str | None:
+    """Return the name of the last method of an expression outside each bracket, e.g. mean for c.filter(...).mean()."""
+    depth = 0
+    method = None
+    for match in re.finditer(r'"(?:[^"\\]|\\.)*"|\.(\w+)\(|[(\[]|[)\]]', str(expr)):
+        part = match[0]
+        if part.startswith('"'):
+            continue
+        if match[1] is not None:
+            if depth == 0:
+                method = match[1]
+            depth += 1
+        else:
+            depth += 1 if part in "([" else -1
+    return method
+
+
+def get_unaggregated_order_method(expr: pl.Expr, estimatorcolumns: Collection[str]) -> str | None:
+    """Return a method that depends on the order of the rows and that reaches the series with no aggregation, or None.
+
+    A node that gives one value on a sample frame is an aggregation, e.g. pl.col("Te").filter(...).mean(), and the
+    rows of its inputs then do not reach the series. A fault gives a PolarsError.
+    """
+    pending = [expr]
+    while pending:
+        node = pending.pop()
+        if run_on_sample_frame(node, estimatorcolumns).height == 1:
+            continue
+        if (method := get_outer_method(node)) is not None and ORDER_METHOD_PATTERN.fullmatch(method):
+            return method
+        pending.extend(node.meta.pop())
     return None
 
 

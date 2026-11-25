@@ -5332,15 +5332,27 @@ def test_plot_item_gives_a_sql_expression(
     with pytest.raises(SystemExit):
         get_plotestimators_figure(["--timedays", "300", "--plot", "=Te ^ 2", str(modelpath)], tmp_path / "e.pdf")
 
-    # the filter keeps each sample value, thus only the rows of the model show that it changes the number of rows
+    # the filter keeps each sample value, and the check finds the method filter() in the text of the expression
     filterkeepsamples = 'pl.col("Te").filter(pl.col("Te").is_between(-10, 10).fill_null(True))'
-    assert plotitems.get_expression_problem(filterkeepsamples, ["Te"]) is None
+    filterresult = plotitems.get_expression_problem(filterkeepsamples, ["Te"])
+    assert filterresult is not None
+    assert "with filter()" in filterresult[0]
+
+    # the map holds each sample value, thus only the values of the model give the error of replace_strict
+    replacemissing = 'pl.col("Te").replace_strict([-3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0], [1.0] * 7)'
+    assert plotitems.get_expression_problem(replacemissing, ["Te"]) is None
     xtokenlists: list[list[str]] = [[], ["-x", "time"]]
     for xtokens in xtokenlists:
         with pytest.raises(SystemExit):
             get_plotestimators_figure(
-                [*xtokens, "--timestep", "50-54", "--plot", filterkeepsamples, str(modelpath)], tmp_path / "e.pdf"
+                [*xtokens, "--timestep", "50-54", "--plot", replacemissing, str(modelpath)], tmp_path / "e.pdf"
             )
+
+    # a ShapeError of an expression on the rows of the model gives a message, and another one keeps its traceback
+    with pytest.raises(SystemExit):
+        plotestimators.stop_with_expression_error(pl.exceptions.ShapeError("lengths differ"), [[pl.col("Te")]])
+    with pytest.raises(pl.exceptions.ShapeError):
+        plotestimators.stop_with_expression_error(pl.exceptions.ShapeError("lengths differ"), [["Te"]])
 
 
 def test_expression_selector_takes_the_columns_of_the_model() -> None:
@@ -5424,6 +5436,7 @@ def test_expression_gives_numbers_in_a_subplot_of_variables() -> None:
 
     # the plot puts the values next to the cells by position, thus a change of the order gives wrong values
     for reordering in (
+        'pl.col("Te").sort_by((pl.col("Te") > 10000).fill_null(False))',
         'pl.col("Te").gather((pl.int_range(pl.len()) + 1) % pl.len())',
         'pl.col("Te").sort()',
         'pl.col("Te").reverse()',
@@ -5432,8 +5445,13 @@ def test_expression_gives_numbers_in_a_subplot_of_variables() -> None:
     ):
         orderresult = plotitems.get_expression_problem(reordering, columns)
         assert orderresult is not None, reordering
-        assert "changes the order of the rows" in orderresult[0], reordering
-    for rowwise in ('pl.col("Te").rank()', 'pl.when(pl.col("Te") > 0).then(pl.col("Te"))', "=Te / 2"):
+        assert "changes the order or the number of the rows" in orderresult[0], reordering
+    for rowwise in (
+        'pl.col("Te").rank()',
+        'pl.when(pl.col("Te") > 0).then(pl.col("Te"))',
+        "=Te / 2",
+        'pl.col("Te") - pl.col("Te").filter(pl.col("Te") > 0).mean()',
+    ):
         assert plotitems.get_expression_problem(rowwise, columns) is None, rowwise
 
     with pytest.raises(SystemExit):
