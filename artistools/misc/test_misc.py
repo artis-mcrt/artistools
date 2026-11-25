@@ -1819,6 +1819,7 @@ def test_model_readers_of_a_remote_model_run_on_the_server(tmp_path: Path) -> No
     A read of all the NLTE populations can send several GB through ssh, thus a remote read needs a timestep or a
     modelgridindex.
     """
+    from artistools.cache import make_caches
     from artistools.check import get_check_results
     from artistools.describemodel import get_model_summary
     from artistools.logs.core import get_log_summary
@@ -1826,6 +1827,9 @@ def test_model_readers_of_a_remote_model_run_on_the_server(tmp_path: Path) -> No
     from artistools.logs.corehours import read_model_core_hours
 
     modelpath = at.get_path("testartismodel").resolve()
+    # check counts the caches of the model, and other workers of pytest write caches into this shared folder. A cache
+    # that a worker wrote between the remote check and the local check gave two different counts
+    make_caches(modelpath)
     modellink = tmp_path / "testmodel"
     modellink.symlink_to(modelpath)
     remotepath = Path(f"testhost:{modellink}")
