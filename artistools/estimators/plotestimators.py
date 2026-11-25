@@ -1699,8 +1699,9 @@ def get_subplot_plans(
     The caller collects the series of all the subplots in one call.
     """
     settings: SubplotSettings = {"showlegend": False, "legendncols": 1}
+    # the text of an expression item names its series, and get_series_variables gives the variable of its units
     ylabels = [
-        get_ylabel(var.meta.output_name() if isinstance(var, pl.Expr) else var)
+        get_ylabel(get_series_variables(var)[1] if isinstance(var, pl.Expr) else var)
         for var in plotitems
         if isinstance(var, str | pl.Expr)
     ]

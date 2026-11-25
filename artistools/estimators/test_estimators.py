@@ -5270,6 +5270,36 @@ def test_plot_item_gives_a_sql_expression(
         get_plotestimators_figure(["--timedays", "300", "--plot", "=Te ^ 2", str(modelpath)], tmp_path / "e.pdf")
 
 
+def test_expression_selector_takes_the_columns_of_the_model() -> None:
+    """A selector such as pl.col("^heating_.*$") names no root column, thus the columns of the model give its outputs.
+
+    The check rejected pl.sum_horizontal(pl.col("^heating_.*$")) as more than one column.
+    """
+    columns = ["Te", "heating_coll", "heating_dep"]
+    heatingsum = 'pl.sum_horizontal(pl.col("^heating_.*$"))'
+    assert plotitems.get_expression_problem(heatingsum, columns) is None
+    assert plotitems.get_series_variables(plotitems.parse_expression_item(heatingsum, columns)) == (heatingsum,) * 3
+    for expression, problem in (('pl.col("^heating_.*$")', "gives 2 columns"), ('pl.col("^x_.*$").sum()', "gives 0")):
+        result = plotitems.get_expression_problem(expression, columns)
+        assert result is not None
+        assert problem in result[0], expression
+
+
+def test_long_expression_of_a_column_keeps_its_units(
+    tmp_path: Path, get_plotestimators_figure: Callable[[Sequence[str], Path], mplfig.Figure]
+) -> None:
+    """A long plain column expression shows its text in a legend, and the vertical axis shows the units of the column.
+
+    The y label read the text of the expression, which has no units, thus the units were in no place.
+    """
+    expression = 'pl.col("heating_coll").alias("heating_coll")'
+    fig = get_plotestimators_figure(
+        ["--timedays", "300", "--plot", expression, str(modelpath)], tmp_path / "estimators.pdf"
+    )
+    assert fig.axes[0].get_legend() is not None
+    assert "erg/s/cm" in fig.axes[0].get_ylabel()
+
+
 def test_typed_item_problem_names_the_fault_of_an_expression() -> None:
     """The window shows the problem of an expression before it adds the item, and the command finds other problems."""
     columns = ["Te", "TR"]
@@ -5324,14 +5354,31 @@ def test_expression_item_can_hold_the_style_mark() -> None:
     with pytest.raises(ValueError, match="is not a series style"):
         plotitems.read_series_style("Te@colour=C3")
 
+    # a mark and a style key inside a string, also after an escaped quote, are part of the string
+    for expression in ('pl.col("Te").alias("T@color=C3")', 'pl.col("Te").alias("a\\"@color=b")'):
+        assert plotitems.partition_series_style(f"{expression}@linewidth=2") == (expression, "@", "linewidth=2")
+
 
 def test_plot_item_that_argparse_reads_as_a_flag() -> None:
-    """The add field of the viewer rejects only an item that argparse reads as a flag, e.g. -pl.col as -p."""
+    """The add field of the viewer accepts an item that starts with a minus sign only when argparse keeps the item.
+
+    Python 3.13 reads -.5*pl.col("TR") as a flag, and Python 3.14 reads it as a value. Thus the field rejects it.
+    """
     parser = argparse.ArgumentParser()
     plotestimators.addargs(parser)
-    for item in ('-pl.col("TR")', '-(pl.col("TR"))', '- pl.col("TR")', '-1 * pl.col("TR")', '-.5*pl.col("TR")'):
-        args, extras = parser.parse_known_args(["-plot", item])
-        assert plotitems.starts_like_a_flag(item) == (args.plotlist != [[item]] or bool(extras)), item
+    isflag = {
+        '-pl.col("TR")': True,
+        '-(pl.col("TR"))': True,
+        '-.5*pl.col("TR")': True,
+        '- pl.col("TR")': False,
+        '-1 * pl.col("TR")': False,
+        '-(pl.col("TR") * 2)': False,
+    }
+    for item, expected in isflag.items():
+        assert plotitems.starts_like_a_flag(item) == expected, item
+        if not expected:
+            args, extras = parser.parse_known_args(["-plot", item])
+            assert (args.plotlist, extras) == ([[item]], []), item
 
 
 def test_default_plotlist_keeps_an_expression_subplot() -> None:

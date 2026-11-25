@@ -296,10 +296,21 @@ def partition_series_style(item: str) -> tuple[str, str, str]:
     """
     if not is_expression_text(item):
         return item.partition(SERIES_STYLE_MARK)
-    for match in re.finditer(re.escape(SERIES_STYLE_MARK), item):
-        styletext = item[match.end() :]
-        if any(styletext.startswith(f"{key}=") for key in SERIES_STYLE_KEYS):
-            return item[: match.start()], SERIES_STYLE_MARK, styletext
+    # a mark inside a string of the expression is part of the string, e.g. pl.col("Te").alias("T@color=C3")
+    openquote = ""
+    escaped = False
+    for index, char in enumerate(item):
+        if openquote:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == openquote:
+                openquote = ""
+        elif char in "\"'":
+            openquote = char
+        elif char == SERIES_STYLE_MARK and any(item.startswith(f"{key}=", index + 1) for key in SERIES_STYLE_KEYS):
+            return item[:index], SERIES_STYLE_MARK, item[index + 1 :]
     return item, "", ""
 
 
@@ -429,11 +440,12 @@ def is_expression_item(item: t.Any) -> bool:
 
 
 def starts_like_a_flag(item: str) -> bool:
-    """Return True if argparse reads the start of a plot item as a flag, e.g. -pl.col("TR") as -p.
+    """Return True if argparse can read the start of a plot item as a flag, e.g. -pl.col("TR") as -p.
 
-    A space after the minus sign, or a number after it, gives a plot item, e.g. - pl.col("TR") or -1 * pl.col("TR").
+    A letter after the minus sign gives a flag. An item with a space and no letter there gives a plot item, e.g.
+    - pl.col("TR") or -1 * pl.col("TR"). Python 3.13 reads an item with no space as a flag, e.g. -.5*pl.col("TR").
     """
-    return re.match(r"-[^\s\d.]", item) is not None
+    return re.match(r"-(?:[A-Za-z]|\S*$)", item) is not None
 
 
 def evaluate_expression_text(text: str) -> pl.Expr:
@@ -473,11 +485,6 @@ def get_expression_problem(text: str, estimatorcolumns: Collection[str]) -> tupl
             ' module, e.g. pl.col("heating_coll") - pl.col("cooling_coll")'
         )
         return str(exc), hint
-    if expr.meta.has_multiple_outputs():
-        return (
-            f"The plot item '{text}' gives more than one column, and a series takes one column",
-            "Give one plot item for each column, e.g. =Te and =TR",
-        )
     if absentcolumns := [name for name in expr.meta.root_names() if name not in estimatorcolumns]:
         # a style with an unknown key stays in the text of an expression, see partition_series_style
         stylehint = (
@@ -491,6 +498,18 @@ def get_expression_problem(text: str, estimatorcolumns: Collection[str]) -> tupl
             or suggest_names(absentcolumns[0], estimatorcolumns)
             or "Run with --listvariables to see the variables of this model",
         )
+    # a selector such as pl.col("^heating_.*$") names no root column, thus only the columns of the model give its
+    # number of outputs. The type of each column is not known here, thus a type error waits for the plot
+    try:
+        outputcolumns = pl.LazyFrame(schema=dict.fromkeys(estimatorcolumns, pl.Float64)).select(expr).collect_schema()
+    except pl.exceptions.PolarsError:
+        return None
+    if len(outputcolumns) != 1:
+        hint = (
+            "Give one plot item for each column, e.g. =Te and =TR, or join the columns, e.g."
+            ' pl.sum_horizontal(pl.col("^heating_.*$"))'
+        )
+        return f"The plot item '{text}' gives {len(outputcolumns)} columns, and a series takes one column", hint
     return None
 
 
@@ -574,7 +593,10 @@ def get_series_variables(colexpr: pl.Expr) -> tuple[str, str, str]:
         return seriesname, seriesname, seriesname
     unaliased = colexpr.meta.undo_aliases()
     # polars names 2 * pl.col("init_X_Fe56") after the literal, thus the name of the result is not the first column
-    firstcolumn = next(iter(unaliased.meta.root_names()), unaliased.meta.output_name())
+    firstcolumn = next(iter(unaliased.meta.root_names()), unaliased.meta.output_name(raise_if_undetermined=False))
+    if firstcolumn is None:
+        # a selector such as pl.col("^heating_.*$") names no column
+        return seriesname, seriesname, seriesname
     return seriesname, firstcolumn if unaliased.meta.is_column() else seriesname, firstcolumn
 
 
