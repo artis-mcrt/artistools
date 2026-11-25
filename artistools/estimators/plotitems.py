@@ -404,11 +404,10 @@ def is_expression_item(item: t.Any) -> bool:
     return isinstance(item, str) and EXPRESSION_PATTERN.search(get_series_name(item)) is not None
 
 
-def parse_expression_item(text: str, estimatorcolumns: Collection[str]) -> pl.Expr:
-    """Return the polars expression of the text of a plot item, with the text as the name of the expression.
+def evaluate_expression_text(text: str) -> pl.Expr:
+    """Return the polars expression of the text of a plot item.
 
-    An expression with no alias takes the name of its first column, and thus the label and the units of that column.
-    The text also names the series in the styles of the subplot, see split_plotitem_styles.
+    Text that Python cannot evaluate gives ValueError, and a result that is not an expression gives TypeError.
     """
     try:
         # the user typed the text, thus it runs with the rights of the user. The name pl alone is in scope
@@ -422,14 +421,26 @@ def parse_expression_item(text: str, estimatorcolumns: Collection[str]) -> pl.Ex
         ArithmeticError,
         pl.exceptions.PolarsError,
     ) as exc:
-        exit_with_error(
-            f"The plot item '{text}' is not a valid polars expression: {exc}",
-            'Give Python text with pl as the polars module, e.g. \'pl.col("heating_coll") - pl.col("cooling_coll")\'',
-        )
+        msg = f"The plot item '{text}' is not a valid polars expression: {exc}"
+        raise ValueError(msg) from exc
     if not isinstance(expr, pl.Expr):
+        msg = f"The plot item '{text}' gives a {type(expr).__name__} and not a polars expression"
+        raise TypeError(msg)
+    return expr
+
+
+def parse_expression_item(text: str, estimatorcolumns: Collection[str]) -> pl.Expr:
+    """Return the polars expression of the text of a plot item, with the text as the name of the expression.
+
+    The text names the series in the styles of the subplot, see split_plotitem_styles. get_series_variables gives the
+    units and the weight of the series.
+    """
+    try:
+        expr = evaluate_expression_text(text)
+    except (ValueError, TypeError) as exc:
         exit_with_error(
-            f"The plot item '{text}' gives a {type(expr).__name__} and not a polars expression",
-            "Give a polars expression, e.g. 'pl.col(\"Te\") / 1e4'",
+            str(exc),
+            'Give Python text with pl as the polars module, e.g. \'pl.col("heating_coll") - pl.col("cooling_coll")\'',
         )
     if expr.meta.has_multiple_outputs():
         exit_with_error(
@@ -443,6 +454,21 @@ def parse_expression_item(text: str, estimatorcolumns: Collection[str]) -> pl.Ex
             or "Run with --listvariables to see the variables of this model",
         )
     return expr.alias(text)
+
+
+def get_series_variables(colexpr: pl.Expr) -> tuple[str, str, str]:
+    """Return the name of the series of an expression, the variable of its units, and the variable of its weight.
+
+    The text of an expression item names its series, e.g. 'pl.col("Te") / 1e4'. Only a plain column keeps the units
+    of its variable, because an operation can change the units. The first column gives the weight of the mean, as for
+    an expression with no alias. Thus 'pl.col("init_X_Fe56")' takes the cell mass as the weight.
+    """
+    seriesname = colexpr.meta.output_name()
+    if not is_expression_item(seriesname):
+        return seriesname, seriesname, seriesname
+    unaliased = colexpr.meta.undo_aliases()
+    firstcolumn = unaliased.meta.output_name()
+    return seriesname, firstcolumn if unaliased.meta.is_column() else seriesname, firstcolumn
 
 
 def get_series_items(subplot: Sequence[str]) -> list[str]:

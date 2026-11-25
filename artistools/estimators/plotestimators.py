@@ -55,12 +55,14 @@ from artistools.estimators.core import VARIABLES
 from artistools.estimators.estimators_classic import has_classic_estimator_format
 from artistools.estimators.plotitems import could_be_ion
 from artistools.estimators.plotitems import DIRECTIVES
+from artistools.estimators.plotitems import evaluate_expression_text
 from artistools.estimators.plotitems import get_column_name
 from artistools.estimators.plotitems import get_directive_name
 from artistools.estimators.plotitems import get_iontuple
 from artistools.estimators.plotitems import get_iontuple_sortkey
 from artistools.estimators.plotitems import get_item_directive
 from artistools.estimators.plotitems import get_series_name
+from artistools.estimators.plotitems import get_series_variables
 from artistools.estimators.plotitems import get_styles_of_subplots
 from artistools.estimators.plotitems import is_expression_item
 from artistools.estimators.plotitems import is_ionseriestype
@@ -1043,8 +1045,14 @@ def get_default_plotitem_skip_reason(
     The built-in plot list names particular elements (e.g. Sr), which most models do not contain. This is only
     applied to that default list: an explicitly requested plot item is never dropped, so a typo there still raises.
     """
-    if is_expression_item(plotitems):
-        return None
+    if isinstance(plotitems, pl.Expr) or is_expression_item(plotitems):
+        try:
+            expr = plotitems if isinstance(plotitems, pl.Expr) else evaluate_expression_text(plotitems)
+        except (ValueError, TypeError):
+            # the command evaluates the text again, and it gives the error
+            return None
+        absentcolumns = [name for name in expr.meta.root_names() if name not in estimatorcolumns]
+        return f"the estimators have no {absentcolumns[0]}" if absentcolumns else None
 
     if isinstance(plotitems, str):
         # an estimator variable always wins over the element reading of its name, because several estimator names
@@ -1351,9 +1359,9 @@ def get_series_plans(
             )
         colexpr = pl.col(variable)
 
-    variablename = colexpr.meta.output_name()
+    seriesname, variablename, weightvariable = get_series_variables(colexpr)
 
-    serieslabel = get_varname_formatted(variablename)
+    serieslabel = get_varname_formatted(seriesname)
     units_string = get_units_string(variablename)
 
     if showlegend:
@@ -1364,7 +1372,7 @@ def get_series_plans(
         settings["ylabel"] = serieslabel + units_string
         linelabel = None
 
-    ismassquantity = is_quantity_per_unit_mass(variablename)
+    ismassquantity = is_quantity_per_unit_mass(weightvariable)
     series = estimators.with_columns(
         celltsweight=pl.col("rho") * pl.col("deltavol_deltat") if ismassquantity else pl.col("deltavol_deltat"),
         yvalue=colexpr,
@@ -1374,13 +1382,15 @@ def get_series_plans(
         plotkwargs.setdefault("color", dictcolors[variablename])
     plotkwargs.setdefault("linewidth", 1.5)
 
-    print(f"  Plotting {variablename}")
+    print(f"  Plotting {seriesname}")
+    if weightvariable != seriesname:
+        print(f"  The weight of the mean of {seriesname} is the weight of its first column, {weightvariable}")
     return [
         SeriesPlan(
             label=linelabel,
             dfseries=series,
             plotkwargs=plotkwargs,
-            seriesname=variablename,
+            seriesname=seriesname,
             weightname=(
                 "cell mass times time step duration" if ismassquantity else "cell volume times time step duration"
             ),
@@ -2298,9 +2308,9 @@ def get_image_panels(plotlist: list[list[t.Any]], estimatorcolumns: Collection[s
                         or "Run with --listvariables to see the variables of this model",
                     )
                 colexpr = pl.col(plotitem) if isinstance(plotitem, str) else plotitem
-                colname = colexpr.meta.output_name()
-                label = f"{get_varname_formatted(colname)}{get_units_string(colname)}"
-                columns.append((colexpr, label, pl.col("rho") if is_quantity_per_unit_mass(colname) else None))
+                seriesname, variablename, weightvariable = get_series_variables(colexpr)
+                label = f"{get_varname_formatted(seriesname)}{get_units_string(variablename)}"
+                columns.append((colexpr, label, pl.col("rho") if is_quantity_per_unit_mass(weightvariable) else None))
             elif get_directive_name(plotitem[0]) is not None:
                 continue
             elif is_ionseriestype(plotitem[0], estimatorcolumns, plotitem[1]):

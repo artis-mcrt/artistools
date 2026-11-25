@@ -5260,6 +5260,40 @@ def test_default_plotlist_keeps_an_expression_subplot() -> None:
     assert not skippedplotlist
 
 
+def test_default_plotlist_skips_an_expression_with_an_absent_column() -> None:
+    """The default list leaves out an expression that reads a column of no estimator, as it does for an element.
+
+    The command evaluated the text of the expression, and it stopped with an error for the absent column.
+    """
+    textsubplot = ['pl.col("heating_coll") - pl.col("cooling_coll")', ["_yscale", "linear"]]
+    exprsubplot = [pl.col("heating_coll") - pl.col("cooling_coll")]
+    estimatorcolumns = ["timestep", "modelgridindex", "TR", "heating_coll"]
+    defaultplotlist = [textsubplot, exprsubplot, ["TR"]]
+    with mock.patch.object(plotestimators, "get_default_plotlist", return_value=defaultplotlist):
+        plotlist, skippedplotlist = plotestimators.get_model_default_plotlist(estimatorcolumns, modelpath)
+
+    assert plotlist == [["TR"]]
+    assert [reason for _, reason in skippedplotlist] == ["the estimators have no cooling_coll"] * 2
+
+
+def test_expression_series_keeps_the_weight_of_its_first_column() -> None:
+    """The text names an expression series, and the first column gives its weight. A plain column keeps its units.
+
+    The text replaced the name of the column, thus pl.col("init_X_Fe56") took the cell volume as the weight.
+    """
+    estimatorcolumns = ["init_X_Fe56", "Te"]
+    massfraction = plotitems.parse_expression_item('pl.col("init_X_Fe56")', estimatorcolumns)
+    assert plotitems.get_series_variables(massfraction) == ('pl.col("init_X_Fe56")', "init_X_Fe56", "init_X_Fe56")
+    assert plotestimators.is_quantity_per_unit_mass(plotitems.get_series_variables(massfraction)[2])
+
+    scaled = plotitems.parse_expression_item('pl.col("Te") / 1e4', estimatorcolumns)
+    assert plotitems.get_series_variables(scaled) == ('pl.col("Te") / 1e4', 'pl.col("Te") / 1e4', "Te")
+
+    # an alias of the Python plot list keeps its meaning
+    aliased = (pl.col("Te") * 2).alias("double Te")
+    assert plotitems.get_series_variables(aliased) == ("double Te", "double Te", "double Te")
+
+
 def test_averageexcitation_spreads_the_superlevel_over_the_kept_levels(monkeypatch: pytest.MonkeyPatch) -> None:
     """The superlevel holds the levels that ARTIS keeps, thus a level above nlevelsmax takes no part."""
     keptlevelcount = 80
