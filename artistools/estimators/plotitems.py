@@ -540,12 +540,13 @@ def get_expression_problem(text: str, estimatorcolumns: Collection[str]) -> tupl
 SAMPLE_ROWCOUNTS: t.Final = (23, 4099)
 
 
-def get_sample_values(rowcount: int) -> list[float | None]:
+def get_sample_values(rowcount: int, columnposition: int) -> list[float | None]:
     """Return the values of a column of a sample frame: a null, zeros, negative values, and repeated values.
 
-    A filter or a unique() then changes the number of rows, which a series must keep.
+    A filter or a unique() then changes the number of rows, which a series must keep. Each column has a different shift
+    of the values, thus a comparison of two columns, e.g. pl.col("Te") >= pl.col("TR"), changes from row to row.
     """
-    return [*(float(index % 7 - 3) for index in range(rowcount - 1)), None]
+    return [*(float((index + 3 * columnposition) % 7 - 3) for index in range(rowcount - 1)), None]
 
 
 def get_column_schema(estimatorcolumns: Collection[str]) -> pl.Schema:
@@ -575,10 +576,10 @@ def get_input_columns(expr: pl.Expr, estimatorcolumns: Collection[str]) -> list[
     return list(inputcolumns)
 
 
-def get_sample_column(name: str, dtype: pl.DataType, rowcount: int) -> pl.Series:
+def get_sample_column(name: str, dtype: pl.DataType, rowcount: int, columnposition: int) -> pl.Series:
     """Return a column of a sample frame with the type of an estimator column, or a column of nulls of that type."""
     try:
-        return pl.Series(name, get_sample_values(rowcount), dtype=pl.Float64).cast(dtype, strict=False)
+        return pl.Series(name, get_sample_values(rowcount, columnposition), dtype=pl.Float64).cast(dtype, strict=False)
     except pl.exceptions.PolarsError:
         return pl.Series(name, [None] * rowcount, dtype=dtype)
 
@@ -593,7 +594,10 @@ def run_on_sample_frame(
     """
     schema = get_column_schema(estimatorcolumns)
     inputcolumns = get_input_columns(expr, schema)
-    sample = pl.DataFrame([get_sample_column(name, schema[name], rowcount) for name in inputcolumns])
+    sample = pl.DataFrame([
+        get_sample_column(name, schema[name], rowcount, columnposition)
+        for columnposition, name in enumerate(inputcolumns)
+    ])
     return sample.lazy().select(expr).collect()
 
 
@@ -676,14 +680,17 @@ def get_series_variables(colexpr: pl.Expr, estimatorcolumns: Collection[str]) ->
     if not is_expression_item(seriesname):
         return seriesname, seriesname, seriesname
     unaliased = colexpr.meta.undo_aliases()
+    inputcolumns: list[str] = []
+    outputnames: list[str] = []
     try:
+        inputcolumns = get_input_columns(unaliased, estimatorcolumns)
         outputnames = run_on_sample_frame(unaliased, estimatorcolumns).columns
     except pl.exceptions.PolarsError:
-        outputnames: list[str] = []
+        pass
     # polars names 2 * pl.col("init_X_Fe56") after the literal, thus the name of the result is not the first column.
-    # A selector names no root column, e.g. pl.sum_horizontal(pl.col("^init_X_.*$")), and its output takes the name
-    # of the first column that it selects
-    firstcolumn = next(iter(unaliased.meta.root_names()), None) or next(iter(outputnames), seriesname)
+    # A selector names no root column, e.g. in 2 * pl.sum_horizontal(pl.col("^init_X_.*$")), thus the first column
+    # that it reads gives the weight
+    firstcolumn = next(iter(unaliased.meta.root_names()), None) or next(iter(inputcolumns), seriesname)
     # a selection of one column, e.g. pl.col("Te") or pl.col("^Te$"), is the variable itself
     isonecolumn = unaliased.meta.is_column_selection() and len(outputnames) == 1
     return seriesname, firstcolumn if isonecolumn else seriesname, firstcolumn

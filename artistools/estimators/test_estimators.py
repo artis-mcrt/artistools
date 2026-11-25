@@ -3051,6 +3051,28 @@ def test_image_of_an_aggregation_takes_all_the_selected_cells(tmp_path: Path) ->
     assert offsets[0] > 1000.0
 
 
+def test_image_frames_take_the_aggregation_of_their_timestep(tmp_path: Path) -> None:
+    """With --multiplot, an aggregation in an expression takes the cells of the timestep of each frame, as a line does.
+
+    The image took the mean of all the timesteps, thus each frame took the same mean away.
+    """
+    framekwargs = {"dimensionreduce": 2, "timestep": "8-9", "multiplot": True}
+    tegrids = [call[3] for call in get_image_panel_calls({"plotlist": [["Te"]]} | framekwargs, tmp_path)]
+    deviationgrids = [
+        call[3]
+        for call in get_image_panel_calls(
+            {"plotlist": [['pl.col("Te") - pl.col("Te").mean()']]} | framekwargs, tmp_path
+        )
+    ]
+    frameoffsets = []
+    for tegrid, deviationgrid in zip(tegrids, deviationgrids, strict=True):
+        offsets = (tegrid - deviationgrid).compressed()
+        assert np.allclose(offsets, offsets[0], rtol=1e-6, atol=0)
+        frameoffsets.append(offsets[0])
+    assert len(frameoffsets) == 2
+    assert not np.isclose(frameoffsets[0], frameoffsets[1], rtol=1e-6, atol=0)
+
+
 def test_estimator_plot_of_2_dimensions_gives_the_average_around_the_z_axis(
     tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
 ) -> None:
@@ -5322,10 +5344,11 @@ def test_expression_selector_takes_the_columns_of_the_model() -> None:
 
     # the first column that a selector takes gives the weight, thus a sum of mass fractions takes the cell mass
     massfractionsum = 'pl.sum_horizontal(pl.col("^init_X_.*$"))'
-    weightvariable = plotitems.get_series_variables(plotitems.parse_expression_item(massfractionsum, columns), columns)[
-        2
-    ]
-    assert plotestimators.is_quantity_per_unit_mass(weightvariable)
+    massfractionexpr = plotitems.parse_expression_item(massfractionsum, columns)
+    assert plotestimators.is_quantity_per_unit_mass(plotitems.get_series_variables(massfractionexpr, columns)[2])
+    # polars names this expression after the literal and names no root column, thus the inputs give the weight
+    doubledsum = plotitems.parse_expression_item('2 * pl.sum_horizontal(pl.col("^init_X_.*$"))', columns)
+    assert plotestimators.is_quantity_per_unit_mass(plotitems.get_series_variables(doubledsum, columns)[2])
     for expression, problem in (('pl.col("^heating_.*$")', "gives 2 columns"), ('pl.col("^x_.*$").sum()', "gives 0")):
         result = plotitems.get_expression_problem(expression, columns)
         assert result is not None
@@ -5359,6 +5382,11 @@ def test_expression_gives_numbers_in_a_subplot_of_variables() -> None:
     filterresult = plotitems.get_expression_problem('pl.col("Te").filter(pl.col("Te") > 0)', columns)
     assert filterresult is not None
     assert "changes the number of rows" in filterresult[0]
+    # each sample column has a different shift of the values, thus a comparison of two columns changes the rows
+    crossfilter = 'pl.col("Te").filter((pl.col("Te") >= pl.col("TR")).fill_null(True))'
+    crossresult = plotitems.get_expression_problem(crossfilter, ["Te", "TR"])
+    assert crossresult is not None
+    assert "changes the number of rows" in crossresult[0]
     # head(n) gives n rows, thus a sample of exactly n rows does not show the change
     headresult = plotitems.get_expression_problem('pl.col("Te").head(23)', columns)
     assert headresult is not None
