@@ -830,10 +830,10 @@ def has_packets_files(modelpath: Path) -> bool:
 
 @on_model_host
 def get_packets_column_names(modelpath: Path) -> list[str] | None:
-    """Return the names of the columns of the packets of a model, or None if the model holds no packets.
+    """Return the names of the stored columns of the packets of a model, or None if the model holds no packets.
 
-    The text file of the first rank gives the names, or else the parquet cache of the first batch. The host of a
-    remote path gives the answer.
+    The text file of the first rank gives the names, or else the parquet cache of the first batch. scan_packets gives
+    more columns, e.g. dirbin, costhetabin, and costheta. The host of a remote path gives the answer.
     """
     packetsfile = get_first_packets_file(modelpath)
     if packetsfile is None:
