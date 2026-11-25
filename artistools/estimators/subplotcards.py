@@ -987,7 +987,7 @@ def add_subplot_section(
         # the check waits for a pause in the typing, because a check after each key runs the Python text of an
         # incomplete expression
         itemchecktimer.setInterval(400)
-        itemchecktimer.timeout.connect(partial(show_typed_item_problem, addedit, itemnote))
+        itemchecktimer.timeout.connect(partial(show_typed_item_problem, row, addedit, itemnote))
         addedit.textChanged.connect(partial(restart_timer, itemchecktimer))
 
         if suggestions:
@@ -1351,8 +1351,19 @@ def add_subplot_section(
     def restart_timer(timer: QtCore.QTimer, *_: object) -> None:
         timer.start()
 
-    def show_typed_item_problem(edit: QtWidgets.QLineEdit, note: QtWidgets.QLabel) -> None:
-        problem = get_typed_item_problem(edit.text().strip(), viewer.modeldata.estimatorcolumns)
+    def get_item_problem(row: int, item: str) -> tuple[str, str] | None:
+        """Return the problem of an item that the user types in the field of a card, and the problem with a hint."""
+        columns = viewer.modeldata.estimatorcolumns
+        if is_expression_item(item) and get_subplot_seriestype(viewer.values.subplots[row], columns) is not None:
+            # normalise_plotitems groups only names, thus an expression in a subplot of species stops the plot
+            problem = "An expression gives a series of a subplot of variables"
+            return problem, f"{problem}. Add the expression to a subplot of variables."
+        return get_typed_item_problem(item, columns)
+
+    def show_typed_item_problem(row: int, edit: QtWidgets.QLineEdit, note: QtWidgets.QLabel) -> None:
+        if not is_shown_card(row, edit):
+            return
+        problem = get_item_problem(row, edit.text().strip())
         # the note shows the problem, and its More link shows the hint
         summary, detail = problem or ("", "")
         set_note_text(note, summary, detail)
@@ -1419,7 +1430,7 @@ def add_subplot_section(
             return
         item = edit.text().strip()
         # the field keeps an expression with a problem, thus the user can correct it
-        if (problem := get_typed_item_problem(item, viewer.modeldata.estimatorcolumns)) is not None:
+        if (problem := get_item_problem(row, item)) is not None:
             show_error(problem[1])
             return
         edit.clear()

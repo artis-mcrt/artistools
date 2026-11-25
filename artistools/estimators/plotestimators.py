@@ -1359,7 +1359,7 @@ def get_series_plans(
             )
         colexpr = pl.col(variable)
 
-    seriesname, variablename, weightvariable = get_series_variables(colexpr)
+    seriesname, variablename, weightvariable = get_series_variables(colexpr, estimators.collect_schema().names())
 
     serieslabel = get_varname_formatted(seriesname)
     units_string = get_units_string(variablename)
@@ -1700,8 +1700,9 @@ def get_subplot_plans(
     """
     settings: SubplotSettings = {"showlegend": False, "legendncols": 1}
     # the text of an expression item names its series, and get_series_variables gives the variable of its units
+    exprcolumns = estimators.collect_schema().names() if any(isinstance(var, pl.Expr) for var in plotitems) else []
     ylabels = [
-        get_ylabel(get_series_variables(var)[1] if isinstance(var, pl.Expr) else var)
+        get_ylabel(get_series_variables(var, exprcolumns)[1] if isinstance(var, pl.Expr) else var)
         for var in plotitems
         if isinstance(var, str | pl.Expr)
     ]
@@ -2309,7 +2310,7 @@ def get_image_panels(plotlist: list[list[t.Any]], estimatorcolumns: Collection[s
                         or "Run with --listvariables to see the variables of this model",
                     )
                 colexpr = pl.col(plotitem) if isinstance(plotitem, str) else plotitem
-                seriesname, variablename, weightvariable = get_series_variables(colexpr)
+                seriesname, variablename, weightvariable = get_series_variables(colexpr, estimatorcolumns)
                 label = f"{get_varname_formatted(seriesname)}{get_units_string(variablename)}"
                 columns.append((colexpr, label, pl.col("rho") if is_quantity_per_unit_mass(weightvariable) else None))
             elif get_directive_name(plotitem[0]) is not None:

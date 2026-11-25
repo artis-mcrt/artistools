@@ -498,11 +498,7 @@ def get_expression_problem(text: str, estimatorcolumns: Collection[str]) -> tupl
             or suggest_names(absentcolumns[0], estimatorcolumns)
             or "Run with --listvariables to see the variables of this model",
         )
-    # a selector such as pl.col("^heating_.*$") names no root column, thus only the columns of the model give its
-    # number of outputs. The type of each column is not known here, thus a type error waits for the plot
-    try:
-        outputcolumns = pl.LazyFrame(schema=dict.fromkeys(estimatorcolumns, pl.Float64)).select(expr).collect_schema()
-    except pl.exceptions.PolarsError:
+    if (outputcolumns := get_output_schema(expr, estimatorcolumns)) is None:
         return None
     if len(outputcolumns) != 1:
         hint = (
@@ -510,7 +506,25 @@ def get_expression_problem(text: str, estimatorcolumns: Collection[str]) -> tupl
             ' pl.sum_horizontal(pl.col("^heating_.*$"))'
         )
         return f"The plot item '{text}' gives {len(outputcolumns)} columns, and a series takes one column", hint
+    # the plot multiplies the values by the weights, thus a text gives no series. A boolean gives 0 and 1
+    if not ((dtype := outputcolumns.dtypes()[0]).is_numeric() or dtype == pl.Boolean):
+        return (
+            f"The plot item '{text}' gives values of the type {dtype}, and a series takes numbers",
+            "Give an expression of the columns that gives a number, e.g. =Te / 1e4",
+        )
     return None
+
+
+def get_output_schema(expr: pl.Expr, estimatorcolumns: Collection[str]) -> pl.Schema | None:
+    """Return the names and the types of the output columns of an expression, or None if polars cannot resolve it.
+
+    A selector such as pl.col("^heating_.*$") names no root column, thus only the columns of the model give its outputs.
+    Each column takes the type Float64 here, because the reader of the columns can change their types.
+    """
+    try:
+        return pl.LazyFrame(schema=dict.fromkeys(estimatorcolumns, pl.Float64)).select(expr).collect_schema()
+    except pl.exceptions.PolarsError:
+        return None
 
 
 def get_typed_item_problem(item: str, estimatorcolumns: Collection[str]) -> tuple[str, str] | None:
@@ -581,7 +595,7 @@ def complete_expression_name(text: str, name: str) -> str:
     return f"{head}{name}" if SQL_PLAIN_NAME_PATTERN.fullmatch(name) else f'{head}"{name}"'
 
 
-def get_series_variables(colexpr: pl.Expr) -> tuple[str, str, str]:
+def get_series_variables(colexpr: pl.Expr, estimatorcolumns: Collection[str]) -> tuple[str, str, str]:
     """Return the name of the series of an expression, the variable of its units, and the variable of its weight.
 
     The text of an expression item names its series, e.g. 'pl.col("Te") / 1e4'. Only a plain column keeps the units
@@ -593,10 +607,12 @@ def get_series_variables(colexpr: pl.Expr) -> tuple[str, str, str]:
         return seriesname, seriesname, seriesname
     unaliased = colexpr.meta.undo_aliases()
     # polars names 2 * pl.col("init_X_Fe56") after the literal, thus the name of the result is not the first column
-    firstcolumn = next(iter(unaliased.meta.root_names()), unaliased.meta.output_name(raise_if_undetermined=False))
+    firstcolumn = next(iter(unaliased.meta.root_names()), None)
     if firstcolumn is None:
-        # a selector such as pl.col("^heating_.*$") names no column
-        return seriesname, seriesname, seriesname
+        # a selector names no root column, e.g. pl.sum_horizontal(pl.col("^init_X_.*$")). Its output takes the name
+        # of the first column that it selects
+        outputcolumns = get_output_schema(unaliased, estimatorcolumns)
+        firstcolumn = next(iter(outputcolumns.names()), seriesname) if outputcolumns is not None else seriesname
     return seriesname, firstcolumn if unaliased.meta.is_column() else seriesname, firstcolumn
 
 
@@ -681,6 +697,11 @@ def normalise_plotitems(plotitems: t.Any, estimatorcolumns: Collection[str]) -> 
         return plot_directives
 
     seriestype = get_seriestype_of_names(plotvars, estimatorcolumns)
+    if seriestype is not None and any(isinstance(plotvar, pl.Expr) for plotvar in plotvars):
+        exit_with_error(
+            f"A polars expression gives a series of a subplot of variables, and this subplot holds {seriestype}",
+            "Give the expression a --plot of its own",
+        )
     # the grouped form names the type of series first, e.g. -plot populations "Fe II" "Fe III"
     if seriestype is not None and seriestype == plotvars[0]:
         if len(plotvars) == 1:

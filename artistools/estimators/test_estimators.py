@@ -5264,7 +5264,7 @@ def test_plot_item_gives_a_sql_expression(
 
     # polars names this expression after the literal, and the column gives the weight
     doubled = plotitems.parse_expression_item("=2 * init_X_Fe56", ["init_X_Fe56"])
-    assert plotitems.get_series_variables(doubled)[2] == "init_X_Fe56"
+    assert plotitems.get_series_variables(doubled, ["init_X_Fe56"])[2] == "init_X_Fe56"
 
     with pytest.raises(SystemExit):
         get_plotestimators_figure(["--timedays", "300", "--plot", "=Te ^ 2", str(modelpath)], tmp_path / "e.pdf")
@@ -5275,14 +5275,42 @@ def test_expression_selector_takes_the_columns_of_the_model() -> None:
 
     The check rejected pl.sum_horizontal(pl.col("^heating_.*$")) as more than one column.
     """
-    columns = ["Te", "heating_coll", "heating_dep"]
+    columns = ["Te", "heating_coll", "heating_dep", "init_X_Fe56", "init_X_Ni56"]
     heatingsum = 'pl.sum_horizontal(pl.col("^heating_.*$"))'
     assert plotitems.get_expression_problem(heatingsum, columns) is None
-    assert plotitems.get_series_variables(plotitems.parse_expression_item(heatingsum, columns)) == (heatingsum,) * 3
+    assert plotitems.get_series_variables(plotitems.parse_expression_item(heatingsum, columns), columns) == (
+        heatingsum,
+        heatingsum,
+        "heating_coll",
+    )
+
+    # the first column that a selector takes gives the weight, thus a sum of mass fractions takes the cell mass
+    massfractionsum = 'pl.sum_horizontal(pl.col("^init_X_.*$"))'
+    weightvariable = plotitems.get_series_variables(plotitems.parse_expression_item(massfractionsum, columns), columns)[
+        2
+    ]
+    assert plotestimators.is_quantity_per_unit_mass(weightvariable)
     for expression, problem in (('pl.col("^heating_.*$")', "gives 2 columns"), ('pl.col("^x_.*$").sum()', "gives 0")):
         result = plotitems.get_expression_problem(expression, columns)
         assert result is not None
         assert problem in result[0], expression
+
+
+def test_expression_gives_numbers_in_a_subplot_of_variables() -> None:
+    """An expression gives numbers, and it takes a subplot of variables. Each other case stops with a clear message.
+
+    pl.lit("x") passed the check, and then the plot stopped in polars. An expression in a subplot of ions broke the
+    grouping of the subplot, thus the command read "populations" as a variable.
+    """
+    columns = ["Te", "nnion_Fe_II"]
+    textresult = plotitems.get_expression_problem('pl.lit("x")', columns)
+    assert textresult is not None
+    assert "values of the type String" in textresult[0]
+    # a boolean gives 0 and 1
+    assert plotitems.get_expression_problem("=Te > 1000", columns) is None
+
+    with pytest.raises(SystemExit):
+        plotitems.normalise_plotitems(["populations", "Fe II", "=Te"], columns)
 
 
 def test_long_expression_of_a_column_keeps_its_units(
@@ -5422,19 +5450,26 @@ def test_expression_series_keeps_the_weight_of_its_first_column() -> None:
     """
     estimatorcolumns = ["init_X_Fe56", "Te"]
     massfraction = plotitems.parse_expression_item('pl.col("init_X_Fe56")', estimatorcolumns)
-    assert plotitems.get_series_variables(massfraction) == ('pl.col("init_X_Fe56")', "init_X_Fe56", "init_X_Fe56")
-    assert plotestimators.is_quantity_per_unit_mass(plotitems.get_series_variables(massfraction)[2])
+    assert plotitems.get_series_variables(massfraction, estimatorcolumns) == (
+        'pl.col("init_X_Fe56")',
+        "init_X_Fe56",
+        "init_X_Fe56",
+    )
 
     # polars names this expression after the literal
     doubled = plotitems.parse_expression_item('2 * pl.col("init_X_Fe56")', estimatorcolumns)
-    assert plotitems.get_series_variables(doubled)[2] == "init_X_Fe56"
+    assert plotitems.get_series_variables(doubled, estimatorcolumns)[2] == "init_X_Fe56"
 
     scaled = plotitems.parse_expression_item('pl.col("Te") / 1e4', estimatorcolumns)
-    assert plotitems.get_series_variables(scaled) == ('pl.col("Te") / 1e4', 'pl.col("Te") / 1e4', "Te")
+    assert plotitems.get_series_variables(scaled, estimatorcolumns) == (
+        'pl.col("Te") / 1e4',
+        'pl.col("Te") / 1e4',
+        "Te",
+    )
 
     # an alias of the Python plot list keeps its meaning
     aliased = (pl.col("Te") * 2).alias("double Te")
-    assert plotitems.get_series_variables(aliased) == ("double Te", "double Te", "double Te")
+    assert plotitems.get_series_variables(aliased, estimatorcolumns) == ("double Te", "double Te", "double Te")
 
 
 def test_averageexcitation_spreads_the_superlevel_over_the_kept_levels(monkeypatch: pytest.MonkeyPatch) -> None:
