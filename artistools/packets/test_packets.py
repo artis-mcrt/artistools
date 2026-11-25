@@ -18,22 +18,20 @@ modelpath = at.get_path("testdata") / "testmodel"
 
 
 def get_reference_dirbin(dirx: float, diry: float, dirz: float, nphibins: int, ncosthetabins: int) -> int:
-    """Return the direction bin of one packet, computed in float64 for a viewing direction along +z.
+    """Return the direction bin of one packet, computed in float64 as get_escapedirectionbin of ARTIS (vectors.h).
 
-    The polars binning of the package works in Float32, thus this function checks it by a separate path. The function
-    follows get_escapedirectionbin of ARTIS (vectors.h). ARTIS takes cosphi = 1 for a direction along the z axis,
-    thus such a direction is in the phi bin of the angle pi and not in the phi bin 0.
+    The polars binning of the package works in Float32, thus this function checks it by a separate path. ARTIS takes
+    cosphi = 1 for a direction along the z axis, thus such a direction is in the phi bin of the angle pi and not in
+    the phi bin 0.
     """
-    syn_dir = np.array([0.0, 0.0, 1.0])
-    pkt_dir = np.array([dirx, diry, dirz]) / math.sqrt(dirx**2 + diry**2 + dirz**2)
-    costhetabin = min(int((float(pkt_dir @ syn_dir) + 1.0) / 2.0 * ncosthetabins), ncosthetabins - 1)
+    dirmag = math.sqrt(dirx**2 + diry**2 + dirz**2)
+    unitx, unity, unitz = dirx / dirmag, diry / dirmag, dirz / dirmag
+    costhetabin = min(max(int((unitz + 1.0) * ncosthetabins / 2.0), 0), ncosthetabins - 1)
 
-    vec1 = np.cross(pkt_dir, syn_dir)
-    vec1len = float(np.linalg.norm(vec1))
-    vec2 = np.cross(np.array([1.0, 0.0, 0.0]), syn_dir)
-    cosphi = float(vec1 @ vec2) / vec1len / float(np.linalg.norm(vec2)) if vec1len > 1e-12 else 1.0
-    phi = math.acos(cosphi) if float(vec1 @ np.cross(vec2, syn_dir)) > 0 else math.acos(cosphi) + math.pi
-    return costhetabin * nphibins + min(int(phi / 2.0 / math.pi * nphibins), nphibins - 1)
+    sintheta = math.sqrt(unitx**2 + unity**2)
+    cosphi = min(max(unitx / sintheta, -1.0), 1.0) if sintheta > 1e-12 else 1.0
+    phi = math.acos(cosphi) if unity < 0 else math.acos(cosphi) + math.pi
+    return costhetabin * nphibins + min(max(int(phi / 2.0 / math.pi * nphibins), 0), nphibins - 1)
 
 
 def test_directionbins() -> None:
@@ -75,6 +73,17 @@ def test_directionbins() -> None:
 
         assert phibinlowers[pkt["phibin"]] <= pkt["phi_defined"] or pktdir_is_along_zaxis
         assert phibinuppers[pkt["phibin"]] >= pkt["phi_defined"] or pktdir_is_along_zaxis
+
+
+def test_directionbin_takes_the_sign_of_a_tiny_diry() -> None:
+    """A tiny negative diry selects the phi range of ARTIS, which tests the sign of dir[1] in double precision.
+
+    The old code tested the sign of -diry / |dir| after a cast to Float32, and 1e-300 became zero there.
+    """
+    dfpackets = pl.LazyFrame({"dirx": [0.3], "diry": [-1e-300], "dirz": [0.2]})
+    dfpackets = at.packets.bin_packet_directions_polars(at.packets.add_packet_directions_lazypolars(dfpackets))
+
+    assert dfpackets.select("dirbin").collect().item() == get_reference_dirbin(0.3, -1e-300, 0.2, 10, 10)
 
 
 def test_directionbins_unequal_bincounts() -> None:
@@ -448,9 +457,7 @@ def test_add_packet_directions_accepts_a_frame_that_holds_the_angles() -> None:
 
     dfonce = at.packets.add_packet_directions_lazypolars(dfpackets).collect()
     assert "phi" in dfonce.columns
-    assert "vec1_x" not in dfonce.columns
 
-    # the drop named the vec1 columns whatever the input held, thus this raised ColumnNotFoundError
     dftwice = at.packets.add_packet_directions_lazypolars(dfonce).collect()
 
     pltest.assert_frame_equal(dfonce, dftwice)

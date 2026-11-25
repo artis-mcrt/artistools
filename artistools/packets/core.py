@@ -35,6 +35,7 @@ from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
 from artistools.misc import get_artis_option
 from artistools.misc import get_bin_index_expr
+from artistools.misc import get_costheta_phi_exprs
 from artistools.misc import get_costhetabin_expr
 from artistools.misc import get_file_identity
 from artistools.misc import get_file_state
@@ -1215,77 +1216,18 @@ def scan_packets(
 
 
 def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame:
-    """Add the normalised direction vector and the costheta and phi angles of each packet."""
+    """Add the costheta and phi angles of each packet, as Float32 columns."""
     dfpackets = dfpackets.lazy()
-    syn_dir = np.array([0.0, 0.0, 1.0])
-    xhat = np.array([1.0, 0.0, 0.0])
-    vec2 = np.cross(xhat, syn_dir)  # -yhat if syn_dir is zhat
-
     colnames = dfpackets.collect_schema().names()
-
-    if "dirmag" not in colnames:
-        dfpackets = dfpackets.with_columns(
-            (pl.col("dirx") ** 2 + pl.col("diry") ** 2 + pl.col("dirz") ** 2).sqrt().alias("dirmag")
-        )
+    costheta, phi = get_costheta_phi_exprs(pl.col("dirx"), pl.col("diry"), pl.col("dirz"))
 
     if "costheta" not in colnames:
-        dfpackets = dfpackets.with_columns(
-            (
-                (pl.col("dirx") * syn_dir[0] + pl.col("diry") * syn_dir[1] + pl.col("dirz") * syn_dir[2])
-                / pl.col("dirmag")
-            )
-            .cast(pl.Float32)
-            .alias("costheta")
-        )
+        dfpackets = dfpackets.with_columns(costheta.cast(pl.Float32).alias("costheta"))
 
     if "phi" not in colnames:
-        # vec1 = dir cross syn_dir
-        dfpackets = dfpackets.with_columns(
-            ((pl.col("diry") * syn_dir[2] - pl.col("dirz") * syn_dir[1]) / pl.col("dirmag")).alias("vec1_x"),
-            ((pl.col("dirz") * syn_dir[0] - pl.col("dirx") * syn_dir[2]) / pl.col("dirmag")).alias("vec1_y"),
-            ((pl.col("dirx") * syn_dir[1] - pl.col("diry") * syn_dir[0]) / pl.col("dirmag")).alias("vec1_z"),
-        )
+        dfpackets = dfpackets.with_columns(phi.cast(pl.Float32).alias("phi"))
 
-        # ARTIS takes cosphi = 1 for a direction along syn_dir, where phi has no definition (get_escapedirectionbin in
-        # vectors.h). Thus the bin of such a direction agrees with the bin of ARTIS
-        vec1len = (pl.col("vec1_x") ** 2 + pl.col("vec1_y") ** 2 + pl.col("vec1_z") ** 2).sqrt()
-        dfpackets = dfpackets.with_columns(
-            pl
-            .when(vec1len > 1e-12)
-            .then(
-                (pl.col("vec1_x") * vec2[0] + pl.col("vec1_y") * vec2[1] + pl.col("vec1_z") * vec2[2])
-                / vec1len
-                / float(np.linalg.norm(vec2))
-            )
-            .otherwise(1.0)
-            .cast(pl.Float32)
-            .alias("cosphi")
-        )
-
-        vec3 = np.cross(vec2, syn_dir)  # -xhat if syn_dir is zhat
-
-        # arr_testphi = np.dot(arr_vec1, vec3). vec1 was already normalised by dirmag above, and only the sign of
-        # testphi is used, so there is no further division here
-        dfpackets = dfpackets.with_columns(
-            (pl.col("vec1_x") * vec3[0] + pl.col("vec1_y") * vec3[1] + pl.col("vec1_z") * vec3[2])
-            .cast(pl.Float32)
-            .alias("testphi")
-        )
-
-        dfpackets = dfpackets.with_columns(
-            (
-                pl
-                .when(pl.col("testphi") > 0)
-                .then(2 * math.pi - pl.col("cosphi").arccos())
-                .otherwise(pl.col("cosphi").arccos())
-            )
-            .cast(pl.Float32)
-            .alias("phi")
-        )
-
-    # the code above creates these columns only for a frame that carries no angles. Thus the drop
-    # must accept a name that this call did not add
-    return dfpackets.drop(["dirmag", "vec1_x", "vec1_y", "vec1_z"], strict=False)
+    return dfpackets
 
 
 def bin_packet_directions_polars(
@@ -1312,7 +1254,7 @@ def bin_packet_directions_polars(
     dfpackets = dfpackets.with_columns(get_costhetabin_expr(pl.col("costheta"), ncosthetabins).alias("costhetabin"))
 
     if phibintype == "phibinmonotonicasc":
-        # phi reaches exactly 2 pi when cosphi == 1 and testphi > 0, so clamp to the last bin
+        # phi can reach exactly 2 pi when diry < 0, so clamp to the last bin
         dfpackets = dfpackets.with_columns(
             pl.min_horizontal(
                 (pl.col("phi") / 2.0 / math.pi * nphibins).fill_nan(0.0).cast(pl.Int32), nphibins - 1
@@ -1320,7 +1262,7 @@ def bin_packet_directions_polars(
         )
     else:
         dfpackets = dfpackets.with_columns(
-            get_phibin_expr(pl.col("cosphi"), pl.col("testphi"), nphibins).alias("phibin")
+            get_phibin_expr(pl.col("phi"), pl.col("diry"), nphibins).alias("phibin")
         ).with_columns((pl.col("costhetabin") * nphibins + pl.col("phibin")).cast(pl.Int32).alias("dirbin"))
 
     return dfpackets

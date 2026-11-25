@@ -1832,9 +1832,9 @@ def test_spherical_cells_each_lie_in_one_direction_bin(
 ) -> None:
     """Each cell of the default spherical3d grid is in one viewing-direction bin, and a grid of 128 phi cells is not.
 
-    The grid and the bins measure theta from +z (syn_dir of ARTIS) and phi from +x towards +y. The test bins points
+    The grid and the bins measure theta from +z and phi from +x towards +y. The test bins points
     near the corners of each cell with the bin code of the packets. A point at 2 % of a cell width from an edge stays
-    clear of the Float32 rounding of cos(phi) near phi = pi.
+    clear of the Float32 rounding of phi.
     """
     from artistools.inputmodel.maptogrid import get_spherical_grid_edges
     from artistools.inputmodel.maptogrid import NCOORDGRID_DEFAULTS
@@ -1857,10 +1857,10 @@ def test_spherical_cells_each_lie_in_one_direction_bin(
         "y": sintheta * np.sin(phi),
         "z": costheta,
     })
-    # the packet code casts cos(theta) and cos(phi) to Float32, as get_cell_direction_selection does
-    cosphi = (pl.col("x") / (pl.col("x") ** 2 + pl.col("y") ** 2).sqrt()).cast(pl.Float32)
-    dirbin = at.misc.get_costhetabin_expr(pl.col("z").cast(pl.Float32)) * at.misc.get_viewingdirection_phibincount()
-    dirbin += at.misc.get_phibin_expr(cosphi, -pl.col("y"))
+    # the packet code casts cos(theta) and phi to Float32, as get_cell_direction_selection does
+    costheta, phi = at.misc.get_costheta_phi_exprs(pl.col("x"), pl.col("y"), pl.col("z"))
+    dirbin = at.misc.get_costhetabin_expr(costheta.cast(pl.Float32)) * at.misc.get_viewingdirection_phibincount()
+    dirbin += at.misc.get_phibin_expr(phi.cast(pl.Float32), pl.col("y"))
     nbinsofcell = dfpoints.group_by("cell").agg(dirbin.n_unique().alias("nbins"))["nbins"]
     assert (nbinsofcell.max() == 1) == isaligned
     assert dfpoints.select(dirbin.n_unique()).item() == at.misc.get_viewingdirectionbincount()

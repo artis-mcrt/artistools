@@ -98,6 +98,7 @@ from artistools.misc.dirbins import format_cell_direction_range as format_cell_d
 from artistools.misc.dirbins import get_average_group_dirbins as get_average_group_dirbins
 from artistools.misc.dirbins import get_cell_direction_range as get_cell_direction_range
 from artistools.misc.dirbins import get_costheta_bins as get_costheta_bins
+from artistools.misc.dirbins import get_costheta_phi_exprs as get_costheta_phi_exprs
 from artistools.misc.dirbins import get_costhetabin_expr as get_costhetabin_expr
 from artistools.misc.dirbins import get_costhetabin_phibin_labels as get_costhetabin_phibin_labels
 from artistools.misc.dirbins import get_dirbin_centre_direction as get_dirbin_centre_direction
