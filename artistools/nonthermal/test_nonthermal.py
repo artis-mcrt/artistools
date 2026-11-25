@@ -110,6 +110,28 @@ def test_spencerfano_excitation(tmp_path: Path) -> None:
     assert dfstats["frac_sum"].item() == pytest.approx(1.0, abs=0.1)
 
 
+def test_spencerfano_level_pops_sample_excitation_at_midpoints() -> None:
+    """Sample the cross section above the threshold in the first eligible bin."""
+    pynonthermal = pytest.importorskip("pynonthermal")
+    transitions = pl.LazyFrame({
+        "lower": [0],
+        "upper": [1],
+        "collstr": [1.0],
+        "forbidden": [0],
+        "lower_g": [1],
+        "epsilon_trans_ev": [2.25],
+    })
+    with pynonthermal.SpencerFanoSolver(emin_ev=1.0, emax_ev=10.0, npts=10) as sf:
+        at.nonthermal.spencerfano.add_ion_excitation_with_level_pops(
+            sf, transitions, Z=26, ion_stage=2, levelpops={0: 1.0}, maxnlevelsupper=2
+        )
+        xs = sf.excitationlists[26, 2][0, 1].xs_vec
+
+    # The 2.0 eV left edge is below the threshold, but the 2.5 eV midpoint is above it.
+    assert xs[0] == pytest.approx(0.0, abs=1e-30)
+    assert xs[1] > 0.0
+
+
 def test_spencerfano_ostat_takes_a_changing_ion_list(tmp_path: Path) -> None:
     """A -vary x_e sweep changes the list of ions from one step to the next, thus -ostat gives a column to each ion.
 
