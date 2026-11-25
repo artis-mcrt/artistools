@@ -3036,6 +3036,21 @@ def test_image_of_a_selector_keeps_the_columns_that_it_reads(tmp_path: Path) -> 
     assert np.allclose(selectorgrid.filled(np.nan), sumgrid.filled(np.nan), rtol=1e-12, atol=0, equal_nan=True)
 
 
+def test_image_of_an_aggregation_takes_all_the_selected_cells(tmp_path: Path) -> None:
+    """An aggregation in an expression takes all the selected cells, as a line does, and not only the cells of a pixel.
+
+    The mean of each pixel evaluated the expression, thus pl.col("Te") - pl.col("Te").mean() gave 0 in each pixel.
+    """
+    ((_, _, _, tegrid),) = get_image_panel_calls({"plotlist": [["Te"]], "dimensionreduce": 2}, tmp_path)
+    ((_, _, _, deviationgrid),) = get_image_panel_calls(
+        {"plotlist": [['pl.col("Te") - pl.col("Te").mean()']], "dimensionreduce": 2}, tmp_path
+    )
+    # each pixel takes the same mean of all the cells away. The grids hold Float32 values of Te
+    offsets = (tegrid - deviationgrid).compressed()
+    assert np.allclose(offsets, offsets[0], rtol=1e-6, atol=0)
+    assert offsets[0] > 1000.0
+
+
 def test_estimator_plot_of_2_dimensions_gives_the_average_around_the_z_axis(
     tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
 ) -> None:
@@ -5295,6 +5310,10 @@ def test_expression_selector_takes_the_columns_of_the_model() -> None:
         heatingsum,
         "heating_coll",
     )
+
+    # an alias names the output and not the column, thus the expression reads Te
+    assert plotitems.get_input_columns(pl.col("Te").alias("temperature"), columns) == ["Te"]
+    assert plotitems.get_expression_problem('pl.col("Te").alias("temperature") / 2', columns) is None
 
     # a selector of one column is the variable itself, thus it keeps the units of the column
     assert (

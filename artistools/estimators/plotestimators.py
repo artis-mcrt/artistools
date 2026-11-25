@@ -3404,6 +3404,12 @@ def prepare_snapshot(
         )
     if args.dimensionreduce == 2:
         panels = get_image_panels(plotlist, estimators.collect_schema().names(), args.poptype)
+        # the mean of a pixel groups the cells. An aggregation in an expression, e.g. pl.col("Te").mean(), thus takes
+        # all the selected cells first, as a line does, and not only the cells of a pixel
+        estimators = estimators.with_columns(
+            panel.colexpr.alias(f"panelvalue{index}") for index, panel in enumerate(panels)
+        )
+        panels = [panel._replace(colexpr=pl.col(f"panelvalue{index}")) for index, panel in enumerate(panels)]
         # an image reads a small number of the columns, and a set of frames writes a copy of the estimators
         # a selector names no root column, e.g. pl.col("^heating_.*$"), thus the columns of the model resolve it
         estimatorschema = estimators.collect_schema()

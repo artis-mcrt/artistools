@@ -1436,6 +1436,9 @@ def add_subplot_section(
         edit.clear()
         if item:
             add_item(row, item)
+        else:
+            # an empty field ends the edit of a chip, thus the next name adds a series
+            editeditems.pop(row, None)
 
     def on_complete_item(row: int, edit: QtWidgets.QLineEdit, item: str) -> None:
         if not is_shown_card(row, edit):

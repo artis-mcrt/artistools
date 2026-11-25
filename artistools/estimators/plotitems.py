@@ -555,7 +555,9 @@ def get_input_columns(expr: pl.Expr, estimatorcolumns: Collection[str]) -> list[
     while pending:
         node = pending.pop()
         if node.meta.is_column_selection(allow_aliasing=True):
-            inputcolumns.update(dict.fromkeys(pl.LazyFrame(schema=schema).select(node).collect_schema().names()))
+            # an alias names the output, e.g. temperature in pl.col("Te").alias("temperature"), and not the column
+            selection = node.meta.undo_aliases()
+            inputcolumns.update(dict.fromkeys(pl.LazyFrame(schema=schema).select(selection).collect_schema().names()))
         else:
             pending.extend(node.meta.pop())
     return list(inputcolumns)
