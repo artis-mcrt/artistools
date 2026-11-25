@@ -5404,7 +5404,20 @@ def test_expression_gives_numbers_in_a_subplot_of_variables() -> None:
     assert "changes the number of rows" in headresult[0]
     assert plotitems.get_expression_problem('pl.col("Te") - pl.col("Te").mean()', columns) is None
     # an expression that reads no column can still give one value for each row
-    assert plotitems.get_expression_problem("pl.int_range(pl.len())", columns) is None
+    assert plotitems.get_expression_problem("pl.repeat(1.0, pl.len())", columns) is None
+
+    # the plot puts the values next to the cells by position, thus a change of the order gives wrong values
+    for reordering in (
+        'pl.col("Te").sort()',
+        'pl.col("Te").reverse()',
+        'pl.col("Te").shift(1)',
+        "pl.int_range(pl.len())",
+    ):
+        orderresult = plotitems.get_expression_problem(reordering, columns)
+        assert orderresult is not None, reordering
+        assert "changes the order of the rows" in orderresult[0], reordering
+    for rowwise in ('pl.col("Te").rank()', 'pl.when(pl.col("Te") > 0).then(pl.col("Te"))', "=Te / 2"):
+        assert plotitems.get_expression_problem(rowwise, columns) is None, rowwise
 
     with pytest.raises(SystemExit):
         plotitems.normalise_plotitems(["populations", "Fe II", "=Te"], columns)
@@ -5423,6 +5436,19 @@ def test_long_expression_of_a_column_keeps_its_units(
     )
     assert fig.axes[0].get_legend() is not None
     assert "erg/s/cm" in fig.axes[0].get_ylabel()
+
+
+def test_window_runs_no_python_text_of_an_expression() -> None:
+    """The window checks the syntax of Python text alone. The command runs the text, e.g. on the host of a model.
+
+    The check of the window ran the text after each pause in the typing, thus a side effect ran on the client.
+    """
+    columns = ["Te"]
+    # the text reads a file that does not exist, thus only a run of the text gives an error
+    assert plotitems.get_typed_item_problem('(pl.read_csv("/no/such/file.csv"), pl.col("Te"))[1]', columns) is None
+    syntaxresult = plotitems.get_typed_item_problem('pl.col("Te"', columns)
+    assert syntaxresult is not None
+    assert "is not valid Python" in syntaxresult[0]
 
 
 def test_typed_item_problem_names_the_fault_of_an_expression() -> None:
@@ -5536,15 +5562,16 @@ def test_default_plotlist_skips_an_expression_with_an_absent_column() -> None:
     # a selector names no root column, thus only the check of the expression finds that it matches no column. The
     # command gives the schema of the estimators, and the types make the error of the empty sum certain
     selectorsubplot = ['pl.sum_horizontal(pl.col("^cooling_.*$"))']
+    selectorexprsubplot = [pl.sum_horizontal(pl.col("^cooling_.*$"))]
     estimatorschema = pl.Schema(dict.fromkeys(estimatorcolumns, pl.Float64))
-    defaultplotlist = [textsubplot, exprsubplot, selectorsubplot, ["TR"]]
+    defaultplotlist = [textsubplot, exprsubplot, selectorsubplot, selectorexprsubplot, ["TR"]]
     with mock.patch.object(plotestimators, "get_default_plotlist", return_value=defaultplotlist):
         plotlist, skippedplotlist = plotestimators.get_model_default_plotlist(estimatorschema, modelpath)
 
     assert plotlist == [["TR"]]
     reasons = [reason for _, reason in skippedplotlist]
     assert reasons[:2] == ["the estimators have no cooling_coll"] * 2
-    assert "expected at least 1 input" in reasons[2]
+    assert all("expected at least 1 input" in reason for reason in reasons[2:])
 
 
 def test_expression_series_keeps_the_weight_of_its_first_column() -> None:

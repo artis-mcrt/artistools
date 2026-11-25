@@ -58,7 +58,7 @@ from artistools.estimators.plotitems import DIRECTIVES
 from artistools.estimators.plotitems import evaluate_expression_text
 from artistools.estimators.plotitems import get_column_name
 from artistools.estimators.plotitems import get_directive_name
-from artistools.estimators.plotitems import get_expression_problem
+from artistools.estimators.plotitems import get_evaluated_expression_problem
 from artistools.estimators.plotitems import get_input_columns
 from artistools.estimators.plotitems import get_iontuple
 from artistools.estimators.plotitems import get_iontuple_sortkey
@@ -1055,8 +1055,9 @@ def get_default_plotitem_skip_reason(
             return None
         if absentcolumns := [name for name in expr.meta.root_names() if name not in estimatorcolumns]:
             return f"the estimators have no {absentcolumns[0]}"
-        # the text can also fail on the columns of the model, e.g. a selector that matches no column
-        problem = None if isinstance(plotitems, pl.Expr) else get_expression_problem(plotitems, estimatorcolumns)
+        # an expression can also fail on the columns of the model, e.g. a selector that matches no column
+        text = plotitems if isinstance(plotitems, str) else str(plotitems)
+        problem = get_evaluated_expression_problem(expr, text, estimatorcolumns)
         return None if problem is None else problem[0][0].lower() + problem[0][1:]
 
     if isinstance(plotitems, str):

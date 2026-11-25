@@ -14,6 +14,7 @@ from collections.abc import Mapping
 from collections.abc import Sequence
 from types import MappingProxyType
 
+import numpy as np
 import polars as pl
 
 from artistools.atomic import decode_roman_numeral
@@ -472,19 +473,28 @@ def evaluate_expression_text(text: str) -> pl.Expr:
     return expr
 
 
+EXPRESSION_HINT: t.Final = (
+    "Give polars SQL after an =, e.g. =heating_coll - cooling_coll, or Python text with pl as the polars module, e.g."
+    ' pl.col("heating_coll") - pl.col("cooling_coll")'
+)
+
+
 def get_expression_problem(text: str, estimatorcolumns: Collection[str]) -> tuple[str, str] | None:
     """Return the problem of the text of an expression item and a hint, or None for an expression that gives a series.
 
-    The text holds no style. The window shows the problem while the user types, and the command stops with it.
+    The text holds no style. The command stops with the problem.
     """
     try:
         expr = evaluate_expression_text(text)
     except (ValueError, TypeError) as exc:
-        hint = (
-            "Give polars SQL after an =, e.g. =heating_coll - cooling_coll, or Python text with pl as the polars"
-            ' module, e.g. pl.col("heating_coll") - pl.col("cooling_coll")'
-        )
-        return str(exc), hint
+        return str(exc), EXPRESSION_HINT
+    return get_evaluated_expression_problem(expr, text, estimatorcolumns)
+
+
+def get_evaluated_expression_problem(
+    expr: pl.Expr, text: str, estimatorcolumns: Collection[str]
+) -> tuple[str, str] | None:
+    """Return the problem of an expression that the text of a plot item gave and a hint, or None for a valid series."""
     if absentcolumns := [name for name in expr.meta.root_names() if name not in estimatorcolumns]:
         # a style with an unknown key stays in the text of an expression, see partition_series_style
         stylehint = (
@@ -500,6 +510,7 @@ def get_expression_problem(text: str, estimatorcolumns: Collection[str]) -> tupl
         )
     try:
         results = [run_on_sample_frame(expr, estimatorcolumns, rowcount) for rowcount in SAMPLE_ROWCOUNTS]
+        keepsroworder = keeps_row_order(expr, estimatorcolumns)
     except pl.exceptions.PolarsError as exc:
         # with the names alone, each column takes the type Float64, thus an error can come from that guess
         if not isinstance(estimatorcolumns, pl.Schema):
@@ -526,6 +537,13 @@ def get_expression_problem(text: str, estimatorcolumns: Collection[str]) -> tupl
             " each cell and timestep"
         )
         return problem, 'Give a condition with pl.when, e.g. pl.when(pl.col("Te") > 1e4).then(pl.col("Te"))'
+    # the plot puts the values next to the cells by position, thus a sort gives each cell the value of a different cell
+    if not keepsroworder:
+        problem = (
+            f"The plot item '{text}' changes the order of the rows, e.g. with sort(), reverse(), or shift(), and each"
+            " value of a series belongs to its own cell and timestep"
+        )
+        return problem, 'Give an expression of each row, or an aggregation, e.g. pl.col("Te") - pl.col("Te").mean()'
     # the plot multiplies the values by the weights, thus a text gives no series. A boolean gives 0 and 1
     if not ((dtype := result.dtypes[0]).is_numeric() or dtype == pl.Boolean):
         return (
@@ -592,23 +610,51 @@ def run_on_sample_frame(
     The schema alone does not find a type error, e.g. a str method on a float, or a filter that changes the number of
     rows. A pl.Schema gives the types of the columns, and each column of a list of names takes the type Float64.
     """
+    return get_sample_frame(expr, estimatorcolumns, rowcount).lazy().select(expr).collect()
+
+
+def get_sample_frame(expr: pl.Expr, estimatorcolumns: Collection[str], rowcount: int) -> pl.DataFrame:
+    """Return a sample frame of the columns that an expression reads, with the types of the estimator columns."""
     schema = get_column_schema(estimatorcolumns)
     inputcolumns = get_input_columns(expr, schema)
     samplecolumns = [
         get_sample_column(name, schema[name], rowcount, columnposition)
         for columnposition, name in enumerate(inputcolumns)
     ]
-    # an expression that reads no column can still give one value for each row, e.g. pl.int_range(pl.len()). A column
-    # with an empty name gives the rows, because a selector of the expression, e.g. "^cooling_.*$", cannot match it
-    sample = pl.DataFrame(samplecolumns or [pl.Series("", range(rowcount))])
-    return sample.lazy().select(expr).collect()
+    # an expression that reads no column can still give one value for each row, e.g. pl.repeat(1.0, pl.len()). A
+    # column with an empty name gives the rows, because a selector of the expression, e.g. "^cooling_.*$", cannot
+    # match it
+    return pl.DataFrame(samplecolumns or [pl.Series("", range(rowcount))])
+
+
+def keeps_row_order(expr: pl.Expr, estimatorcolumns: Collection[str]) -> bool:
+    """Return True if each value of an expression belongs to its own row, or if the expression gives one value.
+
+    An expression of each row, or an aggregation, gives the same values for a sample with its rows rotated by one, in
+    the rotated order. A sort, a reverse(), a shift(), or a cumulative sum gives different values.
+    """
+    sample = get_sample_frame(expr, estimatorcolumns, SAMPLE_ROWCOUNTS[0])
+    rotatedsample = pl.concat([sample.slice(1), sample.slice(0, 1)])
+    result = sample.lazy().select(expr).collect()
+    # get_evaluated_expression_problem reports a result of more or less than one column, or of a different length
+    if result.width != 1 or result.height != sample.height:
+        return True
+    values = result.to_series()
+    rotatedvalues = rotatedsample.lazy().select(expr).collect().to_series()
+    expected = pl.concat([values.slice(1), values.slice(0, 1)])
+    if not (values.dtype.is_numeric() or values.dtype == pl.Boolean):
+        return rotatedvalues.equals(expected)
+    # the sample values are of order 1, thus a sum in a different order differs by approximately 1e-16
+    rotated, wanted = rotatedvalues.cast(pl.Float64).to_numpy(), expected.cast(pl.Float64).to_numpy()
+    return np.allclose(rotated, wanted, rtol=0, atol=1e-9, equal_nan=True)
 
 
 def get_typed_item_problem(item: str, estimatorcolumns: Collection[str]) -> tuple[str, str] | None:
     """Return the problem of an expression item that the user types in the window, and the problem with a hint.
 
     The window shows the problem before it adds the item. Each item that is not an expression gives None, because the
-    command finds its problems.
+    command finds its problems. polars SQL runs no code, thus the window checks it fully, and Python text gets a check
+    of its syntax alone.
     """
     if not is_expression_item(item):
         return None
@@ -619,6 +665,15 @@ def get_typed_item_problem(item: str, estimatorcolumns: Collection[str]) -> tupl
         name, _ = read_series_style(item)
     except ValueError as exc:
         return str(exc), str(exc)
+    if not name.startswith(SQL_EXPRESSION_MARK):
+        # the window runs no Python text. The command runs it, on the model host for a remote model, and gives the
+        # other problems
+        try:
+            compile(name, "<plot item>", "eval")
+        except SyntaxError as exc:
+            problem = f"The plot item '{name}' is not valid Python: {exc.msg}"
+            return problem, f"{problem}. {EXPRESSION_HINT}"
+        return None
     if (expressionproblem := get_expression_problem(name, estimatorcolumns)) is None:
         return None
     problem, hint = expressionproblem
@@ -631,9 +686,13 @@ def parse_expression_item(text: str, estimatorcolumns: Collection[str]) -> pl.Ex
     The text names the series in the styles of the subplot, see split_plotitem_styles. get_series_variables gives the
     units and the weight of the series.
     """
-    if (problem := get_expression_problem(text, estimatorcolumns)) is not None:
+    try:
+        expr = evaluate_expression_text(text)
+    except (ValueError, TypeError) as exc:
+        exit_with_error(str(exc), EXPRESSION_HINT)
+    if (problem := get_evaluated_expression_problem(expr, text, estimatorcolumns)) is not None:
         exit_with_error(*problem)
-    return evaluate_expression_text(text).alias(text)
+    return expr.alias(text)
 
 
 # a name that SQL reads without quotes, e.g. heating_coll. A name such as heating_dep/total_dep needs double quotes
