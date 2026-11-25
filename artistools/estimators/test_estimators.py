@@ -5321,7 +5321,8 @@ def test_plot_item_gives_a_sql_expression(
     # the filter keeps each sample value, thus only the rows of the model show that it changes the number of rows
     filterkeepsamples = 'pl.col("Te").filter(pl.col("Te").is_between(-10, 10).fill_null(True))'
     assert plotitems.get_expression_problem(filterkeepsamples, ["Te"]) is None
-    for xtokens in ([], ["-x", "time"]):
+    xtokenlists: list[list[str]] = [[], ["-x", "time"]]
+    for xtokens in xtokenlists:
         with pytest.raises(SystemExit):
             get_plotestimators_figure(
                 [*xtokens, "--timestep", "50-54", "--plot", filterkeepsamples, str(modelpath)], tmp_path / "e.pdf"
