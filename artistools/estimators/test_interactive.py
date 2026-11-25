@@ -605,6 +605,20 @@ def test_interactive_command_keeps_a_polars_expression(
         assert_same_lines(viewer.fig, get_plotestimators_figure(tokens, tmp_path / "estimators.pdf"))
 
 
+def test_interactive_check_finds_a_type_error_of_polars_sql(
+    make_viewer: Callable[[str, list[str]], interactive.EstimatorViewer],
+) -> None:
+    """The viewer keeps the schema of the estimators, thus the check of a field finds a type error of polars SQL.
+
+    The viewer kept the names of the columns alone, and the check then left each type error to the plot.
+    """
+    viewer = make_viewer("estimators", [str(modelpath), "--timestep", "50", "--interactive"])
+    assert viewer.modeldata.estimatorschema.names() == list(viewer.modeldata.estimatorcolumns)
+    typeresult = plotitems.get_typed_item_problem("=LOWER(Te)", viewer.modeldata.estimatorschema)
+    assert typeresult is not None
+    assert "does not suit the types" in typeresult[0]
+
+
 def test_interactive_command_gives_the_default_subplots(
     tmp_path: Path,
     get_plotestimators_figure: Callable[[Sequence[str], Path], mplfig.Figure],

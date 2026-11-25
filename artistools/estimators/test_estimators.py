@@ -5474,17 +5474,6 @@ def test_long_expression_of_a_column_keeps_its_units(
     assert "erg/s/cm" in fig.axes[0].get_ylabel()
 
 
-def test_window_finds_a_type_error_of_polars_sql() -> None:
-    """The window gives the schema of the estimators to its check, thus a type error of polars SQL gives a problem.
-
-    The window gave the names of the columns alone, and the check then left each type error to the plot.
-    """
-    schema = pl.Schema({"Te": pl.Float32})
-    typeresult = plotitems.get_typed_item_problem("=LOWER(Te)", schema)
-    assert typeresult is not None
-    assert "does not suit the types" in typeresult[0]
-
-
 def test_window_runs_no_python_text_of_an_expression() -> None:
     """The window checks the syntax of Python text alone. The command runs the text, e.g. on the host of a model.
 
