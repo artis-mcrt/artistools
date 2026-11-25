@@ -80,10 +80,10 @@ def test_directionbin_takes_the_sign_of_a_tiny_diry() -> None:
 
     The old code tested the sign of -diry / |dir| after a cast to Float32, and 1e-300 became zero there.
     """
-    dfpackets = pl.LazyFrame({"dirx": [0.3], "diry": [-1e-300], "dirz": [0.2]})
+    dfpackets = pl.LazyFrame({"dirx": [0.96], "diry": [-1e-300], "dirz": [0.28]})
     dfpackets = at.packets.bin_packet_directions_polars(at.packets.add_packet_directions_lazypolars(dfpackets))
 
-    assert dfpackets.select("dirbin").collect().item() == get_reference_dirbin(0.3, -1e-300, 0.2, 10, 10)
+    assert dfpackets.select("dirbin").collect().item() == get_reference_dirbin(0.96, -1e-300, 0.28, 10, 10)
 
 
 def test_directionbins_unequal_bincounts() -> None:

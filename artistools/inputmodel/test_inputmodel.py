@@ -2582,6 +2582,8 @@ def test_dirbin_selects_the_cells_that_the_packet_binning_puts_in_the_bin(tmp_pa
     from artistools.packets import add_packet_directions_lazypolars
     from artistools.packets import bin_packet_directions_polars
 
+    # the packet code takes each direction as a unit vector, as ARTIS writes it
+    vel_r = (pl.col("vel_x_mid_on_c") ** 2 + pl.col("vel_y_mid_on_c") ** 2 + pl.col("vel_z_mid_on_c") ** 2).sqrt()
     lzmodel, modelmeta = at.scan_modeldata(modelpath_3d, printwarningsonly=True)
     dfcells = (
         at.inputmodel
@@ -2594,9 +2596,9 @@ def test_dirbin_selects_the_cells_that_the_packet_binning_puts_in_the_bin(tmp_pa
             add_packet_directions_lazypolars(
                 dfcells.select(
                     "modelgridindex",
-                    dirx=pl.col("vel_x_mid_on_c"),
-                    diry=pl.col("vel_y_mid_on_c"),
-                    dirz=pl.col("vel_z_mid_on_c"),
+                    dirx=pl.col("vel_x_mid_on_c") / vel_r,
+                    diry=pl.col("vel_y_mid_on_c") / vel_r,
+                    dirz=pl.col("vel_z_mid_on_c") / vel_r,
                 )
             )
         )
@@ -2650,6 +2652,8 @@ def test_dirbin_puts_each_cell_of_an_odd_grid_in_one_bin() -> None:
     from artistools.packets import add_packet_directions_lazypolars
     from artistools.packets import bin_packet_directions_polars
 
+    # the packet code takes each direction as a unit vector, as ARTIS writes it
+    vel_r = (pl.col("vel_x_mid_on_c") ** 2 + pl.col("vel_y_mid_on_c") ** 2 + pl.col("vel_z_mid_on_c") ** 2).sqrt()
     centres = np.arange(-2.0, 3.0)
     vel_x, vel_y, vel_z = (axis.ravel() for axis in np.meshgrid(centres, centres, centres, indexing="ij"))
     dfcells_5 = pl.DataFrame({
@@ -2674,9 +2678,9 @@ def test_dirbin_puts_each_cell_of_an_odd_grid_in_one_bin() -> None:
                 add_packet_directions_lazypolars(
                     dfcells.select(
                         "modelgridindex",
-                        dirx=pl.col("vel_x_mid_on_c"),
-                        diry=pl.col("vel_y_mid_on_c"),
-                        dirz=pl.col("vel_z_mid_on_c"),
+                        dirx=pl.col("vel_x_mid_on_c") / vel_r,
+                        diry=pl.col("vel_y_mid_on_c") / vel_r,
+                        dirz=pl.col("vel_z_mid_on_c") / vel_r,
                     )
                 )
             )

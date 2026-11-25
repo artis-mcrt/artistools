@@ -1273,10 +1273,13 @@ def get_dirbin_column_name(ncosthetabins: int | None = None, nphibins: int | Non
 def get_packet_angle_exprs(columns: Collection[str]) -> tuple[pl.Expr, pl.Expr]:
     """Return the Float32 cos θ and ϕ of the direction of each packet, from dirx, diry, and dirz.
 
-    A column phi in columns gives ϕ, and the expression then does no atan2.
+    ARTIS writes each direction as a unit vector with 6 significant digits, thus cos θ is dirz. A column phi in
+    columns gives ϕ, and the expression then does no atan2.
     """
-    costheta, phi = get_costheta_phi_exprs(pl.col("dirx"), pl.col("diry"), pl.col("dirz"))
-    return costheta.cast(pl.Float32), pl.col("phi") if "phi" in columns else phi.cast(pl.Float32)
+    # |dir| differs from 1 by at most 8.9e-7 for 9.6e7 packets of the 3D SFHo model. A division by |dir| reads dirx
+    # and diry, and the phi bins of plotspherical then took 0.93 s and not 0.75 s for 3.5e8 packets
+    _, phi = get_costheta_phi_exprs(pl.col("dirx"), pl.col("diry"), pl.col("dirz"))
+    return pl.col("dirz").cast(pl.Float32), pl.col("phi") if "phi" in columns else phi.cast(pl.Float32)
 
 
 def get_dirbin_expr(
