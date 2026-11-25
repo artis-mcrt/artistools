@@ -107,6 +107,7 @@ from artistools.misc.dirbins import get_dirbins as get_dirbins
 from artistools.misc.dirbins import get_opacity_condition_label as get_opacity_condition_label
 from artistools.misc.dirbins import get_phi_bin_edges_ascending as get_phi_bin_edges_ascending
 from artistools.misc.dirbins import get_phi_bins as get_phi_bins
+from artistools.misc.dirbins import get_phi_expr as get_phi_expr
 from artistools.misc.dirbins import get_phibin_expr as get_phibin_expr
 from artistools.misc.dirbins import get_phibin_rank_ascending as get_phibin_rank_ascending
 from artistools.misc.dirbins import get_viewingdirection_costhetabincount as get_viewingdirection_costhetabincount

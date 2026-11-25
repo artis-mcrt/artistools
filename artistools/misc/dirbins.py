@@ -486,6 +486,16 @@ def check_dirbin(
         exit_with_error(f"{optionname} {dirbin} is no direction bin", f"Give {alltext}a bin from 0 to {ndirbins - 1}")
 
 
+def get_phi_expr(x: pl.Expr, y: pl.Expr, z: pl.Expr) -> pl.Expr:
+    """Return ϕ = atan2(y, x) of each direction, from 0 to 2π, with ϕ from +x towards +y, as in ARTIS.
+
+    ARTIS takes cos ϕ = 1 for a direction with sin θ < 1e-12 (get_escapedirectionbin in vectors.h), where ϕ has no
+    definition. Thus such a direction gets ϕ = 0, or ϕ = 2π for a negative y, and the bin of ARTIS.
+    """
+    isonzaxis = x**2 + y**2 <= 1e-24 * (x**2 + y**2 + z**2)
+    return pl.when(~isonzaxis).then(pl.arctan2(y, x) % (2 * math.pi)).when(y < 0).then(2 * math.pi).otherwise(0.0)
+
+
 def get_costhetabin_expr(costheta: pl.Expr, ncosthetabins: int | None = None) -> pl.Expr:
     """Return the costheta bin of ARTIS for each cos θ. The last bin includes cos θ = 1, and NaN gives bin 0."""
     if ncosthetabins is None:
@@ -493,22 +503,18 @@ def get_costhetabin_expr(costheta: pl.Expr, ncosthetabins: int | None = None) ->
     return pl.min_horizontal(((costheta + 1) / 2.0 * ncosthetabins).fill_nan(0).cast(pl.Int32), ncosthetabins - 1)
 
 
-def get_phibin_expr(cosphi: pl.Expr, testphi: pl.Expr, nphibins: int | None = None) -> pl.Expr:
-    """Return the historical phi bin of ARTIS for each direction, from cosphi and the sign of testphi.
+def get_phibin_expr(phi: pl.Expr, diry: pl.Expr, nphibins: int | None = None) -> pl.Expr:
+    """Return the historical phi bin of ARTIS for each direction, from phi and the sign of the y component.
 
-    The phi angle decreases as the bin index increases, for historical consistency with ARTIS.
+    ARTIS bins the angle acos(cos ϕ), which is 2π - ϕ for a negative y component, or acos(cos ϕ) + π, which is ϕ + π
+    for the other directions. Thus the bin index decreases as phi increases from π to 2π.
     """
     if nphibins is None:
         nphibins = get_viewingdirection_phibincount()
-    # acos(cosphi) + pi reaches exactly 2 pi when cosphi == -1, which would otherwise land in the first phi bin of the
-    # next costheta ring, so clamp to the last bin
+    # the angle ϕ + π reaches exactly 2π at ϕ = π, which would otherwise land in the first phi bin of the next costheta
+    # ring, so clamp to the last bin
     return pl.min_horizontal(
-        (
-            pl
-            .when(testphi > 0)
-            .then(cosphi.arccos() / (2 * math.pi) * nphibins)
-            .otherwise((cosphi.arccos() + math.pi) / (2 * math.pi) * nphibins)
-        )
+        (pl.when(diry < 0).then(2 * math.pi - phi).otherwise(phi + math.pi) / (2 * math.pi) * nphibins)
         .fill_nan(0)
         .cast(pl.Int32),
         nphibins - 1,
