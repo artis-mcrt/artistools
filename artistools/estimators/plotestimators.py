@@ -1359,7 +1359,7 @@ def get_series_plans(
             )
         colexpr = pl.col(variable)
 
-    seriesname, variablename, weightvariable = get_series_variables(colexpr, estimators.collect_schema().names())
+    seriesname, variablename, weightvariable = get_series_variables(colexpr, estimators.collect_schema())
 
     serieslabel = get_varname_formatted(seriesname)
     units_string = get_units_string(variablename)
@@ -1700,7 +1700,7 @@ def get_subplot_plans(
     """
     settings: SubplotSettings = {"showlegend": False, "legendncols": 1}
     # the text of an expression item names its series, and get_series_variables gives the variable of its units
-    exprcolumns = estimators.collect_schema().names() if any(isinstance(var, pl.Expr) for var in plotitems) else []
+    exprcolumns = estimators.collect_schema() if any(isinstance(var, pl.Expr) for var in plotitems) else pl.Schema()
     ylabels = [
         get_ylabel(get_series_variables(var, exprcolumns)[1] if isinstance(var, pl.Expr) else var)
         for var in plotitems
@@ -3604,8 +3604,11 @@ def get_plot_estimators(
 
 def add_plot_columns(
     args: argparse.Namespace, estimators: pl.LazyFrame, modelmeta: dict[str, t.Any]
-) -> tuple[pl.LazyFrame, list[str]]:
-    """Return the estimators with the columns that the plot reads, and the names of all the columns."""
+) -> tuple[pl.LazyFrame, pl.Schema]:
+    """Return the estimators with the columns that the plot reads, and the schema of all the columns.
+
+    The schema gives the names, and its types let the check of an expression item find a type error.
+    """
     # the average around the z axis applies the limit of the cylindrical radius itself. The corners of a cube hold
     # matter, thus get_cell_selection_description gives the limit in the log
     if args.modelgridindex is None and args.dimensionreduce == 1:
@@ -3619,14 +3622,14 @@ def add_plot_columns(
         estimators = estimators.filter(get_cell_direction_selection(directionrange, columns))
 
     estimators = estimators.with_columns(deltavol_deltat=pl.col("volume") * pl.col("twidth_days"))
-    return estimators, estimators.collect_schema().names()
+    return estimators, estimators.collect_schema()
 
 
 @on_model_host
 def get_plot_columns(modelpath: Path, args: argparse.Namespace, timesteps_included: list[int]) -> list[str]:
     """Return the names of the columns that a plot can read, for --listvariables and --listnuclides."""
     estimators, modelmeta = get_plot_estimators(args, modelpath, timesteps_included)
-    return add_plot_columns(args, estimators, modelmeta)[1]
+    return add_plot_columns(args, estimators, modelmeta)[1].names()
 
 
 # the data of each figure of the arguments, and the arguments that the data code changed

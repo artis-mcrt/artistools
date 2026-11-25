@@ -498,8 +498,17 @@ def get_expression_problem(text: str, estimatorcolumns: Collection[str]) -> tupl
             or suggest_names(absentcolumns[0], estimatorcolumns)
             or "Run with --listvariables to see the variables of this model",
         )
-    if (outputcolumns := get_output_schema(expr, estimatorcolumns)) is None:
-        return None
+    try:
+        outputcolumns = get_output_schema(expr, estimatorcolumns)
+    except pl.exceptions.PolarsError as exc:
+        # with the names alone, each column takes the type Float64, thus an error can come from that guess
+        if not isinstance(estimatorcolumns, pl.Schema):
+            return None
+        reason = next((line for line in str(exc).splitlines() if line.strip()), type(exc).__name__)
+        return (
+            f"The plot item '{text}' does not suit the types of the estimator columns: {reason}",
+            "Give an expression of the columns that gives a number, e.g. =Te / 1e4",
+        )
     if len(outputcolumns) != 1:
         hint = (
             "Give one plot item for each column, e.g. =Te and =TR, or join the columns, e.g."
@@ -515,16 +524,17 @@ def get_expression_problem(text: str, estimatorcolumns: Collection[str]) -> tupl
     return None
 
 
-def get_output_schema(expr: pl.Expr, estimatorcolumns: Collection[str]) -> pl.Schema | None:
-    """Return the names and the types of the output columns of an expression, or None if polars cannot resolve it.
+def get_output_schema(expr: pl.Expr, estimatorcolumns: Collection[str]) -> pl.Schema:
+    """Return the names and the types of the output columns of an expression. A fault gives a PolarsError.
 
     A selector such as pl.col("^heating_.*$") names no root column, thus only the columns of the model give its outputs.
-    Each column takes the type Float64 here, because the reader of the columns can change their types.
+    The expression runs on an empty frame, because the schema alone does not find a type error, e.g. a str method on a
+    float. A pl.Schema gives the types of the columns, and each column of a list of names takes the type Float64.
     """
-    try:
-        return pl.LazyFrame(schema=dict.fromkeys(estimatorcolumns, pl.Float64)).select(expr).collect_schema()
-    except pl.exceptions.PolarsError:
-        return None
+    schema = (
+        estimatorcolumns if isinstance(estimatorcolumns, pl.Schema) else dict.fromkeys(estimatorcolumns, pl.Float64)
+    )
+    return pl.LazyFrame(schema=schema).select(expr).collect().schema
 
 
 def get_typed_item_problem(item: str, estimatorcolumns: Collection[str]) -> tuple[str, str] | None:
@@ -606,14 +616,17 @@ def get_series_variables(colexpr: pl.Expr, estimatorcolumns: Collection[str]) ->
     if not is_expression_item(seriesname):
         return seriesname, seriesname, seriesname
     unaliased = colexpr.meta.undo_aliases()
-    # polars names 2 * pl.col("init_X_Fe56") after the literal, thus the name of the result is not the first column
-    firstcolumn = next(iter(unaliased.meta.root_names()), None)
-    if firstcolumn is None:
-        # a selector names no root column, e.g. pl.sum_horizontal(pl.col("^init_X_.*$")). Its output takes the name
-        # of the first column that it selects
-        outputcolumns = get_output_schema(unaliased, estimatorcolumns)
-        firstcolumn = next(iter(outputcolumns.names()), seriesname) if outputcolumns is not None else seriesname
-    return seriesname, firstcolumn if unaliased.meta.is_column() else seriesname, firstcolumn
+    try:
+        outputnames = get_output_schema(unaliased, estimatorcolumns).names()
+    except pl.exceptions.PolarsError:
+        outputnames: list[str] = []
+    # polars names 2 * pl.col("init_X_Fe56") after the literal, thus the name of the result is not the first column.
+    # A selector names no root column, e.g. pl.sum_horizontal(pl.col("^init_X_.*$")), and its output takes the name
+    # of the first column that it selects
+    firstcolumn = next(iter(unaliased.meta.root_names()), None) or next(iter(outputnames), seriesname)
+    # a selection of one column, e.g. pl.col("Te") or pl.col("^Te$"), is the variable itself
+    isonecolumn = unaliased.meta.is_column_selection() and len(outputnames) == 1
+    return seriesname, firstcolumn if isonecolumn else seriesname, firstcolumn
 
 
 def get_series_items(subplot: Sequence[str]) -> list[str]:

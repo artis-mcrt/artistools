@@ -5284,6 +5284,11 @@ def test_expression_selector_takes_the_columns_of_the_model() -> None:
         "heating_coll",
     )
 
+    # a selector of one column is the variable itself, thus it keeps the units of the column
+    assert (
+        plotitems.get_series_variables(plotitems.parse_expression_item('pl.col("^Te$")', columns), columns)[1] == "Te"
+    )
+
     # the first column that a selector takes gives the weight, thus a sum of mass fractions takes the cell mass
     massfractionsum = 'pl.sum_horizontal(pl.col("^init_X_.*$"))'
     weightvariable = plotitems.get_series_variables(plotitems.parse_expression_item(massfractionsum, columns), columns)[
@@ -5308,6 +5313,16 @@ def test_expression_gives_numbers_in_a_subplot_of_variables() -> None:
     assert "values of the type String" in textresult[0]
     # a boolean gives 0 and 1
     assert plotitems.get_expression_problem("=Te > 1000", columns) is None
+
+    # the schema of the estimators gives the types, thus a str method on a float column gives a problem. With the
+    # names alone, each column takes the type Float64, and the check leaves the type to the plot
+    schema = pl.Schema({"Te": pl.Float32, "timestep": pl.Int32})
+    uppercase = 'pl.col("Te").str.to_uppercase()'
+    typeresult = plotitems.get_expression_problem(uppercase, schema)
+    assert typeresult is not None
+    assert "does not suit the types" in typeresult[0]
+    assert plotitems.get_expression_problem('pl.col("timestep") & 1', schema) is None
+    assert plotitems.get_expression_problem('pl.col("timestep") & 1', ["Te", "timestep"]) is None
 
     with pytest.raises(SystemExit):
         plotitems.normalise_plotitems(["populations", "Fe II", "=Te"], columns)
