@@ -181,8 +181,7 @@ def plot_slice_modelcolumn(
         with np.errstate(divide="ignore"):
             colorscale = np.log10(colorscale)
 
-    cmps_to_beta = 1.0 / C_cm_per_s
-    unitfactor = cmps_to_beta
+    unitfactor = 1.0 / {"c": C_cm_per_s, "kmps": km_to_cm}[args.velocityunitplot]
     t_model_s = t_model_d * day_to_s
 
     # turn 1D flattened array back into 2D array
@@ -285,12 +284,17 @@ def get_table_column_name(colname: str, logcolorscale: bool) -> str:
 
 
 def get_slice_table(
-    images: Sequence[AxesImage], colnames: Sequence[str], plotaxis1: str, plotaxis2: str, logcolorscale: bool
+    images: Sequence[AxesImage],
+    colnames: Sequence[str],
+    plotaxis1: str,
+    plotaxis2: str,
+    logcolorscale: bool,
+    velocityunitplot: str,
 ) -> pl.DataFrame:
     """Return one row for each pixel of the slice, with the velocities of the pixel centre and the value of each panel.
 
     The values come from the images, thus they have the floor and the log10 of the colour scale. A cell that
-    --hideemptycells hides has a null value.
+    --hideemptycells hides has a null value. The velocities use c or km/s, as -velocityunitplot selects.
     """
     xmin, xmax, ymin, ymax = images[0].get_extent()
     firstarray = images[0].get_array()
@@ -298,10 +302,11 @@ def get_slice_table(
     nrows, ncols = firstarray.shape[:2]
     xedges = np.linspace(xmin, xmax, ncols + 1)
     yedges = np.linspace(ymin, ymax, nrows + 1)
+    unitsuffix = {"c": "on_c", "kmps": "kmps"}[velocityunitplot]
     # origin="lower" puts row 0 of the array at ymin, and each row of the array holds one value of y
     columns = [
-        pl.Series(f"vel_{plotaxis1}_on_c", np.tile((xedges[:-1] + xedges[1:]) / 2.0, nrows)),
-        pl.Series(f"vel_{plotaxis2}_on_c", np.repeat((yedges[:-1] + yedges[1:]) / 2.0, ncols)),
+        pl.Series(f"vel_{plotaxis1}_{unitsuffix}", np.tile((xedges[:-1] + xedges[1:]) / 2.0, nrows)),
+        pl.Series(f"vel_{plotaxis2}_{unitsuffix}", np.repeat((yedges[:-1] + yedges[1:]) / 2.0, ncols)),
     ]
     for image, colname in zip(images, colnames, strict=True):
         valuegrid = image.get_array()
@@ -395,8 +400,14 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
         cbar = fig.colorbar(im, cax=fig.add_subplot(gs[0, column]), location="top", use_gridspec=True)
         cbar.set_label(get_colorbar_label(colname, args.logcolorscale))
 
-    xlabel = r"v$_{" + str(plotaxis1) + r"}$ [$c$]"
-    ylabel = r"v$_{" + str(plotaxis2) + r"}$ [$c$]"
+    if args.velocityunitplot == "kmps":
+        for ax in axes:
+            ax.xaxis.set_major_formatter(lambda value, _: f"{value / 1e3:g}")
+            ax.yaxis.set_major_formatter(lambda value, _: f"{value / 1e3:g}")
+
+    unitlabel = {"c": "$c$", "kmps": r"$10^3$ km/s"}[args.velocityunitplot]
+    xlabel = r"v$_{" + str(plotaxis1) + r"}$ [" + unitlabel + "]"
+    ylabel = r"v$_{" + str(plotaxis2) + r"}$ [" + unitlabel + "]"
 
     axes[0].set_xlabel(xlabel)
     axes[0].set_ylabel(ylabel)
@@ -405,7 +416,7 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
     outfilename = resolve_outputfile(args.outputfile, defaultfilename)
 
     if getattr(args, "print_data", False) or getattr(args, "write_data", False):
-        dfslice = get_slice_table(images, colnames, plotaxis1, plotaxis2, args.logcolorscale)
+        dfslice = get_slice_table(images, colnames, plotaxis1, plotaxis2, args.logcolorscale, args.velocityunitplot)
         output_data(args, {"": dfslice}, outfilename)
     save_figure(fig, outfilename, args=args, format="pdf")
 
@@ -415,18 +426,21 @@ def get_3d_tables(
     values: npt.NDArray[np.floating],
     valuename: str,
     surfacelevels: npt.NDArray[np.floating],
+    velocityunitplot: str,
 ) -> dict[str, pl.DataFrame]:
     """Return the values of the cells that the isosurfaces come from, and the value of each isosurface.
 
-    The mesh of pyvista has one point for each cell, at the lower corner of the cell, thus the velocities are the
-    lower corners in units of c. values has the order (x, y, z).
+    The pyvista mesh has one point at the lower corner of each cell. The velocities use c or km/s, as -velocityunitplot
+    selects.
+    The axes of `values` have the order (x, y, z).
     """
     x, y, z = np.meshgrid(xgrid, xgrid, xgrid, indexing="ij")
+    unitsuffix = {"c": "on_c", "kmps": "kmps"}[velocityunitplot]
     return {
         "": pl.DataFrame({
-            "vel_x_min_on_c": x.ravel(order="F"),
-            "vel_y_min_on_c": y.ravel(order="F"),
-            "vel_z_min_on_c": z.ravel(order="F"),
+            f"vel_x_min_{unitsuffix}": x.ravel(order="F"),
+            f"vel_y_min_{unitsuffix}": y.ravel(order="F"),
+            f"vel_z_min_{unitsuffix}": z.ravel(order="F"),
             valuename: values.ravel(order="F"),
         }),
         "_isosurfaces": pl.DataFrame({f"{valuename}_of_isosurface": surfacelevels}),
@@ -469,7 +483,7 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     # generate grid from data
     grid = round(len(model["rho"]) ** (1.0 / 3.0))
     surfacearr = np.asarray(model[coloursurfaceby], dtype=float)
-    vmax /= C_cm_per_s
+    vmax /= {"c": C_cm_per_s, "kmps": km_to_cm}[args.velocityunitplot]
     # cells are ordered with x varying fastest, i.e. Fortran order on (nx, ny, nz)
     surfacecolorscale = surfacearr.reshape((grid, grid, grid), order="F")
     xgrid = -vmax + 2 * np.arange(grid) * vmax / grid
@@ -499,6 +513,7 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
                 surfacecolorscale,
                 coloursurfaceby,
                 get_levels_with_surface(surf, coloursurfaceby, surfacepositions),
+                args.velocityunitplot,
             ),
             modelpath / "3Dplot.png",
         )
@@ -514,13 +529,20 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
 
     plotter: t.Any = pv.Plotter()
     plotcoloropacity = [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]  # some choices: 'linear' 'sigmoid'
+    axistitles = (
+        ("vx / c", "vy / c", "vz / c")
+        if args.velocityunitplot == "c"
+        else ("vx [10³ km/s]", "vy [10³ km/s]", "vz [10³ km/s]")
+    )
+    axes_ranges = tuple(bound / 1e3 for bound in mesh.bounds) if args.velocityunitplot == "kmps" else None
     plotter.show_bounds(
         mesh=mesh,
+        axes_ranges=axes_ranges,
         grid=False,
         location="outer",
-        xtitle="vx / c",
-        ytitle="vy / c",
-        ztitle="vz / c",
+        xtitle=axistitles[0],
+        ytitle=axistitles[1],
+        ztitle=axistitles[2],
         ticks="inside",
         minor_ticks=False,
         font_size=28,
@@ -561,6 +583,16 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-surfaces3d", type=float, nargs="+", help="Define positions of surfaces for 3D plots")
 
     parser.add_argument("-floorval", default=None, type=float, help="Set a floor value for colorscale. Expects float")
+
+    parser.add_argument(
+        "-velocityunitplot",
+        choices=["c", "kmps"],
+        default="c",
+        help=(
+            "Set the velocity-axis unit to c or kmps. c is the speed of light, and kmps means km/s."
+            " For kmps, the axes use 10^3 km/s and the data tables use km/s"
+        ),
+    )
 
     addarg_sliceaxis(parser, default="+z", helptext="Slice axis for 2D plots")
     addarg_data_output(parser)

@@ -4002,7 +4002,7 @@ def test_plotinitialcomposition_3d_tables_follow_the_order_of_the_cells() -> Non
 
     xgrid = np.array([-0.2, 0.0])
     cellvalues = np.arange(8.0)
-    tables = get_3d_tables(xgrid, cellvalues.reshape((2, 2, 2), order="F"), "rho", np.array([1.0, 5.0]))
+    tables = get_3d_tables(xgrid, cellvalues.reshape((2, 2, 2), order="F"), "rho", np.array([1.0, 5.0]), "c")
     dfcells = tables[""]
     assert dfcells["rho"].to_list() == cellvalues.tolist()
     assert dfcells["vel_x_min_on_c"].to_list() == [-0.2, 0.0] * 4
