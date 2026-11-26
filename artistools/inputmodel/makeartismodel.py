@@ -8,6 +8,7 @@ from pathlib import Path
 
 import polars as pl
 
+from artistools.constants import day_to_s
 from artistools.constants import Msun_to_g
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import CELL_ID_FILE_NAMES
@@ -16,6 +17,7 @@ from artistools.inputmodel.core import find_abundance_file
 from artistools.inputmodel.core import find_ye_file
 from artistools.inputmodel.core import get_elemabundances_of_model_columns
 from artistools.inputmodel.core import get_gridcontributions_folder
+from artistools.inputmodel.core import get_middle_layer_lower_edge
 from artistools.inputmodel.core import get_model_input_folder
 from artistools.inputmodel.core import get_modelmeta
 from artistools.inputmodel.core import MODEL_FILE_NAMES
@@ -40,6 +42,7 @@ from artistools.misc import addarg_force
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
 from artistools.misc import addarg_show
+from artistools.misc import ALL_MODEL_EDGE_KEYS
 from artistools.misc import confirm_overwrite
 from artistools.misc import exit_with_error
 from artistools.misc import firstexisting_or_none
@@ -77,6 +80,28 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         choices=[0, 1, 2],
         help="The number of dimensions: 0 for one-zone, 1 for spherically symmetric 1D, and 2 for 2D. A 3D Cartesian"
         " model gives a 2D cylindrical model, and a 3D spherical model gives a 2D spherical model",
+    )
+
+    parser.add_argument(
+        "--make-2d-model-from-slice-axis",
+        dest="make2dmodelfromsliceaxis",
+        choices=["x", "y", "z"],
+        help="Select the axis normal to a central layer of a 3D Cartesian model for a 2D cylindrical model",
+    )
+    parser.add_argument(
+        "--make2dmodelfromsliceaxis", dest="make2dmodelfromsliceaxis", choices=["x", "y", "z"], help=argparse.SUPPRESS
+    )
+    parser.add_argument(
+        "--model-r-coord-axis-2d",
+        dest="modelrcoordaxis2d",
+        choices=["+x", "+y", "+z", "-x", "-y", "-z"],
+        help="Select the signed axis of the slice that gives the cylindrical radius, for example +y",
+    )
+    parser.add_argument(
+        "--modelrcoordaxis2d",
+        dest="modelrcoordaxis2d",
+        choices=["+x", "+y", "+z", "-x", "-y", "-z"],
+        help=argparse.SUPPRESS,
     )
 
     parser.add_argument(
@@ -309,7 +334,120 @@ def get_output_format_version(args: argparse.Namespace, modelpath: Path) -> int:
     return 2 if get_model_coordinates(modelmeta) == "spherical3d" and args.dimensionreduce == 2 else 1
 
 
-def reduce_model_dimensions(modelpath: Path, outdir: Path, ndim_out: int, outputformatversion: int) -> None:
+def make_cylindrical_slice(
+    dfmodel: pl.LazyFrame,
+    modelmeta: dict[str, t.Any],
+    dfelabundances: pl.LazyFrame,
+    dfgridcontributions: pl.DataFrame | None,
+    sliceaxis: str,
+    radialaxis: str,
+) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame | None, dict[str, t.Any]]:
+    """Make a cylindrical model from one central half-plane of a 3D Cartesian model."""
+    if get_model_coordinates(modelmeta) != "cartesian3d":
+        msg = "A cylindrical slice needs a 3D Cartesian model"
+        raise ValueError(msg)
+
+    if sliceaxis not in {"x", "y", "z"} or radialaxis not in {"+x", "+y", "+z", "-x", "-y", "-z"}:
+        msg = "A cylindrical slice needs a Cartesian slice axis and a signed Cartesian radius axis"
+        raise ValueError(msg)
+    if sliceaxis == radialaxis[1:]:
+        msg = "The slice axis and the cylindrical radius axis must be different"
+        raise ValueError(msg)
+
+    ncoordgrid = int(modelmeta["ncoordgridx"])
+    if ncoordgrid % 2 or any(modelmeta[f"ncoordgrid{axis}"] != ncoordgrid for axis in "yz"):
+        msg = "A cylindrical slice needs the same even number of cells on each axis"
+        raise ValueError(msg)
+
+    radiusaxis = radialaxis[1]
+    verticalaxis = next(axis for axis in ("x", "y", "z") if axis not in {sliceaxis, radiusaxis})
+    slicedf = dfmodel.select(f"pos_{sliceaxis}_min").collect()
+    sliceedge = get_middle_layer_lower_edge(slicedf, sliceaxis, positive=True)
+    radialmid = pl.col(f"pos_{radiusaxis}_mid")
+    signedradialmid = radialmid if radialaxis[0] == "+" else -radialmid
+    selected = (
+        add_derived_cols_to_modeldata(dfmodel, modelmeta)
+        .filter((pl.col(f"pos_{sliceaxis}_min") == sliceedge) & (signedradialmid > 0))
+        .with_columns(pos_rcyl_mid=signedradialmid, pos_z_mid=pl.col(f"pos_{verticalaxis}_mid"))
+        .sort("pos_z_mid", "pos_rcyl_mid")
+        .with_row_index("outputcellid", offset=1)
+        .with_columns(pl.col("outputcellid").cast(pl.Int32))
+        .collect()
+    )
+    if selected.height != ncoordgrid**2 // 2:
+        msg = f"The slice has {selected.height} cells, but the cylindrical grid needs {ncoordgrid**2 // 2}"
+        raise ValueError(msg)
+
+    mapping = selected.select("inputcellid", "outputcellid").lazy()
+    abundances = (
+        dfelabundances
+        .join(mapping, on="inputcellid", how="inner")
+        .drop("inputcellid")
+        .rename({"outputcellid": "inputcellid"})
+        .sort("inputcellid")
+    )
+    contributions = (
+        dfgridcontributions
+        .lazy()
+        .join(mapping, left_on="cellindex", right_on="inputcellid", how="inner")
+        .drop("cellindex")
+        .rename({"outputcellid": "cellindex"})
+        .sort("cellindex", "particleid")
+        if dfgridcontributions is not None
+        else pl.LazyFrame()
+    )
+    dfabundances_out, dfcontributions_out = pl.collect_all((abundances, contributions))
+    if dfabundances_out["inputcellid"].to_list() != list(range(1, selected.height + 1)):
+        msg = "The slice needs one row of elemental abundances for each cell"
+        raise ValueError(msg)
+
+    inputcolumns = dfmodel.collect_schema().names()
+    modelcolumns = [
+        col
+        for col in inputcolumns
+        if col not in {"inputcellid", "modelgridindex"} and not col.startswith(("pos_", "vel_"))
+    ]
+    dfmodel_out = selected.select(
+        pl.col("outputcellid").alias("inputcellid"), "pos_rcyl_mid", "pos_z_mid", *modelcolumns
+    )
+    xmax = modelmeta["vmax_cmps"] * modelmeta["t_model_init_days"] * day_to_s
+    edgekeys = (*ALL_MODEL_EDGE_KEYS, "firstinputcellid", "formatversion", "mirror_plane")
+    modelmeta_out = {
+        key: value
+        for key, value in modelmeta.items()
+        if not key.startswith(("ncoord", "wid_init")) and key not in edgekeys
+    }
+    modelmeta_out.update({
+        "dimensions": 2,
+        "coordinates": "cylindrical2d",
+        "npts_model": selected.height,
+        "ncoordgridrcyl": ncoordgrid // 2,
+        "ncoordgridz": ncoordgrid,
+        "wid_init_rcyl": 2 * xmax / ncoordgrid,
+        "wid_init_z": 2 * xmax / ncoordgrid,
+    })
+    print(
+        f"The slice uses the central layer on the positive {sliceaxis} side. The {radialaxis} axis gives the"
+        f" cylindrical radius, and the {verticalaxis} axis gives the z coordinate. Each 2D cell uses the density"
+        " and composition of its source 3D cell."
+    )
+    print("The 2D model assumes axial symmetry about the z axis. Its mass comes from the cylindrical cell volumes.")
+    return (
+        dfmodel_out,
+        dfabundances_out,
+        dfcontributions_out if dfgridcontributions is not None else None,
+        modelmeta_out,
+    )
+
+
+def reduce_model_dimensions(
+    modelpath: Path,
+    outdir: Path,
+    ndim_out: int,
+    outputformatversion: int,
+    sliceaxis: str | None = None,
+    radialaxis: str | None = None,
+) -> None:
     """Write the model of a model path with ndim_out dimensions into outdir, with its abundances and contributions.
 
     Ye.txt has the cells of the source model, thus the reduced model gets the electron fractions in its column Ye.
@@ -330,18 +468,27 @@ def reduce_model_dimensions(modelpath: Path, outdir: Path, ndim_out: int, output
         # model, thus the reduced model gets these values in its column Ye, also in version 1
         dfmodel = with_ye_of_yefile(dfmodel.collect(), yefilepath).lazy()
 
-    (dfmodel_out, dfelabundances_out, dfgridcontributions_out, modelmeta_out) = dimension_reduce_model(
-        dfmodel=dfmodel,
-        outputdimensions=ndim_out,
-        dfelabundances=dfelabundances,
-        dfgridcontributions=dfgridcontributions,
-        modelmeta=modelmeta,
-    )
+    if sliceaxis is not None and radialaxis is not None:
+        dfmodel_out, dfelabundances_out, dfgridcontributions_out, modelmeta_out = make_cylindrical_slice(
+            dfmodel, modelmeta, dfelabundances, dfgridcontributions, sliceaxis, radialaxis
+        )
+    else:
+        (dfmodel_out, dfelabundances_out, dfgridcontributions_out, modelmeta_out) = dimension_reduce_model(
+            dfmodel=dfmodel,
+            outputdimensions=ndim_out,
+            dfelabundances=dfelabundances,
+            dfgridcontributions=dfgridcontributions,
+            modelmeta=modelmeta,
+        )
     outdir.mkdir(exist_ok=True, parents=True)
     modelmeta_out["headercommentlines"] = [
         *modelmeta.get("headercommentlines", []),
         f"Dimension reduced from {ndim_in}-dimensional model",
     ]
+    if sliceaxis is not None and radialaxis is not None:
+        modelmeta_out["headercommentlines"].append(
+            f"Central layer on positive {sliceaxis}, with cylindrical radius from {radialaxis}"
+        )
     modelmeta_out["formatversion"] = outputformatversion
     if outputformatversion == 1:
         # the reduced model has different cells, thus no Ye.txt of the output folder is of this model
@@ -351,12 +498,23 @@ def reduce_model_dimensions(modelpath: Path, outdir: Path, ndim_out: int, output
         dfmodel_out, dfelabundances_out, dfgridcontributions_out = with_cell_ids_from_zero(
             dfmodel_out, dfelabundances_out, dfgridcontributions_out
         )
+    extracols = (
+        [
+            col
+            for col in dfmodel_out.columns
+            if col not in {"inputcellid", "rho", "logrho", "mass_g", "pos_rcyl_mid", "pos_z_mid"}
+            and not col.startswith("X_")
+        ]
+        if sliceaxis is not None
+        else []
+    )
     # a version 1 model also gets abundances.txt, and a version 2 model gets otherstable columns
     # the overwrite prompt names the Ye.txt and the opacity.txt of an earlier model in the output folder
     save_modeldata(
         dfmodel=dfmodel_out,
         modelmeta=modelmeta_out,
         outpath=outdir,
+        extracols=extracols,
         dfelabundances=dfelabundances_out,
         deletecellidfiles=True,
     )
@@ -373,6 +531,20 @@ def reduce_model_dimensions(modelpath: Path, outdir: Path, ndim_out: int, output
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
     """Tools to create an ARTIS input model."""
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
+
+    if args.make2dmodelfromsliceaxis is not None or args.modelrcoordaxis2d is not None:
+        if (
+            args.dimensionreduce != 2
+            or args.downscale3dgrid
+            or args.make2dmodelfromsliceaxis is None
+            or args.modelrcoordaxis2d is None
+        ):
+            exit_with_error(
+                "A cylindrical slice needs --dimensionreduce 2 and both slice axis options",
+                "Give --make-2d-model-from-slice-axis and --model-r-coord-axis-2d without --downscale3dgrid",
+            )
+        if args.make2dmodelfromsliceaxis == args.modelrcoordaxis2d[1:]:
+            exit_with_error("The slice axis and the cylindrical radius axis must be different")
 
     modelpath_given = bool(args.modelpath)
     args.modelpath = normalize_path_list(args.modelpath)
@@ -422,7 +594,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         ndim_out = args.dimensionreduce
         assert ndim_out in {0, 1, 2}
         for modelpath, outdir in zip(args.modelpath, outputfolders["dimensionreduce"], strict=True):
-            reduce_model_dimensions(modelpath, outdir, ndim_out, get_output_format_version(args, modelpath))
+            reduce_model_dimensions(
+                modelpath,
+                outdir,
+                ndim_out,
+                get_output_format_version(args, modelpath),
+                args.make2dmodelfromsliceaxis,
+                args.modelrcoordaxis2d,
+            )
 
     for modelpath, outdir in zip(args.modelpath, outputfolders.get("convertformat", []), strict=False):
         convert_model_format(modelpath, outdir, args.format_version)

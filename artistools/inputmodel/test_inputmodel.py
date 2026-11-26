@@ -717,6 +717,120 @@ def test_makemodel_dimensionreduce_writes_the_gridcontributions(tmp_path: Path) 
     assert dfcontribs["cellindex"].max() <= modelmeta["npts_model"]
 
 
+@pytest.mark.parametrize(("sliceaxis", "radialaxis"), [("x", "+y"), ("x", "-y"), ("y", "+x"), ("z", "-x")])
+def test_make_cylindrical_slice_preserves_selected_cells(sliceaxis: str, radialaxis: str) -> None:
+    from artistools.inputmodel.makeartismodel import make_cylindrical_slice
+
+    dfmodel, modelmeta = get_empty_3d_model(4, 1e9, 1.0, includenico57=True)
+    dfmodel = dfmodel.with_columns(
+        rho=pl.col("inputcellid").cast(pl.Float32), X_Ni57=pl.col("inputcellid").cast(pl.Float32) / 100
+    )
+    abundances = dfmodel.select("inputcellid").with_columns(X_Ni=pl.col("inputcellid") / 100)
+    contributions = dfmodel.select(
+        particleid=pl.col("inputcellid"), cellindex=pl.col("inputcellid"), frac_of_cellmass=pl.lit(0.75)
+    ).collect()
+    result, resultabundances, resultcontributions, metadata = make_cylindrical_slice(
+        dfmodel, modelmeta, abundances, contributions, sliceaxis, radialaxis
+    )
+
+    verticalaxis = next(axis for axis in "xyz" if axis not in {sliceaxis, radialaxis[1]})
+    radialindices = [2, 3] if radialaxis[0] == "+" else [1, 0]
+    sourceids = []
+    for verticalindex in range(4):
+        for radialindex in radialindices:
+            indices = {sliceaxis: 2, radialaxis[1]: radialindex, verticalaxis: verticalindex}
+            sourceids.append(1 + indices["x"] + 4 * indices["y"] + 16 * indices["z"])
+
+    np.testing.assert_allclose(result["rho"], sourceids)
+    np.testing.assert_allclose(result["X_Ni57"], np.array(sourceids) / 100, rtol=1e-6)
+    np.testing.assert_allclose(resultabundances["X_Ni"], np.array(sourceids) / 100, rtol=1e-6)
+    assert resultcontributions is not None
+    assert resultcontributions["particleid"].to_list() == sourceids
+    assert resultcontributions["cellindex"].to_list() == list(range(1, 9))
+    np.testing.assert_allclose(resultcontributions["frac_of_cellmass"], 0.75)
+    assert metadata["coordinates"] == "cylindrical2d"
+    assert (metadata["ncoordgridrcyl"], metadata["ncoordgridz"]) == (2, 4)
+
+
+@pytest.mark.parametrize("outputformat", [1, 2])
+def test_makemodel_cylindrical_slice_command(tmp_path: Path, outputformat: int) -> None:
+    dfmodel, modelmeta = get_empty_3d_model(4, 1e9, 1.0, includenico57=True)
+    dfmodel = dfmodel.with_columns(
+        rho=pl.col("inputcellid").cast(pl.Float32),
+        X_Ni57=pl.lit(0.1),
+        slice_test_property=pl.col("inputcellid").cast(pl.Float32) / 100,
+    )
+    abundances = dfmodel.select("inputcellid").with_columns(X_Ni=pl.lit(0.2))
+    modelfolder = tmp_path / "model3d"
+    modelfolder.mkdir()
+    at.inputmodel.save_modeldata(dfmodel, outpath=modelfolder, modelmeta=modelmeta, extracols=["slice_test_property"])
+    at.inputmodel.save_initelemabundances(abundances, outpath=modelfolder)
+    (modelfolder / "gridcontributions.txt").write_text(
+        "particleid cellindex frac_of_cellmass\n" + "".join(f"{cellid} {cellid} 1.0\n" for cellid in range(1, 65)),
+        encoding="utf-8",
+    )
+
+    at.inputmodel.makeartismodel.main(
+        argsraw=[
+            "-modelpath",
+            str(modelfolder),
+            "-dimensionreduce",
+            "2",
+            "--make2dmodelfromsliceaxis",
+            "x",
+            "--modelrcoordaxis2d=+y",
+            "--format-version",
+            str(outputformat),
+            "-o",
+            str(tmp_path / "out"),
+        ]
+    )
+    outfolder = tmp_path / "out" / "model3d_dimreduce_2d"
+    result, metadata = at.inputmodel.scan_modeldata(outfolder)
+    result = result.collect()
+    expectedids = [1 + 2 + 4 * y + 16 * z for z in range(4) for y in (2, 3)]
+    np.testing.assert_allclose(result["rho"], expectedids)
+    np.testing.assert_allclose(result["X_Ni57"], 0.1, rtol=1e-6)
+    np.testing.assert_allclose(result["slice_test_property"], np.array(expectedids) / 100, rtol=1e-6)
+    resultabundances = at.inputmodel.scan_initelemabundances(outfolder).collect()
+    np.testing.assert_allclose(resultabundances["X_Ni"], 0.2, rtol=1e-6)
+    resultcontributions = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(outfolder)
+    assert resultcontributions["particleid"].to_list() == expectedids
+    assert resultcontributions["cellindex"].to_list() == list(range(outputformat == 1, 8 + (outputformat == 1)))
+    assert metadata["coordinates"] == "cylindrical2d"
+
+
+def test_makemodel_cylindrical_slice_requires_both_different_axes() -> None:
+    for args in (
+        ["--dimensionreduce", "2", "--make2dmodelfromsliceaxis", "x"],
+        ["--dimensionreduce", "2", "--modelrcoordaxis2d=+y"],
+        ["--dimensionreduce", "1", "--make2dmodelfromsliceaxis", "x", "--modelrcoordaxis2d=+y"],
+        ["--dimensionreduce", "2", "--make2dmodelfromsliceaxis", "x", "--modelrcoordaxis2d=+x"],
+    ):
+        with pytest.raises(SystemExit):
+            at.inputmodel.makeartismodel.main(argsraw=args)
+
+
+def test_make_cylindrical_slice_checks_the_grid_and_abundances() -> None:
+    from artistools.inputmodel.makeartismodel import make_cylindrical_slice
+
+    dfmodel, modelmeta = get_empty_3d_model(4, 1e9, 1.0)
+    abundances = dfmodel.select("inputcellid").with_columns(X_Ni=pl.lit(0.1))
+    _, _, contributions, _ = make_cylindrical_slice(dfmodel, modelmeta, abundances, None, "x", "+y")
+    assert contributions is None
+
+    duplicatedabundances = pl.concat((
+        abundances.filter(pl.col("inputcellid") != 11),
+        abundances.filter(pl.col("inputcellid") == 15),
+    ))
+    with pytest.raises(ValueError, match="one row of elemental abundances"):
+        make_cylindrical_slice(dfmodel, modelmeta, duplicatedabundances, None, "x", "+y")
+
+    oddmodel, oddmeta = get_empty_3d_model(3, 1e9, 1.0)
+    with pytest.raises(ValueError, match="even number of cells"):
+        make_cylindrical_slice(oddmodel, oddmeta, abundances, None, "x", "+y")
+
+
 def test_opacity_by_ye_file(tmp_path: Path) -> None:
     griddata = pl.DataFrame({
         "Ye": [0.0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.5],
