@@ -1096,6 +1096,59 @@ def test_plotinitialcomposition(tmp_path: Path) -> None:
     assert (tmp_path / "plotcomposition_rho,fe.pdf").is_file()
 
 
+@pytest.mark.parametrize(
+    ("logscale", "expectedlimits"),
+    [(False, [(1e-12, 1e-8), (0.1, 0.5)]), (True, [(-12.0, -8.0), (math.log10(0.1), math.log10(0.5))])],
+)
+def test_plotinitialcomposition_colorbar_limits_reach_imshow(
+    tmp_path: Path, logscale: bool, expectedlimits: list[tuple[float, float]]
+) -> None:
+    """Each panel takes its own limits, and a log colour scale takes the logarithm of the limits."""
+    with mock.patch.object(mplax.Axes, "imshow", side_effect=mplax.Axes.imshow, autospec=True) as mockimshow:
+        at.inputmodel.plotinitialcomposition.main(
+            argsraw=[
+                "rho",
+                "Fe",
+                str(modelpath_3d),
+                "-o",
+                str(tmp_path),
+                "-colorbarmin",
+                "1e-12",
+                "0.1",
+                "-colorbarmax",
+                "1e-8",
+                "0.5",
+                *(["--logcolorscale"] if logscale else []),
+            ]
+        )
+
+    assert mockimshow.call_count == 2
+    for call, (vmin, vmax) in zip(mockimshow.call_args_list, expectedlimits, strict=True):
+        assert call.kwargs["vmin"] == pytest.approx(vmin)
+        assert call.kwargs["vmax"] == pytest.approx(vmax)
+
+
+@pytest.mark.parametrize(
+    ("extraargs", "match"),
+    [
+        (["-colorbarmin", "1e-12"], "one value for each plotvar"),
+        (["-colorbarmin", "nan", "0.1"], "finite"),
+        (["-colorbarmax", "inf", "0.5"], "finite"),
+        (["-colorbarmin", "0", "0.1", "--logcolorscale"], "positive"),
+        (["-colorbarmax", "-1", "0.5", "--logcolorscale"], "positive"),
+        (["-colorbarmin", "2", "2", "-colorbarmax", "1", "3"], "less than"),
+        (["-colorbarmin", "1", "2", "--plot3d"], "2D plots only"),
+    ],
+)
+def test_plotinitialcomposition_rejects_invalid_colorbar_limits(
+    tmp_path: Path, extraargs: list[str], match: str
+) -> None:
+    with pytest.raises(ValueError, match=match):
+        at.inputmodel.plotinitialcomposition.main(
+            argsraw=["rho", "Fe", str(modelpath_3d), "-o", str(tmp_path), *extraargs]
+        )
+
+
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_plotdensity_write_data_gives_the_plotted_profiles(
     mockplot: mock.MagicMock, tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
