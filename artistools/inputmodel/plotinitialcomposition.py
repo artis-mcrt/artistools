@@ -654,8 +654,9 @@ def check_colorbar_limits(args: argparse.Namespace) -> None:
         if len(limits) != len(args.plotvars):
             msg = f"{flag} needs one value for each plotvar. Got {len(limits)} values for {len(args.plotvars)} plotvars"
             raise ValueError(msg)
-        if args.logcolorscale and not all(math.isfinite(limit) and limit > 0 for limit in limits):
-            msg = f"{flag} must be positive with --logcolorscale, got {limits}"
+        if not all(math.isfinite(limit) and (not args.logcolorscale or limit > 0) for limit in limits):
+            requirement = "finite and positive with --logcolorscale" if args.logcolorscale else "finite"
+            msg = f"{flag} must be {requirement}, got {limits}"
             raise ValueError(msg)
     if args.colorbarmin is not None and args.colorbarmax is not None:
         for colorbarmin, colorbarmax in zip(args.colorbarmin, args.colorbarmax, strict=True):
