@@ -602,7 +602,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "-vmax",
         type=positive_float_arg,
-        help="Set the maximum velocity for a 2D plot. Use same units as -velocityunitplot.",
+        help="Set the maximum velocity for a 2D plot. Use same units as -velocityunitplot",
     )
 
     addarg_sliceaxis(parser, default="+z", helptext="Slice axis for 2D plots")
