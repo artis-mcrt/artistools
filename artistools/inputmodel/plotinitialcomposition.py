@@ -588,10 +588,7 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "-velocityunitplot",
         choices=["c", "kmps"],
         default="c",
-        help=(
-            "Set the velocity-axis unit to c or kmps. c is the speed of light, and kmps means km/s."
-            " For kmps, the axes use 10^3 km/s and the data tables use km/s"
-        ),
+        help=("Set the velocity-axis unit to c or kmps. Default is c"),
     )
 
     addarg_sliceaxis(parser, default="+z", helptext="Slice axis for 2D plots")
