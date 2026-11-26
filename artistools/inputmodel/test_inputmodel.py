@@ -1946,9 +1946,9 @@ def test_spherical_cells_each_lie_in_one_direction_bin(
 ) -> None:
     """Each cell of the default spherical3d grid is in one viewing-direction bin, and a grid of 128 phi cells is not.
 
-    The grid and the bins measure theta from +z (syn_dir of ARTIS) and phi from +x towards +y. The test bins points
+    The grid and the bins measure theta from +z and phi from +x towards +y. The test bins points
     near the corners of each cell with the bin code of the packets. A point at 2 % of a cell width from an edge stays
-    clear of the Float32 rounding of cos(phi) near phi = pi.
+    clear of the Float32 rounding of phi.
     """
     from artistools.inputmodel.maptogrid import get_spherical_grid_edges
     from artistools.inputmodel.maptogrid import NCOORDGRID_DEFAULTS
@@ -1965,19 +1965,17 @@ def test_spherical_cells_each_lie_in_one_direction_bin(
     costheta = costhetapoints[icostheta, ipointcostheta].ravel()
     phi = phipoints[iphi, ipointphi].ravel()
     sintheta = np.sqrt(1.0 - costheta**2)
-    dfpoints = pl.DataFrame({
-        "cell": (icostheta + ncostheta * iphi).ravel(),
-        "x": sintheta * np.cos(phi),
-        "y": sintheta * np.sin(phi),
-        "z": costheta,
-    })
-    # the packet code casts cos(theta) and cos(phi) to Float32, as get_cell_direction_selection does
-    cosphi = (pl.col("x") / (pl.col("x") ** 2 + pl.col("y") ** 2).sqrt()).cast(pl.Float32)
-    dirbin = at.misc.get_costhetabin_expr(pl.col("z").cast(pl.Float32)) * at.misc.get_viewingdirection_phibincount()
-    dirbin += at.misc.get_phibin_expr(cosphi, -pl.col("y"))
-    nbinsofcell = dfpoints.group_by("cell").agg(dirbin.n_unique().alias("nbins"))["nbins"]
+    dfpoints = at.packets.bin_packet_directions_polars(
+        pl.DataFrame({
+            "cell": (icostheta + ncostheta * iphi).ravel(),
+            "dirx": sintheta * np.cos(phi),
+            "diry": sintheta * np.sin(phi),
+            "dirz": costheta,
+        })
+    ).collect()
+    nbinsofcell = dfpoints.group_by("cell").agg(pl.col("dirbin").n_unique().alias("nbins"))["nbins"]
     assert (nbinsofcell.max() == 1) == isaligned
-    assert dfpoints.select(dirbin.n_unique()).item() == at.misc.get_viewingdirectionbincount()
+    assert dfpoints["dirbin"].n_unique() == at.misc.get_viewingdirectionbincount()
 
 
 def test_cell_width_lines_give_the_widths_of_the_uniform_costheta_cells() -> None:
@@ -2696,6 +2694,8 @@ def test_dirbin_selects_the_cells_that_the_packet_binning_puts_in_the_bin(tmp_pa
     from artistools.packets import add_packet_directions_lazypolars
     from artistools.packets import bin_packet_directions_polars
 
+    # the packet code takes each direction as a unit vector, as ARTIS writes it
+    vel_r = (pl.col("vel_x_mid_on_c") ** 2 + pl.col("vel_y_mid_on_c") ** 2 + pl.col("vel_z_mid_on_c") ** 2).sqrt()
     lzmodel, modelmeta = at.scan_modeldata(modelpath_3d, printwarningsonly=True)
     dfcells = (
         at.inputmodel
@@ -2708,9 +2708,9 @@ def test_dirbin_selects_the_cells_that_the_packet_binning_puts_in_the_bin(tmp_pa
             add_packet_directions_lazypolars(
                 dfcells.select(
                     "modelgridindex",
-                    dirx=pl.col("vel_x_mid_on_c"),
-                    diry=pl.col("vel_y_mid_on_c"),
-                    dirz=pl.col("vel_z_mid_on_c"),
+                    dirx=pl.col("vel_x_mid_on_c") / vel_r,
+                    diry=pl.col("vel_y_mid_on_c") / vel_r,
+                    dirz=pl.col("vel_z_mid_on_c") / vel_r,
                 )
             )
         )
@@ -2764,6 +2764,8 @@ def test_dirbin_puts_each_cell_of_an_odd_grid_in_one_bin() -> None:
     from artistools.packets import add_packet_directions_lazypolars
     from artistools.packets import bin_packet_directions_polars
 
+    # the packet code takes each direction as a unit vector, as ARTIS writes it
+    vel_r = (pl.col("vel_x_mid_on_c") ** 2 + pl.col("vel_y_mid_on_c") ** 2 + pl.col("vel_z_mid_on_c") ** 2).sqrt()
     centres = np.arange(-2.0, 3.0)
     vel_x, vel_y, vel_z = (axis.ravel() for axis in np.meshgrid(centres, centres, centres, indexing="ij"))
     dfcells_5 = pl.DataFrame({
@@ -2788,9 +2790,9 @@ def test_dirbin_puts_each_cell_of_an_odd_grid_in_one_bin() -> None:
                 add_packet_directions_lazypolars(
                     dfcells.select(
                         "modelgridindex",
-                        dirx=pl.col("vel_x_mid_on_c"),
-                        diry=pl.col("vel_y_mid_on_c"),
-                        dirz=pl.col("vel_z_mid_on_c"),
+                        dirx=pl.col("vel_x_mid_on_c") / vel_r,
+                        diry=pl.col("vel_y_mid_on_c") / vel_r,
+                        dirz=pl.col("vel_z_mid_on_c") / vel_r,
                     )
                 )
             )

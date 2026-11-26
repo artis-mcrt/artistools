@@ -18,22 +18,20 @@ modelpath = at.get_path("testdata") / "testmodel"
 
 
 def get_reference_dirbin(dirx: float, diry: float, dirz: float, nphibins: int, ncosthetabins: int) -> int:
-    """Return the direction bin of one packet, computed in float64 for a viewing direction along +z.
+    """Return the direction bin of one packet, computed in float64 as get_escapedirectionbin of ARTIS (vectors.h).
 
-    The polars binning of the package works in Float32, thus this function checks it by a separate path. The function
-    follows get_escapedirectionbin of ARTIS (vectors.h). ARTIS takes cosphi = 1 for a direction along the z axis,
-    thus such a direction is in the phi bin of the angle pi and not in the phi bin 0.
+    The polars binning of the package works in Float32, thus this function checks it by a separate path. ARTIS takes
+    cosphi = 1 for a direction along the z axis, thus such a direction is in the phi bin of the angle pi and not in
+    the phi bin 0.
     """
-    syn_dir = np.array([0.0, 0.0, 1.0])
-    pkt_dir = np.array([dirx, diry, dirz]) / math.sqrt(dirx**2 + diry**2 + dirz**2)
-    costhetabin = min(int((float(pkt_dir @ syn_dir) + 1.0) / 2.0 * ncosthetabins), ncosthetabins - 1)
+    dirmag = math.sqrt(dirx**2 + diry**2 + dirz**2)
+    unitx, unity, unitz = dirx / dirmag, diry / dirmag, dirz / dirmag
+    costhetabin = min(max(int((unitz + 1.0) * ncosthetabins / 2.0), 0), ncosthetabins - 1)
 
-    vec1 = np.cross(pkt_dir, syn_dir)
-    vec1len = float(np.linalg.norm(vec1))
-    vec2 = np.cross(np.array([1.0, 0.0, 0.0]), syn_dir)
-    cosphi = float(vec1 @ vec2) / vec1len / float(np.linalg.norm(vec2)) if vec1len > 1e-12 else 1.0
-    phi = math.acos(cosphi) if float(vec1 @ np.cross(vec2, syn_dir)) > 0 else math.acos(cosphi) + math.pi
-    return costhetabin * nphibins + min(int(phi / 2.0 / math.pi * nphibins), nphibins - 1)
+    sintheta = math.sqrt(unitx**2 + unity**2)
+    cosphi = min(max(unitx / sintheta, -1.0), 1.0) if sintheta > 1e-12 else 1.0
+    phi = math.acos(cosphi) if unity < 0 else math.acos(cosphi) + math.pi
+    return costhetabin * nphibins + min(max(int(phi / 2.0 / math.pi * nphibins), 0), nphibins - 1)
 
 
 def test_directionbins() -> None:
@@ -75,6 +73,17 @@ def test_directionbins() -> None:
 
         assert phibinlowers[pkt["phibin"]] <= pkt["phi_defined"] or pktdir_is_along_zaxis
         assert phibinuppers[pkt["phibin"]] >= pkt["phi_defined"] or pktdir_is_along_zaxis
+
+
+def test_directionbin_takes_the_sign_of_a_tiny_diry() -> None:
+    """A tiny negative diry selects the phi range of ARTIS, which tests the sign of dir[1] in double precision.
+
+    The old code tested the sign of -diry / |dir| after a cast to Float32, and 1e-300 became zero there.
+    """
+    dfpackets = pl.LazyFrame({"dirx": [0.96], "diry": [-1e-300], "dirz": [0.28]})
+    dfpackets = at.packets.bin_packet_directions_polars(at.packets.add_packet_directions_lazypolars(dfpackets))
+
+    assert dfpackets.select("dirbin").collect().item() == get_reference_dirbin(0.96, -1e-300, 0.28, 10, 10)
 
 
 def test_directionbins_unequal_bincounts() -> None:
@@ -346,6 +355,7 @@ def test_packets_cache_scans_each_folder_once(tmp_path: Path, virtual: bool) -> 
     """Keep the number of directory scans independent of the number of ranks."""
     from artistools.packets.core import CACHEVERSION
     from artistools.packets.core import get_packets_rankbatch_parquetfile
+    from artistools.packets.core import VIRTUAL_CACHEVERSION
 
     sourcefolder = tmp_path / "run1"
     sourcefolder.mkdir()
@@ -361,7 +371,7 @@ def test_packets_cache_scans_each_folder_once(tmp_path: Path, virtual: bool) -> 
         pl.DataFrame({"number": [0]}),
         cachepath,
         metadata={
-            "cacheversion": str(CACHEVERSION),
+            "cacheversion": str(VIRTUAL_CACHEVERSION if virtual else CACHEVERSION),
             "textsource_mtime": str(max(path.stat().st_mtime for path in sourcefiles)),
         },
     )
@@ -440,20 +450,6 @@ def test_packets_source_index_matches_the_reader(tmp_path: Path) -> None:
     mtimes = at.packets.get_packets_textsource_mtimes(tmp_path, [*filenames, "packets00_0002.out"])
     expected = [at.firstexisting(filename, folder=tmp_path).stat().st_mtime for filename in filenames]
     assert sorted(mtimes) == pytest.approx(sorted(expected))
-
-
-def test_add_packet_directions_accepts_a_frame_that_holds_the_angles() -> None:
-    """A frame that already carries phi must pass through, because the parquet cache stores it."""
-    dfpackets = pl.LazyFrame({"dirx": [0.6, 0.0], "diry": [0.0, 0.8], "dirz": [0.8, 0.6]})
-
-    dfonce = at.packets.add_packet_directions_lazypolars(dfpackets).collect()
-    assert "phi" in dfonce.columns
-    assert "vec1_x" not in dfonce.columns
-
-    # the drop named the vec1 columns whatever the input held, thus this raised ColumnNotFoundError
-    dftwice = at.packets.add_packet_directions_lazypolars(dfonce).collect()
-
-    pltest.assert_frame_equal(dfonce, dftwice)
 
 
 def test_add_derived_columns_gives_the_timestep_of_the_thermal_emission() -> None:
@@ -918,13 +914,88 @@ def test_scan_packets_gives_one_name_and_type_to_the_flag_of_the_particle_origin
     The cache keeps the name and the type of its text file, thus the two formats gave two names and two types.
     """
     cachepath = tmp_path / "packetsbatch00_0000_0000.out.parquet.tmp"
-    pl.DataFrame({"type_id": [32, 32], columnname: values}).write_parquet(cachepath)
+    pl.DataFrame({
+        "type_id": [32, 32],
+        "dirx": [1.0, 0.0],
+        "diry": [0.0, 1.0],
+        "dirz": [0.0, 0.0],
+        columnname: values,
+    }).write_parquet(cachepath)
 
     with mock.patch("artistools.packets.core.get_packets_batch_parquet_paths", return_value=(1, [cachepath])):
         _, dfpackets = at.packets.scan_packets(tmp_path)
 
     dfflag = dfpackets.select("originated_from_particlenotgamma").collect()
     pltest.assert_frame_equal(dfflag, pl.DataFrame({"originated_from_particlenotgamma": [True, False]}))
+
+
+def test_scan_packets_reads_a_batch_of_each_cache_version(tmp_path: Path) -> None:
+    """A model can hold a batch of cache version 1 and a batch of version 2, and both give the same direction bins.
+
+    Version 2 stores only dirbin_costheta10_phi10 and phi, and version 1 stores dirbin, the angles, and the bins. A
+    scan of files with two schemas stops with a SchemaError, thus each batch gets the columns of version 2 before the
+    concatenation.
+    """
+    import shutil
+
+    from artistools.packets.core import get_packets_rankbatch_parquetfile
+
+    sourcedir = at.get_path("testdata") / "test-classicmode_3d" / "packets"
+    for rank in (0, 1):
+        shutil.copy(sourcedir / f"packets00_{rank:04d}.out.zst", tmp_path)
+    newcache = get_packets_rankbatch_parquetfile(tmp_path, batch_mpiranks=[0, 1], batchindex=0, virtual=False)
+    assert pl.read_parquet_metadata(newcache)["cacheversion"] == "2"
+    newcolumns = list(pl.read_parquet_schema(newcache))
+    assert {"dirbin_costheta10_phi10", "phi"} <= set(newcolumns)
+    assert not {"dirbin", "costhetabin", "phibin", "costheta", "cosphi", "testphi"} & set(newcolumns)
+
+    dfnew = pl.read_parquet(newcache)
+    oldcache = tmp_path / "packetsbatch01_0002_0003.out.parquet.tmp"
+    dfnew.rename({"dirbin_costheta10_phi10": "dirbin"}).with_columns(
+        costhetabin=pl.col("dirbin") // 10,
+        phibin=pl.col("dirbin") % 10,
+        costheta=pl.lit(2.0, dtype=pl.Float32),
+        cosphi=pl.lit(2.0, dtype=pl.Float32),
+        testphi=pl.lit(0.0, dtype=pl.Float32),
+    ).write_parquet(oldcache)
+
+    with mock.patch("artistools.packets.core.get_packets_batch_parquet_paths", return_value=(4, [newcache, oldcache])):
+        _, dfpackets = at.packets.scan_packets(tmp_path)
+    directioncolumns = ["dirbin", "costhetabin", "phibin", "costheta", "phi"]
+    dfdirections = dfpackets.select(directioncolumns).collect()
+
+    nrows = dfnew.height
+    pltest.assert_frame_equal(dfdirections.head(nrows), dfdirections.tail(nrows))
+    expected = at.packets.add_packet_directions_lazypolars(
+        at.packets.bin_packet_directions_polars(dfnew.drop("dirbin_costheta10_phi10", "phi"))
+    )
+    pltest.assert_frame_equal(dfdirections.head(nrows), expected.select(directioncolumns).collect())
+
+
+def test_direction_bins_of_other_bin_counts_come_from_the_directions() -> None:
+    """The cache column of 10 cos θ bins and 10 ϕ bins gives only those counts, and other counts use the directions."""
+    dirx, diry, dirz = 0.3, -0.4, 0.5
+    dfpackets = pl.LazyFrame({"dirx": [dirx], "diry": [diry], "dirz": [dirz], "dirbin_costheta10_phi10": [7]})
+
+    def get_dirbin(ncosthetabins: int, nphibins: int) -> int:
+        binned = at.packets.bin_packet_directions_polars(dfpackets, nphibins=nphibins, ncosthetabins=ncosthetabins)
+        return int(binned.select("dirbin").collect().item())
+
+    assert get_dirbin(10, 10) == 7
+    assert get_dirbin(4, 8) == get_reference_dirbin(dirx, diry, dirz, nphibins=8, ncosthetabins=4)
+
+
+def test_a_stored_phi_gives_the_phi_bins() -> None:
+    """A frame that holds phi gives the phi bins from that column, because an atan2 of each packet is slow."""
+    dfpackets = pl.LazyFrame(
+        {"dirx": [1.0], "diry": [0.0], "dirz": [0.0], "phi": [4.0]}, schema_overrides={"phi": pl.Float32}
+    )
+    binned = at.packets.bin_packet_directions_polars(
+        dfpackets, nphibins=8, ncosthetabins=4, phibintype="phibinmonotonicasc"
+    ).collect()
+
+    assert binned["phibinmonotonicasc"].item() == int(4.0 / (2 * math.pi) * 8)
+    assert at.packets.add_packet_directions_lazypolars(dfpackets).collect()["phi"].item() == pytest.approx(4.0)
 
 
 def test_lastpacketinteraction_main_writes_the_plot_to_the_output_folder(tmp_path: Path) -> None:

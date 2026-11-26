@@ -10,6 +10,7 @@ import time
 import typing as t
 import warnings
 from collections.abc import Callable
+from collections.abc import Collection
 from collections.abc import Mapping
 from collections.abc import Sequence
 from functools import lru_cache
@@ -41,6 +42,7 @@ from artistools.misc import get_file_state
 from artistools.misc import get_model_coordinates
 from artistools.misc import get_nprocs
 from artistools.misc import get_parquet_cache_name
+from artistools.misc import get_phi_expr
 from artistools.misc import get_phibin_expr
 from artistools.misc import get_progress_class
 from artistools.misc import get_timestep_times
@@ -675,9 +677,19 @@ def get_vpackets_text_columns(vpacketsfiletext: Path) -> list[str]:
 
 
 # The version of the packets parquet cache format. Increase it for a change that makes an older
-# cache file incorrect, e.g. a new column, a removed column, or a different data type. A cache keeps the
-# names of the Stokes columns of its text file, e.g. stokes1/2/3 of an older ARTIS, and scan_packets renames them
-CACHEVERSION = 1
+# cache file incorrect, or a newer file that an older reader cannot read, e.g. a new column, a removed column, or a
+# different data type. A cache keeps the names of the Stokes columns of its text file, e.g. stokes1/2/3 of an older
+# ARTIS, and scan_packets renames them
+CACHEVERSION = 2
+
+# scan_packets also reads these versions. Version 1 stores dirbin, costhetabin, phibin, costheta, phi, cosphi, and
+# testphi, and version 2 stores only dirbin_costheta10_phi10 and phi. An older artistools reads only version 1, thus
+# it converts a batch of version 2 again and does not stop with a missing column
+CACHE_OLDVERSIONS: t.Final = (1,)
+
+# the version of the virtual packets parquet cache format. The packets of version 2 changed no column of the virtual
+# packets, thus an older artistools keeps each cache of the virtual packets
+VIRTUAL_CACHEVERSION: t.Final = 1
 
 # the number of ranks in each parquet cache of the packets
 RANKS_PER_BATCH: t.Final = 100
@@ -818,10 +830,10 @@ def has_packets_files(modelpath: Path) -> bool:
 
 @on_model_host
 def get_packets_column_names(modelpath: Path) -> list[str] | None:
-    """Return the names of the columns of the packets of a model, or None if the model holds no packets.
+    """Return the names of the stored columns of the packets of a model, or None if the model holds no packets.
 
-    The text file of the first rank gives the names, or else the parquet cache of the first batch. The host of a
-    remote path gives the answer.
+    The text file of the first rank gives the names, or else the parquet cache of the first batch. scan_packets gives
+    more columns, e.g. dirbin, costhetabin, and costheta. The host of a remote path gives the answer.
     """
     packetsfile = get_first_packets_file(modelpath)
     if packetsfile is None:
@@ -861,7 +873,11 @@ def get_packets_rankbatch_parquetfile(
         textsource_mtimes = get_packets_textsource_mtimes(modelpath, text_filenames, folderlistings)
         allranksfound = len(textsource_mtimes) == len(batch_mpiranks)
         stalereason = rankbatch_parquet_staleness(
-            parquetfilepath, CACHEVERSION, max(textsource_mtimes, default=None), textsource_complete=allranksfound
+            parquetfilepath,
+            VIRTUAL_CACHEVERSION if virtual else CACHEVERSION,
+            max(textsource_mtimes, default=None),
+            textsource_complete=allranksfound,
+            oldversions=() if virtual else CACHE_OLDVERSIONS,
         )
 
         if stalereason is None:
@@ -955,8 +971,7 @@ def get_packets_rankbatch_parquetfile(
                 ).cast(pl.Float32)
             ).sort(by=["type_id", "escape_type_id", "t_arrive_d"])
 
-            pldf_batch = add_packet_directions_lazypolars(pldf_batch)
-            pldf_batch = bin_packet_directions_polars(pldf_batch)
+            pldf_batch = add_cache_direction_columns(pldf_batch.lazy()).collect()
 
         print(
             f"   Took {time.perf_counter() - time_start_load:.1f} seconds. Writing parquet file...", end="", flush=True
@@ -967,7 +982,7 @@ def get_packets_rankbatch_parquetfile(
             parquetfilepath,
             metadata={
                 "creationtimeutc": str(dt.datetime.now(dt.UTC)),
-                "cacheversion": str(CACHEVERSION),
+                "cacheversion": str(VIRTUAL_CACHEVERSION if virtual else CACHEVERSION),
                 "textsource_mtime": str(textsource_mtime),
             },
             replaces=outdatedparquet,
@@ -1137,6 +1152,34 @@ def scan_virtual_packets(modelpath: str | Path, maxpacketfiles: int | None = Non
     return nprocs_read, dfpackets
 
 
+def scan_packets_batch_parquet(packetsparquetfile: Path) -> pl.LazyFrame:
+    """Return a LazyFrame of one batch cache of the packets, with the columns of the current cache version.
+
+    The batches of one model can have different cache versions, and a scan of all the files together needs one
+    schema. A cache of version 1 holds a dirbin of 10 cos θ bins and 10 ϕ bins, and its other bins and angles come
+    again from dirbin and the directions. A cache with no column for the current bin counts gets the bins from the
+    directions.
+    """
+    # an older ARTIS names the Stokes columns stokes1/2/3, where stokes1 holds the redundant I=1.0. Thus stokes2 is
+    # the stokes_q and stokes3 is the stokes_u of the current ARTIS. An older ARTIS names the flag
+    # originated_from_particlenotgamma as originated_from_positron. A cache keeps the names and the types of its text
+    # file, because a different cache needs a new cache version, and every older cache must then have a new conversion
+    return add_cache_direction_columns(
+        pl
+        .scan_parquet(packetsparquetfile, glob=False)
+        .rename(
+            {
+                "stokes2": "stokes_q",
+                "stokes3": "stokes_u",
+                "originated_from_positron": "originated_from_particlenotgamma",
+                "dirbin": get_dirbin_column_name(ncosthetabins=10, nphibins=10),
+            },
+            strict=False,
+        )
+        .drop(["costhetabin", "phibin", "costheta", "cosphi", "testphi"], strict=False)
+    )
+
+
 def scan_packets(
     modelpath: str | Path,
     maxpacketfiles: int | None = None,
@@ -1174,14 +1217,12 @@ def scan_packets(
 
     print_parquet_size(packetsparquetfiles)
 
-    # an older ARTIS names the Stokes columns stokes1/2/3, where stokes1 holds the redundant I=1.0. Thus stokes2 is
-    # the stokes_q and stokes3 is the stokes_u of the current ARTIS. The current ARTIS writes the flag
-    # originated_from_particlenotgamma as an integer, and an older ARTIS names it originated_from_positron. A cache
-    # keeps the names and the types of its text file, because a different cache needs a new cache version, and
-    # every older cache must then have a new conversion
-    pldfpackets = pl.scan_parquet(packetsparquetfiles, glob=False).rename(
-        {"stokes2": "stokes_q", "stokes3": "stokes_u", "originated_from_positron": "originated_from_particlenotgamma"},
-        strict=False,
+    pldfpackets = pl.concat(
+        [scan_packets_batch_parquet(packetsparquetfile) for packetsparquetfile in packetsparquetfiles], how="diagonal"
+    )
+    # bin_packet_directions_polars gives the stored bins the name dirbin, thus the cache column is a copy
+    pldfpackets = add_packet_directions_lazypolars(bin_packet_directions_polars(pldfpackets)).drop(
+        get_dirbin_column_name()
     )
     if "originated_from_particlenotgamma" in pldfpackets.collect_schema().names():
         pldfpackets = pldfpackets.with_columns(pl.col("originated_from_particlenotgamma").cast(pl.Boolean))
@@ -1214,78 +1255,59 @@ def scan_packets(
     return nprocs_read, pldfpackets
 
 
+def get_dirbin_column_name(ncosthetabins: int | None = None, nphibins: int | None = None) -> str:
+    """Return the name of the cache column of the direction bin for a count of cos θ bins and ϕ bins."""
+    if ncosthetabins is None:
+        ncosthetabins = get_viewingdirection_costhetabincount()
+    if nphibins is None:
+        nphibins = get_viewingdirection_phibincount()
+    return f"dirbin_costheta{ncosthetabins}_phi{nphibins}"
+
+
+def get_packet_phi_expr(columns: Collection[str]) -> pl.Expr:
+    """Return the Float32 ϕ of the direction of each packet: the column phi if columns holds it, else an atan2."""
+    # the phi bins of plotspherical took 0.67 s with an atan2 for each packet and 0.47 s with a stored phi, for 7e7
+    # packets. Thus the cache stores phi, which takes about 4 % of the file
+    if "phi" in columns:
+        return pl.col("phi")
+    return get_phi_expr(pl.col("dirx"), pl.col("diry"), pl.col("dirz")).cast(pl.Float32)
+
+
+def get_packet_costheta_expr() -> pl.Expr:
+    """Return the Float32 cos θ of the direction of each packet.
+
+    ARTIS writes each direction as a unit vector with 6 significant digits, thus cos θ is dirz.
+    """
+    # |dir| differs from 1 by at most 8.9e-7 for 9.6e7 packets of the 3D SFHo model. A division by |dir| reads dirx
+    # and diry, and the phi bins of plotspherical then took 0.93 s and not 0.75 s for 3.5e8 packets
+    return pl.col("dirz").cast(pl.Float32)
+
+
+def get_dirbin_expr(costheta: pl.Expr, phi: pl.Expr, ncosthetabins: int, nphibins: int) -> pl.Expr:
+    """Return the direction bin of ARTIS of each packet, from cos θ, ϕ, and the sign of diry."""
+    return (
+        get_costhetabin_expr(costheta, ncosthetabins) * nphibins + get_phibin_expr(phi, pl.col("diry"), nphibins)
+    ).cast(pl.Int32)
+
+
+def add_cache_direction_columns(dfpackets: pl.LazyFrame) -> pl.LazyFrame:
+    """Add the direction columns of the cache, phi and the dirbin of the current bin counts, if the frame has none."""
+    columns = dfpackets.collect_schema().names()
+    if "phi" not in columns:
+        dfpackets = dfpackets.with_columns(phi=get_packet_phi_expr(columns))
+    dirbincolumn = get_dirbin_column_name()
+    if dirbincolumn not in columns:
+        ncosthetabins, nphibins = get_viewingdirection_costhetabincount(), get_viewingdirection_phibincount()
+        dirbin = get_dirbin_expr(get_packet_costheta_expr(), pl.col("phi"), ncosthetabins, nphibins)
+        dfpackets = dfpackets.with_columns(dirbin.alias(dirbincolumn))
+    return dfpackets
+
+
 def add_packet_directions_lazypolars(dfpackets: pl.LazyFrame | pl.DataFrame) -> pl.LazyFrame:
-    """Add the normalised direction vector and the costheta and phi angles of each packet."""
+    """Add the Float32 costheta and phi angles of each packet. A frame that holds phi keeps it."""
     dfpackets = dfpackets.lazy()
-    syn_dir = np.array([0.0, 0.0, 1.0])
-    xhat = np.array([1.0, 0.0, 0.0])
-    vec2 = np.cross(xhat, syn_dir)  # -yhat if syn_dir is zhat
-
-    colnames = dfpackets.collect_schema().names()
-
-    if "dirmag" not in colnames:
-        dfpackets = dfpackets.with_columns(
-            (pl.col("dirx") ** 2 + pl.col("diry") ** 2 + pl.col("dirz") ** 2).sqrt().alias("dirmag")
-        )
-
-    if "costheta" not in colnames:
-        dfpackets = dfpackets.with_columns(
-            (
-                (pl.col("dirx") * syn_dir[0] + pl.col("diry") * syn_dir[1] + pl.col("dirz") * syn_dir[2])
-                / pl.col("dirmag")
-            )
-            .cast(pl.Float32)
-            .alias("costheta")
-        )
-
-    if "phi" not in colnames:
-        # vec1 = dir cross syn_dir
-        dfpackets = dfpackets.with_columns(
-            ((pl.col("diry") * syn_dir[2] - pl.col("dirz") * syn_dir[1]) / pl.col("dirmag")).alias("vec1_x"),
-            ((pl.col("dirz") * syn_dir[0] - pl.col("dirx") * syn_dir[2]) / pl.col("dirmag")).alias("vec1_y"),
-            ((pl.col("dirx") * syn_dir[1] - pl.col("diry") * syn_dir[0]) / pl.col("dirmag")).alias("vec1_z"),
-        )
-
-        # ARTIS takes cosphi = 1 for a direction along syn_dir, where phi has no definition (get_escapedirectionbin in
-        # vectors.h). Thus the bin of such a direction agrees with the bin of ARTIS
-        vec1len = (pl.col("vec1_x") ** 2 + pl.col("vec1_y") ** 2 + pl.col("vec1_z") ** 2).sqrt()
-        dfpackets = dfpackets.with_columns(
-            pl
-            .when(vec1len > 1e-12)
-            .then(
-                (pl.col("vec1_x") * vec2[0] + pl.col("vec1_y") * vec2[1] + pl.col("vec1_z") * vec2[2])
-                / vec1len
-                / float(np.linalg.norm(vec2))
-            )
-            .otherwise(1.0)
-            .cast(pl.Float32)
-            .alias("cosphi")
-        )
-
-        vec3 = np.cross(vec2, syn_dir)  # -xhat if syn_dir is zhat
-
-        # arr_testphi = np.dot(arr_vec1, vec3). vec1 was already normalised by dirmag above, and only the sign of
-        # testphi is used, so there is no further division here
-        dfpackets = dfpackets.with_columns(
-            (pl.col("vec1_x") * vec3[0] + pl.col("vec1_y") * vec3[1] + pl.col("vec1_z") * vec3[2])
-            .cast(pl.Float32)
-            .alias("testphi")
-        )
-
-        dfpackets = dfpackets.with_columns(
-            (
-                pl
-                .when(pl.col("testphi") > 0)
-                .then(2 * math.pi - pl.col("cosphi").arccos())
-                .otherwise(pl.col("cosphi").arccos())
-            )
-            .cast(pl.Float32)
-            .alias("phi")
-        )
-
-    # the code above creates these columns only for a frame that carries no angles. Thus the drop
-    # must accept a name that this call did not add
-    return dfpackets.drop(["dirmag", "vec1_x", "vec1_y", "vec1_z"], strict=False)
+    phi = get_packet_phi_expr(dfpackets.collect_schema().names())
+    return dfpackets.with_columns(costheta=get_packet_costheta_expr(), phi=phi)
 
 
 def bin_packet_directions_polars(
@@ -1299,8 +1321,9 @@ def bin_packet_directions_polars(
     """Add the costheta bin and the phi bin of each packet.
 
     phibintype selects between the historical descending-and-discontinuous phi bins and monotonically ascending ones.
-    The historical phi bins are the bins of ARTIS, and they also give the combined viewing direction bin (dirbin). The
-    ascending phi bins give only the column phibinmonotonicasc, and no phibin or dirbin.
+    The historical phi bins are the bins of ARTIS, and they also give the combined viewing direction bin (dirbin). A
+    cache column of the same bin counts gives the dirbin, and the directions give the bins of the other packets. The
+    ascending phi bins give only the columns costhetabin and phibinmonotonicasc, and no phibin or dirbin.
     """
     dfpackets = dfpackets.lazy()
     if nphibins is None:
@@ -1309,21 +1332,24 @@ def bin_packet_directions_polars(
     if ncosthetabins is None:
         ncosthetabins = get_viewingdirection_costhetabincount()
 
-    dfpackets = dfpackets.with_columns(get_costhetabin_expr(pl.col("costheta"), ncosthetabins).alias("costhetabin"))
-
+    columns = dfpackets.collect_schema().names()
+    costheta, phi = get_packet_costheta_expr(), get_packet_phi_expr(columns)
     if phibintype == "phibinmonotonicasc":
-        # phi reaches exactly 2 pi when cosphi == 1 and testphi > 0, so clamp to the last bin
-        dfpackets = dfpackets.with_columns(
-            pl.min_horizontal(
-                (pl.col("phi") / 2.0 / math.pi * nphibins).fill_nan(0.0).cast(pl.Int32), nphibins - 1
-            ).alias("phibinmonotonicasc")
+        # phi can reach exactly 2 pi when diry < 0, so clamp to the last bin
+        return dfpackets.with_columns(
+            costhetabin=get_costhetabin_expr(costheta, ncosthetabins),
+            phibinmonotonicasc=pl.min_horizontal(
+                (phi / 2.0 / math.pi * nphibins).fill_nan(0.0).cast(pl.Int32), nphibins - 1
+            ),
         )
-    else:
-        dfpackets = dfpackets.with_columns(
-            get_phibin_expr(pl.col("cosphi"), pl.col("testphi"), nphibins).alias("phibin")
-        ).with_columns((pl.col("costhetabin") * nphibins + pl.col("phibin")).cast(pl.Int32).alias("dirbin"))
 
-    return dfpackets
+    dirbincolumn = get_dirbin_column_name(ncosthetabins, nphibins)
+    dirbin = (
+        pl.col(dirbincolumn) if dirbincolumn in columns else get_dirbin_expr(costheta, phi, ncosthetabins, nphibins)
+    )
+    return dfpackets.with_columns(dirbin=dirbin).with_columns(
+        costhetabin=pl.col("dirbin") // nphibins, phibin=pl.col("dirbin") % nphibins
+    )
 
 
 def filter_packets_dirbin(
