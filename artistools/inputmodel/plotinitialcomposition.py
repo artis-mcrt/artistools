@@ -36,6 +36,7 @@ from artistools.misc import has_mirror_plane
 from artistools.misc import import_optional
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
+from artistools.misc import positive_float_arg
 from artistools.misc import read_wsv
 from artistools.misc import require_cartesian3d_model
 from artistools.misc import resolve_outputfile
@@ -400,6 +401,13 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
         cbar = fig.colorbar(im, cax=fig.add_subplot(gs[0, column]), location="top", use_gridspec=True)
         cbar.set_label(get_colorbar_label(colname, args.logcolorscale))
 
+    if args.vmax is not None:
+        for ax in axes:
+            xmin, xmax = ax.get_xlim()
+            ymin, ymax = ax.get_ylim()
+            ax.set_xlim(-args.vmax if xmin < 0.0 and plotaxis1 != "rcyl" else 0.0, args.vmax if xmax > 0.0 else 0.0)
+            ax.set_ylim(-args.vmax if ymin < 0.0 and plotaxis2 != "rcyl" else 0.0, args.vmax if ymax > 0.0 else 0.0)
+
     if args.velocityunitplot == "kmps":
         for ax in axes:
             ax.xaxis.set_major_formatter(lambda value, _: f"{value / 1e3:g}")
@@ -591,6 +599,12 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         help=("Set the velocity-axis unit to c or kmps. Default is c"),
     )
 
+    parser.add_argument(
+        "-vmax",
+        type=positive_float_arg,
+        help="Set the maximum velocity for a 2D plot. Use same units as -velocityunitplot.",
+    )
+
     addarg_sliceaxis(parser, default="+z", helptext="Slice axis for 2D plots")
     addarg_data_output(parser)
     addarg_show(parser)
@@ -606,6 +620,9 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     resolve_slice_axis(args)
 
     if args.plot3d:
+        if args.vmax is not None:
+            msg = "-vmax applies to 2D plots only. Remove -vmax to use --plot3d"
+            raise ValueError(msg)
         make_3d_plot(Path(args.modelpath), args)
         return
 

@@ -1159,13 +1159,26 @@ def test_plotinitialcomposition_write_data_gives_each_pixel_of_the_slice(
 
     with mock.patch.object(mplax.Axes, "imshow", side_effect=mplax.Axes.imshow, autospec=True) as mockimshow:
         at.inputmodel.plotinitialcomposition.main(
-            argsraw=["rho", "Fe", str(modelpath_3d), "-o", str(tmp_path), "--logcolorscale", "--hideemptycells"],
+            argsraw=[
+                "rho",
+                "Fe",
+                str(modelpath_3d),
+                "-o",
+                str(tmp_path),
+                "--logcolorscale",
+                "--hideemptycells",
+                "-vmax",
+                "0.02",
+            ],
             write_data=True,
         )
 
     dftable = read_data_file(tmp_path / "plotcomposition_rho,fe.txt")
     assert mockimshow.call_count == 2
     for call, column in zip(mockimshow.call_args_list, ["log10_rho_g_per_cm3", "log10_rho_Fe_g_per_cm3"], strict=True):
+        ax = call.args[0]
+        assert ax.get_xlim() == pytest.approx((-0.02, 0.02))
+        assert ax.get_ylim() == pytest.approx((-0.02, 0.02))
         valuegrid = call.args[1]
         isshown = ~np.ma.getmaskarray(valuegrid).ravel()
         assert not isshown.all(), "the 3D test model holds an empty cell to hide"
@@ -1181,6 +1194,23 @@ def test_plotinitialcomposition_write_data_gives_each_pixel_of_the_slice(
             (dfslice[f"pos_{axis}_min"] + dfslice[f"pos_{axis}_max"]) / 2.0 / t_model_s / at.constants.C_cm_per_s
         )
         np.testing.assert_allclose(dftable[f"vel_{axis}_on_c"], vel_mid_on_c, rtol=1e-5)
+
+    model2d = tmp_path / "model2d"
+    model2d.mkdir()
+    write_2d_model(model2d, ncoordgridrcyl=4, ncoordgridz=6, vmax_cmps=1.0e9, t_model_days=1.0)
+    at.inputmodel.save_empty_abundance_file(npts_model=24, outputfilepath=model2d)
+    with mock.patch.object(mplax.Axes, "imshow", side_effect=mplax.Axes.imshow, autospec=True) as mockimshow:
+        at.inputmodel.plotinitialcomposition.main(
+            argsraw=["rho", str(model2d), "-o", str(tmp_path), "-velocityunitplot", "kmps", "-vmax", "5000"],
+            write_data=True,
+        )
+    ax = mockimshow.call_args.args[0]
+    assert ax.get_xlim() == pytest.approx((0.0, 5000.0))
+    assert ax.get_ylim() == pytest.approx((-5000.0, 5000.0))
+    dftable2d = read_data_file(tmp_path / "plotcomposition_rho.txt")
+    assert dftable2d.height == 24
+    assert dftable2d.filter(pl.col("vel_rcyl_kmps") > 5000.0).height > 0
+    assert dftable2d.filter(pl.col("vel_z_kmps") < -5000.0).height > 0
 
 
 def test_a_cache_of_the_earlier_name_stays_in_use(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -3676,6 +3706,13 @@ def test_plotinitialcomposition_rejects_a_column_or_a_model_that_it_cannot_plot(
 
     with pytest.raises(ValueError, match="2D or a 3D model"):
         at.inputmodel.plotinitialcomposition.main(argsraw=["rho", str(modelpath), "-o", str(tmp_path)])
+
+    for vmax in ("0", "-1", "nan", "inf"):
+        with pytest.raises(SystemExit):
+            at.inputmodel.plotinitialcomposition.main(argsraw=["-vmax", vmax])
+
+    with pytest.raises(ValueError, match="-vmax applies to 2D plots only"):
+        at.inputmodel.plotinitialcomposition.main(argsraw=["--plot3d", "-vmax", "0.1"])
 
 
 def test_shen2018_nitrogen_in_lower_case_is_no_neutron() -> None:
