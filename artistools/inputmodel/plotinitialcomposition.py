@@ -150,8 +150,12 @@ def plot_slice_modelcolumn(
     plotaxis2: str,
     t_model_d: float,
     args: argparse.Namespace,
+    colorbarlimits: tuple[float | None, float | None] = (None, None),
 ) -> AxesImage:
-    """Draw one model column as a colour image on the axes, and return the image."""
+    """Draw one model column as a colour image on the axes, and return the image.
+
+    colorbarlimits gives the minimum and the maximum of the colour bar. A value of None keeps the default limit.
+    """
     print(f"Plotting {colname}")
     colorscale = (
         (dfmodelslice[colname] * dfmodelslice["rho"]) if colname.startswith("X_") else dfmodelslice[colname]
@@ -215,6 +219,14 @@ def plot_slice_modelcolumn(
     else:
         vmin = None
         vmax = None
+
+    # the limits are linear values, as -floorval is, thus a log colour scale takes the logarithm
+    colorbarmin, colorbarmax = colorbarlimits
+    if colorbarmin is not None:
+        vmin = math.log10(colorbarmin) if args.logcolorscale else colorbarmin
+    if colorbarmax is not None:
+        vmax = math.log10(colorbarmax) if args.logcolorscale else colorbarmax
+
     im = ax.imshow(
         valuegrid,
         cmap="viridis",
@@ -393,9 +405,19 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
     # each panel has its own colour limits, e.g. a fixed range for rho and an automatic range for a mass fraction,
     # thus each panel gets its own colour bar
     images: list[AxesImage] = []
+    colorbarmins = args.colorbarmin or [None] * ncols
+    colorbarmaxs = args.colorbarmax or [None] * ncols
     for column, (colname, ax) in enumerate(zip(colnames, axes, strict=True)):
         im = plot_slice_modelcolumn(
-            ax, df2dslice, modelmeta, colname, plotaxis1, plotaxis2, modelmeta["t_model_init_days"], args
+            ax,
+            df2dslice,
+            modelmeta,
+            colname,
+            plotaxis1,
+            plotaxis2,
+            modelmeta["t_model_init_days"],
+            args,
+            (colorbarmins[column], colorbarmaxs[column]),
         )
         images.append(im)
         cbar = fig.colorbar(im, cax=fig.add_subplot(gs[0, column]), location="top", use_gridspec=True)
@@ -606,9 +628,40 @@ def addargs(parser: argparse.ArgumentParser) -> None:
     )
 
     addarg_sliceaxis(parser, default="+z", helptext="Slice axis for 2D plots")
+    for flag, limitname in (("-colorbarmin", "minimum"), ("-colorbarmax", "maximum")):
+        parser.add_argument(
+            flag,
+            type=float,
+            nargs="+",
+            help=(
+                f"Set the {limitname} of the colour bar of a 2D plot. Give one value for each plotvar, in the order of"
+                " the plotvars. Also with --logcolorscale"
+            ),
+        )
     addarg_data_output(parser)
     addarg_show(parser)
     addarg_darkmode(parser)
+
+
+def check_colorbar_limits(args: argparse.Namespace) -> None:
+    """Raise a ValueError if -colorbarmin or -colorbarmax does not fit the plotvars of the plot."""
+    for flag, limits in (("-colorbarmin", args.colorbarmin), ("-colorbarmax", args.colorbarmax)):
+        if limits is None:
+            continue
+        if args.plot3d:
+            msg = f"{flag} applies to 2D plots only. Remove {flag} to use --plot3d"
+            raise ValueError(msg)
+        if len(limits) != len(args.plotvars):
+            msg = f"{flag} needs one value for each plotvar. Got {len(limits)} values for {len(args.plotvars)} plotvars"
+            raise ValueError(msg)
+        if args.logcolorscale and not all(math.isfinite(limit) and limit > 0 for limit in limits):
+            msg = f"{flag} must be positive with --logcolorscale, got {limits}"
+            raise ValueError(msg)
+    if args.colorbarmin is not None and args.colorbarmax is not None:
+        for colorbarmin, colorbarmax in zip(args.colorbarmin, args.colorbarmax, strict=True):
+            if colorbarmin >= colorbarmax:
+                msg = f"Each -colorbarmin must be less than its -colorbarmax, got {colorbarmin} and {colorbarmax}"
+                raise ValueError(msg)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -618,6 +671,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args.plotvars = resolve_positional_modelpath(args, "plotvars") or ["rho"]
 
     resolve_slice_axis(args)
+    check_colorbar_limits(args)
 
     if args.plot3d:
         if args.vmax is not None:
