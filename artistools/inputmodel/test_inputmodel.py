@@ -717,6 +717,120 @@ def test_makemodel_dimensionreduce_writes_the_gridcontributions(tmp_path: Path) 
     assert dfcontribs["cellindex"].max() <= modelmeta["npts_model"]
 
 
+@pytest.mark.parametrize(("sliceaxis", "radialaxis"), [("x", "+y"), ("x", "-y"), ("y", "+x"), ("z", "-x")])
+def test_make_cylindrical_slice_preserves_selected_cells(sliceaxis: str, radialaxis: str) -> None:
+    from artistools.inputmodel.makeartismodel import make_cylindrical_slice
+
+    dfmodel, modelmeta = get_empty_3d_model(4, 1e9, 1.0, includenico57=True)
+    dfmodel = dfmodel.with_columns(
+        rho=pl.col("inputcellid").cast(pl.Float32), X_Ni57=pl.col("inputcellid").cast(pl.Float32) / 100
+    )
+    abundances = dfmodel.select("inputcellid").with_columns(X_Ni=pl.col("inputcellid") / 100)
+    contributions = dfmodel.select(
+        particleid=pl.col("inputcellid"), cellindex=pl.col("inputcellid"), frac_of_cellmass=pl.lit(0.75)
+    ).collect()
+    result, resultabundances, resultcontributions, metadata = make_cylindrical_slice(
+        dfmodel, modelmeta, abundances, contributions, sliceaxis, radialaxis
+    )
+
+    verticalaxis = next(axis for axis in "xyz" if axis not in {sliceaxis, radialaxis[1]})
+    radialindices = [2, 3] if radialaxis[0] == "+" else [1, 0]
+    sourceids = []
+    for verticalindex in range(4):
+        for radialindex in radialindices:
+            indices = {sliceaxis: 2, radialaxis[1]: radialindex, verticalaxis: verticalindex}
+            sourceids.append(1 + indices["x"] + 4 * indices["y"] + 16 * indices["z"])
+
+    np.testing.assert_allclose(result["rho"], sourceids)
+    np.testing.assert_allclose(result["X_Ni57"], np.array(sourceids) / 100, rtol=1e-6)
+    np.testing.assert_allclose(resultabundances["X_Ni"], np.array(sourceids) / 100, rtol=1e-6)
+    assert resultcontributions is not None
+    assert resultcontributions["particleid"].to_list() == sourceids
+    assert resultcontributions["cellindex"].to_list() == list(range(1, 9))
+    np.testing.assert_allclose(resultcontributions["frac_of_cellmass"], 0.75)
+    assert metadata["coordinates"] == "cylindrical2d"
+    assert (metadata["ncoordgridrcyl"], metadata["ncoordgridz"]) == (2, 4)
+
+
+@pytest.mark.parametrize("outputformat", [1, 2])
+def test_makemodel_cylindrical_slice_command(tmp_path: Path, outputformat: int) -> None:
+    dfmodel, modelmeta = get_empty_3d_model(4, 1e9, 1.0, includenico57=True)
+    dfmodel = dfmodel.with_columns(
+        rho=pl.col("inputcellid").cast(pl.Float32),
+        X_Ni57=pl.lit(0.1),
+        slice_test_property=pl.col("inputcellid").cast(pl.Float32) / 100,
+    )
+    abundances = dfmodel.select("inputcellid").with_columns(X_Ni=pl.lit(0.2))
+    modelfolder = tmp_path / "model3d"
+    modelfolder.mkdir()
+    at.inputmodel.save_modeldata(dfmodel, outpath=modelfolder, modelmeta=modelmeta, extracols=["slice_test_property"])
+    at.inputmodel.save_initelemabundances(abundances, outpath=modelfolder)
+    (modelfolder / "gridcontributions.txt").write_text(
+        "particleid cellindex frac_of_cellmass\n" + "".join(f"{cellid} {cellid} 1.0\n" for cellid in range(1, 65)),
+        encoding="utf-8",
+    )
+
+    at.inputmodel.makeartismodel.main(
+        argsraw=[
+            "-modelpath",
+            str(modelfolder),
+            "-dimensionreduce",
+            "2",
+            "--make2dmodelfromsliceaxis",
+            "x",
+            "--modelrcoordaxis2d=+y",
+            "--format-version",
+            str(outputformat),
+            "-o",
+            str(tmp_path / "out"),
+        ]
+    )
+    outfolder = tmp_path / "out" / "model3d_dimreduce_2d"
+    result, metadata = at.inputmodel.scan_modeldata(outfolder)
+    result = result.collect()
+    expectedids = [1 + 2 + 4 * y + 16 * z for z in range(4) for y in (2, 3)]
+    np.testing.assert_allclose(result["rho"], expectedids)
+    np.testing.assert_allclose(result["X_Ni57"], 0.1, rtol=1e-6)
+    np.testing.assert_allclose(result["slice_test_property"], np.array(expectedids) / 100, rtol=1e-6)
+    resultabundances = at.inputmodel.scan_initelemabundances(outfolder).collect()
+    np.testing.assert_allclose(resultabundances["X_Ni"], 0.2, rtol=1e-6)
+    resultcontributions = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(outfolder)
+    assert resultcontributions["particleid"].to_list() == expectedids
+    assert resultcontributions["cellindex"].to_list() == list(range(outputformat == 1, 8 + (outputformat == 1)))
+    assert metadata["coordinates"] == "cylindrical2d"
+
+
+def test_makemodel_cylindrical_slice_requires_both_different_axes() -> None:
+    for args in (
+        ["--dimensionreduce", "2", "--make2dmodelfromsliceaxis", "x"],
+        ["--dimensionreduce", "2", "--modelrcoordaxis2d=+y"],
+        ["--dimensionreduce", "1", "--make2dmodelfromsliceaxis", "x", "--modelrcoordaxis2d=+y"],
+        ["--dimensionreduce", "2", "--make2dmodelfromsliceaxis", "x", "--modelrcoordaxis2d=+x"],
+    ):
+        with pytest.raises(SystemExit):
+            at.inputmodel.makeartismodel.main(argsraw=args)
+
+
+def test_make_cylindrical_slice_checks_the_grid_and_abundances() -> None:
+    from artistools.inputmodel.makeartismodel import make_cylindrical_slice
+
+    dfmodel, modelmeta = get_empty_3d_model(4, 1e9, 1.0)
+    abundances = dfmodel.select("inputcellid").with_columns(X_Ni=pl.lit(0.1))
+    _, _, contributions, _ = make_cylindrical_slice(dfmodel, modelmeta, abundances, None, "x", "+y")
+    assert contributions is None
+
+    duplicatedabundances = pl.concat((
+        abundances.filter(pl.col("inputcellid") != 11),
+        abundances.filter(pl.col("inputcellid") == 15),
+    ))
+    with pytest.raises(ValueError, match="one row of elemental abundances"):
+        make_cylindrical_slice(dfmodel, modelmeta, duplicatedabundances, None, "x", "+y")
+
+    oddmodel, oddmeta = get_empty_3d_model(3, 1e9, 1.0)
+    with pytest.raises(ValueError, match="even number of cells"):
+        make_cylindrical_slice(oddmodel, oddmeta, abundances, None, "x", "+y")
+
+
 def test_opacity_by_ye_file(tmp_path: Path) -> None:
     griddata = pl.DataFrame({
         "Ye": [0.0, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.5],
@@ -982,6 +1096,59 @@ def test_plotinitialcomposition(tmp_path: Path) -> None:
     assert (tmp_path / "plotcomposition_rho,fe.pdf").is_file()
 
 
+@pytest.mark.parametrize(
+    ("logscale", "expectedlimits"),
+    [(False, [(1e-12, 1e-8), (0.1, 0.5)]), (True, [(-12.0, -8.0), (math.log10(0.1), math.log10(0.5))])],
+)
+def test_plotinitialcomposition_colorbar_limits_reach_imshow(
+    tmp_path: Path, logscale: bool, expectedlimits: list[tuple[float, float]]
+) -> None:
+    """Each panel takes its own limits, and a log colour scale takes the logarithm of the limits."""
+    with mock.patch.object(mplax.Axes, "imshow", side_effect=mplax.Axes.imshow, autospec=True) as mockimshow:
+        at.inputmodel.plotinitialcomposition.main(
+            argsraw=[
+                "rho",
+                "Fe",
+                str(modelpath_3d),
+                "-o",
+                str(tmp_path),
+                "-colorbarmin",
+                "1e-12",
+                "0.1",
+                "-colorbarmax",
+                "1e-8",
+                "0.5",
+                *(["--logcolorscale"] if logscale else []),
+            ]
+        )
+
+    assert mockimshow.call_count == 2
+    for call, (vmin, vmax) in zip(mockimshow.call_args_list, expectedlimits, strict=True):
+        assert call.kwargs["vmin"] == pytest.approx(vmin)
+        assert call.kwargs["vmax"] == pytest.approx(vmax)
+
+
+@pytest.mark.parametrize(
+    ("extraargs", "match"),
+    [
+        (["-colorbarmin", "1e-12"], "one value for each plotvar"),
+        (["-colorbarmin", "nan", "0.1"], "finite"),
+        (["-colorbarmax", "inf", "0.5"], "finite"),
+        (["-colorbarmin", "0", "0.1", "--logcolorscale"], "positive"),
+        (["-colorbarmax", "-1", "0.5", "--logcolorscale"], "positive"),
+        (["-colorbarmin", "2", "2", "-colorbarmax", "1", "3"], "less than"),
+        (["-colorbarmin", "1", "2", "--plot3d"], "2D plots only"),
+    ],
+)
+def test_plotinitialcomposition_rejects_invalid_colorbar_limits(
+    tmp_path: Path, extraargs: list[str], match: str
+) -> None:
+    with pytest.raises(ValueError, match=match):
+        at.inputmodel.plotinitialcomposition.main(
+            argsraw=["rho", "Fe", str(modelpath_3d), "-o", str(tmp_path), *extraargs]
+        )
+
+
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_plotdensity_write_data_gives_the_plotted_profiles(
     mockplot: mock.MagicMock, tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
@@ -1045,13 +1212,26 @@ def test_plotinitialcomposition_write_data_gives_each_pixel_of_the_slice(
 
     with mock.patch.object(mplax.Axes, "imshow", side_effect=mplax.Axes.imshow, autospec=True) as mockimshow:
         at.inputmodel.plotinitialcomposition.main(
-            argsraw=["rho", "Fe", str(modelpath_3d), "-o", str(tmp_path), "--logcolorscale", "--hideemptycells"],
+            argsraw=[
+                "rho",
+                "Fe",
+                str(modelpath_3d),
+                "-o",
+                str(tmp_path),
+                "--logcolorscale",
+                "--hideemptycells",
+                "-vmax",
+                "0.02",
+            ],
             write_data=True,
         )
 
     dftable = read_data_file(tmp_path / "plotcomposition_rho,fe.txt")
     assert mockimshow.call_count == 2
     for call, column in zip(mockimshow.call_args_list, ["log10_rho_g_per_cm3", "log10_rho_Fe_g_per_cm3"], strict=True):
+        ax = call.args[0]
+        assert ax.get_xlim() == pytest.approx((-0.02, 0.02))
+        assert ax.get_ylim() == pytest.approx((-0.02, 0.02))
         valuegrid = call.args[1]
         isshown = ~np.ma.getmaskarray(valuegrid).ravel()
         assert not isshown.all(), "the 3D test model holds an empty cell to hide"
@@ -1067,6 +1247,23 @@ def test_plotinitialcomposition_write_data_gives_each_pixel_of_the_slice(
             (dfslice[f"pos_{axis}_min"] + dfslice[f"pos_{axis}_max"]) / 2.0 / t_model_s / at.constants.C_cm_per_s
         )
         np.testing.assert_allclose(dftable[f"vel_{axis}_on_c"], vel_mid_on_c, rtol=1e-5)
+
+    model2d = tmp_path / "model2d"
+    model2d.mkdir()
+    write_2d_model(model2d, ncoordgridrcyl=4, ncoordgridz=6, vmax_cmps=1.0e9, t_model_days=1.0)
+    at.inputmodel.save_empty_abundance_file(npts_model=24, outputfilepath=model2d)
+    with mock.patch.object(mplax.Axes, "imshow", side_effect=mplax.Axes.imshow, autospec=True) as mockimshow:
+        at.inputmodel.plotinitialcomposition.main(
+            argsraw=["rho", str(model2d), "-o", str(tmp_path), "-velocityunitplot", "kmps", "-vmax", "5000"],
+            write_data=True,
+        )
+    ax = mockimshow.call_args.args[0]
+    assert ax.get_xlim() == pytest.approx((0.0, 5000.0))
+    assert ax.get_ylim() == pytest.approx((-5000.0, 5000.0))
+    dftable2d = read_data_file(tmp_path / "plotcomposition_rho.txt")
+    assert dftable2d.height == 24
+    assert dftable2d.filter(pl.col("vel_rcyl_kmps") > 5000.0).height > 0
+    assert dftable2d.filter(pl.col("vel_z_kmps") < -5000.0).height > 0
 
 
 def test_a_cache_of_the_earlier_name_stays_in_use(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -3563,6 +3760,13 @@ def test_plotinitialcomposition_rejects_a_column_or_a_model_that_it_cannot_plot(
     with pytest.raises(ValueError, match="2D or a 3D model"):
         at.inputmodel.plotinitialcomposition.main(argsraw=["rho", str(modelpath), "-o", str(tmp_path)])
 
+    for vmax in ("0", "-1", "nan", "inf"):
+        with pytest.raises(SystemExit):
+            at.inputmodel.plotinitialcomposition.main(argsraw=["-vmax", vmax])
+
+    with pytest.raises(ValueError, match="-vmax applies to 2D plots only"):
+        at.inputmodel.plotinitialcomposition.main(argsraw=["--plot3d", "-vmax", "0.1"])
+
 
 def test_shen2018_nitrogen_in_lower_case_is_no_neutron() -> None:
     """The names of a Shen et al. 2018 file are in lower case, thus n14 is nitrogen and only n and n1 are the neutron.
@@ -3888,7 +4092,7 @@ def test_plotinitialcomposition_3d_tables_follow_the_order_of_the_cells() -> Non
 
     xgrid = np.array([-0.2, 0.0])
     cellvalues = np.arange(8.0)
-    tables = get_3d_tables(xgrid, cellvalues.reshape((2, 2, 2), order="F"), "rho", np.array([1.0, 5.0]))
+    tables = get_3d_tables(xgrid, cellvalues.reshape((2, 2, 2), order="F"), "rho", np.array([1.0, 5.0]), "c")
     dfcells = tables[""]
     assert dfcells["rho"].to_list() == cellvalues.tolist()
     assert dfcells["vel_x_min_on_c"].to_list() == [-0.2, 0.0] * 4

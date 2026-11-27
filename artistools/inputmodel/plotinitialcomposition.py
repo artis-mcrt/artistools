@@ -36,6 +36,7 @@ from artistools.misc import has_mirror_plane
 from artistools.misc import import_optional
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
+from artistools.misc import positive_float_arg
 from artistools.misc import read_wsv
 from artistools.misc import require_cartesian3d_model
 from artistools.misc import resolve_outputfile
@@ -149,8 +150,12 @@ def plot_slice_modelcolumn(
     plotaxis2: str,
     t_model_d: float,
     args: argparse.Namespace,
+    colorbarlimits: tuple[float | None, float | None] = (None, None),
 ) -> AxesImage:
-    """Draw one model column as a colour image on the axes, and return the image."""
+    """Draw one model column as a colour image on the axes, and return the image.
+
+    colorbarlimits gives the minimum and the maximum of the colour bar. A value of None keeps the default limit.
+    """
     print(f"Plotting {colname}")
     colorscale = (
         (dfmodelslice[colname] * dfmodelslice["rho"]) if colname.startswith("X_") else dfmodelslice[colname]
@@ -181,8 +186,7 @@ def plot_slice_modelcolumn(
         with np.errstate(divide="ignore"):
             colorscale = np.log10(colorscale)
 
-    cmps_to_beta = 1.0 / C_cm_per_s
-    unitfactor = cmps_to_beta
+    unitfactor = 1.0 / {"c": C_cm_per_s, "kmps": km_to_cm}[args.velocityunitplot]
     t_model_s = t_model_d * day_to_s
 
     # turn 1D flattened array back into 2D array
@@ -215,6 +219,14 @@ def plot_slice_modelcolumn(
     else:
         vmin = None
         vmax = None
+
+    # the limits are linear values, as -floorval is, thus a log colour scale takes the logarithm
+    colorbarmin, colorbarmax = colorbarlimits
+    if colorbarmin is not None:
+        vmin = math.log10(colorbarmin) if args.logcolorscale else colorbarmin
+    if colorbarmax is not None:
+        vmax = math.log10(colorbarmax) if args.logcolorscale else colorbarmax
+
     im = ax.imshow(
         valuegrid,
         cmap="viridis",
@@ -285,12 +297,17 @@ def get_table_column_name(colname: str, logcolorscale: bool) -> str:
 
 
 def get_slice_table(
-    images: Sequence[AxesImage], colnames: Sequence[str], plotaxis1: str, plotaxis2: str, logcolorscale: bool
+    images: Sequence[AxesImage],
+    colnames: Sequence[str],
+    plotaxis1: str,
+    plotaxis2: str,
+    logcolorscale: bool,
+    velocityunitplot: str,
 ) -> pl.DataFrame:
     """Return one row for each pixel of the slice, with the velocities of the pixel centre and the value of each panel.
 
     The values come from the images, thus they have the floor and the log10 of the colour scale. A cell that
-    --hideemptycells hides has a null value.
+    --hideemptycells hides has a null value. The velocities use c or km/s, as -velocityunitplot selects.
     """
     xmin, xmax, ymin, ymax = images[0].get_extent()
     firstarray = images[0].get_array()
@@ -298,10 +315,11 @@ def get_slice_table(
     nrows, ncols = firstarray.shape[:2]
     xedges = np.linspace(xmin, xmax, ncols + 1)
     yedges = np.linspace(ymin, ymax, nrows + 1)
+    unitsuffix = {"c": "on_c", "kmps": "kmps"}[velocityunitplot]
     # origin="lower" puts row 0 of the array at ymin, and each row of the array holds one value of y
     columns = [
-        pl.Series(f"vel_{plotaxis1}_on_c", np.tile((xedges[:-1] + xedges[1:]) / 2.0, nrows)),
-        pl.Series(f"vel_{plotaxis2}_on_c", np.repeat((yedges[:-1] + yedges[1:]) / 2.0, ncols)),
+        pl.Series(f"vel_{plotaxis1}_{unitsuffix}", np.tile((xedges[:-1] + xedges[1:]) / 2.0, nrows)),
+        pl.Series(f"vel_{plotaxis2}_{unitsuffix}", np.repeat((yedges[:-1] + yedges[1:]) / 2.0, ncols)),
     ]
     for image, colname in zip(images, colnames, strict=True):
         valuegrid = image.get_array()
@@ -387,16 +405,39 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
     # each panel has its own colour limits, e.g. a fixed range for rho and an automatic range for a mass fraction,
     # thus each panel gets its own colour bar
     images: list[AxesImage] = []
+    colorbarmins = args.colorbarmin or [None] * ncols
+    colorbarmaxs = args.colorbarmax or [None] * ncols
     for column, (colname, ax) in enumerate(zip(colnames, axes, strict=True)):
         im = plot_slice_modelcolumn(
-            ax, df2dslice, modelmeta, colname, plotaxis1, plotaxis2, modelmeta["t_model_init_days"], args
+            ax,
+            df2dslice,
+            modelmeta,
+            colname,
+            plotaxis1,
+            plotaxis2,
+            modelmeta["t_model_init_days"],
+            args,
+            (colorbarmins[column], colorbarmaxs[column]),
         )
         images.append(im)
         cbar = fig.colorbar(im, cax=fig.add_subplot(gs[0, column]), location="top", use_gridspec=True)
         cbar.set_label(get_colorbar_label(colname, args.logcolorscale))
 
-    xlabel = r"v$_{" + str(plotaxis1) + r"}$ [$c$]"
-    ylabel = r"v$_{" + str(plotaxis2) + r"}$ [$c$]"
+    if args.vmax is not None:
+        for ax in axes:
+            xmin, xmax = ax.get_xlim()
+            ymin, ymax = ax.get_ylim()
+            ax.set_xlim(-args.vmax if xmin < 0.0 and plotaxis1 != "rcyl" else 0.0, args.vmax if xmax > 0.0 else 0.0)
+            ax.set_ylim(-args.vmax if ymin < 0.0 and plotaxis2 != "rcyl" else 0.0, args.vmax if ymax > 0.0 else 0.0)
+
+    if args.velocityunitplot == "kmps":
+        for ax in axes:
+            ax.xaxis.set_major_formatter(lambda value, _: f"{value / 1e3:g}")
+            ax.yaxis.set_major_formatter(lambda value, _: f"{value / 1e3:g}")
+
+    unitlabel = {"c": "$c$", "kmps": r"$10^3$ km/s"}[args.velocityunitplot]
+    xlabel = r"v$_{" + str(plotaxis1) + r"}$ [" + unitlabel + "]"
+    ylabel = r"v$_{" + str(plotaxis2) + r"}$ [" + unitlabel + "]"
 
     axes[0].set_xlabel(xlabel)
     axes[0].set_ylabel(ylabel)
@@ -405,7 +446,7 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
     outfilename = resolve_outputfile(args.outputfile, defaultfilename)
 
     if getattr(args, "print_data", False) or getattr(args, "write_data", False):
-        dfslice = get_slice_table(images, colnames, plotaxis1, plotaxis2, args.logcolorscale)
+        dfslice = get_slice_table(images, colnames, plotaxis1, plotaxis2, args.logcolorscale, args.velocityunitplot)
         output_data(args, {"": dfslice}, outfilename)
     save_figure(fig, outfilename, args=args, format="pdf")
 
@@ -415,18 +456,21 @@ def get_3d_tables(
     values: npt.NDArray[np.floating],
     valuename: str,
     surfacelevels: npt.NDArray[np.floating],
+    velocityunitplot: str,
 ) -> dict[str, pl.DataFrame]:
     """Return the values of the cells that the isosurfaces come from, and the value of each isosurface.
 
-    The mesh of pyvista has one point for each cell, at the lower corner of the cell, thus the velocities are the
-    lower corners in units of c. values has the order (x, y, z).
+    The pyvista mesh has one point at the lower corner of each cell. The velocities use c or km/s, as -velocityunitplot
+    selects.
+    The axes of `values` have the order (x, y, z).
     """
     x, y, z = np.meshgrid(xgrid, xgrid, xgrid, indexing="ij")
+    unitsuffix = {"c": "on_c", "kmps": "kmps"}[velocityunitplot]
     return {
         "": pl.DataFrame({
-            "vel_x_min_on_c": x.ravel(order="F"),
-            "vel_y_min_on_c": y.ravel(order="F"),
-            "vel_z_min_on_c": z.ravel(order="F"),
+            f"vel_x_min_{unitsuffix}": x.ravel(order="F"),
+            f"vel_y_min_{unitsuffix}": y.ravel(order="F"),
+            f"vel_z_min_{unitsuffix}": z.ravel(order="F"),
             valuename: values.ravel(order="F"),
         }),
         "_isosurfaces": pl.DataFrame({f"{valuename}_of_isosurface": surfacelevels}),
@@ -469,7 +513,7 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     # generate grid from data
     grid = round(len(model["rho"]) ** (1.0 / 3.0))
     surfacearr = np.asarray(model[coloursurfaceby], dtype=float)
-    vmax /= C_cm_per_s
+    vmax /= {"c": C_cm_per_s, "kmps": km_to_cm}[args.velocityunitplot]
     # cells are ordered with x varying fastest, i.e. Fortran order on (nx, ny, nz)
     surfacecolorscale = surfacearr.reshape((grid, grid, grid), order="F")
     xgrid = -vmax + 2 * np.arange(grid) * vmax / grid
@@ -499,6 +543,7 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
                 surfacecolorscale,
                 coloursurfaceby,
                 get_levels_with_surface(surf, coloursurfaceby, surfacepositions),
+                args.velocityunitplot,
             ),
             modelpath / "3Dplot.png",
         )
@@ -514,13 +559,20 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
 
     plotter: t.Any = pv.Plotter()
     plotcoloropacity = [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1]  # some choices: 'linear' 'sigmoid'
+    axistitles = (
+        ("vx / c", "vy / c", "vz / c")
+        if args.velocityunitplot == "c"
+        else ("vx [10³ km/s]", "vy [10³ km/s]", "vz [10³ km/s]")
+    )
+    axes_ranges = tuple(bound / 1e3 for bound in mesh.bounds) if args.velocityunitplot == "kmps" else None
     plotter.show_bounds(
         mesh=mesh,
+        axes_ranges=axes_ranges,
         grid=False,
         location="outer",
-        xtitle="vx / c",
-        ytitle="vy / c",
-        ztitle="vz / c",
+        xtitle=axistitles[0],
+        ytitle=axistitles[1],
+        ztitle=axistitles[2],
         ticks="inside",
         minor_ticks=False,
         font_size=28,
@@ -562,10 +614,55 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
     parser.add_argument("-floorval", default=None, type=float, help="Set a floor value for colorscale. Expects float")
 
+    parser.add_argument(
+        "-velocityunitplot",
+        choices=["c", "kmps"],
+        default="c",
+        help=("Set the velocity-axis unit to c or kmps. Default is c"),
+    )
+
+    parser.add_argument(
+        "-vmax",
+        type=positive_float_arg,
+        help="Set the maximum velocity for a 2D plot. Use same units as -velocityunitplot",
+    )
+
     addarg_sliceaxis(parser, default="+z", helptext="Slice axis for 2D plots")
+    for flag, limitname in (("-colorbarmin", "minimum"), ("-colorbarmax", "maximum")):
+        parser.add_argument(
+            flag,
+            type=float,
+            nargs="+",
+            help=(
+                f"Set the {limitname} of the colour bar of a 2D plot. Give one value for each plotvar, in the order of"
+                " the plotvars. Also with --logcolorscale"
+            ),
+        )
     addarg_data_output(parser)
     addarg_show(parser)
     addarg_darkmode(parser)
+
+
+def check_colorbar_limits(args: argparse.Namespace) -> None:
+    """Raise a ValueError if -colorbarmin or -colorbarmax does not fit the plotvars of the plot."""
+    for flag, limits in (("-colorbarmin", args.colorbarmin), ("-colorbarmax", args.colorbarmax)):
+        if limits is None:
+            continue
+        if args.plot3d:
+            msg = f"{flag} applies to 2D plots only. Remove {flag} to use --plot3d"
+            raise ValueError(msg)
+        if len(limits) != len(args.plotvars):
+            msg = f"{flag} needs one value for each plotvar. Got {len(limits)} values for {len(args.plotvars)} plotvars"
+            raise ValueError(msg)
+        if not all(math.isfinite(limit) and (not args.logcolorscale or limit > 0) for limit in limits):
+            requirement = "finite and positive with --logcolorscale" if args.logcolorscale else "finite"
+            msg = f"{flag} must be {requirement}, got {limits}"
+            raise ValueError(msg)
+    if args.colorbarmin is not None and args.colorbarmax is not None:
+        for colorbarmin, colorbarmax in zip(args.colorbarmin, args.colorbarmax, strict=True):
+            if colorbarmin >= colorbarmax:
+                msg = f"Each -colorbarmin must be less than its -colorbarmax, got {colorbarmin} and {colorbarmax}"
+                raise ValueError(msg)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
@@ -575,8 +672,12 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     args.plotvars = resolve_positional_modelpath(args, "plotvars") or ["rho"]
 
     resolve_slice_axis(args)
+    check_colorbar_limits(args)
 
     if args.plot3d:
+        if args.vmax is not None:
+            msg = "-vmax applies to 2D plots only. Remove -vmax to use --plot3d"
+            raise ValueError(msg)
         make_3d_plot(Path(args.modelpath), args)
         return
 
