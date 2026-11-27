@@ -26,8 +26,11 @@ for each time step and cell. SKILL.md gives the main columns. The other column f
 - `gamma_R_<ion>`, `gamma_NT_<ion>`, and `gamma_R_integral_<ion>` (s^-1): the ionisation rates of each ion. ARTIS
   writes `gamma_R_integral_` only with `DETAILED_BF_ESTIMATORS_ON`;
 - `corrphotoionrenorm_<ion>` and `gammaestimator_<ion>`: the correction of the photoionisation rate of the ground
-  level, and the ionisation rate per ground-level population. For an element with no NLTE levels, `gammaestimator_`
-  holds the analytic rate of radiative and collisional ionisation. ARTIS writes them only with `USE_LUT_PHOTOION`;
+  level, and the ionisation rate per ground-level population. ARTIS writes them only with `USE_LUT_PHOTOION`. In a cell
+  with a thermal balance, `gammaestimator_` holds the analytic rate of radiative and collisional ionisation for an
+  element with no NLTE levels and without `FORCE_SAHA_ION_BALANCE`. Each other value is the normalised Monte Carlo
+  estimate of the photoionisation rate. In an output of ARTIS before artis-mcrt/artis#829, an element with
+  `FORCE_SAHA_ION_BALANCE` also holds the analytic rate;
 - `Alpha_R_<ion>` (cm^3/s): the recombination coefficient, in an output of an older ARTIS.
 
 `artistools plotestimators --listvariables --print-data --quiet <modelpath>` gives a table of each column of a model,
