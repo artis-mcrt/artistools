@@ -3,6 +3,7 @@
 import argparse
 import glob
 import math
+import re
 import typing as t
 from collections.abc import Sequence
 from pathlib import Path
@@ -152,12 +153,12 @@ def read_cell_estimators(
 
 def write_edep(
     modelpath: str | Path, selected_timesteps: Sequence[int], dfestimators: pl.DataFrame, outfile: Path
-) -> None:
+) -> bool:
     """Write the deposition of every cell at the selected timesteps, in the format of the workshop.
 
     The rate comes from the deposition_ columns, as in deposition.py. A model with no such column gets a warning and no
     file. artistools derives the total_dep of such a model from the heating rate, which is not the deposition rate of
-    a cell.
+    a cell. Return True if the function wrote the file.
     """
     # scan_estimators refuses a request of timesteps that ARTIS did not write, e.g. the one after the last
     writtentimesteps = set(get_estimator_timesteps(Path(modelpath)))
@@ -171,7 +172,7 @@ def write_edep(
             f"The estimators of {modelpath} hold no deposition_ column, thus they give no deposition rate of a cell."
             f" The command does not write the file {outfile.name}"
         )
-        return
+        return False
 
     dfcellrates = (
         get_cell_deposition_rates(
@@ -220,6 +221,8 @@ def write_edep(
             get_cell_line(vel_r_mid, celldepositions) for vel_r_mid, *celldepositions in dfdeposition.iter_rows()
         )
 
+    return True
+
 
 def get_column_or_zero(dfestimators: pl.DataFrame, colname: str) -> pl.Expr:
     """Return the column of the estimators as Float64, or zero when this model holds no such column.
@@ -237,9 +240,13 @@ def write_ionfracts(
     selected_timesteps: Sequence[int],
     dfestimators: pl.DataFrame,
     outputpath: Path,
-) -> None:
-    """Write the ion fractions of every element in code comparison workshop format, one file per element."""
+) -> list[Path]:
+    """Write the ion fractions of every element in code comparison workshop format, one file per element.
+
+    Return the path of each file that the function keeps.
+    """
     dfcomposition = get_composition_data(modelpath).select("Z", "nions", "lowermost_ion_stage")
+    keptpaths = []
     for atomic_number, nions, lowermost_ion_stage in dfcomposition.iter_rows():
         elsymb = get_elsymbol(atomic_number)
         # the format labels the neutral stage 0 and needs a column for each stage up to the highest one. ARTIS
@@ -278,6 +285,10 @@ def write_ionfracts(
         if maxionfrac <= 0.0:
             print(f"Deleting {pathfileout} because it is all zeros")
             pathfileout.unlink()
+        else:
+            keptpaths.append(pathfileout)
+
+    return keptpaths
 
 
 def write_phys(
@@ -286,15 +297,17 @@ def write_phys(
     selected_timesteps: Sequence[int],
     dfestimators: pl.DataFrame,
     outputpath: Path,
-) -> None:
-    """Write the physical conditions of every cell in code comparison workshop format."""
+) -> Path:
+    """Write the physical conditions of every cell in code comparison workshop format, and return the path."""
+    outfile = Path(outputpath, f"phys_{model_id}_artisnebular.txt")
     write_timestep_blocks(
-        Path(outputpath, f"phys_{model_id}_artisnebular.txt"),
+        outfile,
         modelpath,
         dfestimators.select("timestep", "vel_r_mid", "Te", "rho", "nne", "nntot"),
         selected_timesteps,
         "#vel_mid[km/s] temp[K] rho[gcc] ne[/cm^3] natom[/cm^3]",
     )
+    return outfile
 
 
 def write_lbol_edep(modelpath: str | Path, selected_timesteps: Sequence[int], outputpath: Path) -> None:
@@ -325,6 +338,53 @@ def write_lbol_edep(modelpath: str | Path, selected_timesteps: Sequence[int], ou
             f.write(
                 f"{time_days:.2f} {luminosity_Lsun * Lsun_to_erg_per_s:.4e} {total_dep_Lsun * Lsun_to_erg_per_s:.4e}\n"
             )
+
+
+def write_comparison_files(
+    modelpath: str | Path,
+    model_id: str,
+    selected_timesteps: Sequence[int],
+    dfestimators: pl.DataFrame,
+    outputfolder: Path,
+) -> list[Path]:
+    """Write the code comparison files of one model, and return the path of each file that the export wrote."""
+    writtenpaths = []
+    lbolpath = Path(outputfolder, f"lbol_edep_{model_id}_artisnebular.txt")
+    try:
+        write_lbol_edep(modelpath, selected_timesteps, lbolpath)
+    except FileNotFoundError:
+        print("Can't write deposition because files are missing")
+    else:
+        writtenpaths.append(lbolpath)
+
+    spectrapath = Path(outputfolder, f"spectra_{model_id}_artisnebular.txt")
+    write_spectra(modelpath, selected_timesteps, spectrapath)
+    writtenpaths.append(spectrapath)
+
+    edeppath = Path(outputfolder, f"edep_{model_id}_artisnebular.txt")
+    if write_edep(modelpath, selected_timesteps, dfestimators, edeppath):
+        writtenpaths.append(edeppath)
+
+    writtenpaths.append(write_phys(modelpath, model_id, selected_timesteps, dfestimators, outputfolder))
+    writtenpaths.extend(write_ionfracts(modelpath, model_id, selected_timesteps, dfestimators, outputfolder))
+    return writtenpaths
+
+
+def remove_obsolete_comparison_files(outputfolder: Path, model_id: str, writtenpaths: Sequence[Path]) -> None:
+    """Remove each code comparison file of the model identifier that the export did not write.
+
+    An earlier export can give an element or a quantity that this export does not give. A reader then takes that file
+    as a result of this export. The pattern accepts only the names that the export writes. The identifier holds no
+    underscore, thus a file of a different identifier stays, e.g. phys_testmodelb_artisnebular.txt for testmodel.
+    """
+    comparisonfilename = re.compile(
+        rf"(?:edep|lbol_edep|phys|spectra|ionfrac_[a-z]+)_{re.escape(model_id)}_artisnebular\.txt"
+    )
+    writtennames = {path.name for path in writtenpaths}
+    for path in sorted(outputfolder.iterdir()):
+        if path.name not in writtennames and comparisonfilename.fullmatch(path.name) and path.is_file():
+            path.unlink()
+            print(f"Removed {path}, which an earlier export wrote and this export did not write")
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -369,7 +429,8 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     args.outputfile.mkdir(parents=True, exist_ok=True)
     # each file name holds the model and a quantity, e.g. phys_<model>_artisnebular.txt
-    # a folder name can hold a character of a glob pattern, e.g. "[", thus the pattern takes the name as text
+    # a folder name can hold a character of a glob pattern, e.g. "[", thus the pattern takes the name as text.
+    # The export also removes the old files of each identifier that it does not write, and this question covers them
     confirm_overwrite_matches(
         args.outputfile, [f"*_{glob.escape(model_id)}_artisnebular.txt" for model_id in modelids], force=args.force
     )
@@ -402,18 +463,5 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
                 "Give --selected-timesteps that the estimator files hold",
             )
 
-        try:
-            write_lbol_edep(
-                modelpath, selected_timesteps, Path(args.outputfile, f"lbol_edep_{model_id}_artisnebular.txt")
-            )
-        except FileNotFoundError:
-            print("Can't write deposition because files are missing")
-
-        write_spectra(modelpath, selected_timesteps, Path(args.outputfile, f"spectra_{model_id}_artisnebular.txt"))
-
-        write_edep(
-            modelpath, selected_timesteps, dfestimators, Path(args.outputfile, f"edep_{model_id}_artisnebular.txt")
-        )
-
-        write_phys(modelpath, model_id, selected_timesteps, dfestimators, args.outputfile)
-        write_ionfracts(modelpath, model_id, selected_timesteps, dfestimators, args.outputfile)
+        writtenpaths = write_comparison_files(modelpath, model_id, selected_timesteps, dfestimators, args.outputfile)
+        remove_obsolete_comparison_files(args.outputfile, model_id, writtenpaths)

@@ -884,6 +884,32 @@ def test_firstexisting_with_an_absolute_path(tmp_path: Path) -> None:
     assert at.misc.firstexisting_or_none(missingpath) is None
 
 
+def test_firstexisting_sends_a_str_remote_folder_to_the_host(tmp_path: Path) -> None:
+    """A str folder of the form host:path must go to the host, as a Path folder does.
+
+    on_model_host finds a remote path only in a Path argument. Thus a str folder stayed local, and the search did
+    not find the file on the host. The substitute of the transport runs the reader of the server in this process.
+    """
+    (tmp_path / "spec.out").write_text("0\n", encoding="utf-8")
+    remotefolder = f"testhost:{tmp_path}"
+    hosts: list[str] = []
+
+    def call_in_this_process(
+        host: str, modulename: str, qualname: str, args: tuple[t.Any, ...], kwargs: dict[str, t.Any]
+    ) -> Path:
+        hosts.append(host)
+        return Path(f"{host}:{remote.get_server_function(modulename, qualname)(*args, **kwargs)}")
+
+    with mock.patch.object(remote, "call_on_host", side_effect=call_in_this_process):
+        foundpaths = [
+            at.misc.firstexisting_or_none("spec.out", folder=folder) for folder in (remotefolder, Path(remotefolder))
+        ]
+        foundpaths.append(at.firstexisting("spec.out", folder=remotefolder))
+
+    assert foundpaths == [Path(remotefolder, "spec.out")] * 3
+    assert hosts == ["testhost"] * 3
+
+
 def test_get_file_metadata(tmp_path: Path) -> None:
     # r_v is derived from a_v and e_bminusv
     (tmp_path / "rv.txt").write_text("data")
