@@ -511,23 +511,35 @@ def get_estimator_textsource(
     return None, mtime, complete
 
 
-def get_estimator_cache_missing_ranks(modelpath: Path, parquetfilepath: Path) -> list[int]:
-    """Return each rank whose estimator file is absent from a run folder, thus no conversion can make the cache again.
+def get_estimator_cache_only_copy_state(modelpath: Path, parquetfilepath: Path) -> tuple[list[int], bool]:
+    """Return each rank with no estimator file in a run folder, and whether the text is older than the cache.
 
-    A conversion reads the estimator file of all ranks, or the files of the ranks of the cache. The name of a batch
-    cache gives its ranks, e.g. estimbatch00_0000_0099.out.parquet. The cache of all the estimators holds each rank
-    with cells. A run folder with the file of all ranks gives no rank.
+    No conversion can make the cache again in each of the two cases. A conversion reads the estimator file of all
+    ranks, or the files of the ranks of the cache. The name of a batch cache gives its ranks, e.g.
+    estimbatch00_0000_0099.out.parquet. The cache of all the estimators holds each rank with cells. A run folder with
+    the file of all ranks gives no rank.
+
+    get_rank_outputfiles takes the names of the files, thus a link to an absent file needs a separate test. The
+    reader keeps a cache of all the estimators when the text is older than the text of the cache. Older text cannot
+    hold newer data.
     """
     runfolder = parquetfilepath.parent
-    if get_allranks_textfile(runfolder) is not None:
-        return []
-    if parquetfilepath.name.startswith("estimbatch"):
-        nameparts = parquetfilepath.name.split("_")
-        mpiranks: Sequence[int] = range(int(nameparts[1]), int(nameparts[2].split(".")[0]) + 1)
-    else:
-        mpiranks = get_mpiranklist(modelpath, only_ranks_withgridcells=True)
-    rankfiles = get_rank_outputfiles(runfolder, RANK_TEXTFILENAME_FORMAT)
-    return [rank for rank in mpiranks if rank not in rankfiles]
+    allranks = not parquetfilepath.name.startswith("estimbatch")
+    missingranks: list[int] = []
+    if get_allranks_textfile(runfolder) is None:
+        if allranks:
+            mpiranks: Sequence[int] = get_mpiranklist(modelpath, only_ranks_withgridcells=True)
+        else:
+            nameparts = parquetfilepath.name.split("_")
+            mpiranks = range(int(nameparts[1]), int(nameparts[2].split(".")[0]) + 1)
+        rankfiles = get_rank_outputfiles(runfolder, RANK_TEXTFILENAME_FORMAT)
+        missingranks = [rank for rank in mpiranks if rank not in rankfiles or not rankfiles[rank].is_file()]
+    if missingranks or not allranks or (pqmetadata := read_parquet_metadata_or_none(parquetfilepath)) is None:
+        return missingranks, False
+    rankmin, rankmax = pqmetadata.get("rank_min"), pqmetadata.get("rank_max")
+    cacheranks = range(int(rankmin), int(rankmax) + 1) if rankmin is not None and rankmax is not None else ()
+    _, textsource_mtime, _ = get_estimator_textsource(runfolder, cacheranks, get_rankfile_stats(runfolder))
+    return [], text_is_older_than_cache(pqmetadata, textsource_mtime)
 
 
 def folder_has_estimator_cache(folderpath: Path | str) -> bool:

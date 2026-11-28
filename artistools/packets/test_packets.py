@@ -570,7 +570,7 @@ def test_packets_reader_and_filter_keep_the_only_cache_of_an_earlier_run(
     """Keep a packets cache with absent text files when a later run folder holds files of the same ranks.
 
     The reader put the cache of the later run at the same path, and filterpackets removed the cache at that path.
-    Thus the packets of the earlier run were lost. The cache of the later run is now beside its text files.
+    Thus no file then held the packets of the earlier run. The cache of the later run is now beside its text files.
     """
     import shutil
 

@@ -3,8 +3,9 @@
 A reader of artistools converts a text file to a parquet cache when it first reads the file. Later commands read the
 cache. "make" does all the conversions at one time, e.g. in the job script after a run of ARTIS. Each later command
 then reads its data quickly. "list" gives the caches and their sizes. "delete" deletes the caches and the leftover
-files, which are the temporary files and folders of a conversion that stopped. A cache whose text files are absent is
-the only copy of its data, and "delete" keeps it unless the user gives --include-only-copies.
+files, which are the temporary files and folders of a conversion that stopped. A cache whose text files are absent, or
+older than the text of the cache, is the only copy of its data. "delete" keeps it unless the user gives
+--include-only-copies.
 """
 
 import argparse
@@ -18,7 +19,7 @@ from pathlib import Path
 import polars as pl
 
 from artistools.atomic import scan_linelist
-from artistools.estimators import get_estimator_cache_missing_ranks
+from artistools.estimators import get_estimator_cache_only_copy_state
 from artistools.estimators import scan_estimators
 from artistools.inputmodel import find_abundance_file
 from artistools.inputmodel import get_model_file_path
@@ -43,7 +44,7 @@ from artistools.misc import print_warning
 from artistools.misc import require_action
 from artistools.misc import resolve_table_outputfile
 from artistools.misc import SN3D_INPUT_FOLDERS
-from artistools.nltepops import get_nltepops_cache_missing_ranks
+from artistools.nltepops import get_nltepops_cache_only_copy_state
 from artistools.nltepops import NLTE_CACHE_FILENAME
 from artistools.packets import get_packets_batch_parquet_paths
 from artistools.packets import get_packets_cache_missing_ranks
@@ -210,30 +211,43 @@ def make_caches(modelfolder: Path) -> pl.DataFrame:
     return pl.DataFrame(rows, schema={"data": pl.String, "status": pl.String, "detail": pl.String}, orient="row")
 
 
-def get_missing_text_ranks(
-    modelfolder: Path, cachepath: Path, folderlistings: dict[Path, dict[str, os.DirEntry[str]]]
-) -> tuple[list[int], Path | None]:
-    """Return each rank whose text file is absent, and the folder of the text files of the cache.
+class TextFilesState(t.NamedTuple):
+    """The state of the text files of a cache, which shows if a conversion can make the cache again."""
 
-    No conversion can make a cache with such a rank again. The readers of the packets, the estimators, and the NLTE
-    populations read their caches with no text files, e.g. in an archived model folder. The readers of the other
-    caches need the text file, thus such a cache gives no rank and no folder. The folder is also None when no folder
-    holds the text files of the cache.
+    missingranks: list[int]
+    # None when no folder holds the text files of the cache
+    textfolder: Path | None
+    # the reader then keeps the cache, because older text cannot hold newer data
+    text_is_older: bool
+
+
+def get_text_files_state(
+    modelfolder: Path, cachepath: Path, folderlistings: dict[Path, dict[str, os.DirEntry[str]]]
+) -> TextFilesState:
+    """Return each rank whose text file is absent, the folder of the text files, and whether the text is older.
+
+    No conversion can make a cache with an absent rank or with older text again. The readers of the packets, the
+    estimators, and the NLTE populations read their caches with no text files, e.g. in an archived model folder. The
+    readers of the other caches need the text file, thus such a cache gives no rank and no folder.
     """
     if cachepath.name.startswith(("packetsbatch", "vpacketsbatch")):
-        return get_packets_cache_missing_ranks(modelfolder, cachepath, folderlistings)
+        missingranks, textfolder = get_packets_cache_missing_ranks(modelfolder, cachepath, folderlistings)
+        return TextFilesState(missingranks, textfolder, text_is_older=False)
     if cachepath.name.startswith(("estimbatch", "estimators_allranks")):
-        return get_estimator_cache_missing_ranks(modelfolder, cachepath), cachepath.parent
+        missingranks, text_is_older = get_estimator_cache_only_copy_state(modelfolder, cachepath)
+        return TextFilesState(missingranks, cachepath.parent, text_is_older)
     if cachepath.name == NLTE_CACHE_FILENAME:
-        return get_nltepops_cache_missing_ranks(modelfolder, cachepath.parent), cachepath.parent
-    return [], None
+        missingranks, text_is_older = get_nltepops_cache_only_copy_state(modelfolder, cachepath.parent)
+        return TextFilesState(missingranks, cachepath.parent, text_is_older)
+    return TextFilesState([], None, text_is_older=False)
 
 
 def get_only_copies(modelfolder: Path, caches: Sequence[Path]) -> dict[Path, str]:
-    """Return each cache that is the only copy of its data, with the text files that are absent.
+    """Return each cache that is the only copy of its data, with the reason.
 
-    A cache that polars cannot read holds no data. If artistools cannot identify the text files of a cache, e.g.
-    because input.txt is absent, the cache is also an only copy. The deletion must not lose data.
+    The text files of such a cache are absent, or they are older than the text of the cache. A cache that polars
+    cannot read holds no data. If artistools cannot identify the text files of a cache, e.g. because input.txt is
+    absent, the cache is also an only copy. The deletion must not lose data.
     """
     folderlistings: dict[Path, dict[str, os.DirEntry[str]]] = {}
     onlycopies: dict[Path, str] = {}
@@ -241,7 +255,7 @@ def get_only_copies(modelfolder: Path, caches: Sequence[Path]) -> dict[Path, str
         if not parquet_is_readable(cachepath):
             continue
         try:
-            missingranks, textfolder = get_missing_text_ranks(modelfolder, cachepath, folderlistings)
+            missingranks, textfolder, text_is_older = get_text_files_state(modelfolder, cachepath, folderlistings)
         except (OSError, ValueError) as exc:
             onlycopies[cachepath] = f"artistools cannot identify its text files ({type(exc).__name__}: {exc})"
             continue
@@ -259,6 +273,8 @@ def get_only_copies(modelfolder: Path, caches: Sequence[Path]) -> dict[Path, str
             else:
                 foldertext = f" from {textfolder}"
             onlycopies[cachepath] = f"the text files of {ranktext} are absent{foldertext}"
+        elif text_is_older:
+            onlycopies[cachepath] = "its text files are older than the text of the cache and cannot hold newer data"
     return onlycopies
 
 
@@ -308,8 +324,8 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         "--include-only-copies",
         action="store_true",
         help=(
-            "With delete: also delete each cache that is the only copy of its data, because its text files are absent."
-            " The data is then lost"
+            "With delete: also delete each cache that is the only copy of its data, because its text files are absent"
+            " or older than the text of the cache. The data is then lost"
         ),
     )
     addarg_table_output(parser)

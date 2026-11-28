@@ -11,7 +11,7 @@ from artistools.estimators.core import get_allranks_timesteps as get_allranks_ti
 from artistools.estimators.core import get_averageexcitation as get_averageexcitation
 from artistools.estimators.core import get_cells_of_slice as get_cells_of_slice
 from artistools.estimators.core import get_deposition_channels as get_deposition_channels
-from artistools.estimators.core import get_estimator_cache_missing_ranks as get_estimator_cache_missing_ranks
+from artistools.estimators.core import get_estimator_cache_only_copy_state as get_estimator_cache_only_copy_state
 from artistools.estimators.core import get_estimator_timesteps as get_estimator_timesteps
 from artistools.estimators.core import get_temperature_limits as get_temperature_limits
 from artistools.estimators.core import get_units as get_units

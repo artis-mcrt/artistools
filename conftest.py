@@ -140,7 +140,7 @@ def copy_model_inputs() -> "Callable[[Path, Path, Sequence[str]], None]":
 
 @pytest.fixture
 def write_packets_runfolder() -> "Callable[[Path, str, float], None]":
-    """Return a function that writes the packets text files of a run of two ranks into a run folder of a model.
+    """Return a function that writes the packets text files of two ranks into a run folder.
 
     The caller gives the model folder, the name of the run folder, and the e_rf value of each packet. A different
     value for each run shows which run a cache holds. The function also copies an input.txt of two ranks to a model

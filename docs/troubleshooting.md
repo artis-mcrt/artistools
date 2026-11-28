@@ -3,9 +3,9 @@
 ## The caches
 
 A reader converts a large text file to a parquet cache at the first read, because a later read of the cache is much
-faster. The cache is beside the text file, e.g. `model.txt.parquet` in the model folder and
-`packetsbatch<n>_<first>_<last>.out.parquet` in the folder of the packets files. A cache of the estimators is in each
-run folder.
+faster. The cache is beside the text file, e.g. `model.txt.parquet` in the model folder. A cache of the packets is
+`packetsbatch<n>_<first>_<last>.out.parquet` in the folder `packets/` of the model. A cache of the estimators is in
+each run folder.
 
 - `artistools cache make mymodel` writes these caches at one time, e.g. in the job script after a run of ARTIS:
   - the input model;
@@ -19,9 +19,13 @@ run folder.
   model folder. Thus `cache delete` keeps it, and a warning names the ranks of the absent text files and their folder.
   Give `--include-only-copies` to delete such a cache too.
 
+  A cache of the estimators or the NLTE populations is also an only copy when its text files are older than the text
+  of the cache. Older text holds fewer timesteps, thus the readers keep such a cache.
+
   The record of a packets cache gives the path of the text file of each rank. Thus the text files in a different run
-  folder are not a copy of the data of the cache. The readers and `filterpackets` also keep such a cache. The cache of
-  the text files in the different run folder is then in that folder, beside the text files.
+  folder are not a copy of the data of the cache. The readers of the packets and `filterpackets` also keep a packets
+  cache that is the only copy of its data. The cache of the text files in the different run folder is then in that
+  folder, beside the text files.
 
 `cache make` does not convert the NLTE populations. A read of all the cells converts the text of each run folder that
 holds a timestep of the read to `nltepops_allranks.out.parquet` in that folder. A restarted model has more than one run

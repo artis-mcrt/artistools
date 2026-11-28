@@ -15,7 +15,7 @@ from artistools.atomic import get_ionstring
 from artistools.atomic import get_kept_levels
 from artistools.misc import clear_at_reload
 from artistools.misc import folder_holds_match
-from artistools.misc import get_rank_text_cache_missing_ranks
+from artistools.misc import get_rank_text_cache_only_copy_state
 from artistools.misc import is_remote_path
 from artistools.misc import on_model_host
 from artistools.misc import read_rank_outputfiles
@@ -192,9 +192,12 @@ NLTE_CACHE_FILENAME = "nltepops_allranks.out.parquet"
 NLTE_RANK_FILENAME_FORMAT = "nlte_{mpirank:04d}.out"
 
 
-def get_nltepops_cache_missing_ranks(modelpath: Path, runfolder: Path) -> list[int]:
-    """Return each rank whose NLTE text is absent from a run folder, thus no conversion can make the cache again."""
-    return get_rank_text_cache_missing_ranks(modelpath, runfolder, NLTE_RANK_FILENAME_FORMAT)
+def get_nltepops_cache_only_copy_state(modelpath: Path, runfolder: Path) -> tuple[list[int], bool]:
+    """Return each rank with no NLTE text in a run folder, and whether the text is older than the cache.
+
+    No conversion can make the cache again in each of the two cases.
+    """
+    return get_rank_text_cache_only_copy_state(modelpath, runfolder, NLTE_RANK_FILENAME_FORMAT, NLTE_CACHE_FILENAME)
 
 
 def read_nltepops(

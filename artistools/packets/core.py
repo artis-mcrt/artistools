@@ -910,7 +910,7 @@ def get_packets_record_missing_ranks(
     recordstates: Sequence[PacketsTextState],
     folderlistings: dict[Path, dict[str, os.DirEntry[str]]],
 ) -> tuple[list[int], Path]:
-    """Return each rank whose text file in the record of a cache is absent, and the folder of these text files.
+    """Return each rank whose text file in the record is absent, and the folder of these text files.
 
     A record that does not agree with the ranks of the cache gives a ValueError.
     """
@@ -1282,8 +1282,10 @@ def get_packets_cache_fingerprint(
     file of each batch, because a stat of each file at each plot is slow on a network drive. Thus a change of only
     a later rank shows in a new process, or after Reload Data clears the result. The function returns None if a
     folder of the last scan changed, or if a text file of the last scan does not exist now. The fingerprint holds the
-    path, because the files of a different run can have the same times. The cache of a batch can be in the cache
-    folder or beside the text files, thus the fingerprint holds the state of each of the two paths.
+    path, because the files of a different run can have the same times.
+
+    The cache of a batch can be in the cache folder or beside the text files. Thus the fingerprint holds the state of
+    each path.
     """
     firsttextfiles, foldermtimes = find_first_rank_textfiles(
         modelpath, tuple(batch_mpiranks[0] for _, batch_mpiranks in mpirank_groups), virtual

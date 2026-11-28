@@ -95,23 +95,29 @@ def test_cache_delete_keeps_a_packets_cache_of_a_run_whose_text_files_are_absent
     assert "the text files of ranks 0-1 are absent from 100.slurm" in capsys.readouterr().err
 
 
+def copy_model_with_estimator_caches(modelfolder: Path) -> list[Path]:
+    """Copy a model with two run folders, convert its estimators, and return the cache of each run folder."""
+    sourcemodel = at.get_path("testdata") / "test-classicmode_3d"
+    for filename in ("input.txt", "model.txt", "modelgridrankassignments.out"):
+        shutil.copy(sourcemodel / filename, modelfolder)
+    # the copy leaves out the caches of earlier runs of the tests
+    for runfolder in ("job0", "job1"):
+        shutil.copytree(
+            sourcemodel / runfolder, modelfolder / runfolder, ignore=shutil.ignore_patterns(".*", "*.parquet*")
+        )
+    at.estimators.scan_estimators(modelfolder).collect()
+    estimatorcaches = [modelfolder / runfolder / "estimators_allranks.out.parquet" for runfolder in ("job0", "job1")]
+    assert all(cachepath.is_file() for cachepath in estimatorcaches)
+    return estimatorcaches
+
+
 def test_cache_delete_keeps_the_only_copy_of_the_estimators_and_the_nlte_populations(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Keep a cache of a run folder whose text files are absent. The readers then take the cache as the only copy."""
     from artistools.cache import main as cachemain
 
-    sourcemodel = at.get_path("testdata") / "test-classicmode_3d"
-    for filename in ("input.txt", "model.txt", "modelgridrankassignments.out"):
-        shutil.copy(sourcemodel / filename, tmp_path)
-    # the copy leaves out the caches of earlier runs of the tests
-    for runfolder in ("job0", "job1"):
-        shutil.copytree(
-            sourcemodel / runfolder, tmp_path / runfolder, ignore=shutil.ignore_patterns(".*", "*.parquet*")
-        )
-    at.estimators.scan_estimators(tmp_path).collect()
-    estimatorcaches = [tmp_path / runfolder / "estimators_allranks.out.parquet" for runfolder in ("job0", "job1")]
-    assert all(cachepath.is_file() for cachepath in estimatorcaches)
+    estimatorcaches = copy_model_with_estimator_caches(tmp_path)
     (tmp_path / "job0" / "estimators_0001.out.zst").unlink()
     nltecache = tmp_path / "job1" / "nltepops_allranks.out.parquet"
     pl.DataFrame({"timestep": [0]}).write_parquet(nltecache)
@@ -122,9 +128,54 @@ def test_cache_delete_keeps_the_only_copy_of_the_estimators_and_the_nlte_populat
     assert not estimatorcaches[1].exists()
     assert nltecache.is_file()
     stderr = capsys.readouterr().err
-    assert "the text files of rank 1 are absent" in stderr
-    assert "the text files of ranks 0-1 are absent" in stderr
+    assert "the text files of rank 1 are absent from job0" in stderr
+    assert "the text files of ranks 0-1 are absent from job1" in stderr
     assert at.estimators.scan_estimators(tmp_path).select(pl.len()).collect().item() > 0
+
+
+def test_cache_delete_keeps_a_cache_with_older_text_or_with_a_link_to_an_absent_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Keep a cache that its text files cannot make again.
+
+    The readers keep a cache when the text is older than the text of the cache, because older text holds fewer
+    timesteps. A link to an absent file is not a text file. The command counted the names of the files, thus it
+    deleted the cache in each of these cases.
+    """
+    import os
+
+    from artistools.cache import main as cachemain
+    from artistools.misc.modelinfo import RANK_CACHE_VERSION
+
+    estimatorcaches = copy_model_with_estimator_caches(tmp_path)
+    nltecaches = [tmp_path / runfolder / "nltepops_allranks.out.parquet" for runfolder in ("job0", "job1")]
+    olderfiles = list((tmp_path / "job0").glob("estimators_????.out*"))
+    for rank in (0, 1):
+        olderfiles.append(tmp_path / "job0" / f"nlte_{rank:04d}.out")
+        olderfiles[-1].touch()
+        (tmp_path / "job1" / f"nlte_{rank:04d}.out").symlink_to(tmp_path / "absent")
+    (tmp_path / "job1" / "estimators_0001.out.zst").unlink()
+    (tmp_path / "job1" / "estimators_0001.out.zst").symlink_to(tmp_path / "absent")
+    for nltecache in nltecaches:
+        at.misc.write_parquet_atomic(
+            pl.DataFrame({"timestep": [0]}),
+            nltecache,
+            metadata={
+                "cacheversion": str(RANK_CACHE_VERSION),
+                "textsource_mtime": str(nltecache.parent.stat().st_mtime),
+            },
+        )
+    for olderfile in olderfiles:
+        oldertime = olderfile.stat().st_mtime - 3600
+        os.utime(olderfile, (oldertime, oldertime))
+
+    cachemain(argsraw=["delete", "-f", str(tmp_path)])
+
+    assert all(cachepath.is_file() for cachepath in (*estimatorcaches, *nltecaches))
+    stderr = capsys.readouterr().err
+    assert stderr.count("its text files are older than the text of the cache") == 2
+    assert "the text files of rank 1 are absent from job1" in stderr
+    assert "the text files of ranks 0-1 are absent from job1" in stderr
 
 
 def test_cache_make_reads_the_input_files_that_the_readers_take(tmp_path: Path) -> None:
