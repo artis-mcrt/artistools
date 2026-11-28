@@ -14,6 +14,7 @@ from artistools.inputmodel.core import save_initelemabundances
 from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.core import scan_initelemabundances
 from artistools.inputmodel.core import scan_modeldata
+from artistools.inputmodel.core import with_ye_that_sn3d_reads
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
 from artistools.misc import addarg_force
@@ -82,6 +83,7 @@ def slice_3dmodel(
             " model with 3D Cartesian coordinates"
         )
         raise ValueError(msg)
+    dfmodel3d = with_ye_that_sn3d_reads(dfmodel3d, inputfolder, modelmeta3d)
     t_model_s = modelmeta3d["t_model_init_days"] * day_to_s
     wid_init = modelmeta3d["wid_init"]
 

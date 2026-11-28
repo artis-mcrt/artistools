@@ -29,6 +29,7 @@ from artistools.inputmodel.core import scan_initelemabundances
 from artistools.inputmodel.core import scan_modeldata
 from artistools.inputmodel.core import with_cell_ids_from_zero
 from artistools.inputmodel.core import with_ye_of_yefile
+from artistools.inputmodel.core import with_ye_that_sn3d_reads
 from artistools.inputmodel.downscale3dgrid import get_downscale_outputfolder
 from artistools.inputmodel.downscale3dgrid import make_downscaled_3d_grid
 from artistools.inputmodel.energyinputfiles import ENERGY_FILE_NAMES
@@ -458,15 +459,11 @@ def reduce_model_dimensions(
         msg = f"Cannot reduce {ndim_in}D model to {ndim_out}D"
         raise ValueError(msg)
 
-    sourcefolder = get_model_input_folder(modelpath)
     dfelabundances = scan_initelemabundances(modelpath)
     dfgridcontributions = get_gridparticlecontributions_or_none(get_gridcontributions_folder(modelpath))
-    yefilepath = find_ye_file(sourcefolder)
-    require_no_ye_file_of_version_2_model(yefilepath, modelmeta, sourcefolder)
-    if yefilepath is not None:
-        # sn3d takes the electron fractions of Ye.txt for the source model. Ye.txt has the cells of the source
-        # model, thus the reduced model gets these values in its column Ye, also in version 1
-        dfmodel = with_ye_of_yefile(dfmodel.collect(), yefilepath).lazy()
+    # Ye.txt has the cells of the source model, thus the reduced model gets its values in its column Ye, also in
+    # version 1
+    dfmodel = with_ye_that_sn3d_reads(dfmodel, modelpath, modelmeta)
 
     if sliceaxis is not None and radialaxis is not None:
         dfmodel_out, dfelabundances_out, dfgridcontributions_out, modelmeta_out = make_cylindrical_slice(

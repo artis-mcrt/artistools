@@ -1031,6 +1031,35 @@ def find_ye_file(inputfolder: Path) -> Path | None:
     return find_sn3d_input_file("Ye.txt", get_sn3d_model_folder(inputfolder))
 
 
+def with_ye_that_sn3d_reads(dfmodel: pl.LazyFrame, modelpath: Path | str, modelmeta: dict[str, t.Any]) -> pl.LazyFrame:
+    """Return the cells of a local model with the electron fractions that sn3d takes for the model in the column Ye.
+
+    For format version 1, a value of the Ye.txt beside model.txt replaces the value of the column Ye (see
+    with_ye_of_yefile). The function stops for a Ye.txt of a model of format version 2, because sn3d stops for such a
+    model. Call this function before a selection of cells or a mean over cells. The function reads no Ye.txt for a
+    remote model, and it starts no server for such a model.
+    """
+    if is_remote_path(Path(modelpath)):
+        return dfmodel
+
+    sourcefolder = get_model_input_folder(modelpath)
+    yefilepath = find_ye_file(sourcefolder)
+    require_no_ye_file_of_version_2_model(yefilepath, modelmeta, sourcefolder)
+    if yefilepath is None:
+        return dfmodel
+
+    # the merge reads only these columns, thus a model with many nuclide columns stays lazy. Each cell has one row
+    dfcellye = with_ye_of_yefile(
+        dfmodel.select(cs.by_name("inputcellid", "Ye", "rho", "logrho", require_all=False)).collect(), yefilepath
+    ).select("inputcellid", Ye_sn3d="Ye")
+    return (
+        dfmodel
+        .join(dfcellye.lazy(), on="inputcellid", how="left", maintain_order="left")
+        .with_columns(Ye=pl.col("Ye_sn3d"))
+        .drop("Ye_sn3d")
+    )
+
+
 @on_model_host
 def get_modelmeta(modelpath: Path) -> dict[str, t.Any]:
     """Return the metadata of the model, e.g. the dimensions and the time of the model.

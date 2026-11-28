@@ -12,14 +12,11 @@ import polars as pl
 import polars.selectors as cs
 
 from artistools.constants import day_to_s
-from artistools.inputmodel.core import find_ye_file
-from artistools.inputmodel.core import get_model_input_folder
 from artistools.inputmodel.core import require_no_ye_file_of_earlier_model
-from artistools.inputmodel.core import require_no_ye_file_of_version_2_model
 from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.core import scan_initelemabundances
 from artistools.inputmodel.core import scan_modeldata
-from artistools.inputmodel.core import with_ye_of_yefile
+from artistools.inputmodel.core import with_ye_that_sn3d_reads
 from artistools.misc import require_cartesian3d_model
 from artistools.plottools import save_figure
 from artistools.plottools import set_mpl_style
@@ -92,12 +89,8 @@ def make_downscaled_3d_grid(
     outputfolder = get_downscale_outputfolder(modelpath, outputgridsize, outputfolder)
     if formatversion == 1:
         require_no_ye_file_of_earlier_model(outputfolder, modelpath)
-    sourcefolder = get_model_input_folder(modelpath)
-    yefilepath = find_ye_file(sourcefolder)
-    require_no_ye_file_of_version_2_model(yefilepath, modelmeta, sourcefolder)
-    if yefilepath is not None:
-        # Ye.txt has the cells of the source model, thus the small model gets its values in the column Ye of model.txt
-        pldfmodel = with_ye_of_yefile(pldfmodel.collect(), yefilepath).lazy()
+    # Ye.txt has the cells of the source model, thus the small model gets its values in the column Ye of model.txt
+    pldfmodel = with_ye_that_sn3d_reads(pldfmodel, modelpath, modelmeta)
     # save_modeldata also writes Ye, q, and tracercount, thus the downscaled model must keep them
     modelcolnames = pldfmodel.collect_schema().names()
     massweightedcols = [col for col in ("Ye", "q") if col in modelcolnames]
