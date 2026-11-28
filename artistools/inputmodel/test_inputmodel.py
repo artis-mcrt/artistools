@@ -3028,11 +3028,167 @@ def test_from_e2e_model_3d_equatorial_symmetry_with_nodyn(tmp_path: Path, capsys
     zn56mass_msun = (xint[1] * rhoint * cellvolume).sum() / Msun_to_g
     assert zn56mass_msun < 1e-20
 
-    dfmodel, _, modelmeta = map_to_artis(
+    dfmodel, _, modelmeta, _ = map_to_artis(
         3, dims, vmax_on_c, rhoint, xint, iso, q, ye, eqsymfac, x3d=x3d, y3d=y3d, z3d=z3d, bin_state=bs
     )
     assert dfmodel.height == dims.prod()
     assert "wid_init" in modelmeta
+
+
+# the bin state of each cell of the 2x2x2 grid of map_grid_with_donor, in the order of the cell ids
+DONOR_TEST_BIN_STATES = [0.0, 0.25, 0.5, 0.75, 1.0, 0.5, 0.5, 0.5]
+
+
+def map_grid_with_donor(
+    tmp_path: Path,
+    donorformatversion: int,
+    interpolate: bool,
+    bs_thr: float = 0.5,
+    dfgridcontributions: pl.DataFrame | None = None,
+    dfdonorcontributions: pl.DataFrame | None = None,
+) -> tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame | None]:
+    """Return the cells, the element abundances, and the particle contributions of a 2x2x2 grid with a donor model.
+
+    map_to_artis mixes the grid with the donor. Each cell of the grid holds He4 and Zn56 with mass fractions of 0.5.
+    The donor holds He4 with 0.75, and its element table gives O with 0.25. Each cell of the donor has the density of
+    the grid. Thus the weight of the donor in a cell is the bin state of the cell. dfdonorcontributions gives the
+    gridcontributions.txt of the donor, with the cell ids of the grid.
+    """
+    from artistools.constants import C_cm_per_s
+    from artistools.inputmodel.from_e2e_model import map_to_artis
+    from artistools.inputmodel.from_e2e_model import t_model_init_s
+    from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
+
+    vmax_on_c = 0.4
+    dims = np.array([2, 2, 2])
+    ncells = int(dims.prod())
+    # a Float32 value, thus the donor file holds the same density
+    rho = 2.0**-33
+    lzdonor, donormeta = get_empty_3d_model(2, vmax_on_c * C_cm_per_s, t_model_init_s / day_to_s)
+    donorfolder = tmp_path / "donor"
+    at.inputmodel.save_modeldata(
+        lzdonor.collect().with_columns(rho=pl.lit(rho), q=pl.lit(1e13), Ye=pl.lit(0.3), X_He4=pl.lit(0.75)),
+        modelmeta=donormeta,
+        outpath=donorfolder,
+        dfelabundances=pl.DataFrame({
+            "inputcellid": range(1, ncells + 1),
+            "X_He": [0.75] * ncells,
+            "X_O": [0.25] * ncells,
+        }),
+    )
+    if dfdonorcontributions is not None:
+        save_gridparticlecontributions(dfdonorcontributions, donorfolder)
+    if donorformatversion == 2:
+        at.inputmodel.makeartismodel.main(
+            argsraw=[], modelpath=[donorfolder], format_version=2, outputfile=tmp_path / "donor_v2"
+        )
+        donorfolder = tmp_path / "donor_v2"
+
+    corners = np.array([-vmax_on_c, 0.0]) * C_cm_per_s * t_model_init_s
+    x3d, y3d, z3d = np.meshgrid(corners, corners, corners, indexing="ij")
+    ones = np.ones(tuple(dims))
+    outputfolder = tmp_path / "out"
+    outputfolder.mkdir()
+    dfmodel, dfelabundances, _, dfgridcontributions_out = map_to_artis(
+        3,
+        dims,
+        vmax_on_c,
+        rho * ones,
+        np.array([0.5 * ones, 0.5 * ones]),
+        np.array([[2, 2], [26, 30]]),
+        1e13 * ones,
+        0.3 * ones,
+        1,
+        x3d=x3d,
+        y3d=y3d,
+        z3d=z3d,
+        # the first index of the grid changes fastest in the cell ids
+        bin_state=np.array(DONOR_TEST_BIN_STATES).reshape(tuple(dims), order="F"),
+        replacedyn=str(donorfolder),
+        bs_thr=bs_thr,
+        interpolate=interpolate,
+        outputfolder=outputfolder,
+        dfgridcontributions=dfgridcontributions,
+    )
+    return dfmodel, dfelabundances, dfgridcontributions_out
+
+
+@pytest.mark.parametrize("donorformatversion", [1, 2])
+def test_from_e2e_model_interpolation_keeps_the_elements_of_the_donor(tmp_path: Path, donorformatversion: int) -> None:
+    """The interpolation with the donor of --replacedyn keeps an element of the donor that has no nuclide column.
+
+    The element mass fractions came from the nuclide columns alone, thus the output lost the oxygen of the donor. The
+    normalisation of the nuclide columns to a sum of 1 then gave the mass of the oxygen to the other nuclides.
+    """
+    dfmodel, dfelabundances, _ = map_grid_with_donor(tmp_path, donorformatversion, interpolate=True)
+
+    donorweight = np.array(DONOR_TEST_BIN_STATES)
+    assert dfelabundances["inputcellid"].to_list() == list(range(1, donorweight.size + 1))
+    np.testing.assert_allclose(dfelabundances["X_O"], 0.25 * donorweight, rtol=1e-6)
+    np.testing.assert_allclose(dfelabundances["X_He"], 0.75 * donorweight + 0.5 * (1.0 - donorweight), rtol=1e-6)
+    np.testing.assert_allclose(dfelabundances["X_Zn"], 0.5 * (1.0 - donorweight), rtol=1e-6)
+    np.testing.assert_allclose(dfmodel["X_He4"], 0.75 * donorweight + 0.5 * (1.0 - donorweight), rtol=1e-6)
+    np.testing.assert_allclose(dfmodel["X_Zn56"], 0.5 * (1.0 - donorweight), rtol=1e-6)
+
+
+@pytest.mark.parametrize("donorformatversion", [1, 2])
+def test_from_e2e_model_replacedyn_gives_the_cells_the_particles_of_the_donor(
+    tmp_path: Path, donorformatversion: int, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A cell with material of the donor of --replacedyn gets the particle contributions of the donor.
+
+    gridcontributions.txt kept the tracers of the e2e model in each cell. Thus the network comparison read the
+    trajectories of the e2e model for a cell that held the material of the donor.
+    """
+    cellids = list(range(1, len(DONOR_TEST_BIN_STATES) + 1))
+
+    def get_contributions(particleids: tuple[int, int], fracs: tuple[float, float]) -> pl.DataFrame:
+        return pl.DataFrame({
+            "particleid": [particleid for _ in cellids for particleid in particleids],
+            "cellindex": [cellid for cellid in cellids for _ in particleids],
+            "frac_of_cellmass": [frac for _ in cellids for frac in fracs],
+        }).with_columns(frac_of_cellmass_includemissing=pl.col("frac_of_cellmass"))
+
+    dfgridcontributions = get_contributions((2, 3), (0.25, 0.75))
+    dfdonorcontributions = get_contributions((5002, 5003), (0.4, 0.6))
+    map_with_both_maps = partial(
+        map_grid_with_donor,
+        donorformatversion=donorformatversion,
+        dfgridcontributions=dfgridcontributions,
+        dfdonorcontributions=dfdonorcontributions,
+    )
+
+    # a threshold below each bin state replaces each cell
+    _, _, dfreplaced = map_with_both_maps(tmp_path / "replaced", interpolate=False, bs_thr=-1.0)
+    assert dfreplaced is not None
+    pltest.assert_frame_equal(dfreplaced, dfdonorcontributions, check_dtypes=False, rel_tol=1e-6)
+
+    donorweights = pl.DataFrame({"cellindex": cellids, "donorweight": DONOR_TEST_BIN_STATES})
+    dfexpected = (
+        pl
+        .concat([
+            dfcontribs
+            .join(donorweights, on="cellindex", how="left")
+            .with_columns(cs.starts_with("frac_") * weight)
+            .drop("donorweight")
+            for dfcontribs, weight in (
+                (dfgridcontributions, 1.0 - pl.col("donorweight")),
+                (dfdonorcontributions, pl.col("donorweight")),
+            )
+        ])
+        .filter(pl.col("frac_of_cellmass") > 0.0)
+        .sort("cellindex", "particleid")
+    )
+    _, _, dfmixed = map_with_both_maps(tmp_path / "mixed", interpolate=True)
+    assert dfmixed is not None
+    pltest.assert_frame_equal(dfmixed, dfexpected, check_dtypes=False, rel_tol=1e-6)
+
+    capsys.readouterr()
+    _, _, dfwithnodonormap = map_grid_with_donor(
+        tmp_path / "nodonormap", donorformatversion, interpolate=True, dfgridcontributions=dfgridcontributions
+    )
+    assert dfwithnodonormap is None
+    assert "has no gridcontributions.txt" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(("prefix", "suffix"), [(" ", ""), ("", " "), ("\t", "")])
@@ -3172,6 +3328,67 @@ def test_from_e2e_model_split_trajectory_pieces_give_the_same_heating(tmp_path: 
     np.testing.assert_allclose(q_split, q_whole, rtol=1e-10)
     for result in results:
         assert result[-1]["particleid"].unique().to_list() == [7]
+
+
+@pytest.mark.parametrize(
+    ("idx", "state", "masses"),
+    [([1], [0.0], [1e-3]), ([2, 10002], [-1.0, -1.0], [1e-3, 2e-3])],
+    ids=["unsplit", "split"],
+)
+def test_from_e2e_model_integrates_the_heating_to_the_model_time(
+    tmp_path: Path, idx: list[int], state: list[float], masses: list[float]
+) -> None:
+    """The integral of qdot t / T ends at the model time T, between two network times.
+
+    The integral ended at the network time nearest to T, which is 1.1 T here. A constant qdot then gave 0.605 qdot T
+    and not qdot T / 2.
+    """
+    from artistools.inputmodel.from_e2e_model import get_grid
+    from artistools.inputmodel.from_e2e_model import t_model_init_s
+
+    qdot_ergpergps = 1e10
+    isopath = tmp_path / "iso_table.npy"
+    np.save(isopath, np.array([[2.0, 2.0], [30.0, 26.0]]))
+    ntraj = len(idx)
+
+    def write_dat(datpath: Path, time_by_t_model: list[float]) -> None:
+        np.savez(
+            datpath,
+            pos=np.column_stack([np.full(ntraj, 0.2), np.full(ntraj, 1.0)]),
+            idx=np.array(idx, dtype=float),
+            state=np.array(state),
+            mass=np.array(masses),
+            qdot=np.full((ntraj, len(time_by_t_model)), qdot_ergpergps),
+            hnuloss=np.zeros((ntraj, len(time_by_t_model))),
+            time=np.array(time_by_t_model) * t_model_init_s,
+            nz=np.full((ntraj, 2), 0.1),
+            t5out=np.column_stack([np.zeros((ntraj, 4)), np.full(ntraj, 0.3)]),
+        )
+
+    def get_q(datpath: Path) -> list[float]:
+        result = get_grid(
+            datpath,
+            isopath,
+            0.4,
+            model_dim=2,
+            grid_dims=np.array([4, 8]),
+            nodynej=False,
+            nohmns=False,
+            notorus=False,
+            no_nu_trapping=False,
+        )
+        rho, q = result[2], result[5]
+        assert np.any(rho > 0.0)
+        qvalues: list[float] = q[rho > 0.0].tolist()
+        return qvalues
+
+    datpath = tmp_path / "e2emodel.npz"
+    write_dat(datpath, [0.0, 0.3, 0.7, 1.1, 2.0])
+    np.testing.assert_allclose(get_q(datpath), qdot_ergpergps * t_model_init_s / 2.0, rtol=1e-10)
+
+    write_dat(datpath, [0.0, 0.3, 0.7, 0.9])
+    with pytest.raises(ValueError, match="has an interval with no data"):
+        get_q(datpath)
 
 
 def test_maptogrid_keeps_the_mirror_symmetry_of_the_particles(tmp_path: Path) -> None:

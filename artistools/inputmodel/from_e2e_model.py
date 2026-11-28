@@ -15,7 +15,6 @@ import numpy.typing as npt
 import polars as pl
 import polars.selectors as cs
 
-from artistools.atomic import get_atomic_number
 from artistools.atomic import get_elsymbol
 from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
@@ -24,7 +23,9 @@ from artistools.constants import Msun_to_g as msol
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import CELL_ID_FILE_NAMES
 from artistools.inputmodel.core import dimension_reduce_model
+from artistools.inputmodel.core import get_gridcontributions_folder
 from artistools.inputmodel.core import MODEL_FILE_NAMES
+from artistools.inputmodel.core import OTHERSTABLE_SUFFIX
 from artistools.inputmodel.core import remap_gridcontributions
 from artistools.inputmodel.core import require_no_ye_file_of_earlier_model
 from artistools.inputmodel.core import save_initelemabundances
@@ -38,6 +39,8 @@ from artistools.inputmodel.maptogrid import get_ncoordgrid
 from artistools.inputmodel.maptogrid import get_spherical_cell_volumes
 from artistools.inputmodel.maptogrid import get_spherical_grid_edges
 from artistools.inputmodel.maptogrid import NCOORDGRID_DEFAULTS
+from artistools.inputmodel.rprocess_from_trajectory import delete_gridparticlecontributions
+from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions_or_none
 from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
 from artistools.misc import addarg_force
 from artistools.misc import addarg_output
@@ -113,6 +116,46 @@ def check_tracer_ids(idx: npt.NDArray[np.integer], dyncond: npt.NDArray[np.bool_
             " the same id modulo 10000. The code merges the tracers that have the same id modulo 10000"
         )
         raise ValueError(msg)
+
+
+def integrate_heating_to_model_time(
+    time_s: npt.NDArray[np.floating], qdot: npt.NDArray[np.floating], t_model_s: float
+) -> npt.NDArray[np.float64]:
+    """Return the integral of qdot(t) t / t_model_s over t from the first network time to t_model_s [erg/g].
+
+    The last axis of qdot holds a specific heating rate [erg/g/s] at each network time. The factor t / t_model_s gives
+    the adiabatic loss of a radiation-dominated gas in a homologous flow, thus the energy goes as 1 / t. sn3d
+    applies the same factor to q. The trapezoid rule takes the integrand as linear between two network times. Thus the
+    integrand at t_model_s is the linear interpolation between the network times on the two sides of t_model_s.
+    """
+    if not time_s[0] <= t_model_s <= time_s[-1]:
+        msg = (
+            f"The network times go from {time_s[0]:g} s to {time_s[-1]:g} s. Thus the integral of the heating to the"
+            f" model time {t_model_s:g} s has an interval with no data"
+        )
+        raise ValueError(msg)
+    integrand = qdot * (time_s / t_model_s)
+    nbefore = int(np.searchsorted(time_s, t_model_s, side="left"))
+    iafter = max(nbefore, 1)
+    fracofinterval = (t_model_s - time_s[iafter - 1]) / (time_s[iafter] - time_s[iafter - 1])
+    integrand_at_tmodel = integrand[..., iafter - 1] + fracofinterval * (
+        integrand[..., iafter] - integrand[..., iafter - 1]
+    )
+    print(
+        "The q of each tracer is the integral of the specific heating rate times t / T. The integral goes from the"
+        f" network time {time_s[0]:g} s to the model time T = {t_model_s:g} s. The trapezoid rule gives the integral."
+        f" The integrand at T is the linear interpolation between the network times {time_s[iafter - 1]:g} s and"
+        f" {time_s[iafter]:g} s. The factor t / T gives the adiabatic loss of a radiation-dominated gas in a"
+        " homologous flow"
+    )
+    return np.asarray(
+        np.trapezoid(
+            np.concatenate([integrand[..., :nbefore], integrand_at_tmodel[..., np.newaxis]], axis=-1),
+            np.append(time_s[:nbefore], t_model_s),
+            axis=-1,
+        ),
+        dtype=np.float64,
+    )
 
 
 def get_grid(
@@ -193,19 +236,14 @@ def get_grid(
     for arr in (mass_arr, qdot_arr, hnuloss_arr):
         arr[isexcludedtraj] = 1e-30
 
-    # no multiplication with mass to keep it a specific energy release
-    time_by_t_snap = time_s / t_model_init_s
-
-    # the slice ends one row after the row of the snapshot time
-    tosnapshot = slice(0, (np.abs(time_s - t_model_init_s)).argmin() + 1)
+    # the specific energy release [erg/g] of each row of the tracer files
+    q_of_row = integrate_heating_to_model_time(time_s, qdot_arr + hnuloss_arr, t_model_init_s)
 
     # nodid comes first in trajids, then dynid
     for i, i1 in enumerate(nodid):  # i1 is the id of Oli's original list
         i2 = firstindex_of_id[i1]  # index in Zeweis extended list of trajs.
         mtraj[i] = mass_arr[i2] * msol
-        qtraj[i] = np.trapezoid(
-            time_by_t_snap[tosnapshot] * (qdot_arr[i2] + hnuloss_arr[i2])[tosnapshot], time_s[tosnapshot]
-        )
+        qtraj[i] = q_of_row[i2]
         tot_Q_rel += mtraj[i] * qtraj[i]
         xtraj[i, :] = xiso0[i2, :]
         yetraj[i] = dat.f.t5out[i2, 4]
@@ -216,9 +254,8 @@ def get_grid(
     for i, i1 in enumerate(dynid, start=nnod):
         i3 = np.where(dynidall == i1)[0]  # indices in Zeweis extended list of trajs.
         mtraj[i] = np.sum(mass_arr[i3]) * msol
-        # qdot is a specific rate [erg/g/s], thus the merged pieces take the mass-weighted mean and not the sum
-        qdot_merged = np.average(qdot_arr[i3] + hnuloss_arr[i3], axis=0, weights=mass_arr[i3])
-        qtraj[i] = np.trapezoid(time_by_t_snap[tosnapshot] * qdot_merged[tosnapshot], time_s[tosnapshot])
+        # q is a specific energy [erg/g], thus the merged pieces take the mass-weighted mean and not the sum
+        qtraj[i] = np.average(q_of_row[i3], weights=mass_arr[i3])
         tot_Q_rel += mtraj[i] * qtraj[i]
         # the composition and the position take the weights of the masses before the exclusion of an ejecta type
         weights = dat.f.mass[i3] * msol / (np.sum(dat.f.mass[i3]) * msol)
@@ -569,6 +606,146 @@ def align_composition_columns(dfmain: pl.DataFrame, dfother: pl.DataFrame) -> tu
     return aligned[0], aligned[1]
 
 
+def mix_composition(
+    dfmodel: pl.DataFrame, dfelabundances: pl.DataFrame, dyn_model: pl.DataFrame, dyn_abunds: pl.DataFrame
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Return the cells and the element abundances with the mass fractions of the two models mixed by the weights.
+
+    dfmodel holds the cells of this model and the weights beta_2D and beta_3D of get_model_interpolation_weights. The
+    mixed mass fraction of a nuclide or an element is beta_3D X_dyn + beta_2D X. X_dyn is the value of the dynamical
+    ejecta, and X is the value of this model.
+
+    dyn_abunds gives the full element mass fractions of the dynamical ejecta, which include the stable isotopes that
+    have no nuclide column. Thus the mixture keeps that mass. The function does not normalise the nuclide columns to
+    the sum 1, because such a normalisation gives that mass to the other nuclides.
+    """
+    print(
+        "  A nuclide or an element gets the mass fraction beta_3D X_dyn + beta_2D X. X_dyn is the value of the"
+        " dynamical ejecta, and X is the value of this model. beta_3D and beta_2D are the shares of the cell density"
+        " of the two models. The element mass fractions of the dynamical ejecta come from its element abundances, thus"
+        " they include the stable isotopes that have no nuclide column"
+    )
+    # the element abundances of a version 2 model hold the mass of its otherstable columns
+    dyn_model = dyn_model.drop(cs.ends_with(OTHERSTABLE_SUFFIX))
+    # each model can hold a mass fraction column that the other does not. Both frames take the
+    # union of those columns, thus the interpolation below finds each one in both frames
+    X_union = {col for col in (*dfmodel.columns, *dyn_model.columns) if col.startswith("X_")}
+    dfmodel = dfmodel.with_columns(**{col: pl.lit(0.0) for col in X_union - set(dfmodel.columns)})
+    dyn_model = dyn_model.with_columns(**{col: pl.lit(0.0) for col in X_union - set(dyn_model.columns)})
+    # X_Fegroup is a sum of the other columns, thus the interpolation leaves it out
+    X_list = [col for col in dfmodel.columns if col.startswith("X_") and col != "X_Fegroup"]
+    # properly set mass fractions to zero in empty cells
+    dfmodel = dfmodel.with_columns([
+        pl.when(pl.col("rho") == 0.0).then(0.0).otherwise(pl.col(col)).alias(col) for col in X_list
+    ])
+    dyn_model = dyn_model.with_columns([
+        pl.when(pl.col("rho") == 0.0).then(0.0).otherwise(pl.col(col)).alias(col) for col in X_list
+    ])
+
+    dyn_model = dyn_model.rename({col: f"{col}_dyn" for col in X_list})
+
+    dfmodel = dfmodel.join(
+        dyn_model.select(["inputcellid"] + [f"{col}_dyn" for col in X_list]),
+        on="inputcellid",
+        how="left",
+        maintain_order="left",
+    )
+
+    dfmodel = dfmodel.with_columns([
+        (pl.col(f"{col}_dyn") * pl.col("beta_3D") + pl.col(col) * pl.col("beta_2D")).alias(col) for col in X_list
+    ]).drop(f"{col}_dyn" for col in X_list)
+
+    # threshold small values
+    dfmodel = dfmodel.with_columns([
+        pl.when(pl.col(col) < 1e-10).then(0.0).otherwise(pl.col(col)).alias(col) for col in X_list
+    ])
+
+    # each table has one row for each cell, thus each join keeps the number of cells
+    dfelabundances_aligned, dyn_abunds_aligned = (
+        df.with_columns(pl.col("inputcellid").cast(pl.Int32))
+        for df in align_composition_columns(dfelabundances, dyn_abunds)
+    )
+    elementcols = [col for col in dfelabundances_aligned.columns if col != "inputcellid"]
+    dfabundances = (
+        dfelabundances_aligned
+        .join(dyn_abunds_aligned, on="inputcellid", how="left", suffix="_dyn", validate="1:1", maintain_order="left")
+        .join(
+            dfmodel.select(pl.col("inputcellid").cast(pl.Int32), "beta_3D", "beta_2D"),
+            on="inputcellid",
+            how="left",
+            validate="1:1",
+            maintain_order="left",
+        )
+        .select(
+            "inputcellid",
+            *[
+                (pl.col(f"{col}_dyn") * pl.col("beta_3D") + pl.col(col) * pl.col("beta_2D")).alias(col)
+                for col in elementcols
+            ],
+        )
+    )
+    return dfmodel, dfabundances
+
+
+def mix_gridcontributions(
+    dfgridcontributions: pl.DataFrame, dyn_gridcontributions: pl.DataFrame, dfcellmasses: pl.DataFrame
+) -> pl.DataFrame:
+    """Return the particle contributions of the cells that hold the material of this model and of the dynamical ejecta.
+
+    dfcellmasses gives the mass_g of this model and the dyn_mass_g of the dynamical ejecta in each cell. The
+    contribution of a particle to a cell is the mean of its contributions in the two maps, with these masses as the
+    weights. These are the weights of the material, and a replaced cell has a mass_g of 0.
+    """
+    nsharedids = (
+        dfgridcontributions
+        .select(pl.col("particleid").cast(pl.Int32))
+        .unique()
+        .join(dyn_gridcontributions.select(pl.col("particleid").cast(pl.Int32)).unique(), on="particleid", how="semi")
+        .height
+    )
+    print(
+        "  gridcontributions.txt: the fraction of a particle in a cell is the mean of its fractions in the two maps."
+        " The weight of each map is the mass of its model in the cell. The maps name the particles by id, thus an id"
+        f" of both maps is one particle. {nsharedids} ids are in both maps"
+    )
+    # remap_gridcontributions takes each pair of a model and a cell as one source cell. The source cells of the
+    # dynamical ejecta get the ids after the cell ids
+    dynidoffset = dfcellmasses["inputcellid"].max()
+    assert isinstance(dynidoffset, int)
+    dfsourcecontributions = pl.concat([
+        dfcontribs.lazy().select(
+            pl.col("particleid").cast(pl.Int32),
+            (pl.col("cellindex") + idoffset).cast(pl.Int32),
+            pl.col("frac_of_cellmass").cast(pl.Float64),
+            # a map with no frac_of_cellmass_includemissing column has no missing particles
+            pl
+            .col(
+                "frac_of_cellmass_includemissing"
+                if "frac_of_cellmass_includemissing" in dfcontribs.columns
+                else "frac_of_cellmass"
+            )
+            .cast(pl.Float64)
+            .alias("frac_of_cellmass_includemissing"),
+        )
+        for dfcontribs, idoffset in ((dfgridcontributions, 0), (dyn_gridcontributions, dynidoffset))
+    ])
+    # a source cell with no mass gives no contribution, thus the remap drops each particle of a replaced cell
+    dfsourcecells = (
+        pl
+        .concat([
+            dfcellmasses.select(
+                inputcellid=(pl.col("inputcellid") + idoffset).cast(pl.Int32),
+                out_inputcellid=pl.col("inputcellid").cast(pl.Int32),
+                mass_g=pl.col(masscol).cast(pl.Float64),
+            )
+            for masscol, idoffset in (("mass_g", 0), ("dyn_mass_g", dynidoffset))
+        ])
+        .with_columns(out_mass_g=pl.col("mass_g").sum().over("out_inputcellid"))
+        .filter(pl.col("mass_g") > 0.0)
+    )
+    return remap_gridcontributions(dfsourcecontributions, dfsourcecells).collect()
+
+
 def z_reflect(arr: npt.NDArray[np.floating], sign: int = 1) -> npt.NDArray[np.floating]:
     """Flatten an array and add a reflection in z."""
     reflected = np.concatenate([sign * np.flip(arr[:, :], axis=1), arr[:, :]], axis=1)
@@ -721,11 +898,15 @@ def map_to_artis(
     interpolate: bool = False,
     M_2Ddyn: float | None = None,
     outputfolder: Path = Path(),
-) -> tuple[pl.DataFrame, pl.DataFrame, dict[str, t.Any]]:
-    """Assemble the interpolated grid into an ARTIS model, returning the model, the abundances, and the metadata.
+    dfgridcontributions: pl.DataFrame | None = None,
+) -> tuple[pl.DataFrame, pl.DataFrame, dict[str, t.Any], pl.DataFrame | None]:
+    """Assemble the interpolated grid into an ARTIS model.
 
-    When equatorial symmetry was assumed, the upper half space is reflected to fill the lower half. The interpolation
-    with the dynamical ejecta writes its files for a consistency check to outputfolder.
+    The function returns the model, the abundances, the metadata, and the particle contributions. If the tracers have
+    equatorial symmetry, the function reflects the upper half space to fill the lower half. The interpolation with the
+    dynamical ejecta writes its files for a consistency check to outputfolder. The material of the dynamical ejecta
+    also gives the particles of its gridcontributions.txt to a cell. The result has no particle contributions if the
+    dynamical ejecta have no gridcontributions.txt.
     """
     dfmodel: pl.DataFrame
     if model_dim == 2:
@@ -851,6 +1032,20 @@ def map_to_artis(
         dyn_abunds = scan_initelemabundances(modelpath=Path(replacedyn)).with_columns(
             pl.col("inputcellid") - firstdynid + 1
         )
+        # the cell ids of gridcontributions.txt are the ids of model.txt
+        dyn_gridcontributions = (
+            None
+            if dfgridcontributions is None
+            else get_gridparticlecontributions_or_none(get_gridcontributions_folder(Path(replacedyn)))
+        )
+        if dyn_gridcontributions is not None:
+            dyn_gridcontributions = dyn_gridcontributions.with_columns(pl.col("cellindex") - firstdynid + 1)
+        elif dfgridcontributions is not None:
+            print_warning(
+                f"The model of --replacedyn in {replacedyn} has no gridcontributions.txt, thus no file gives the"
+                " particles of its material. The output has no gridcontributions.txt"
+            )
+            dfgridcontributions = None
         # scan_modeldata adds tracercount only for a model.txt that holds it
         dyn_model = dyn_model.drop(["tracercount", "modelgridindex"], strict=False)
 
@@ -925,63 +1120,14 @@ def map_to_artis(
                 extracols=dyn_extracols,
             )
 
-            # each model can hold a mass fraction column that the other does not. Both frames take the
-            # union of those columns, thus the interpolation below finds each one in both frames
-            X_union = {col for col in (*dfmodel.columns, *dyn_model.columns) if col.startswith("X_")}
-            dfmodel = dfmodel.with_columns(**{col: pl.lit(0.0) for col in X_union - set(dfmodel.columns)})
-            dyn_model = dyn_model.with_columns(**{col: pl.lit(0.0) for col in X_union - set(dyn_model.columns)})
-            # X_Fegroup is a sum of the other columns, thus the interpolation leaves it out
-            X_list = [col for col in dfmodel.columns if col.startswith("X_") and col != "X_Fegroup"]
-            # properly set mass fractions to zero in empty cells
-            dfmodel = dfmodel.with_columns([
-                pl.when(pl.col("rho") == 0.0).then(0.0).otherwise(pl.col(col)).alias(col) for col in X_list
-            ])
-            dyn_model = dyn_model.with_columns([
-                pl.when(pl.col("rho") == 0.0).then(0.0).otherwise(pl.col(col)).alias(col) for col in X_list
-            ])
-
-            dyn_model = dyn_model.rename({col: f"{col}_dyn" for col in X_list})
-
-            dfmodel = dfmodel.join(
-                dyn_model.select(["inputcellid"] + [f"{col}_dyn" for col in X_list]),
-                on="inputcellid",
-                how="left",
-                maintain_order="left",
-            )
-
-            dfmodel = dfmodel.with_columns([
-                (pl.col(f"{col}_dyn") * pl.col("beta_3D") + pl.col(col) * pl.col("beta_2D")).alias(col)
-                for col in X_list
-            ])
-
-            # threshold small values
-            dfmodel = dfmodel.with_columns([
-                pl.when(pl.col(col) < 1e-10).then(0.0).otherwise(pl.col(col)).alias(col) for col in X_list
-            ])
-
-            # calculate elemental mass fractions and scaling factors
-            dfmodel = dfmodel.with_columns([pl.sum_horizontal(*X_list).alias("X_el")])
-
-            dfmodel = dfmodel.with_columns([
-                (1.0 / pl.col("X_el")).replace([float("inf"), float("-inf")], 0.0).alias("X_scale")
-            ])
-
-            # scale all mass fractions with scaling factor
-            dfmodel = dfmodel.with_columns([(pl.col(col) * pl.col("X_scale")).alias(col) for col in X_list])
-            # determine elemental abundances for abundances.txt as before again (no interpolation)
-            dictelabunds = {"inputcellid": np.array(range(1, numb_cells + 1))}
-            for isot_str in X_list:
-                interpol_X_iso = dfmodel[isot_str].to_numpy()
-                elem_str = f"X_{get_elsymbol(get_atomic_number(isot_str))}"
-                dictelabunds[elem_str] = (
-                    dictelabunds[elem_str] + interpol_X_iso if elem_str in dictelabunds else interpol_X_iso
-                )
-            dfabundances = pl.DataFrame(dictelabunds).fill_null(0.0)
+            dfmodel, dfabundances = mix_composition(dfmodel, dfelabundances, dyn_model, dyn_abunds.collect())
+            dyn_share_of_cellmass = pl.col("beta_3D")
         else:
             # replace above threshold
             print(f"Replace dynamical ejecta above dynamical ejecta fraction threshold using model {replacedyn}...")
             # get cell list from original model which shall be replaced
             id_list = dfmodel.filter(pl.col("bin_state") > bs_thr).select("inputcellid").to_series().to_list()
+            dyn_share_of_cellmass = pl.col("inputcellid").is_in(id_list).cast(pl.Float64)
 
             # do replacement in dfelabundances...
             # obtain dfelabundances from the dyn model first again
@@ -1062,16 +1208,19 @@ def map_to_artis(
                 print(f"  New ejecta mass after replacing and rescaling: {M_rescaled} Msun")
                 dfmodel = dfmodel.drop("vel_r_mid_on_c")
 
-        superfluous_cols = [
-            "bin_state",
-            "vel_r_mid_on_c",
-            "volume",
-            "beta_3D",
-            "beta_2D",
-            "modelgridindex",
-            "X_el",
-            "X_scale",
-        ]
+        if dfgridcontributions is not None and dyn_gridcontributions is not None:
+            cellmass_g = pl.col("rho").cast(pl.Float64) * pl.col("volume")
+            dfgridcontributions = mix_gridcontributions(
+                dfgridcontributions,
+                dyn_gridcontributions,
+                dfmodel.select(
+                    "inputcellid",
+                    mass_g=(1.0 - dyn_share_of_cellmass) * cellmass_g,
+                    dyn_mass_g=dyn_share_of_cellmass * cellmass_g,
+                ),
+            )
+
+        superfluous_cols = ["bin_state", "vel_r_mid_on_c", "volume", "beta_3D", "beta_2D", "modelgridindex"]
         dfmodel = dfmodel.drop(superfluous_cols, strict=False).drop(cs.contains("_dyn"))
         print("Done!")
 
@@ -1104,7 +1253,7 @@ def map_to_artis(
             "vmax_cmps": vmax_on_c * CLIGHT,
         }
 
-    return dfmodel, dfelabundances, modelmeta
+    return dfmodel, dfelabundances, modelmeta, dfgridcontributions
 
 
 def coarse_grid_blocks(
@@ -1545,7 +1694,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             no_nu_trapping=args.nonutrapping,
         )
 
-        dfmodel, dfelabundances, modelmeta = map_to_artis(
+        dfmodel, dfelabundances, modelmeta, dfgridcontributions = map_to_artis(
             model_dim,
             np.array([ngrid_rcyl, ngrid_z]),
             float(args.vmax_on_c),
@@ -1557,6 +1706,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             eqsymfac,
             pos_t_s_grid_rad=pos_t_s_grid_rad,
             pos_t_s_grid_z=pos_t_s_grid_z,
+            dfgridcontributions=dfgridcontributions,
         )
 
         if args.mergecells is not None:
@@ -1593,7 +1743,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             no_nu_trapping=args.nonutrapping,
         )
 
-        dfmodel, dfelabundances, modelmeta = map_to_artis(
+        dfmodel, dfelabundances, modelmeta, dfgridcontributions = map_to_artis(
             model_dim,
             np.array(args.ncoordgrid),
             float(args.vmax_on_c),
@@ -1614,6 +1764,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             interpolate=args.interpolate,
             M_2Ddyn=args.interpolrescale,
             outputfolder=Path(args.outputfile),
+            dfgridcontributions=dfgridcontributions,
         )
 
         if args.perturb3Dmodel:
@@ -1645,3 +1796,5 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     )
     if dfgridcontributions is not None:
         save_gridparticlecontributions(dfgridcontributions, args.outputfile)
+    else:
+        delete_gridparticlecontributions(Path(args.outputfile))
