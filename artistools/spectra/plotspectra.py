@@ -1042,11 +1042,11 @@ def draw_dirbin_spectra(
             dirbin, directionbins, dirbin_definitions, linelabel, linelabel_is_custom, plotkwargs
         )
 
-        if "delta_lambda" in dfspectrum.columns:
-            # the bins of a packet histogram hold the same flux on each x axis, thus the sum takes the wavelength bins
-            print_integrated_flux(dfspectrum["f_lambda"], dfspectrum["x"], dfspectrum["delta_lambda"])
-        else:
-            print_integrated_flux(dfspectrum["dflux_on_dx_onempc"], dfspectrum["x"])
+        print_integrated_flux(
+            dfspectrum["dflux_on_dx_onempc"],
+            dfspectrum["x"],
+            dfspectrum["delta_x"] if "delta_x" in dfspectrum.columns else None,
+        )
 
         if scale_to_peak:
             dfspectrum = dfspectrum.with_columns(y=pl.col("y") / pl.col("y").max() * scale_to_peak)

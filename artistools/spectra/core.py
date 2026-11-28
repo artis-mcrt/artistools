@@ -172,6 +172,17 @@ def get_dfspectrum_x_y_with_units(
             dflux_on_dx_onempc=pl.col("f_nu") * pl.col("nu") / pl.col("x")
         )
 
+    if "delta_nu" in dfspectrum.collect_schema().names():
+        # delta_x is the width of each bin of a packet histogram in the x unit, thus dflux_on_dx_onempc delta_x is the
+        # flux of the bin
+        dfspectrum = dfspectrum.with_columns(
+            delta_x=pl.col("delta_lambda") / unit.unit_in_base_units
+            if unit.kind == "wavelength"
+            else pl.col("delta_nu")
+            if unit.kind == "frequency"
+            else h_ev_s * pl.col("delta_nu") / unit.unit_in_base_units
+        )
+
     match yvariable.lower():
         case "luminosity":
             # multiply by 4pi dist^2 to cancel out the /cm^2 at 1 Mpc
@@ -2711,8 +2722,9 @@ def print_integrated_flux(
 ) -> float:
     """Print and return the flux integrated over the given x range [erg/s/cm2 at 1 Mpc].
 
-    arr_delta_x gives the width of each bin of a packet histogram, and the flux is then the sum of the flux density
-    times the width of each bin. With None, the flux is the trapezoidal integral over the points.
+    arr_delta_x gives the width of each bin of a packet histogram in the unit of arr_x. The flux is then the sum of
+    the flux density times the width of each bin, and the range goes from the first bin edge to the last bin edge.
+    With None, the flux is the trapezoidal integral over the points.
     """
     flux_density = np.nan_to_num(arr_df_on_dx, nan=0.0)
     if arr_delta_x is None:
@@ -2721,14 +2733,14 @@ def print_integrated_flux(
     else:
         integrated_flux = abs(float(np.sum(flux_density * np.asarray(arr_delta_x))))
         methodtext = "sum of the flux density times the bin width"
-    x_min = arr_x.min()
-    x_max = arr_x.max()
-    assert isinstance(x_min, int | float)
-    assert isinstance(x_max, int | float)
+    # the flux of a packet histogram covers each bin from edge to edge
+    halfwidths = 0.0 if arr_delta_x is None else 0.5 * np.asarray(arr_delta_x)
+    x_min = float(np.min(np.asarray(arr_x) - halfwidths))
+    x_max = float(np.max(np.asarray(arr_x) + halfwidths))
 
     # x is the name of the axis in the code, and the line below it names the unit of that axis
     print_detail(
-        f"Integrated flux ({x_min:.1f} to {x_max:.1f}, {methodtext}): {integrated_flux:.3e} erg/s/cm2 at 1 Mpc"
+        f"Integrated flux ({x_min:.5g} to {x_max:.5g}, {methodtext}): {integrated_flux:.3e} erg/s/cm2 at 1 Mpc"
     )
     return integrated_flux
 
