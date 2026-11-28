@@ -23,6 +23,7 @@ from artistools.constants import Msun_to_g as msol
 from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import CELL_ID_FILE_NAMES
 from artistools.inputmodel.core import dimension_reduce_model
+from artistools.inputmodel.core import get_gridcontributions_folder
 from artistools.inputmodel.core import MODEL_FILE_NAMES
 from artistools.inputmodel.core import OTHERSTABLE_SUFFIX
 from artistools.inputmodel.core import remap_gridcontributions
@@ -38,6 +39,8 @@ from artistools.inputmodel.maptogrid import get_ncoordgrid
 from artistools.inputmodel.maptogrid import get_spherical_cell_volumes
 from artistools.inputmodel.maptogrid import get_spherical_grid_edges
 from artistools.inputmodel.maptogrid import NCOORDGRID_DEFAULTS
+from artistools.inputmodel.rprocess_from_trajectory import delete_gridparticlecontributions
+from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions_or_none
 from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
 from artistools.misc import addarg_force
 from artistools.misc import addarg_output
@@ -684,6 +687,65 @@ def mix_composition(
     return dfmodel, dfabundances
 
 
+def mix_gridcontributions(
+    dfgridcontributions: pl.DataFrame, dyn_gridcontributions: pl.DataFrame, dfcellmasses: pl.DataFrame
+) -> pl.DataFrame:
+    """Return the particle contributions of the cells that hold the material of this model and of the dynamical ejecta.
+
+    dfcellmasses gives the mass_g of this model and the dyn_mass_g of the dynamical ejecta in each cell. The
+    contribution of a particle to a cell is the mean of its contributions in the two maps, with these masses as the
+    weights. These are the weights of the material, and a replaced cell has a mass_g of 0.
+    """
+    nsharedids = (
+        dfgridcontributions
+        .select(pl.col("particleid").cast(pl.Int32))
+        .unique()
+        .join(dyn_gridcontributions.select(pl.col("particleid").cast(pl.Int32)).unique(), on="particleid", how="semi")
+        .height
+    )
+    print(
+        "  gridcontributions.txt: the fraction of a particle in a cell is the mean of its fractions in the two maps."
+        " The weight of each map is the mass of its model in the cell. The maps name the particles by id, thus an id"
+        f" of both maps is one particle. {nsharedids} ids are in both maps"
+    )
+    # remap_gridcontributions takes each pair of a model and a cell as one source cell. The source cells of the
+    # dynamical ejecta get the ids after the cell ids
+    dynidoffset = dfcellmasses["inputcellid"].max()
+    assert isinstance(dynidoffset, int)
+    dfsourcecontributions = pl.concat([
+        dfcontribs.lazy().select(
+            pl.col("particleid").cast(pl.Int32),
+            (pl.col("cellindex") + idoffset).cast(pl.Int32),
+            pl.col("frac_of_cellmass").cast(pl.Float64),
+            # a map with no frac_of_cellmass_includemissing column has no missing particles
+            pl
+            .col(
+                "frac_of_cellmass_includemissing"
+                if "frac_of_cellmass_includemissing" in dfcontribs.columns
+                else "frac_of_cellmass"
+            )
+            .cast(pl.Float64)
+            .alias("frac_of_cellmass_includemissing"),
+        )
+        for dfcontribs, idoffset in ((dfgridcontributions, 0), (dyn_gridcontributions, dynidoffset))
+    ])
+    # a source cell with no mass gives no contribution, thus the remap drops each particle of a replaced cell
+    dfsourcecells = (
+        pl
+        .concat([
+            dfcellmasses.select(
+                inputcellid=(pl.col("inputcellid") + idoffset).cast(pl.Int32),
+                out_inputcellid=pl.col("inputcellid").cast(pl.Int32),
+                mass_g=pl.col(masscol).cast(pl.Float64),
+            )
+            for masscol, idoffset in (("mass_g", 0), ("dyn_mass_g", dynidoffset))
+        ])
+        .with_columns(out_mass_g=pl.col("mass_g").sum().over("out_inputcellid"))
+        .filter(pl.col("mass_g") > 0.0)
+    )
+    return remap_gridcontributions(dfsourcecontributions, dfsourcecells).collect()
+
+
 def z_reflect(arr: npt.NDArray[np.floating], sign: int = 1) -> npt.NDArray[np.floating]:
     """Flatten an array and add a reflection in z."""
     reflected = np.concatenate([sign * np.flip(arr[:, :], axis=1), arr[:, :]], axis=1)
@@ -836,11 +898,15 @@ def map_to_artis(
     interpolate: bool = False,
     M_2Ddyn: float | None = None,
     outputfolder: Path = Path(),
-) -> tuple[pl.DataFrame, pl.DataFrame, dict[str, t.Any]]:
-    """Assemble the interpolated grid into an ARTIS model, returning the model, the abundances, and the metadata.
+    dfgridcontributions: pl.DataFrame | None = None,
+) -> tuple[pl.DataFrame, pl.DataFrame, dict[str, t.Any], pl.DataFrame | None]:
+    """Assemble the interpolated grid into an ARTIS model.
 
-    When equatorial symmetry was assumed, the upper half space is reflected to fill the lower half. The interpolation
-    with the dynamical ejecta writes its files for a consistency check to outputfolder.
+    The function returns the model, the abundances, the metadata, and the particle contributions. If the tracers have
+    equatorial symmetry, the function reflects the upper half space to fill the lower half. The interpolation with the
+    dynamical ejecta writes its files for a consistency check to outputfolder. The material of the dynamical ejecta
+    also gives the particles of its gridcontributions.txt to a cell. The result has no particle contributions if the
+    dynamical ejecta have no gridcontributions.txt.
     """
     dfmodel: pl.DataFrame
     if model_dim == 2:
@@ -966,6 +1032,20 @@ def map_to_artis(
         dyn_abunds = scan_initelemabundances(modelpath=Path(replacedyn)).with_columns(
             pl.col("inputcellid") - firstdynid + 1
         )
+        # the cell ids of gridcontributions.txt are the ids of model.txt
+        dyn_gridcontributions = (
+            None
+            if dfgridcontributions is None
+            else get_gridparticlecontributions_or_none(get_gridcontributions_folder(Path(replacedyn)))
+        )
+        if dyn_gridcontributions is not None:
+            dyn_gridcontributions = dyn_gridcontributions.with_columns(pl.col("cellindex") - firstdynid + 1)
+        elif dfgridcontributions is not None:
+            print_warning(
+                f"The model of --replacedyn in {replacedyn} has no gridcontributions.txt, thus no file gives the"
+                " particles of its material. The output has no gridcontributions.txt"
+            )
+            dfgridcontributions = None
         # scan_modeldata adds tracercount only for a model.txt that holds it
         dyn_model = dyn_model.drop(["tracercount", "modelgridindex"], strict=False)
 
@@ -1041,11 +1121,13 @@ def map_to_artis(
             )
 
             dfmodel, dfabundances = mix_composition(dfmodel, dfelabundances, dyn_model, dyn_abunds.collect())
+            dyn_share_of_cellmass = pl.col("beta_3D")
         else:
             # replace above threshold
             print(f"Replace dynamical ejecta above dynamical ejecta fraction threshold using model {replacedyn}...")
             # get cell list from original model which shall be replaced
             id_list = dfmodel.filter(pl.col("bin_state") > bs_thr).select("inputcellid").to_series().to_list()
+            dyn_share_of_cellmass = pl.col("inputcellid").is_in(id_list).cast(pl.Float64)
 
             # do replacement in dfelabundances...
             # obtain dfelabundances from the dyn model first again
@@ -1126,6 +1208,18 @@ def map_to_artis(
                 print(f"  New ejecta mass after replacing and rescaling: {M_rescaled} Msun")
                 dfmodel = dfmodel.drop("vel_r_mid_on_c")
 
+        if dfgridcontributions is not None and dyn_gridcontributions is not None:
+            cellmass_g = pl.col("rho").cast(pl.Float64) * pl.col("volume")
+            dfgridcontributions = mix_gridcontributions(
+                dfgridcontributions,
+                dyn_gridcontributions,
+                dfmodel.select(
+                    "inputcellid",
+                    mass_g=(1.0 - dyn_share_of_cellmass) * cellmass_g,
+                    dyn_mass_g=dyn_share_of_cellmass * cellmass_g,
+                ),
+            )
+
         superfluous_cols = ["bin_state", "vel_r_mid_on_c", "volume", "beta_3D", "beta_2D", "modelgridindex"]
         dfmodel = dfmodel.drop(superfluous_cols, strict=False).drop(cs.contains("_dyn"))
         print("Done!")
@@ -1159,7 +1253,7 @@ def map_to_artis(
             "vmax_cmps": vmax_on_c * CLIGHT,
         }
 
-    return dfmodel, dfelabundances, modelmeta
+    return dfmodel, dfelabundances, modelmeta, dfgridcontributions
 
 
 def coarse_grid_blocks(
@@ -1600,7 +1694,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             no_nu_trapping=args.nonutrapping,
         )
 
-        dfmodel, dfelabundances, modelmeta = map_to_artis(
+        dfmodel, dfelabundances, modelmeta, dfgridcontributions = map_to_artis(
             model_dim,
             np.array([ngrid_rcyl, ngrid_z]),
             float(args.vmax_on_c),
@@ -1612,6 +1706,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             eqsymfac,
             pos_t_s_grid_rad=pos_t_s_grid_rad,
             pos_t_s_grid_z=pos_t_s_grid_z,
+            dfgridcontributions=dfgridcontributions,
         )
 
         if args.mergecells is not None:
@@ -1648,7 +1743,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             no_nu_trapping=args.nonutrapping,
         )
 
-        dfmodel, dfelabundances, modelmeta = map_to_artis(
+        dfmodel, dfelabundances, modelmeta, dfgridcontributions = map_to_artis(
             model_dim,
             np.array(args.ncoordgrid),
             float(args.vmax_on_c),
@@ -1669,6 +1764,7 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             interpolate=args.interpolate,
             M_2Ddyn=args.interpolrescale,
             outputfolder=Path(args.outputfile),
+            dfgridcontributions=dfgridcontributions,
         )
 
         if args.perturb3Dmodel:
@@ -1700,3 +1796,5 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
     )
     if dfgridcontributions is not None:
         save_gridparticlecontributions(dfgridcontributions, args.outputfile)
+    else:
+        delete_gridparticlecontributions(Path(args.outputfile))
