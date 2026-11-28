@@ -3465,6 +3465,44 @@ def test_colour_at_peak_reads_the_second_band_of_the_bin_of_each_row(
     assert np.allclose(colourtables[0]["peakcolour"], -1.0 + 0.011 * np.arange(100), rtol=0.0, atol=1e-9)
 
 
+@mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
+def test_colour_at_peak_shows_the_observations_only_for_b_minus_v_at_b_maximum(
+    mockerrorbar: mock.MagicMock,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    read_data_file: Callable[[Path], pl.DataFrame],
+) -> None:
+    """The observed data give B-V at B maximum and the peak B magnitude. Thus only the axes of these values show them.
+
+    The command drew and wrote the observed data for each pair of bands, and it needed the observation file for each
+    pair.
+    """
+    monkeypatch.chdir(tmp_path)
+    # the working folder holds no observation file, thus a command that reads it stops
+    for bands in (["U", "R"], ["V", "B"]):
+        folder = tmp_path / "-".join(bands)
+        folder.mkdir()
+        figure, plotpath = run_colour_at_peak_plot(folder, bands, range(100))
+        assert figure.axes[0].get_xlabel() == f"{bands[0]}-{bands[1]} at {bands[0]}max"
+        assert figure.axes[0].get_ylabel() == f"{bands[0]}max"
+        assert {f"{bands[0]}max", f"{bands[1]}at{bands[0]}max"} <= set(
+            read_data_file(plotpath.with_suffix(".txt")).columns
+        )
+        assert not mockerrorbar.called
+        assert not plotpath.with_name(f"{plotpath.stem}_observations.txt").exists()
+
+    (tmp_path / "CfA3_Phillips.dat").write_text(PHILLIPS_RELATION_TEXT, encoding="utf-8")
+    folder = tmp_path / "B-V"
+    folder.mkdir()
+    _, plotpath = run_colour_at_peak_plot(folder, ["B", "V"], range(100))
+    mockerrorbar.assert_called_once()
+    drawnvalues = [list(mockerrorbar.call_args.kwargs[key]) for key in ("x", "y", "xerr", "yerr")]
+    assert np.allclose(drawnvalues, [[0.05, 0.12], [-19.2, -18.9], [0.02, 0.03], [0.10, 0.15]], rtol=1e-12, atol=0.0)
+    dfobservations = read_data_file(plotpath.with_name(f"{plotpath.stem}_observations.txt"))
+    assert np.allclose(dfobservations["(B-V)Bmax"], [0.05, 0.12], rtol=1e-12, atol=0.0)
+    assert np.allclose(dfobservations["err_MB"], [0.10, 0.15], rtol=1e-12, atol=0.0)
+
+
 def test_lightcurve_tables_keep_two_models_of_one_name_apart(
     tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
 ) -> None:

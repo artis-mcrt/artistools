@@ -588,12 +588,15 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
             "--colouratpeak plots the colour of two bands, and --filter must name two bands",
             "Give two bands, e.g. --filter B V",
         )
-    # the package holds no copy of the observed data, thus look for the file before the slow fits
-    sn_data, label = get_phillips_relation_data()
+    bands = [args.filter[0], args.filter[1]]
+    # the observed data give B-V at B maximum and the peak B magnitude, thus only the axes of these values show them.
+    # The package holds no copy of the observed data, thus look for the file before the slow fits
+    observations = get_phillips_relation_data() if bands == ["B", "V"] else None
+    if observations is None:
+        print(f"The observed data give B-V at B maximum, thus the plot of {bands[0]}-{bands[1]} shows no observed data")
     fig, axesgrid = make_frame_figure(args)
     ax = axesgrid[0][0]
     dfplotted: list[pl.DataFrame] = []
-    bands = [args.filter[0], args.filter[1]]
 
     datanames = get_viewing_angle_data_names(args.modelpath)
     for modelnumber, modelpath in enumerate(args.modelpath):
@@ -639,19 +642,21 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
             )
         )
 
-    ax.errorbar(
-        x=sn_data["(B-V)Bmax"],
-        y=sn_data["MB"],
-        xerr=sn_data["err_(B-V)Bmax"],
-        yerr=sn_data["err_MB"],
-        color="k",
-        alpha=0.9,
-        marker=".",
-        capsize=2,
-        label=label,
-        ls="None",
-        zorder=-1,
-    )
+    if observations is not None:
+        sn_data, label = observations
+        ax.errorbar(
+            x=sn_data["(B-V)Bmax"],
+            y=sn_data["MB"],
+            xerr=sn_data["err_(B-V)Bmax"],
+            yerr=sn_data["err_MB"],
+            color="k",
+            alpha=0.9,
+            marker=".",
+            capsize=2,
+            label=label,
+            ls="None",
+            zorder=-1,
+        )
 
     set_legend(ax, args, loc="upper right")
     ax.set_xlabel(f"{bands[0]}-{bands[1]} at {bands[0]}max")
@@ -661,12 +666,11 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
         get_viewing_angle_data_folder(args)
         / f"plotviewinganglecolour{get_filename_part(bands[0])}-{get_filename_part(bands[1])}.pdf"
     )
-    # the observations have their own columns, thus they go in a second table
-    output_data(
-        args,
-        {"": pl.concat(dfplotted) if dfplotted else pl.DataFrame(), "_observations": pl.DataFrame(sn_data)},
-        plotname,
-    )
+    tables = {"": pl.concat(dfplotted) if dfplotted else pl.DataFrame()}
+    if observations is not None:
+        # the observed data have their own columns, thus they go in a second table
+        tables["_observations"] = observations[0]
+    output_data(args, tables, plotname)
     save_figure(fig, plotname, format="pdf", args=args)
 
 
