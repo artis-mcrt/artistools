@@ -1046,6 +1046,20 @@ def draw_artis_lightcurve(
     return plotteddataframes
 
 
+def get_top_nuclides_packets_text(
+    escape_type: str, timemin: float | None, timemax: float | None, *, use_pellet_decay_time: bool
+) -> str:
+    """Return the text that names the packets whose energy --topnucs sums, with the type of time and the time range."""
+    timename = "a pellet decay time" if use_pellet_decay_time else "an arrival time"
+    if timemin is None and timemax is None:
+        return f"all the escaped {escape_type} packets"
+    if timemax is None:
+        return f"the escaped {escape_type} packets with {timename} of {timemin} d or later"
+    if timemin is None:
+        return f"the escaped {escape_type} packets with {timename} of {timemax} d or earlier"
+    return f"the escaped {escape_type} packets with {timename} from {timemin} d to {timemax} d"
+
+
 def make_plot_figure(
     args: argparse.Namespace, *, fig: mplfig.Figure | None = None
 ) -> tuple[mplfig.Figure, mplax.Axes, mplax.Axes | None, mplax.Axes | None]:
@@ -1139,7 +1153,10 @@ def draw_plot(
                             args.timemax,
                             use_pellet_decay_time=args.use_pellet_decay_time,
                         )
-                        print(f"Top nuclides by energy release: {top_nuclides['nucname'].to_list()}")
+                        packetstext = get_top_nuclides_packets_text(
+                            escape_type, args.timemin, args.timemax, use_pellet_decay_time=args.use_pellet_decay_time
+                        )
+                        print(f"Top nuclides by the energy sum of {packetstext}: {top_nuclides['nucname'].to_list()}")
                         pellet_nucnames.extend(top_nuclides["nucname"])
                     except FileNotFoundError:
                         print_warning("No nuclides.out file found, skipping top nuclides")

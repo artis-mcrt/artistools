@@ -27,6 +27,7 @@ from matplotlib.container import ErrorbarContainer
 from pytest_codspeed.plugin import BenchmarkFixture
 
 import artistools as at
+from artistools.constants import day_to_s
 from artistools.constants import Lsun_to_erg_per_s
 from artistools.constants import Mbol_sun
 from artistools.lightcurve import interactive
@@ -2700,6 +2701,40 @@ def test_light_curve_of_the_initial_energy_reads_its_packets() -> None:
         dfall = at.lightcurve.scan_lightcurve_from_packets(modelpath)
 
     pltest.assert_frame_equal(dfinitialenergy[-1].collect(), dfall[-1].collect())
+
+
+@pytest.mark.parametrize("use_pellet_decay_time", [False, True])
+def test_top_nuclides_count_only_the_packets_in_the_time_range(use_pellet_decay_time: bool) -> None:
+    """--topnucs sums the energy of the packets from --timemin to --timemax, and of no other packet.
+
+    The sum also included the packet nearest to each limit outside the range. Thus Ni56 with a packet at 1 d was the
+    first nuclide from 4 d to 6 d, where it has no packet.
+    """
+    from artistools.lightcurve import core as lightcurvecore
+
+    nuclides = pl.LazyFrame({"pellet_nucindex": [0, 1], "nucname": ["Ni56", "Co56"]})
+    selectedtimes_days = [1.0, 5.0, 9.0]
+    # the time that the test does not select puts each packet in the range, thus a sum with that time gives Ni56
+    othertimes_days = [5.0, 5.0, 5.0]
+    arrivaltimes_days, decaytimes_days = (
+        (othertimes_days, selectedtimes_days) if use_pellet_decay_time else (selectedtimes_days, othertimes_days)
+    )
+    packets = pl.LazyFrame({
+        "pellet_nucindex": [0, 1, 1],
+        "e_rf": [100.0, 1.0, 3.0],
+        "t_arrive_d": arrivaltimes_days,
+        "tdecay": [time_days * day_to_s for time_days in decaytimes_days],
+    })
+    with (
+        mock.patch.object(lightcurvecore, "scan_nuclides", return_value=nuclides),
+        mock.patch.object(lightcurvecore, "scan_packets", return_value=(1, packets)),
+    ):
+        dftopnuclides = lightcurvecore.get_top_nuclides(
+            modelpath, "TYPE_RPKT", 1, None, 4.0, 6.0, use_pellet_decay_time=use_pellet_decay_time
+        )
+
+    assert dftopnuclides["nucname"].to_list() == ["Co56"]
+    assert np.isclose(dftopnuclides["e_rf_sum"].item(), 1.0, rtol=1e-12, atol=0.0)
 
 
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
