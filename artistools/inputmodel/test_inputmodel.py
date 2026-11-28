@@ -2168,6 +2168,34 @@ def test_maketardismodel_maxatomicnumber_from_command_line(tmp_path: Path) -> No
     assert "Ni" not in csvytext
 
 
+def test_tardis_model_holds_the_inner_edge_and_each_artis_shell(tmp_path: Path) -> None:
+    """The TARDIS model starts at the inner edge of the innermost ARTIS shell, and it holds each shell.
+
+    TARDIS reads the velocity of the first row of the CSV part as the inner edge of the innermost shell. It discards
+    the cell values of that row. The file had one row for each shell, thus TARDIS lost the innermost shell. The model
+    of one shell gave no shell.
+    """
+    import yaml
+
+    at.inputmodel.to_tardis.main(argsraw=[str(modelpath), "-o", str(tmp_path)])
+
+    csvytext = (tmp_path / f"{at.get_model_name(modelpath)}.csvy").read_text(encoding="utf-8")
+    _, yamltext, csvtext = csvytext.split("---\n")
+    dfcsv = pl.read_csv(csvtext.encode())
+    assert [field["name"] for field in yaml.safe_load(yamltext)["datatype"]["fields"]] == dfcsv.columns
+    assert dfcsv["velocity"].to_list() == [0.0, 8000.0]
+
+    dfartis = get_derived_modeldata(modelpath, get_elemabundances=True)[0].collect()
+    elementcols = dfcsv.columns[4:]
+    assert "Ni" in elementcols
+    # the second row gives the density and the composition of the shell from 0 to 8000 km/s
+    assert dfcsv["density"][1] == pytest.approx(dfartis["rho"][0], rel=1e-4)
+    for element in elementcols:
+        assert dfcsv[element][1] == pytest.approx(dfartis[f"X_{element}"][0], rel=1e-4, abs=1e-12), element
+    # TARDIS discards the cell values of the first row, and the file gives them the values of the innermost shell
+    assert dfcsv.drop("velocity").row(0) == dfcsv.drop("velocity").row(1)
+
+
 def test_an_unreadable_model_cache_is_not_deleted(tmp_path: Path) -> None:
     """A rejected cache must stay in place, because a rival process possibly replaced it.
 
