@@ -134,13 +134,29 @@ def timeshift_fluxscale_co56law(scaletoreftime: float, spectime: float) -> float
 def get_dfspectrum_x_y_with_units(
     dfspectrum: pl.DataFrame | pl.LazyFrame, xunit: str, yvariable: str, fluxdistance_mpc: float
 ) -> pl.LazyFrame:
-    """Add an x column in xunit and a y column for yvariable, scaled to an observer at fluxdistance_mpc."""
+    """Add an x column in xunit and a y column for yvariable, scaled to an observer at fluxdistance_mpc.
+
+    A spectrum with the column delta_lambda is a histogram of packets. On a frequency axis or an energy axis, the x of
+    a bin is then the mean of its two edges in that unit. The y of a bin times its width in that unit is the flux of
+    the bin. A spectrum with no column nu and no column delta_lambda, e.g. a reference spectrum, takes the frequency
+    c / lambda_angstroms of each point.
+    """
     dfspectrum = dfspectrum.lazy()
 
-    if "nu" not in dfspectrum.collect_schema().names():
-        dfspectrum = dfspectrum.with_columns((constants.c_ang_per_s / pl.col("lambda_angstroms")).alias("nu"))
-    if "f_nu" not in dfspectrum.collect_schema().names():
-        dfspectrum = dfspectrum.with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
+    columns = dfspectrum.collect_schema().names()
+    if "nu" not in columns:
+        dfspectrum = dfspectrum.with_columns(
+            get_frequency_bin_exprs()
+            if "delta_lambda" in columns
+            else [(constants.c_ang_per_s / pl.col("lambda_angstroms")).alias("nu")]
+        )
+    if "f_nu" not in columns:
+        ispackethistogram = "delta_nu" in dfspectrum.collect_schema().names()
+        dfspectrum = dfspectrum.with_columns(
+            f_nu=pl.col("f_lambda") * pl.col("delta_lambda") / pl.col("delta_nu")
+            if ispackethistogram
+            else pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")
+        )
 
     unit = get_xunit(xunit)
     # set dflux_on_dx_onempc in units of [erg/s/cm^2/xunit] at 1 Mpc distance
@@ -155,6 +171,12 @@ def get_dfspectrum_x_y_with_units(
         dfspectrum = dfspectrum.with_columns(x=h_ev_s * pl.col("nu") / unit.unit_in_base_units).with_columns(
             dflux_on_dx_onempc=pl.col("f_nu") * pl.col("nu") / pl.col("x")
         )
+
+    # the photon energy of a bin is the energy at its x. A packet bin has different centres on a wavelength axis and on
+    # a frequency axis, thus a wavelength axis takes the frequency c / lambda_angstroms
+    photonenergy_erg = h_erg_s * (
+        constants.c_ang_per_s / pl.col("lambda_angstroms") if unit.kind == "wavelength" else pl.col("nu")
+    )
 
     match yvariable.lower():
         case "luminosity":
@@ -186,14 +208,14 @@ def get_dfspectrum_x_y_with_units(
             # divide by the photon energy to get a count rate and adjust for distance
             # [#/s/cm^2/xunit]
             dfspectrum = dfspectrum.with_columns(
-                y=pl.col("dflux_on_dx_onempc") / fluxdistance_mpc**2 / (h_erg_s * pl.col("nu"))
+                y=pl.col("dflux_on_dx_onempc") / fluxdistance_mpc**2 / photonenergy_erg
             )
 
         case "photoncount":
             # divide by the photon energy and multiply by 4pi dist^2 to cancel out the /cm^2 at 1 Mpc
             # [#/s/xunit]
             dfspectrum = dfspectrum.with_columns(
-                y=pl.col("dflux_on_dx_onempc") * 4 * math.pi * megaparsec_to_cm**2 / (h_erg_s * pl.col("nu"))
+                y=pl.col("dflux_on_dx_onempc") * 4 * math.pi * megaparsec_to_cm**2 / photonenergy_erg
             )
 
         case "packetcount":
@@ -447,13 +469,25 @@ def scan_spectrum_at_time(
     )[dirbin]
 
 
+def get_frequency_bin_exprs() -> list[pl.Expr]:
+    """Return nu and delta_nu [Hz], the centre and the width in frequency of each bin of a packet histogram.
+
+    The columns lambda_angstroms and delta_lambda give the centre and the width of each bin [Å]. The frequency edges of
+    a bin are c / (lambda_angstroms ± delta_lambda / 2), and nu is their mean. Thus a frequency axis and an energy axis
+    put the centre between the edges of the bin, and f_nu delta_nu equals f_lambda delta_lambda.
+    """
+    nu_high = constants.c_ang_per_s / (pl.col("lambda_angstroms") - 0.5 * pl.col("delta_lambda"))
+    nu_low = constants.c_ang_per_s / (pl.col("lambda_angstroms") + 0.5 * pl.col("delta_lambda"))
+    return [(0.5 * (nu_low + nu_high)).alias("nu"), (nu_high - nu_low).alias("delta_nu")]
+
+
 def get_binned_lambda_frame(lambda_bin_edges: npt.NDArray[np.floating]) -> pl.DataFrame:
-    """Return the centre, the width and the frequency of each wavelength bin."""
+    """Return the centre and the width of each bin, in wavelength and in frequency."""
     edges = np.asarray(lambda_bin_edges, dtype=np.float64)
     return pl.DataFrame({
         "lambda_angstroms": 0.5 * (edges[:-1] + edges[1:]),
         "delta_lambda": edges[1:] - edges[:-1],
-    }).with_columns(nu=(constants.c_ang_per_s / pl.col("lambda_angstroms")))
+    }).with_columns(get_frequency_bin_exprs())
 
 
 def get_flux_of_bins(flambda: npt.NDArray[np.floating], delta_lambda: npt.NDArray[np.floating]) -> float:
@@ -544,9 +578,12 @@ def scan_spectra_from_packets(
     For the real packets, the key -1 is the average over all directions. The spectrum is the mean over the time range
     from timelowdays to timehighdays. Each LazyFrame has these columns:
 
-    - lambda_angstroms (Å), delta_lambda (Å), and nu (Hz), the centre, the width, and the frequency of the bin;
+    - lambda_angstroms and delta_lambda (Å), the centre and the width of the bin in wavelength;
+    - nu and delta_nu (Hz), the centre and the width of the bin in frequency. Each centre is the mean of the two edges
+      of the bin, thus nu is not c / lambda_angstroms;
     - packetcount, the number of packets in the bin;
-    - f_lambda (erg/s/cm^2/Å) and f_nu (erg/s/cm^2/Hz), the flux at a distance of 1 Mpc;
+    - f_lambda (erg/s/cm^2/Å) and f_nu (erg/s/cm^2/Hz), the flux densities at a distance of 1 Mpc. f_lambda delta_lambda
+      and f_nu delta_nu both give the flux of the bin;
     - with relnoise, relnoise = sqrt(sum(e^2)) / sum(e), where e is the energy of each packet in the bin.
 
     relnoise is the relative Monte Carlo noise, and it is null for a bin with no packet energy. The arguments are:
@@ -652,7 +689,7 @@ def scan_spectra_from_packets(
         dirbin_spectra[dirbin] = (
             dfbins
             .with_columns(pl.Series("packetcount", sums.packetcounts), *noisecolumns, pl.Series("f_lambda", f_lambda))
-            .with_columns(f_nu=pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu"))
+            .with_columns(f_nu=pl.col("f_lambda") * pl.col("delta_lambda") / pl.col("delta_nu"))
             .lazy()
         )
 
@@ -2859,13 +2896,19 @@ def get_xy_spectrum(
     flambda_array: npt.NDArray[np.floating],
     arraylambda_angstroms: npt.NDArray[np.floating],
     *,
+    arraydeltalambda: npt.NDArray[np.floating] | None,
     xunit: str,
     yvariable: str,
     fluxdistance_mpc: float,
 ) -> pl.LazyFrame:
-    """Return the x series and the y series of one flux array, in the given units."""
+    """Return the x series and the y series of one flux array, in the given units.
+
+    arraydeltalambda gives the width of each wavelength bin of the packets, thus each bin converts as the bins of
+    scan_spectra_from_packets do. The emission files give only the bin centres, thus their widths are None.
+    """
+    widthcolumns = {} if arraydeltalambda is None else {"delta_lambda": arraydeltalambda}
     return get_dfspectrum_x_y_with_units(
-        pl.DataFrame({"f_lambda": flambda_array, "lambda_angstroms": arraylambda_angstroms}),
+        pl.DataFrame({"f_lambda": flambda_array, "lambda_angstroms": arraylambda_angstroms, **widthcolumns}),
         xunit=xunit,
         yvariable=yvariable,
         fluxdistance_mpc=fluxdistance_mpc,
@@ -2999,6 +3042,7 @@ def collect_emission_and_absorption(
     contributions: Sequence[FluxContributionTuple],
     arraylambda_angstroms: npt.NDArray[np.floating],
     *,
+    arraydeltalambda: npt.NDArray[np.floating] | None,
     showemission: bool,
     showabsorption: bool,
     xunit: str,
@@ -3017,7 +3061,12 @@ def collect_emission_and_absorption(
     )
     collected = pl.collect_all(
         get_xy_spectrum(
-            flambda_array, arraylambda_angstroms, xunit=xunit, yvariable=yvariable, fluxdistance_mpc=fluxdistance_mpc
+            flambda_array,
+            arraylambda_angstroms,
+            arraydeltalambda=arraydeltalambda,
+            xunit=xunit,
+            yvariable=yvariable,
+            fluxdistance_mpc=fluxdistance_mpc,
         )
         for flambda_array in [*emissionarrays, *absorptionarrays]
     )

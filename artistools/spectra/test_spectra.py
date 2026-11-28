@@ -340,6 +340,16 @@ def test_spectra_get_spectrum_polar_angles_frompackets(benchmark: BenchmarkFixtu
         assert math.isclose(actual_std, expected_std, rel_tol=1e-3)
 
 
+def get_packet_contributions_with_no_series(
+    *_args: t.Any, lambda_bin_edges: npt.NDArray[np.floating], **_kwargs: t.Any
+) -> tuple[list[atspectra.FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
+    """Mock the packet reader with no series, a total f_lambda of 1 in each bin, and the bin centres.
+
+    The emission plot takes the widths of the bins from the same edges, thus each array has one value for each bin.
+    """
+    return [], np.ones(len(lambda_bin_edges) - 1), 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:])
+
+
 def get_contributions_classic_3d(
     **kwargs: t.Any,
 ) -> tuple[list[atspectra.FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
@@ -1435,14 +1445,7 @@ def test_spectra_contribution_plot_forwards_packet_time(
     expected_use_time: str,
 ) -> None:
     """The contribution plot must use the packet time that the command selects."""
-
-    def get_no_contributions(
-        *_args: t.Any, lambda_bin_edges: npt.NDArray[np.floating], **_kwargs: t.Any
-    ) -> tuple[list[atspectra.FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
-        # the plot reads the bin widths from the same edges, thus the arrays have one value for each bin
-        return [], np.zeros(len(lambda_bin_edges) - 1), 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:])
-
-    mockgetcontributions.side_effect = get_no_contributions
+    mockgetcontributions.side_effect = get_packet_contributions_with_no_series
 
     at.spectra.plot(
         argsraw=[],
@@ -1482,6 +1485,54 @@ def test_spectra_gamma_emission_time_uses_decay(patch_scan_packets: Callable[[pl
     integrated_flux = dfspectrum.select((pl.col("f_lambda") * pl.col("delta_lambda")).sum()).item()
     expected_flux = 1.0 / at.constants.day_to_s / (4 * math.pi * at.constants.megaparsec_to_cm**2)
     assert np.isclose(integrated_flux, expected_flux, rtol=1e-12, atol=0.0)
+
+
+def test_packet_bin_keeps_the_packet_flux_in_each_x_unit(patch_scan_packets: Callable[[pl.DataFrame], None]) -> None:
+    """A packet bin from 1 to 2 MeV has its centre at 1.5 MeV, and f_x Δx gives the packet flux in each unit.
+
+    The reader converted f_lambda to f_nu at the centre of the bin in wavelength. The centre was then 1.333 MeV, and
+    f_E ΔE gave 1.125 times the packet flux. The emission plot converts its series with the same rule.
+    """
+    photonenergy_mev = 1.2
+    patch_scan_packets(
+        pl.DataFrame({
+            "e_rf": [1.0],
+            "t_arrive_d": [2.0],
+            "nu_rf": [photonenergy_mev * at.constants.MEV_to_erg / at.constants.h_erg_s],
+        })
+    )
+    lambda_bin_edges = np.sort(atspectra.convert_unit_to_angstroms(np.array([1.0, 2.0]), "mev"))
+    dfspectrum = atspectra.scan_spectra_from_packets(
+        modelpath=Path(),
+        timelowdays=1.5,
+        timehighdays=2.5,
+        lambda_bin_edges=lambda_bin_edges,
+        gamma=True,
+        directionbins=[-1],
+    )[-1].collect()
+    # one packet of 1 erg in a time range of 1 day, at a distance of 1 Mpc
+    packetflux = 1.0 / (at.constants.day_to_s * 4 * math.pi * at.constants.megaparsec_to_cm**2)
+
+    for xunit in ("angstrom", "hz", "mev"):
+        dfxy = atspectra.get_dfspectrum_x_y_with_units(
+            dfspectrum, xunit=xunit, yvariable="flux", fluxdistance_mpc=1.0
+        ).collect()
+        x_edges = atspectra.convert_angstroms_to_unit(lambda_bin_edges, xunit)
+        assert np.isclose(dfxy["x"].item(), 0.5 * (x_edges[0] + x_edges[1]), rtol=1e-12, atol=0.0), xunit
+        assert np.isclose(dfxy["y"].item() * abs(x_edges[1] - x_edges[0]), packetflux, rtol=1e-12, atol=0.0), xunit
+        if xunit == "mev":
+            assert np.isclose(dfxy["x"].item(), 1.5, rtol=1e-12, atol=0.0)
+
+        dfseries = atspectra.get_xy_spectrum(
+            dfspectrum["f_lambda"].to_numpy(),
+            dfspectrum["lambda_angstroms"].to_numpy(),
+            arraydeltalambda=dfspectrum["delta_lambda"].to_numpy(),
+            xunit=xunit,
+            yvariable="flux",
+            fluxdistance_mpc=1.0,
+        ).collect()
+        assert np.isclose(dfseries["x"].item(), dfxy["x"].item(), rtol=1e-12, atol=0.0), xunit
+        assert np.isclose(dfseries["y"].item(), dfxy["y"].item(), rtol=1e-12, atol=0.0), xunit
 
 
 # The comoving escape time of a packet is sqrt(t_esc^2 - r^2 / c^2), with its escape radius r = beta c t_esc.
@@ -2104,8 +2155,7 @@ def test_plotspectra_emission_takes_an_x_unit_other_than_angstroms(
     mockgetcontributions: mock.MagicMock, tmp_path: Path
 ) -> None:
     """The check for an empty x range must not compare the limits in keV with bins in Angstroms."""
-    contribution_list: list[atspectra.FluxContributionTuple] = []
-    mockgetcontributions.return_value = (contribution_list, np.ones(3), np.array([0.01, 0.02, 0.03]))
+    mockgetcontributions.side_effect = get_packet_contributions_with_no_series
 
     at.spectra.plot(
         argsraw=[],

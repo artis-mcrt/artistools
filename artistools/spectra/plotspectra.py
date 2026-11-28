@@ -1720,11 +1720,14 @@ def make_emissionabsorption_plot(
     plotobjects: list[Artist] = []
 
     spectrumunits = {"xunit": args.xunit, "yvariable": args.yvariable, "fluxdistance_mpc": args.distmpc}
-    dfspectotal = get_xy_spectrum(array_flambda_emission_total, arraylambda_angstroms, **spectrumunits).collect()
+    dfspectotal = get_xy_spectrum(
+        array_flambda_emission_total, arraylambda_angstroms, arraydeltalambda=delta_lambda, **spectrumunits
+    ).collect()
     # one call of collect_all runs the queries of all the contributions together. The plot and the table use its result.
     emissionspectra, absorptionspectra = collect_emission_and_absorption(
         contributions_sorted_reduced,
         arraylambda_angstroms,
+        arraydeltalambda=delta_lambda,
         showemission=args.showemission,
         showabsorption=args.showabsorption,
         **spectrumunits,
