@@ -95,7 +95,8 @@ def get_ion_levels_and_lines(
     """
     levelsofion: dict[tuple[int, int], pl.DataFrame] = {}
     lineframes: list[pl.DataFrame] = []
-    adata = get_opacity_atomic_data(modelpath)
+    # the reader takes an empty ion list as all the ions, thus the loop must still skip the other ions
+    adata = get_opacity_atomic_data(modelpath, tuple(sorted(ions)))
     for Z, ion_stage, dflevels, dftransitions in adata.select("Z", "ion_stage", "levels", "transitions").iter_rows():
         if (Z, ion_stage) not in ions:
             continue
