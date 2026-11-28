@@ -21,6 +21,7 @@ from types import MappingProxyType
 import numpy as np
 import numpy.typing as npt
 import polars as pl
+import polars.selectors as cs
 
 from artistools.constants import c_ang_per_s
 from artistools.constants import C_cm_per_s as CLIGHT
@@ -1163,7 +1164,8 @@ def scan_packets_batch_parquet(packetsparquetfile: Path) -> pl.LazyFrame:
     # an older ARTIS names the Stokes columns stokes1/2/3, where stokes1 holds the redundant I=1.0. Thus stokes2 is
     # the stokes_q and stokes3 is the stokes_u of the current ARTIS. An older ARTIS names the flag
     # originated_from_particlenotgamma as originated_from_positron. A cache keeps the names and the types of its text
-    # file, because a different cache needs a new cache version, and every older cache must then have a new conversion
+    # file, because a different cache needs a new cache version, and every older cache must then have a new conversion.
+    # The flag is Boolean in a cache of the older name and an integer in a cache of the current name
     return add_cache_direction_columns(
         pl
         .scan_parquet(packetsparquetfile, glob=False)
@@ -1177,6 +1179,7 @@ def scan_packets_batch_parquet(packetsparquetfile: Path) -> pl.LazyFrame:
             strict=False,
         )
         .drop(["costhetabin", "phibin", "costheta", "cosphi", "testphi"], strict=False)
+        .with_columns(cs.by_name("originated_from_particlenotgamma", require_all=False).cast(pl.Boolean))
     )
 
 
@@ -1224,8 +1227,6 @@ def scan_packets(
     pldfpackets = add_packet_directions_lazypolars(bin_packet_directions_polars(pldfpackets)).drop(
         get_dirbin_column_name()
     )
-    if "originated_from_particlenotgamma" in pldfpackets.collect_schema().names():
-        pldfpackets = pldfpackets.with_columns(pl.col("originated_from_particlenotgamma").cast(pl.Boolean))
 
     if {"true_emission_velocity", "trueem_time"} <= set(pldfpackets.collect_schema().names()):
         # an old packets file holds a thermal emission velocity of 0 for a packet with no thermal emission record

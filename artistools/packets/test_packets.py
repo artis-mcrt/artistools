@@ -902,31 +902,33 @@ def test_a_1d_velocity_at_the_edges_of_the_grid_gets_the_right_cell() -> None:
     assert cells == [0, 0, 1, 2, None, None, None]
 
 
-@pytest.mark.parametrize(
-    ("columnname", "values"),
-    [("originated_from_positron", [True, False]), ("originated_from_particlenotgamma", [1, 0])],
-)
-def test_scan_packets_gives_one_name_and_type_to_the_flag_of_the_particle_origin(
-    tmp_path: Path, columnname: str, values: list[bool] | list[int]
-) -> None:
+def test_scan_packets_gives_one_name_and_type_to_the_flag_of_the_particle_origin(tmp_path: Path) -> None:
     """An older ARTIS writes originated_from_positron, and the current ARTIS writes originated_from_particlenotgamma.
 
-    The cache keeps the name and the type of its text file, thus the two formats gave two names and two types.
+    The cache keeps the name and the type of its text file. The text reader gives the older flag the type Boolean,
+    and the current flag stays an integer. The scan of a batch of each format stopped with an InvalidOperationError,
+    because the conversion to Boolean came after the concatenation of the batches.
     """
-    cachepath = tmp_path / "packetsbatch00_0000_0000.out.parquet.tmp"
-    pl.DataFrame({
-        "type_id": [32, 32],
-        "dirx": [1.0, 0.0],
-        "diry": [0.0, 1.0],
-        "dirz": [0.0, 0.0],
-        columnname: values,
-    }).write_parquet(cachepath)
+    flagvalues_of_format: list[tuple[str, list[bool] | list[int]]] = [
+        ("originated_from_positron", [True, False]),
+        ("originated_from_particlenotgamma", [1, 0]),
+    ]
+    cachepaths = []
+    for batchindex, (columnname, values) in enumerate(flagvalues_of_format):
+        cachepaths.append(tmp_path / f"packetsbatch{batchindex:02d}_{batchindex:04d}_{batchindex:04d}.out.parquet")
+        pl.DataFrame({
+            "type_id": [32, 32],
+            "dirx": [1.0, 0.0],
+            "diry": [0.0, 1.0],
+            "dirz": [0.0, 0.0],
+            columnname: values,
+        }).write_parquet(cachepaths[-1])
 
-    with mock.patch("artistools.packets.core.get_packets_batch_parquet_paths", return_value=(1, [cachepath])):
+    with mock.patch("artistools.packets.core.get_packets_batch_parquet_paths", return_value=(2, cachepaths)):
         _, dfpackets = at.packets.scan_packets(tmp_path)
 
     dfflag = dfpackets.select("originated_from_particlenotgamma").collect()
-    pltest.assert_frame_equal(dfflag, pl.DataFrame({"originated_from_particlenotgamma": [True, False]}))
+    pltest.assert_frame_equal(dfflag, pl.DataFrame({"originated_from_particlenotgamma": [True, False, True, False]}))
 
 
 def test_scan_packets_reads_a_batch_of_each_cache_version(tmp_path: Path) -> None:
