@@ -416,15 +416,21 @@ def print_spectrum_summary(
     The frame of a spectrum keeps the nearest row outside each end of the x range, and the axis does not show it. Thus
     the largest point comes from the rows inside the x range, and the integral uses f_lambda and lambda interpolated
     linearly in x at each axis limit. A packet histogram has the columns delta_lambda and delta_x, and its integral is
-    the sum of f_lambda delta_lambda over the bins, with the part of each end bin inside the axis limits. The
-    luminosity is 4 pi (1 Mpc)^2 times the integral of f_lambda at 1 Mpc, thus it
-    does not depend on --distmpc or --normalised. The luminosity of the full spectrum needs all the wavelengths, e.g.
-    all the packets, thus the summary does not give it. summaryrows takes the fields of the line.
+    the sum of f_lambda delta_lambda over the bins, with the part of the wavelength range of each end bin inside the
+    axis limits. The packet count is the count of all the packets of these bins. The noise of a part of a bin takes
+    its fraction of the packets of the bin.
+
+    The luminosity is 4 pi (1 Mpc)^2 times the integral of f_lambda at 1 Mpc, thus it does not depend on --distmpc or
+    --normalised. The luminosity of the full spectrum needs all the wavelengths, e.g. all the packets, thus the summary
+    does not give it. summaryrows takes the fields of the line.
     """
     xlow, xhigh = sorted(xlimits)
     dfsorted = dfspectrum.sort("x")
     xvalues = dfsorted["x"].to_numpy()
-    if dfsorted.is_empty() or xhigh <= xvalues[0] or xlow >= xvalues[-1]:
+    ispackethistogram = {"delta_lambda", "delta_x"}.issubset(dfsorted.columns)
+    # the flux of a packet histogram goes from the first bin edge to the last bin edge, and not only between the centres
+    xhalfwidths = 0.5 * dfsorted["delta_x"].to_numpy() if ispackethistogram else np.zeros_like(xvalues)
+    if dfsorted.is_empty() or xhigh <= (xvalues - xhalfwidths).min() or xlow >= (xvalues + xhalfwidths).max():
         print_series_summary(
             seriesname, ["no point in the x range"], fields={"point_count": 0}, summaryrows=summaryrows
         )
@@ -441,22 +447,34 @@ def print_spectrum_summary(
             f"peak_{yvariable}": peaky,
             f"x_at_peak_{xunit}": peakx,
         }
-    if {"delta_lambda", "delta_x"}.issubset(dfsorted.columns):
+    if ispackethistogram:
         # each row is a bin of a packet histogram, and f_lambda delta_lambda is the flux of the bin. A bin that an
-        # axis limit cuts gives the part of its flux inside the limits
-        binlow = xvalues - 0.5 * dfsorted["delta_x"].to_numpy()
-        binhigh = xvalues + 0.5 * dfsorted["delta_x"].to_numpy()
-        xlimitsinside = [max(xlow, float(binlow.min())), min(xhigh, float(binhigh.max()))]
-        fractioninside = np.clip(
-            np.minimum(binhigh, xlimitsinside[1]) - np.maximum(binlow, xlimitsinside[0]), 0.0, None
-        ) / (binhigh - binlow)
-        widthsinside = dfsorted["delta_lambda"].to_numpy() * fractioninside
+        # axis limit cuts gives the part of its wavelength range inside the limits, thus each x unit gives one result
+        lambdalow, lambdahigh = convert_xlimits_to_lambda_range(
+            max(xlow, float((xvalues - xhalfwidths).min())), min(xhigh, float((xvalues + xhalfwidths).max())), xunit
+        )
+        lambdacentres = dfsorted["lambda_angstroms"].to_numpy()
+        deltalambdas = dfsorted["delta_lambda"].to_numpy()
+        widthsinside = np.clip(
+            np.minimum(lambdacentres + 0.5 * deltalambdas, lambdahigh)
+            - np.maximum(lambdacentres - 0.5 * deltalambdas, lambdalow),
+            0.0,
+            None,
+        )
         binflambdas = dfsorted["f_lambda"].to_numpy()
         hasvalue = np.isfinite(binflambdas)
         integral = float((binflambdas[hasvalue] * widthsinside[hasvalue]).sum())
         gapwidth = float(widthsinside[~hasvalue].sum())
-        lambdaends = np.array(convert_xlimits_to_lambda_range(xlimitsinside[0], xlimitsinside[1], xunit))
+        lambdaends = np.array([lambdalow, lambdahigh])
         method = "sum of f_λ Δλ over the packet bins, with the part of each end bin inside the axis limits"
+        # the noise takes the bins of the luminosity. A part of a bin with the fraction f of its width holds the
+        # fraction f of its packets on average, thus its sqrt(sum(e^2)) decreases by sqrt(f) and its sum(e) by f
+        fractioninside = pl.Series(widthsinside / deltalambdas)
+        dfnoisebins = dfsorted.with_columns(delta_lambda=pl.Series(widthsinside)).filter(fractioninside > 0.0)
+        if "relnoise" in dfnoisebins.columns:
+            dfnoisebins = dfnoisebins.with_columns(
+                relnoise=pl.col("relnoise") / fractioninside.filter(fractioninside > 0.0).sqrt()
+            )
     else:
         # np.interp gives the end value outside the data, thus a limit outside the data is the end of the data
         xlimitsinside = [max(xlow, float(xvalues[0])), min(xhigh, float(xvalues[-1]))]
@@ -470,6 +488,7 @@ def print_spectrum_summary(
         integral = float(segmentintegrals[isdrawnsegment].sum())
         gapwidth = float(np.abs(np.diff(lambdas))[~isdrawnsegment].sum())
         method = "trapezoidal rule, f_λ interpolated linearly at the axis limits"
+        dfnoisebins = dfinrange
     fields |= {
         "luminosity_erg_per_s": abs(integral) * 4 * math.pi * megaparsec_to_cm**2,
         "lambda_min_angstroms": float(lambdaends.min()),
@@ -479,7 +498,7 @@ def print_spectrum_summary(
     }
     # a filter combines neighbouring bins, thus the noise of each bin is not the noise of the drawn value
     hasnoise = not (isfiltered and "relnoise" in dfinrange.columns)
-    noisefields, noiseparts, noisewarnings = get_packet_noise_summary(dfinrange) if hasnoise else ({}, [], [])
+    noisefields, noiseparts, noisewarnings = get_packet_noise_summary(dfnoisebins) if hasnoise else ({}, [], [])
     fields |= noisefields
 
     parts = []

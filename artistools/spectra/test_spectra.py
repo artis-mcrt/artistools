@@ -1509,6 +1509,7 @@ def test_packet_bin_keeps_the_packet_flux_in_each_x_unit(patch_scan_packets: Cal
         lambda_bin_edges=lambda_bin_edges,
         gamma=True,
         directionbins=[-1],
+        relnoise=True,
     )[-1].collect()
     # one packet of 1 erg in a time range of 1 day, at a distance of 1 Mpc
     packetflux = 1.0 / (at.constants.day_to_s * 4 * math.pi * at.constants.megaparsec_to_cm**2)
@@ -1531,14 +1532,21 @@ def test_packet_bin_keeps_the_packet_flux_in_each_x_unit(patch_scan_packets: Cal
         integratedflux = atspectra.print_integrated_flux(dfxy["dflux_on_dx_onempc"], dfxy["x"], dfxy["delta_x"])
         assert np.isclose(integratedflux, packetflux, rtol=1e-12, atol=0.0), xunit
 
-        # the trapezoidal rule gave a luminosity of zero for the one bin. Axis limits that hold three quarters of the
-        # bin give three quarters of its luminosity
-        for fractioninside in (1.0, 0.75):
+        # the trapezoidal rule gave a luminosity of zero for the one bin. Axis limits that hold a fraction of the
+        # wavelength range of the bin give that fraction of its luminosity on each axis. A fraction of one quarter
+        # does not hold the centre of the bin
+        for fractioninside in (1.0, 0.75, 0.25):
             summaryrows: list[dict[str, t.Any]] = []
-            xlimits = (min(x_edges), min(x_edges) + fractioninside * dfxy["delta_x"].item())
-            plotspectra.print_spectrum_summary("onebin", dfxy, xlimits, xunit, "flux", summaryrows=summaryrows)
+            lambdalimits = lambda_bin_edges[0] + np.array([0.0, fractioninside]) * np.diff(lambda_bin_edges)
+            xlow, xhigh = sorted(atspectra.convert_angstroms_to_unit(lambdalimits, xunit))
+            plotspectra.print_spectrum_summary("onebin", dfxy, (xlow, xhigh), xunit, "flux", summaryrows=summaryrows)
             assert np.isclose(
-                summaryrows[0]["luminosity_erg_per_s"], fractioninside / at.constants.day_to_s, rtol=1e-12, atol=0.0
+                summaryrows[0]["luminosity_erg_per_s"], fractioninside / at.constants.day_to_s, rtol=1e-9, atol=0.0
+            ), (xunit, fractioninside)
+            # the noise is sqrt(sum(e^2)) / sum(e) of the packets in the part of the bin. The bin holds one packet
+            assert summaryrows[0]["packet_count"] == 1, (xunit, fractioninside)
+            assert np.isclose(
+                summaryrows[0]["relnoise_luminosity"], 1.0 / math.sqrt(fractioninside), rtol=1e-9, atol=0.0
             ), (xunit, fractioninside)
 
         # the photon energy changed with the x axis, thus the photon rate of the one bin was different on each axis
