@@ -19,7 +19,7 @@ from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.core import scan_initelemabundances
 from artistools.inputmodel.core import scan_modeldata
 from artistools.inputmodel.core import with_ye_that_sn3d_reads
-from artistools.inputmodel.rprocess_from_trajectory import delete_gridparticlecontributions_of_earlier_model
+from artistools.inputmodel.rprocess_from_trajectory import delete_gridparticlecontributions
 from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions_or_none
 from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
 from artistools.misc import require_cartesian3d_model
@@ -211,7 +211,7 @@ def make_downscaled_3d_grid(
     if dfgridcontributions_small is not None:
         save_gridparticlecontributions(dfgridcontributions_small, outputfolder / "gridcontributions.txt")
     else:
-        delete_gridparticlecontributions_of_earlier_model(outputfolder)
+        delete_gridparticlecontributions(outputfolder)
 
     if plot:
         print("Making diagnostic plot")

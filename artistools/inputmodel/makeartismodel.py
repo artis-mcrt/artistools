@@ -36,7 +36,7 @@ from artistools.inputmodel.energyinputfiles import ENERGY_FILE_NAMES
 from artistools.inputmodel.energyinputfiles import make_energy_files
 from artistools.inputmodel.modelfromhydro import get_griddata_output_file_names
 from artistools.inputmodel.modelfromhydro import makemodelfromgriddata
-from artistools.inputmodel.rprocess_from_trajectory import delete_gridparticlecontributions_of_earlier_model
+from artistools.inputmodel.rprocess_from_trajectory import delete_gridparticlecontributions
 from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions_or_none
 from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
 from artistools.misc import addarg_darkmode
@@ -518,7 +518,7 @@ def reduce_model_dimensions(
     if dfgridcontributions_out is not None:
         save_gridparticlecontributions(dfgridcontributions_out, outdir / "gridcontributions.txt")
     else:
-        delete_gridparticlecontributions_of_earlier_model(outdir)
+        delete_gridparticlecontributions(outdir)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

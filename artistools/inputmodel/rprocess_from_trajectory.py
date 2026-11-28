@@ -781,8 +781,8 @@ def save_gridparticlecontributions(
     return prepare_zstd_output(gridcontribpath)
 
 
-def delete_gridparticlecontributions_of_earlier_model(outputfolder: Path) -> None:
-    """Delete each copy of gridcontributions.txt in the output folder of a new model with no particle contributions.
+def delete_gridparticlecontributions(outputfolder: Path) -> None:
+    """Delete each copy of gridcontributions.txt in the output folder of a model that has no particle contributions.
 
     The particle contributions of an earlier model do not agree with the cells of the new model.txt.
     """
