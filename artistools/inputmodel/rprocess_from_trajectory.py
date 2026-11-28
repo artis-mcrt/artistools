@@ -33,6 +33,7 @@ from artistools.misc import addarg_output
 from artistools.misc import confirm_overwrite
 from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
+from artistools.misc import get_file_copies
 from artistools.misc import get_file_identity
 from artistools.misc import get_file_state
 from artistools.misc import make_cache_folder
@@ -778,6 +779,17 @@ def save_gridparticlecontributions(
     # the new file replaces the old file only after a complete write, and each other copy of the old file goes after it
     write_file_atomic(gridcontribpath, write_contributions)
     return prepare_zstd_output(gridcontribpath)
+
+
+def delete_gridparticlecontributions_of_earlier_model(outputfolder: Path) -> None:
+    """Delete each copy of gridcontributions.txt in the output folder of a new model with no particle contributions.
+
+    The particle contributions of an earlier model do not agree with the cells of the new model.txt.
+    """
+    for oldfile in get_file_copies(outputfolder / "gridcontributions.txt"):
+        if oldfile.is_file():
+            oldfile.unlink()
+            print(f"  Deleted {oldfile}, which is a file of an earlier model in the output folder")
 
 
 def get_dfnucabundances(

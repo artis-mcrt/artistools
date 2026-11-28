@@ -36,6 +36,7 @@ from artistools.inputmodel.energyinputfiles import ENERGY_FILE_NAMES
 from artistools.inputmodel.energyinputfiles import make_energy_files
 from artistools.inputmodel.modelfromhydro import get_griddata_output_file_names
 from artistools.inputmodel.modelfromhydro import makemodelfromgriddata
+from artistools.inputmodel.rprocess_from_trajectory import delete_gridparticlecontributions_of_earlier_model
 from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions_or_none
 from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
 from artistools.misc import addarg_darkmode
@@ -47,7 +48,6 @@ from artistools.misc import ALL_MODEL_EDGE_KEYS
 from artistools.misc import confirm_overwrite
 from artistools.misc import exit_with_error
 from artistools.misc import firstexisting_or_none
-from artistools.misc import get_file_copies
 from artistools.misc import get_model_coordinates
 from artistools.misc import has_mirror_plane
 from artistools.misc import normalize_path_list
@@ -518,11 +518,7 @@ def reduce_model_dimensions(
     if dfgridcontributions_out is not None:
         save_gridparticlecontributions(dfgridcontributions_out, outdir / "gridcontributions.txt")
     else:
-        # the particle contributions of an earlier model do not go with the cells of the new model.txt
-        for oldfile in get_file_copies(outdir / "gridcontributions.txt"):
-            if oldfile.is_file():
-                oldfile.unlink()
-                print(f"  Deleted {oldfile}, which is a file of an earlier model in the output folder")
+        delete_gridparticlecontributions_of_earlier_model(outdir)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

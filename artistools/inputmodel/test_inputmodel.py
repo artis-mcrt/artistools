@@ -5639,6 +5639,48 @@ def test_reduction_and_downscale_write_the_format_version_of_the_prompt(
         )
 
 
+def test_downscale_remaps_the_particle_contributions_with_the_cell_masses(tmp_path: Path) -> None:
+    """The downscale gives each coarse cell the particle contributions of its fine cells, weighted by their masses.
+
+    The downscale wrote no gridcontributions.txt. A new output folder thus had no gridcontributions.txt, and an output
+    folder of an earlier model kept the file of that model.
+    """
+    lzdfmodel, modelmeta = get_empty_3d_model(ncoordgrid=4, vmax=1.0e9, t_model_init_days=1.0)
+    # the fine cells 1 and 2 are the only cells with mass in the coarse cell of the corner. Cell 2 has three times the
+    # mass of cell 1
+    dfmodel = lzdfmodel.collect().with_columns(
+        rho=pl.col("inputcellid").replace_strict({1: 1.0e-10, 2: 3.0e-10}, default=0.0, return_dtype=pl.Float64),
+        X_Fegroup=pl.lit(1.0),
+        X_Ni56=pl.lit(1.0),
+    )
+    sourcefolder = tmp_path / "source"
+    at.inputmodel.save_modeldata(
+        dfmodel,
+        outpath=sourcefolder,
+        modelmeta=modelmeta,
+        dfelabundances=pl.DataFrame({"inputcellid": dfmodel["inputcellid"], "X_Ni": 1.0}),
+    )
+    (sourcefolder / "gridcontributions.txt").write_text(
+        "particleid cellindex frac_of_cellmass\n7 1 1.0\n8 2 1.0\n", encoding="utf-8"
+    )
+
+    downscaleargs: dict[str, t.Any] = {"argsraw": [], "downscale3dgrid": True, "outputgridsize": 2, "force": True}
+    for formatversion, cornercellid in ((1, 1), (2, 0)):
+        smallfolder = tmp_path / f"small{formatversion}"
+        at.inputmodel.makeartismodel.main(
+            **downscaleargs, modelpath=[sourcefolder], format_version=formatversion, outputfile=smallfolder
+        )
+        dfcontribs = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(smallfolder)
+        assert dfcontribs["particleid"].to_list() == [7, 8]
+        assert dfcontribs["cellindex"].to_list() == [cornercellid, cornercellid]
+        assert dfcontribs["frac_of_cellmass"].to_list() == pytest.approx([0.25, 0.75], rel=1e-6)
+
+    # the gridcontributions.txt of the earlier model does not agree with the cells of a model from a source with none
+    (sourcefolder / "gridcontributions.txt").unlink()
+    at.inputmodel.makeartismodel.main(**downscaleargs, modelpath=[sourcefolder], outputfile=tmp_path / "small1")
+    assert not list((tmp_path / "small1").glob("gridcontributions.txt*"))
+
+
 def test_version_2_edges_of_a_cartesian_grid_must_have_equal_steps() -> None:
     """A Cartesian grid has equal cells to one vmax in sn3d and in artistools, thus other edges are an error."""
     edgekeys = at.misc.MODEL_EDGE_KEYS["cartesian3d"]

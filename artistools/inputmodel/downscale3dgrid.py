@@ -12,11 +12,16 @@ import polars as pl
 import polars.selectors as cs
 
 from artistools.constants import day_to_s
+from artistools.inputmodel.core import get_gridcontributions_folder
+from artistools.inputmodel.core import remap_gridcontributions
 from artistools.inputmodel.core import require_no_ye_file_of_earlier_model
 from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.core import scan_initelemabundances
 from artistools.inputmodel.core import scan_modeldata
 from artistools.inputmodel.core import with_ye_that_sn3d_reads
+from artistools.inputmodel.rprocess_from_trajectory import delete_gridparticlecontributions_of_earlier_model
+from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions_or_none
+from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
 from artistools.misc import require_cartesian3d_model
 from artistools.plottools import save_figure
 from artistools.plottools import set_mpl_style
@@ -58,6 +63,28 @@ def downscaled_columns(
     ]
 
 
+def get_downscale_cell_map(
+    dfmodel: pl.DataFrame, grid: int, merge: int, finecellvolume: float, firstinputcellid: int
+) -> pl.DataFrame:
+    """Return the inputcellid and mass_g of each fine cell, and the out_inputcellid and out_mass_g of its coarse cell.
+
+    remap_gridcontributions reads this table. The rows of dfmodel are the fine cells, and x varies fastest. Each fine
+    cell has one row, thus a join on inputcellid keeps the row count of the particle contributions.
+    """
+    smallgrid = grid // merge
+    finecellindex = pl.int_range(pl.len(), dtype=pl.Int64)
+    coarsecellindex = (
+        (finecellindex % grid) // merge
+        + smallgrid * ((finecellindex // grid) % grid // merge)
+        + smallgrid**2 * (finecellindex // grid**2 // merge)
+    )
+    return dfmodel.select(
+        pl.col("inputcellid").cast(pl.Int32),
+        mass_g=pl.col("rho").cast(pl.Float64) * finecellvolume,
+        out_inputcellid=(coarsecellindex + firstinputcellid).cast(pl.Int32),
+    ).with_columns(out_mass_g=pl.col("mass_g").sum().over("out_inputcellid"))
+
+
 def get_downscale_outputfolder(modelpath: Path | str, outputgridsize: int, outputfolder: Path | str | None) -> Path:
     """Return the output folder of a downscaled model, which is a subfolder of the model if the caller gives none."""
     return Path(modelpath, f"downscale_{outputgridsize}^3") if outputfolder is None else Path(outputfolder)
@@ -79,6 +106,10 @@ def make_downscaled_3d_grid(
     The small model gets the electron fractions of the Ye.txt of the model in its column Ye, because sn3d takes them
     for the model and Ye.txt has the cells of the model. For a small model of version 1, the function stops for a
     Ye.txt in the output folder, because that file is of a different model.
+
+    The small model gets the gridcontributions.txt of the model with the coarse cells. A model with no
+    gridcontributions.txt gives a small model with no such file. Thus the function deletes the file of an earlier
+    model in the output folder.
     """
     modelpath = Path(modelpath)
 
@@ -95,8 +126,9 @@ def make_downscaled_3d_grid(
     modelcolnames = pldfmodel.collect_schema().names()
     massweightedcols = [col for col in ("Ye", "q") if col in modelcolnames]
     summedcols = [col for col in ("tracercount",) if col in modelcolnames]
-    dfmodel = pldfmodel.select("rho", cs.starts_with("X_"), *massweightedcols, *summedcols).collect()
+    dfmodel = pldfmodel.select("inputcellid", "rho", cs.starts_with("X_"), *massweightedcols, *summedcols).collect()
     dfelemabund = scan_initelemabundances(modelpath=modelpath).collect()
+    dfgridcontributions = get_gridparticlecontributions_or_none(get_gridcontributions_folder(modelpath))
 
     grid = int(modelmeta["ncoordgridx"])
     smallgrid = outputgridsize
@@ -148,6 +180,15 @@ def make_downscaled_3d_grid(
         downscaled_columns(dfelemabund, elemcolnames, grid, massweightedmean)
     )
 
+    dfgridcontributions_small = None
+    if dfgridcontributions is not None:
+        print(
+            "  gridcontributions.txt: the mass fraction of a particle in a coarse cell is the mean of its mass"
+            " fractions in the fine cells. The weight of each fine cell is its mass."
+        )
+        dfcellmap = get_downscale_cell_map(dfmodel, grid, merge, (2 * xmax / grid) ** 3, firstinputcellid)
+        dfgridcontributions_small = remap_gridcontributions(dfgridcontributions, dfcellmap).collect()
+
     modelmeta_small = modelmeta | {
         "formatversion": formatversion,
         "npts_model": smallgrid**3,
@@ -167,6 +208,10 @@ def make_downscaled_3d_grid(
         dfelabundances=dfelemabund_small,
         deletecellidfiles=True,
     )
+    if dfgridcontributions_small is not None:
+        save_gridparticlecontributions(dfgridcontributions_small, outputfolder / "gridcontributions.txt")
+    else:
+        delete_gridparticlecontributions_of_earlier_model(outputfolder)
 
     if plot:
         print("Making diagnostic plot")
