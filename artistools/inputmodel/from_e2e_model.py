@@ -115,6 +115,46 @@ def check_tracer_ids(idx: npt.NDArray[np.integer], dyncond: npt.NDArray[np.bool_
         raise ValueError(msg)
 
 
+def integrate_heating_to_model_time(
+    time_s: npt.NDArray[np.floating], qdot: npt.NDArray[np.floating], t_model_s: float
+) -> npt.NDArray[np.float64]:
+    """Return the integral of qdot(t) t / t_model_s over t from the first network time to t_model_s [erg/g].
+
+    The last axis of qdot holds a specific heating rate [erg/g/s] at each network time. The factor t / t_model_s gives
+    the adiabatic loss of a radiation-dominated gas in a homologous flow, thus the energy goes as 1 / t. sn3d
+    applies the same factor to q. The trapezoid rule takes the integrand as linear between two network times. Thus the
+    integrand at t_model_s is the linear interpolation between the network times on the two sides of t_model_s.
+    """
+    if not time_s[0] <= t_model_s <= time_s[-1]:
+        msg = (
+            f"The network times go from {time_s[0]:g} s to {time_s[-1]:g} s. Thus the integral of the heating to the"
+            f" model time {t_model_s:g} s has an interval with no data"
+        )
+        raise ValueError(msg)
+    integrand = qdot * (time_s / t_model_s)
+    nbefore = int(np.searchsorted(time_s, t_model_s, side="left"))
+    iafter = max(nbefore, 1)
+    fracofinterval = (t_model_s - time_s[iafter - 1]) / (time_s[iafter] - time_s[iafter - 1])
+    integrand_at_tmodel = integrand[..., iafter - 1] + fracofinterval * (
+        integrand[..., iafter] - integrand[..., iafter - 1]
+    )
+    print(
+        "The q of each tracer is the integral of the specific heating rate times t / T. The integral goes from the"
+        f" network time {time_s[0]:g} s to the model time T = {t_model_s:g} s. The trapezoid rule gives the integral."
+        f" The integrand at T is the linear interpolation between the network times {time_s[iafter - 1]:g} s and"
+        f" {time_s[iafter]:g} s. The factor t / T gives the adiabatic loss of a radiation-dominated gas in a"
+        " homologous flow"
+    )
+    return np.asarray(
+        np.trapezoid(
+            np.concatenate([integrand[..., :nbefore], integrand_at_tmodel[..., np.newaxis]], axis=-1),
+            np.append(time_s[:nbefore], t_model_s),
+            axis=-1,
+        ),
+        dtype=np.float64,
+    )
+
+
 def get_grid(
     dat_path: Path,
     iso_path: Path,
@@ -193,19 +233,14 @@ def get_grid(
     for arr in (mass_arr, qdot_arr, hnuloss_arr):
         arr[isexcludedtraj] = 1e-30
 
-    # no multiplication with mass to keep it a specific energy release
-    time_by_t_snap = time_s / t_model_init_s
-
-    # the slice ends one row after the row of the snapshot time
-    tosnapshot = slice(0, (np.abs(time_s - t_model_init_s)).argmin() + 1)
+    # the specific energy release [erg/g] of each row of the tracer files
+    q_of_row = integrate_heating_to_model_time(time_s, qdot_arr + hnuloss_arr, t_model_init_s)
 
     # nodid comes first in trajids, then dynid
     for i, i1 in enumerate(nodid):  # i1 is the id of Oli's original list
         i2 = firstindex_of_id[i1]  # index in Zeweis extended list of trajs.
         mtraj[i] = mass_arr[i2] * msol
-        qtraj[i] = np.trapezoid(
-            time_by_t_snap[tosnapshot] * (qdot_arr[i2] + hnuloss_arr[i2])[tosnapshot], time_s[tosnapshot]
-        )
+        qtraj[i] = q_of_row[i2]
         tot_Q_rel += mtraj[i] * qtraj[i]
         xtraj[i, :] = xiso0[i2, :]
         yetraj[i] = dat.f.t5out[i2, 4]
@@ -216,9 +251,8 @@ def get_grid(
     for i, i1 in enumerate(dynid, start=nnod):
         i3 = np.where(dynidall == i1)[0]  # indices in Zeweis extended list of trajs.
         mtraj[i] = np.sum(mass_arr[i3]) * msol
-        # qdot is a specific rate [erg/g/s], thus the merged pieces take the mass-weighted mean and not the sum
-        qdot_merged = np.average(qdot_arr[i3] + hnuloss_arr[i3], axis=0, weights=mass_arr[i3])
-        qtraj[i] = np.trapezoid(time_by_t_snap[tosnapshot] * qdot_merged[tosnapshot], time_s[tosnapshot])
+        # q is a specific energy [erg/g], thus the merged pieces take the mass-weighted mean and not the sum
+        qtraj[i] = np.average(q_of_row[i3], weights=mass_arr[i3])
         tot_Q_rel += mtraj[i] * qtraj[i]
         # the composition and the position take the weights of the masses before the exclusion of an ejecta type
         weights = dat.f.mass[i3] * msol / (np.sum(dat.f.mass[i3]) * msol)

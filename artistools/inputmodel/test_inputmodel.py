@@ -3174,6 +3174,67 @@ def test_from_e2e_model_split_trajectory_pieces_give_the_same_heating(tmp_path: 
         assert result[-1]["particleid"].unique().to_list() == [7]
 
 
+@pytest.mark.parametrize(
+    ("idx", "state", "masses"),
+    [([1], [0.0], [1e-3]), ([2, 10002], [-1.0, -1.0], [1e-3, 2e-3])],
+    ids=["unsplit", "split"],
+)
+def test_from_e2e_model_integrates_the_heating_to_the_model_time(
+    tmp_path: Path, idx: list[int], state: list[float], masses: list[float]
+) -> None:
+    """The integral of qdot t / T ends at the model time T, between two network times.
+
+    The integral ended at the network time nearest to T, which is 1.1 T here. A constant qdot then gave 0.605 qdot T
+    and not qdot T / 2.
+    """
+    from artistools.inputmodel.from_e2e_model import get_grid
+    from artistools.inputmodel.from_e2e_model import t_model_init_s
+
+    qdot_ergpergps = 1e10
+    isopath = tmp_path / "iso_table.npy"
+    np.save(isopath, np.array([[2.0, 2.0], [30.0, 26.0]]))
+    ntraj = len(idx)
+
+    def write_dat(datpath: Path, time_by_t_model: list[float]) -> None:
+        np.savez(
+            datpath,
+            pos=np.column_stack([np.full(ntraj, 0.2), np.full(ntraj, 1.0)]),
+            idx=np.array(idx, dtype=float),
+            state=np.array(state),
+            mass=np.array(masses),
+            qdot=np.full((ntraj, len(time_by_t_model)), qdot_ergpergps),
+            hnuloss=np.zeros((ntraj, len(time_by_t_model))),
+            time=np.array(time_by_t_model) * t_model_init_s,
+            nz=np.full((ntraj, 2), 0.1),
+            t5out=np.column_stack([np.zeros((ntraj, 4)), np.full(ntraj, 0.3)]),
+        )
+
+    def get_q(datpath: Path) -> list[float]:
+        result = get_grid(
+            datpath,
+            isopath,
+            0.4,
+            model_dim=2,
+            grid_dims=np.array([4, 8]),
+            nodynej=False,
+            nohmns=False,
+            notorus=False,
+            no_nu_trapping=False,
+        )
+        rho, q = result[2], result[5]
+        assert np.any(rho > 0.0)
+        qvalues: list[float] = q[rho > 0.0].tolist()
+        return qvalues
+
+    datpath = tmp_path / "e2emodel.npz"
+    write_dat(datpath, [0.0, 0.3, 0.7, 1.1, 2.0])
+    np.testing.assert_allclose(get_q(datpath), qdot_ergpergps * t_model_init_s / 2.0, rtol=1e-10)
+
+    write_dat(datpath, [0.0, 0.3, 0.7, 0.9])
+    with pytest.raises(ValueError, match="has an interval with no data"):
+        get_q(datpath)
+
+
 def test_maptogrid_keeps_the_mirror_symmetry_of_the_particles(tmp_path: Path) -> None:
     """Two equal particles at x = -1000 and x = +1000 give a grid that is symmetric under x, y, z -> -x, -y, -z.
 
