@@ -269,6 +269,50 @@ def test_packets_cache_goes_stale_when_any_rank_file_changes(tmp_path: Path) -> 
     assert np.isclose(get_stamp(), textfiles[0].stat().st_mtime, rtol=0.0, atol=1e-3)
 
 
+def test_packets_cache_goes_stale_when_a_rank_file_changes_below_the_newest_time(tmp_path: Path) -> None:
+    """A change of a rank file that stays older than the newest file of the batch makes the cache stale.
+
+    The cache kept only the newest modification time of the batch. A copy that keeps the times, e.g. cp -p, can
+    change an older file and keep that time, thus the cache gave the old packets.
+    """
+    import lzma
+
+    from artistools.packets.core import get_packets_rankbatch_parquetfile
+
+    sourcefile = at.get_path("testdata") / "test-classicmode_3d" / "packets" / "packets00_0000.out.zst"
+    with at.zopen(sourcefile, mode="rt", encoding="utf-8") as fsource:
+        headerline, *packetlines = (fsource.readline() for _ in range(4))
+    textfiles = [tmp_path / f"packets00_{rank:04d}.out" for rank in (0, 1)]
+
+    def write_rank_file(textfile: Path, lines: list[str], mtime: float) -> None:
+        textfile.write_text(headerline + "".join(lines), encoding="utf-8")
+        os.utime(textfile, (mtime, mtime))
+
+    def get_cache() -> Path:
+        return get_packets_rankbatch_parquetfile(tmp_path, batch_mpiranks=[0, 1], batchindex=0, virtual=False)
+
+    write_rank_file(textfiles[0], packetlines[:1], 100000.0)
+    write_rank_file(textfiles[1], packetlines[1:2], 100200.0)
+    cachepath = get_cache()
+    assert pl.read_parquet(cachepath).height == 2
+
+    cachestate = at.misc.get_file_state(cachepath)
+    assert get_cache() == cachepath
+    assert at.misc.get_file_state(cachepath) == cachestate
+
+    write_rank_file(textfiles[0], [packetlines[0], packetlines[2]], 100100.0)
+    assert pl.read_parquet(get_cache()).height == 3
+
+    # a compression keeps the time and changes the size of the file, but the packets stay the same
+    cachestate = at.misc.get_file_state(cachepath)
+    compressedfile = textfiles[1].with_name(f"{textfiles[1].name}.xz")
+    compressedfile.write_bytes(lzma.compress(textfiles[1].read_bytes()))
+    os.utime(compressedfile, (100200.0, 100200.0))
+    textfiles[1].unlink()
+    assert get_cache() == cachepath
+    assert at.misc.get_file_state(cachepath) == cachestate
+
+
 def test_cut_rank_file_of_a_batch_gives_an_error_that_names_the_file(tmp_path: Path) -> None:
     """A cut .xz file gives a polars panic, which is not an Exception, and the error must name the rank file."""
     import lzma

@@ -3,6 +3,7 @@
 import argparse
 import contextlib
 import datetime as dt
+import json
 import math
 import os
 import re
@@ -35,6 +36,7 @@ from artistools.misc import COMPRESSED_EXTENSIONS
 from artistools.misc import drop_trailing_null_column
 from artistools.misc import firstexisting
 from artistools.misc import firstexisting_or_none
+from artistools.misc import format_mtime
 from artistools.misc import get_artis_option
 from artistools.misc import get_bin_index_expr
 from artistools.misc import get_costhetabin_expr
@@ -46,6 +48,7 @@ from artistools.misc import get_parquet_cache_name
 from artistools.misc import get_phi_expr
 from artistools.misc import get_phibin_expr
 from artistools.misc import get_progress_class
+from artistools.misc import get_text_compression
 from artistools.misc import get_timestep_times
 from artistools.misc import get_viewingdirection_costhetabincount
 from artistools.misc import get_viewingdirection_phibincount
@@ -54,6 +57,7 @@ from artistools.misc import get_weighted_quantile_expr
 from artistools.misc import has_mirror_plane
 from artistools.misc import make_cache_folder
 from artistools.misc import modelpath_cache
+from artistools.misc import mtime_matches_stamp
 from artistools.misc import natural_sort_key
 from artistools.misc import on_model_host
 from artistools.misc import parquet_is_readable
@@ -64,6 +68,7 @@ from artistools.misc import print_warning
 from artistools.misc import raise_if_cut_line
 from artistools.misc import rankbatch_parquet_staleness
 from artistools.misc import SPHERICAL_EDGE_COORDINATES
+from artistools.misc import without_compressed_extension
 from artistools.misc import write_parquet_atomic
 from artistools.misc import zopen
 
@@ -758,6 +763,68 @@ def get_packets_textsource_mtimes(
     return [entry.stat().st_mtime for entry in find_packets_textsources(modelpath, filenames, folderlistings).values()]
 
 
+class PacketsTextState(t.NamedTuple):
+    """The state of the packets text file of one rank, which the cache of its batch keeps in its metadata."""
+
+    # the path is relative to the model folder and has no compression extension
+    path: str
+    compression: str
+    mtime: float
+    size: int
+
+
+def get_packets_text_state(modelpath: Path, textfile: Path, filestat: os.stat_result) -> PacketsTextState:
+    """Return the state of the text file of a rank from a stat result of the file."""
+    return PacketsTextState(
+        path=without_compressed_extension(textfile).relative_to(modelpath).as_posix(),
+        compression=get_text_compression([textfile]),
+        mtime=filestat.st_mtime,
+        size=filestat.st_size,
+    )
+
+
+def get_packets_text_change(parquetfilepath: Path, textstates: Sequence[PacketsTextState]) -> str | None:
+    """Return the reason why the text files of a complete batch are not the text files of its cache, or None.
+
+    The newest time of the batch does not show a change of an older file, e.g. by a copy that keeps the times. Thus
+    the cache keeps the state of the file of each rank. A compression keeps the time of a file and changes its size,
+    thus only a file with the compression of the record compares the sizes. A cache of an artistools version before
+    the record has no record, and the check of the newest time alone then applies.
+    """
+    try:
+        record = pl.read_parquet_metadata(parquetfilepath).get("textsource_states")
+    except (FileNotFoundError, pl.exceptions.PolarsError, OSError) as exc:
+        return f"the file is not a readable parquet file ({type(exc).__name__}: {exc})"
+    if record is None:
+        return None
+
+    try:
+        stampedstates = [
+            PacketsTextState(str(state["path"]), str(state["compression"]), float(state["mtime"]), int(state["size"]))
+            for state in json.loads(record)
+        ]
+    except (ValueError, TypeError, KeyError):
+        return "the record of the text files in the cache is not readable"
+
+    if len(stampedstates) != len(textstates):
+        return f"the cache has a record of {len(stampedstates)} text files, but the batch has {len(textstates)}"
+
+    for stamped, current in zip(stampedstates, textstates, strict=True):
+        if current.path != stamped.path:
+            return f"the cache is from the text file {stamped.path}, but the text file is now {current.path}"
+        if not mtime_matches_stamp(str(stamped.mtime), current.mtime):
+            return (
+                f"the text file {current.path} changed at {format_mtime(current.mtime)}, but the cache has the time"
+                f" {format_mtime(stamped.mtime)} for it"
+            )
+        if current.compression == stamped.compression and current.size != stamped.size:
+            return (
+                f"the text file {current.path} had {stamped.size} bytes at the write of the cache, but it now has"
+                f" {current.size} bytes"
+            )
+    return None
+
+
 def get_packets_rankbatch_parquetpath(
     modelpath: Path, batch_mpiranks: Sequence[int], batchindex: int, virtual: bool
 ) -> Path:
@@ -868,18 +935,24 @@ def get_packets_rankbatch_parquetfile(
     outdatedparquet: tuple[int, int] | None = None
     if parquetfilepath.is_file():
         parquetstat = parquetfilepath.stat()
-        # the stamp is the newest time of all the files of the batch, thus each file counts. The file of a later
-        # rank can change alone, e.g. while a copy of the run folder is not complete. The folder listings give each
-        # time with one stat call for each file and no new scan
-        textsource_mtimes = get_packets_textsource_mtimes(modelpath, text_filenames, folderlistings)
-        allranksfound = len(textsource_mtimes) == len(batch_mpiranks)
+        # each file of the batch counts, because the file of one rank can change alone, e.g. while a copy of the run
+        # folder is not complete. The folder listings give each state with one stat call for each file and no new scan
+        textsources = find_packets_textsources(modelpath, text_filenames, folderlistings)
+        textstates = [
+            get_packets_text_state(modelpath, Path(entry.path), entry.stat())
+            for filename in text_filenames
+            if (entry := textsources.get(filename)) is not None
+        ]
+        allranksfound = len(textstates) == len(batch_mpiranks)
         stalereason = rankbatch_parquet_staleness(
             parquetfilepath,
             VIRTUAL_CACHEVERSION if virtual else CACHEVERSION,
-            max(textsource_mtimes, default=None),
+            max((state.mtime for state in textstates), default=None),
             textsource_complete=allranksfound,
             oldversions=() if virtual else CACHE_OLDVERSIONS,
         )
+        if stalereason is None and allranksfound:
+            stalereason = get_packets_text_change(parquetfilepath, textstates)
 
         if stalereason is None:
             conversion_needed = False
@@ -925,8 +998,8 @@ def get_packets_rankbatch_parquetfile(
         # a model with no text files must not get an empty cache folder, because a check for packets then finds it
         make_cache_folder(parquetfilepath.parent, modelpath)
 
-        # the stamp is the newest text file of the batch, which the check of the cache compares
-        textsource_mtime = max(text_file_path.stat().st_mtime for text_file_path in text_file_paths)
+        # the states come before the read, thus a change of a file during the read makes the new cache stale
+        textstates = [get_packets_text_state(modelpath, path, path.stat()) for path in text_file_paths]
 
         column_names = (
             get_vpackets_text_columns(text_file_paths[0])
@@ -984,7 +1057,10 @@ def get_packets_rankbatch_parquetfile(
             metadata={
                 "creationtimeutc": str(dt.datetime.now(dt.UTC)),
                 "cacheversion": str(VIRTUAL_CACHEVERSION if virtual else CACHEVERSION),
-                "textsource_mtime": str(textsource_mtime),
+                # the newest time of the batch, which an earlier artistools version and a batch with absent text
+                # files compare
+                "textsource_mtime": str(max(state.mtime for state in textstates)),
+                "textsource_states": json.dumps([state._asdict() for state in textstates]),
             },
             replaces=outdatedparquet,
         )
