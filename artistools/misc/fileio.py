@@ -19,6 +19,8 @@ import polars.selectors as cs
 
 from artistools.misc.console import print_warning
 from artistools.misc.remote import check_local_path
+from artistools.misc.remote import is_remote_path
+from artistools.misc.remote import model_path_from_text
 from artistools.misc.remote import on_model_host
 
 COMPRESSED_EXTENSIONS = (".zst", ".gz", ".xz")
@@ -585,6 +587,11 @@ def firstexisting(
     A caller gives purpose to say what the file holds and which commands read it, because a list of
     names alone does not tell a user what to do next.
     """
+    if isinstance(folder, str) and is_remote_path(remotefolder := model_path_from_text(folder)):
+        # on_model_host finds a remote path only in a Path argument, thus a str folder of a different host comes
+        # here. This call sends the folder to that host as a Path
+        return firstexisting(filelist, remotefolder, tryzipped, search_subfolders, purpose)
+
     filenames = [Path(filelist)] if isinstance(filelist, str | Path) else [Path(name) for name in filelist]
     folder = Path(folder)
     fullpaths = []
