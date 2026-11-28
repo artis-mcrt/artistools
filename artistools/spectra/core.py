@@ -172,12 +172,6 @@ def get_dfspectrum_x_y_with_units(
             dflux_on_dx_onempc=pl.col("f_nu") * pl.col("nu") / pl.col("x")
         )
 
-    # the photon energy of a bin is the energy at its x. A packet bin has different centres on a wavelength axis and on
-    # a frequency axis, thus a wavelength axis takes the frequency c / lambda_angstroms
-    photonenergy_erg = h_erg_s * (
-        constants.c_ang_per_s / pl.col("lambda_angstroms") if unit.kind == "wavelength" else pl.col("nu")
-    )
-
     match yvariable.lower():
         case "luminosity":
             # multiply by 4pi dist^2 to cancel out the /cm^2 at 1 Mpc
@@ -208,14 +202,14 @@ def get_dfspectrum_x_y_with_units(
             # divide by the photon energy to get a count rate and adjust for distance
             # [#/s/cm^2/xunit]
             dfspectrum = dfspectrum.with_columns(
-                y=pl.col("dflux_on_dx_onempc") / fluxdistance_mpc**2 / photonenergy_erg
+                y=pl.col("dflux_on_dx_onempc") / fluxdistance_mpc**2 / (h_erg_s * pl.col("nu"))
             )
 
         case "photoncount":
             # divide by the photon energy and multiply by 4pi dist^2 to cancel out the /cm^2 at 1 Mpc
             # [#/s/xunit]
             dfspectrum = dfspectrum.with_columns(
-                y=pl.col("dflux_on_dx_onempc") * 4 * math.pi * megaparsec_to_cm**2 / photonenergy_erg
+                y=pl.col("dflux_on_dx_onempc") * 4 * math.pi * megaparsec_to_cm**2 / (h_erg_s * pl.col("nu"))
             )
 
         case "packetcount":
@@ -2711,18 +2705,31 @@ def print_contribution_table(
 
 
 def print_integrated_flux(
-    arr_df_on_dx: npt.NDArray[np.floating] | pl.Series, arr_x: npt.NDArray[np.floating] | pl.Series
+    arr_df_on_dx: npt.NDArray[np.floating] | pl.Series,
+    arr_x: npt.NDArray[np.floating] | pl.Series,
+    arr_delta_x: npt.NDArray[np.floating] | pl.Series | None = None,
 ) -> float:
-    """Print and return the flux integrated over the given x range [erg/s/cm2 at 1 Mpc]."""
-    integrated_flux = abs(np.trapezoid(np.nan_to_num(arr_df_on_dx, nan=0.0), x=arr_x))
+    """Print and return the flux integrated over the given x range [erg/s/cm2 at 1 Mpc].
+
+    arr_delta_x gives the width of each bin of a packet histogram, and the flux is then the sum of the flux density
+    times the width of each bin. With None, the flux is the trapezoidal integral over the points.
+    """
+    flux_density = np.nan_to_num(arr_df_on_dx, nan=0.0)
+    if arr_delta_x is None:
+        integrated_flux = abs(float(np.trapezoid(flux_density, x=arr_x)))
+        methodtext = "trapezoidal rule"
+    else:
+        integrated_flux = abs(float(np.sum(flux_density * np.asarray(arr_delta_x))))
+        methodtext = "sum of the flux density times the bin width"
     x_min = arr_x.min()
     x_max = arr_x.max()
     assert isinstance(x_min, int | float)
     assert isinstance(x_max, int | float)
 
     # x is the name of the axis in the code, and the line below it names the unit of that axis
-    print_detail(f"Integrated flux ({x_min:.1f} to {x_max:.1f}): {integrated_flux:.3e} erg/s/cm2 at 1 Mpc")
-    assert isinstance(integrated_flux, float)
+    print_detail(
+        f"Integrated flux ({x_min:.1f} to {x_max:.1f}, {methodtext}): {integrated_flux:.3e} erg/s/cm2 at 1 Mpc"
+    )
     return integrated_flux
 
 

@@ -1042,7 +1042,11 @@ def draw_dirbin_spectra(
             dirbin, directionbins, dirbin_definitions, linelabel, linelabel_is_custom, plotkwargs
         )
 
-        print_integrated_flux(dfspectrum["dflux_on_dx_onempc"], dfspectrum["x"])
+        if "delta_lambda" in dfspectrum.columns:
+            # the bins of a packet histogram hold the same flux on each x axis, thus the sum takes the wavelength bins
+            print_integrated_flux(dfspectrum["f_lambda"], dfspectrum["x"], dfspectrum["delta_lambda"])
+        else:
+            print_integrated_flux(dfspectrum["dflux_on_dx_onempc"], dfspectrum["x"])
 
         if scale_to_peak:
             dfspectrum = dfspectrum.with_columns(y=pl.col("y") / pl.col("y").max() * scale_to_peak)
@@ -1700,7 +1704,7 @@ def make_emissionabsorption_plot(
             "Give a wider range with --xmin and --xmax",
         )
 
-    print_integrated_flux(array_flambda_emission_total, arraylambda_angstroms)
+    print_integrated_flux(array_flambda_emission_total, arraylambda_angstroms, delta_lambda)
 
     if args.groupby in SHELLCOLUMNS:
         contributions_sorted_reduced = order_and_color_shells(
