@@ -133,6 +133,35 @@ def test_cache_delete_keeps_the_only_copy_of_the_estimators_and_the_nlte_populat
     assert at.estimators.scan_estimators(tmp_path).select(pl.len()).collect().item() > 0
 
 
+def test_cache_delete_takes_the_ranks_of_an_estimator_cache_from_its_metadata(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Keep an estimator cache when the text file of one of its ranks is absent.
+
+    A run can have more ranks than input.txt gives now. The command took the ranks of the model for each run folder,
+    thus it deleted the only copy of the estimators of a rank that only the earlier run had.
+    """
+    from artistools.cache import main as cachemain
+
+    estimatorcaches = copy_model_with_estimator_caches(tmp_path)
+    metadata = pl.read_parquet_metadata(estimatorcaches[0])
+    assert metadata["rank_max"] == "1"
+    dfestimators = pl.read_parquet(estimatorcaches[0])
+    # write_parquet_atomic keeps a file that exists
+    estimatorcaches[0].unlink()
+    at.misc.write_parquet_atomic(
+        dfestimators,
+        estimatorcaches[0],
+        metadata={key: value for key, value in metadata.items() if not key.startswith("ARROW")} | {"rank_max": "2"},
+    )
+
+    cachemain(argsraw=["delete", "-f", str(tmp_path)])
+
+    assert estimatorcaches[0].is_file()
+    assert not estimatorcaches[1].exists()
+    assert "the text files of rank 2 are absent from job0" in capsys.readouterr().err
+
+
 def test_cache_delete_keeps_a_cache_with_older_text_or_with_a_link_to_an_absent_file(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -947,6 +947,29 @@ def get_packets_rankbatch_parquetpath(
     )
 
 
+def find_packets_runfolder_caches(
+    modelpath: Path, cachename: str, folderlistings: dict[Path, dict[str, os.DirEntry[str]]]
+) -> list[Path]:
+    """Return the caches of one batch that are beside text files, in the natural order of their folders.
+
+    The cache folder, e.g. packets/, is not in the result, also when it holds text files.
+    """
+    cachefoldernames = ("packets", "vpackets")
+    subfolders = sorted(
+        (
+            Path(entry.path)
+            for entry in get_folder_listing(modelpath, folderlistings).values()
+            if entry.is_dir() and entry.name not in cachefoldernames
+        ),
+        key=natural_sort_key,
+    )
+    return [
+        folder / cachename
+        for folder in (modelpath, *subfolders)
+        if (entry := get_folder_listing(folder, folderlistings).get(cachename)) is not None and entry.is_file()
+    ]
+
+
 def select_packets_rankbatch_parquetpath(
     modelpath: Path,
     batch_mpiranks: Sequence[int],
@@ -964,9 +987,18 @@ def select_packets_rankbatch_parquetpath(
 
     The reader, the fingerprint of the caches, and filterpackets use this path. A cache with no record keeps the path
     in the cache folder. A batch with an absent text file in textfolder also keeps that path.
+
+    A model with no text files can hold a cache beside the text files that it had. The reader wrote that cache only
+    when it did not read the cache in the cache folder. Thus the cache of the last run folder that holds one comes
+    before the cache in the cache folder, and the reader reads the same packets as before.
     """
     cachefolderpath = get_packets_rankbatch_parquetpath(modelpath, batch_mpiranks, batchindex, virtual)
-    if textfolder is None or not cachefolderpath.is_file():
+    if textfolder is None:
+        runfoldercaches = find_packets_runfolder_caches(
+            modelpath, get_packets_rankbatch_parquetname(batch_mpiranks, batchindex, virtual), folderlistings
+        )
+        return runfoldercaches[-1] if runfoldercaches else cachefolderpath
+    if not cachefolderpath.is_file():
         return cachefolderpath
     try:
         recordstates = read_packets_text_record(cachefolderpath)
@@ -1025,20 +1057,27 @@ def get_first_packets_file(modelpath: Path) -> Path | None:
     """Return the packets text file of the first rank, or the parquet cache of the first batch, or None.
 
     The name of a cache holds the ranks of its batch. A cache of an earlier run with a different number of ranks is
-    not the cache that scan_packets reads. If only such a cache exists, the function returns None.
+    not the cache that scan_packets reads. If only such a cache exists, the function returns None. For a model with
+    no text files, the cache is the cache that select_packets_rankbatch_parquetpath gives.
     """
     textfile = firstexisting_or_none(get_packets_textfilename(0, virtual=False), folder=modelpath)
     if textfile is not None:
         return textfile
     # the name of the cache needs the number of ranks in input.txt, thus the function reads that file only if a
-    # cache exists
+    # cache exists. The cache is in packets/, or beside text files that are now absent
     if not any(
-        any((modelpath / "packets").glob(pattern))
-        for pattern in ("packetsbatch00_*.parquet", "packetsbatch00_*.parquet.tmp")
+        any(modelpath.glob(pattern))
+        for pattern in (
+            "packets/packetsbatch00_*.parquet.tmp",
+            "packetsbatch00_*.parquet",
+            "*/packetsbatch00_*.parquet",
+        )
     ):
         return None
     (batchindex, batch_mpiranks), *_ = get_packets_mpirank_groups(modelpath, maxpacketfiles=None)
-    parquetfile = get_packets_rankbatch_parquetpath(modelpath, batch_mpiranks, batchindex, virtual=False)
+    parquetfile = select_packets_rankbatch_parquetpath(
+        modelpath, batch_mpiranks, batchindex, virtual=False, textfolder=None, folderlistings={}
+    )
     return parquetfile if parquetfile.is_file() else None
 
 
@@ -1392,6 +1431,13 @@ def check_packets_batch_parquet_paths(
             f" absent from a different folder. This applies to {len(keptcaches)} of {len(parquetpacketsfiles)}"
             " batches. artistools keeps each of these caches and does not read it. The caches of the text files in"
             f" {foldername} are in that folder. `artistools cache delete` names the folder of the absent text files."
+        )
+    cachefolderpath = get_packets_rankbatch_parquetpath(modelpath, mpirank_groups[0][1], mpirank_groups[0][0], virtual)
+    if textfolder is None and parquetpacketsfiles[0] != cachefolderpath and cachefolderpath.is_file():
+        print_warning(
+            f"{modelpath} holds no {'virtual packets' if virtual else 'packets'} text files, and more than one folder"
+            f" holds a cache of them. artistools reads the caches in {parquetpacketsfiles[0].parent.name}, which it"
+            f" read before, and it does not read the caches in {cachefolderpath.parent.name}."
         )
     nprocs_read = sum(len(batch_mpiranks) for _, batch_mpiranks in mpirank_groups)
     return nprocs_read, parquetpacketsfiles

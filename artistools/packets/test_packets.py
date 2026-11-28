@@ -571,6 +571,7 @@ def test_packets_reader_and_filter_keep_the_only_cache_of_an_earlier_run(
 
     The reader put the cache of the later run at the same path, and filterpackets removed the cache at that path.
     Thus no file then held the packets of the earlier run. The cache of the later run is now beside its text files.
+    The reader also reads that cache after a user deletes these text files.
     """
     import shutil
 
@@ -601,6 +602,16 @@ def test_packets_reader_and_filter_keep_the_only_cache_of_an_earlier_run(
     assert "the filter removes" in capsys.readouterr().out
     assert not latercache.exists()
     assert get_cache_energies(earliercache) == pytest.approx([1e40], rel=1e-6)
+
+    # with no text files, the reader still reads the cache of the later run, also when it is the only cache
+    assert at.packets.get_packets_batch_parquet_paths(tmp_path)[1] == [latercache]
+    for textfile in (tmp_path / "200.slurm").glob("packets00_*.out*"):
+        textfile.unlink()
+    assert at.packets.get_packets_batch_parquet_paths(tmp_path)[1] == [latercache]
+    assert "does not read the caches in packets" in capsys.readouterr().err
+    earliercache.unlink()
+    assert at.packets.get_packets_batch_parquet_paths(tmp_path)[1] == [latercache]
+    assert at.packets.core.has_packets_files(tmp_path)
 
 
 def test_add_derived_columns_gives_the_timestep_of_the_thermal_emission() -> None:
