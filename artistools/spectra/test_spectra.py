@@ -340,6 +340,16 @@ def test_spectra_get_spectrum_polar_angles_frompackets(benchmark: BenchmarkFixtu
         assert math.isclose(actual_std, expected_std, rel_tol=1e-3)
 
 
+def get_packet_contributions_with_no_series(
+    *_args: t.Any, lambda_bin_edges: npt.NDArray[np.floating], **_kwargs: t.Any
+) -> tuple[list[atspectra.FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
+    """Mock the packet reader with no series, a total f_lambda of 1 in each bin, and the bin centres.
+
+    The emission plot takes the widths of the bins from the same edges, thus each array has one value for each bin.
+    """
+    return [], np.ones(len(lambda_bin_edges) - 1), 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:])
+
+
 def get_contributions_classic_3d(
     **kwargs: t.Any,
 ) -> tuple[list[atspectra.FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
@@ -362,18 +372,14 @@ def get_contributions_classic_3d(
         (
             "ion",
             10,
-            [
-                ("Co II", 1.541452039348011e-08),
-                ("free-free", 5.6865311711303595e-09),
-                ("Co III", 6.196070067481124e-10),
-            ],
+            [("Co II", 1.576267984808799e-08), ("free-free", 5.743977239757294e-09), ("Co III", 6.42728956796956e-10)],
         ),
         (
             "line",
             776,
             [
-                ("free-free", 5.6865311711303595e-09),
-                ("Co II λ3755 69-25", 4.2743896083241423e-10),
+                ("free-free", 5.743977239757294e-09),
+                ("Co II λ3755 69-25", 4.3202887112558606e-10),
                 ("Co II λ4161 69-31", 3.974052796767683e-10),
             ],
         ),
@@ -484,6 +490,57 @@ def test_spectra_gamma_element_contributions(
     assert set(fractions) == {"Ni", "Co", "initial energy"}
     for label, energy in (("Ni", 5.0), ("Co", 2.0), ("initial energy", 8.0)):
         assert np.isclose(fractions[label], energy / 15.0, rtol=1e-12, atol=0.0)
+
+
+def test_packet_contribution_of_one_bin_is_the_flux_density_times_the_bin_width(
+    monkeypatch: pytest.MonkeyPatch,
+    patch_scan_packets: Callable[[pl.DataFrame], None],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The flux of a series of packets is the sum of f_lambda times the width of each wavelength bin.
+
+    The trapezoidal rule over the bin centres gave zero for one bin, thus the reader dropped the series. With more bins,
+    that rule left out half of each end bin. The contribution table uses the same sum.
+    """
+    patch_scan_packets(
+        pl.DataFrame({
+            "e_rf": [1.0],
+            "t_arrive_d": [2.0],
+            "pellet_nucindex": [0],
+            "nu_rf": [at.constants.c_ang_per_s / 5000.0],
+        })
+    )
+
+    def scan_nuclides(modelpath: Path | str) -> pl.LazyFrame:
+        del modelpath
+        return pl.LazyFrame({"pellet_nucindex": [0], "elsymbol": ["Ni"], "nucname": ["Ni56"]})
+
+    monkeypatch.setattr(atspectra, "scan_nuclides", scan_nuclides)
+    lambda_bin_edges = np.array([4000.0, 6000.0])
+    contributions, array_flambda_emission_total, array_lambda = atspectra.get_flux_contributions_from_packets(
+        modelpath=Path(),
+        timelowdays=1.5,
+        timehighdays=2.5,
+        lambda_bin_edges=lambda_bin_edges,
+        getabsorption=False,
+        groupby="nuc",
+        gamma=True,
+    )
+
+    assert [contribution.linelabel for contribution in contributions] == ["Ni56"]
+    totalflux = float(array_flambda_emission_total[0]) * 2000.0
+    # one packet of 1 erg in a time range of 1 day, at a distance of 1 Mpc
+    packetflux = 1.0 / (at.constants.day_to_s * 4 * math.pi * at.constants.megaparsec_to_cm**2)
+    assert np.isclose(totalflux, packetflux, rtol=1e-12, atol=0.0)
+    assert np.isclose(contributions[0].fluxcontrib, totalflux, rtol=1e-12, atol=0.0)
+
+    capsys.readouterr()
+    plotspectra.sort_and_reduce_flux_contribution_list(
+        contributions, 14, array_lambda, arraydeltalambda=np.diff(lambda_bin_edges)
+    )
+    table = capsys.readouterr().out
+    assert "Σ f_λ Δλ over 1 wavelength bin from 4000 to 6000 Å" in table
+    assert re.search(rf"Ni56\s+emission {packetflux:.2e} \(100.0%\)", table)
 
 
 def test_spectra_emission_text_files_fill_the_plot_range() -> None:
@@ -1388,8 +1445,7 @@ def test_spectra_contribution_plot_forwards_packet_time(
     expected_use_time: str,
 ) -> None:
     """The contribution plot must use the packet time that the command selects."""
-    contribution_list: list[atspectra.FluxContributionTuple] = []
-    mockgetcontributions.return_value = (contribution_list, np.zeros(2), np.array([4000.0, 5000.0]))
+    mockgetcontributions.side_effect = get_packet_contributions_with_no_series
 
     at.spectra.plot(
         argsraw=[],
@@ -1429,6 +1485,86 @@ def test_spectra_gamma_emission_time_uses_decay(patch_scan_packets: Callable[[pl
     integrated_flux = dfspectrum.select((pl.col("f_lambda") * pl.col("delta_lambda")).sum()).item()
     expected_flux = 1.0 / at.constants.day_to_s / (4 * math.pi * at.constants.megaparsec_to_cm**2)
     assert np.isclose(integrated_flux, expected_flux, rtol=1e-12, atol=0.0)
+
+
+def test_packet_bin_keeps_the_packet_flux_in_each_x_unit(patch_scan_packets: Callable[[pl.DataFrame], None]) -> None:
+    """A packet bin from 1 to 2 MeV has its centre at 1.5 MeV, and f_x Δx gives the packet flux in each unit.
+
+    The reader converted f_lambda to f_nu at the centre of the bin in wavelength. The centre was then 1.333 MeV, and
+    f_E ΔE gave 1.125 times the packet flux. The emission plot converts its series with the same rule.
+    """
+    photonenergy_mev = 1.2
+    patch_scan_packets(
+        pl.DataFrame({
+            "e_rf": [1.0],
+            "t_arrive_d": [2.0],
+            "nu_rf": [photonenergy_mev * at.constants.MEV_to_erg / at.constants.h_erg_s],
+        })
+    )
+    lambda_bin_edges = np.sort(atspectra.convert_unit_to_angstroms(np.array([1.0, 2.0]), "mev"))
+    dfspectrum = atspectra.scan_spectra_from_packets(
+        modelpath=Path(),
+        timelowdays=1.5,
+        timehighdays=2.5,
+        lambda_bin_edges=lambda_bin_edges,
+        gamma=True,
+        directionbins=[-1],
+        relnoise=True,
+    )[-1].collect()
+    # one packet of 1 erg in a time range of 1 day, at a distance of 1 Mpc
+    packetflux = 1.0 / (at.constants.day_to_s * 4 * math.pi * at.constants.megaparsec_to_cm**2)
+
+    # the photon energy of the bin is h nu at the mean of its two frequency edges, which is 1.5 MeV
+    photonrate = 1.0 / at.constants.day_to_s / (at.constants.h_erg_s * dfspectrum["nu"].item())
+
+    for xunit in ("angstrom", "hz", "mev"):
+        dfxy = atspectra.get_dfspectrum_x_y_with_units(
+            dfspectrum, xunit=xunit, yvariable="flux", fluxdistance_mpc=1.0
+        ).collect()
+        x_edges = atspectra.convert_angstroms_to_unit(lambda_bin_edges, xunit)
+        assert np.isclose(dfxy["x"].item(), 0.5 * (x_edges[0] + x_edges[1]), rtol=1e-12, atol=0.0), xunit
+        assert np.isclose(dfxy["delta_x"].item(), abs(x_edges[1] - x_edges[0]), rtol=1e-12, atol=0.0), xunit
+        assert np.isclose(dfxy["y"].item() * dfxy["delta_x"].item(), packetflux, rtol=1e-12, atol=0.0), xunit
+        if xunit == "mev":
+            assert np.isclose(dfxy["x"].item(), 1.5, rtol=1e-12, atol=0.0)
+
+        # the trapezoidal rule over the one bin centre gave an integrated flux of zero
+        integratedflux = atspectra.print_integrated_flux(dfxy["dflux_on_dx_onempc"], dfxy["x"], dfxy["delta_x"])
+        assert np.isclose(integratedflux, packetflux, rtol=1e-12, atol=0.0), xunit
+
+        # the trapezoidal rule gave a luminosity of zero for the one bin. Axis limits that hold a fraction of the
+        # wavelength range of the bin give that fraction of its luminosity on each axis. A fraction of one quarter
+        # does not hold the centre of the bin
+        for fractioninside in (1.0, 0.75, 0.25):
+            summaryrows: list[dict[str, t.Any]] = []
+            lambdalimits = lambda_bin_edges[0] + np.array([0.0, fractioninside]) * np.diff(lambda_bin_edges)
+            xlow, xhigh = sorted(atspectra.convert_angstroms_to_unit(lambdalimits, xunit))
+            plotspectra.print_spectrum_summary("onebin", dfxy, (xlow, xhigh), xunit, "flux", summaryrows=summaryrows)
+            assert np.isclose(
+                summaryrows[0]["luminosity_erg_per_s"], fractioninside / at.constants.day_to_s, rtol=1e-9, atol=0.0
+            ), (xunit, fractioninside)
+            # the noise is sqrt(sum(e^2)) / sum(e) of the packets in the part of the bin. The bin holds one packet
+            assert summaryrows[0]["packet_count"] == 1, (xunit, fractioninside)
+            assert np.isclose(
+                summaryrows[0]["relnoise_luminosity"], 1.0 / math.sqrt(fractioninside), rtol=1e-9, atol=0.0
+            ), (xunit, fractioninside)
+
+        # the photon energy changed with the x axis, thus the photon rate of the one bin was different on each axis
+        dfphotons = atspectra.get_dfspectrum_x_y_with_units(
+            dfspectrum, xunit=xunit, yvariable="photoncount", fluxdistance_mpc=1.0
+        ).collect()
+        assert np.isclose(dfphotons["y"].item() * dfphotons["delta_x"].item(), photonrate, rtol=1e-12, atol=0.0), xunit
+
+        dfseries = atspectra.get_xy_spectrum(
+            dfspectrum["f_lambda"].to_numpy(),
+            dfspectrum["lambda_angstroms"].to_numpy(),
+            arraydeltalambda=dfspectrum["delta_lambda"].to_numpy(),
+            xunit=xunit,
+            yvariable="flux",
+            fluxdistance_mpc=1.0,
+        ).collect()
+        assert np.isclose(dfseries["x"].item(), dfxy["x"].item(), rtol=1e-12, atol=0.0), xunit
+        assert np.isclose(dfseries["y"].item(), dfxy["y"].item(), rtol=1e-12, atol=0.0), xunit
 
 
 # The comoving escape time of a packet is sqrt(t_esc^2 - r^2 / c^2), with its escape radius r = beta c t_esc.
@@ -2051,8 +2187,7 @@ def test_plotspectra_emission_takes_an_x_unit_other_than_angstroms(
     mockgetcontributions: mock.MagicMock, tmp_path: Path
 ) -> None:
     """The check for an empty x range must not compare the limits in keV with bins in Angstroms."""
-    contribution_list: list[atspectra.FluxContributionTuple] = []
-    mockgetcontributions.return_value = (contribution_list, np.ones(3), np.array([0.01, 0.02, 0.03]))
+    mockgetcontributions.side_effect = get_packet_contributions_with_no_series
 
     at.spectra.plot(
         argsraw=[],

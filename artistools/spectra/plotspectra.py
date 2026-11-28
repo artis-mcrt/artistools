@@ -415,14 +415,22 @@ def print_spectrum_summary(
 
     The frame of a spectrum keeps the nearest row outside each end of the x range, and the axis does not show it. Thus
     the largest point comes from the rows inside the x range, and the integral uses f_lambda and lambda interpolated
-    linearly in x at each axis limit. The luminosity is 4 pi (1 Mpc)^2 times the integral of f_lambda at 1 Mpc, thus it
-    does not depend on --distmpc or --normalised. The luminosity of the full spectrum needs all the wavelengths, e.g.
-    all the packets, thus the summary does not give it. summaryrows takes the fields of the line.
+    linearly in x at each axis limit. A packet histogram has the columns delta_lambda and delta_x, and its integral is
+    the sum of f_lambda delta_lambda over the bins, with the part of the wavelength range of each end bin inside the
+    axis limits. The packet count is the count of all the packets of these bins. The noise of a part of a bin takes
+    its fraction of the packets of the bin.
+
+    The luminosity is 4 pi (1 Mpc)^2 times the integral of f_lambda at 1 Mpc, thus it does not depend on --distmpc or
+    --normalised. The luminosity of the full spectrum needs all the wavelengths, e.g. all the packets, thus the summary
+    does not give it. summaryrows takes the fields of the line.
     """
     xlow, xhigh = sorted(xlimits)
     dfsorted = dfspectrum.sort("x")
     xvalues = dfsorted["x"].to_numpy()
-    if dfsorted.is_empty() or xhigh <= xvalues[0] or xlow >= xvalues[-1]:
+    ispackethistogram = {"delta_lambda", "delta_x"}.issubset(dfsorted.columns)
+    # the flux of a packet histogram goes from the first bin edge to the last bin edge, and not only between the centres
+    xhalfwidths = 0.5 * dfsorted["delta_x"].to_numpy() if ispackethistogram else np.zeros_like(xvalues)
+    if dfsorted.is_empty() or xhigh <= (xvalues - xhalfwidths).min() or xlow >= (xvalues + xhalfwidths).max():
         print_series_summary(
             seriesname, ["no point in the x range"], fields={"point_count": 0}, summaryrows=summaryrows
         )
@@ -439,25 +447,58 @@ def print_spectrum_summary(
             f"peak_{yvariable}": peaky,
             f"x_at_peak_{xunit}": peakx,
         }
-    # np.interp gives the end value outside the data, thus a limit outside the data is the end of the data
-    xlimitsinside = [max(xlow, float(xvalues[0])), min(xhigh, float(xvalues[-1]))]
-    lambdaends = np.interp(xlimitsinside, xvalues, dfsorted["lambda_angstroms"].to_numpy())
-    flambdaends = np.interp(xlimitsinside, xvalues, dfsorted["f_lambda"].to_numpy())
-    lambdas = np.concatenate([lambdaends[:1], dfinrange["lambda_angstroms"].to_numpy(), lambdaends[1:]])
-    flambdas = np.concatenate([flambdaends[:1], dfinrange["f_lambda"].to_numpy(), flambdaends[1:]])
-    # the figure draws no segment with a NaN end, thus the integral leaves out such a segment
-    segmentintegrals = 0.5 * (flambdas[:-1] + flambdas[1:]) * np.diff(lambdas)
-    isdrawnsegment = np.isfinite(segmentintegrals)
+    if ispackethistogram:
+        # each row is a bin of a packet histogram, and f_lambda delta_lambda is the flux of the bin. A bin that an
+        # axis limit cuts gives the part of its wavelength range inside the limits, thus each x unit gives one result
+        lambdalow, lambdahigh = convert_xlimits_to_lambda_range(
+            max(xlow, float((xvalues - xhalfwidths).min())), min(xhigh, float((xvalues + xhalfwidths).max())), xunit
+        )
+        lambdacentres = dfsorted["lambda_angstroms"].to_numpy()
+        deltalambdas = dfsorted["delta_lambda"].to_numpy()
+        widthsinside = np.clip(
+            np.minimum(lambdacentres + 0.5 * deltalambdas, lambdahigh)
+            - np.maximum(lambdacentres - 0.5 * deltalambdas, lambdalow),
+            0.0,
+            None,
+        )
+        binflambdas = dfsorted["f_lambda"].to_numpy()
+        hasvalue = np.isfinite(binflambdas)
+        integral = float((binflambdas[hasvalue] * widthsinside[hasvalue]).sum())
+        gapwidth = float(widthsinside[~hasvalue].sum())
+        lambdaends = np.array([lambdalow, lambdahigh])
+        method = "sum of f_λ Δλ over the packet bins, with the part of each end bin inside the axis limits"
+        # the noise takes the bins of the luminosity. A part of a bin with the fraction f of its width holds the
+        # fraction f of its packets on average, thus its sqrt(sum(e^2)) decreases by sqrt(f) and its sum(e) by f
+        fractioninside = pl.Series(widthsinside / deltalambdas)
+        dfnoisebins = dfsorted.with_columns(delta_lambda=pl.Series(widthsinside)).filter(fractioninside > 0.0)
+        if "relnoise" in dfnoisebins.columns:
+            dfnoisebins = dfnoisebins.with_columns(
+                relnoise=pl.col("relnoise") / fractioninside.filter(fractioninside > 0.0).sqrt()
+            )
+    else:
+        # np.interp gives the end value outside the data, thus a limit outside the data is the end of the data
+        xlimitsinside = [max(xlow, float(xvalues[0])), min(xhigh, float(xvalues[-1]))]
+        lambdaends = np.interp(xlimitsinside, xvalues, dfsorted["lambda_angstroms"].to_numpy())
+        flambdaends = np.interp(xlimitsinside, xvalues, dfsorted["f_lambda"].to_numpy())
+        lambdas = np.concatenate([lambdaends[:1], dfinrange["lambda_angstroms"].to_numpy(), lambdaends[1:]])
+        flambdas = np.concatenate([flambdaends[:1], dfinrange["f_lambda"].to_numpy(), flambdaends[1:]])
+        # the figure draws no segment with a NaN end, thus the integral leaves out such a segment
+        segmentintegrals = 0.5 * (flambdas[:-1] + flambdas[1:]) * np.diff(lambdas)
+        isdrawnsegment = np.isfinite(segmentintegrals)
+        integral = float(segmentintegrals[isdrawnsegment].sum())
+        gapwidth = float(np.abs(np.diff(lambdas))[~isdrawnsegment].sum())
+        method = "trapezoidal rule, f_λ interpolated linearly at the axis limits"
+        dfnoisebins = dfinrange
     fields |= {
-        "luminosity_erg_per_s": abs(float(segmentintegrals[isdrawnsegment].sum())) * 4 * math.pi * megaparsec_to_cm**2,
+        "luminosity_erg_per_s": abs(integral) * 4 * math.pi * megaparsec_to_cm**2,
         "lambda_min_angstroms": float(lambdaends.min()),
         "lambda_max_angstroms": float(lambdaends.max()),
-        "method": "trapezoidal rule, f_λ interpolated linearly at the axis limits",
-        "gap_width_angstroms": float(np.abs(np.diff(lambdas))[~isdrawnsegment].sum()),
+        "method": method,
+        "gap_width_angstroms": gapwidth,
     }
     # a filter combines neighbouring bins, thus the noise of each bin is not the noise of the drawn value
     hasnoise = not (isfiltered and "relnoise" in dfinrange.columns)
-    noisefields, noiseparts, noisewarnings = get_packet_noise_summary(dfinrange) if hasnoise else ({}, [], [])
+    noisefields, noiseparts, noisewarnings = get_packet_noise_summary(dfnoisebins) if hasnoise else ({}, [], [])
     fields |= noisefields
 
     parts = []
@@ -476,7 +517,7 @@ def print_spectrum_summary(
         f"luminosity {fields['luminosity_erg_per_s']:.4g} erg/s = 4π (1 Mpc)² ∫ f_λ dλ from"
         f" {fields['lambda_min_angstroms']:.5g} to {fields['lambda_max_angstroms']:.5g} Å ({fields['method']})"
     )
-    if not isdrawnsegment.all():
+    if gapwidth > 0.0:
         parts.append(
             f"the integral leaves out {fields['gap_width_angstroms']:.4g} Å with no value of f_λ, e.g. a masked"
             " telluric band"
@@ -1042,7 +1083,11 @@ def draw_dirbin_spectra(
             dirbin, directionbins, dirbin_definitions, linelabel, linelabel_is_custom, plotkwargs
         )
 
-        print_integrated_flux(dfspectrum["dflux_on_dx_onempc"], dfspectrum["x"])
+        print_integrated_flux(
+            dfspectrum["dflux_on_dx_onempc"],
+            dfspectrum["x"],
+            dfspectrum["delta_x"] if "delta_x" in dfspectrum.columns else None,
+        )
 
         if scale_to_peak:
             dfspectrum = dfspectrum.with_columns(y=pl.col("y") / pl.col("y").max() * scale_to_peak)
@@ -1314,6 +1359,7 @@ def order_and_color_shells(
     contributions: list[FluxContributionTuple],
     arraylambda_angstroms: npt.NDArray[np.floating],
     args: argparse.Namespace,
+    arraydeltalambda: npt.NDArray[np.floating] | None = None,
 ) -> list[FluxContributionTuple]:
     """Return the shells from the lowest edge to the highest one, with the colours of a sequential map.
 
@@ -1336,7 +1382,12 @@ def order_and_color_shells(
         ]
 
     contributions_sorted_reduced = sort_and_reduce_flux_contribution_list(
-        contributions, args.maxseriescount, arraylambda_angstroms, fixedionlist=fixedionlist, hideother=args.hideother
+        contributions,
+        args.maxseriescount,
+        arraylambda_angstroms,
+        fixedionlist=fixedionlist,
+        hideother=args.hideother,
+        arraydeltalambda=arraydeltalambda,
     )
 
     shells = [
@@ -1654,7 +1705,7 @@ def make_emissionabsorption_plot(
 
     dirbin = args.plotviewingangle[0] if args.plotviewingangle else args.plotvspecpol[0] if args.plotvspecpol else None
 
-    contribution_list, array_flambda_emission_total, arraylambda_angstroms = get_emission_contributions(
+    contribution_list, array_flambda_emission_total, arraylambda_angstroms, delta_lambda = get_emission_contributions(
         modelpath,
         frompackets=args.frompackets,
         showemission=args.showemission,
@@ -1694,10 +1745,12 @@ def make_emissionabsorption_plot(
             "Give a wider range with --xmin and --xmax",
         )
 
-    print_integrated_flux(array_flambda_emission_total, arraylambda_angstroms)
+    print_integrated_flux(array_flambda_emission_total, arraylambda_angstroms, delta_lambda)
 
     if args.groupby in SHELLCOLUMNS:
-        contributions_sorted_reduced = order_and_color_shells(contribution_list, arraylambda_angstroms, args)
+        contributions_sorted_reduced = order_and_color_shells(
+            contribution_list, arraylambda_angstroms, args, arraydeltalambda=delta_lambda
+        )
     else:
         contributions_sorted_reduced = sort_and_reduce_flux_contribution_list(
             contribution_list,
@@ -1705,17 +1758,21 @@ def make_emissionabsorption_plot(
             arraylambda_angstroms,
             fixedionlist=args.fixedionlist,
             hideother=args.hideother,
+            arraydeltalambda=delta_lambda,
         )
 
     plotobjectlabels: list[str] = []
     plotobjects: list[Artist] = []
 
     spectrumunits = {"xunit": args.xunit, "yvariable": args.yvariable, "fluxdistance_mpc": args.distmpc}
-    dfspectotal = get_xy_spectrum(array_flambda_emission_total, arraylambda_angstroms, **spectrumunits).collect()
+    dfspectotal = get_xy_spectrum(
+        array_flambda_emission_total, arraylambda_angstroms, arraydeltalambda=delta_lambda, **spectrumunits
+    ).collect()
     # one call of collect_all runs the queries of all the contributions together. The plot and the table use its result.
     emissionspectra, absorptionspectra = collect_emission_and_absorption(
         contributions_sorted_reduced,
         arraylambda_angstroms,
+        arraydeltalambda=delta_lambda,
         showemission=args.showemission,
         showabsorption=args.showabsorption,
         **spectrumunits,
@@ -2872,6 +2929,15 @@ def resolve_plot_args(args: argparse.Namespace) -> None:
         not args.plotvspecpol or not args.plotviewingangle
     )  # choose either virtual packet directions or real packet direction bins
 
+    # ARTIS makes the virtual packets from the r-packets. For an observer, a read draws the r-packets as gamma rays or
+    # stops at an assertion, thus the check comes before the read
+    if args.gamma and args.plotvspecpol is not None:
+        exit_with_error(
+            "ARTIS makes the virtual packets from the r-packets, thus an observer of --plotvspecpol has no gamma-ray"
+            " spectrum",
+            "Remove --plotvspecpol or --gamma. For a direction bin of the gamma packets, give --plotviewingangle",
+        )
+
     # -obsspec named a reference spectrum before a positional path could name one. Nothing read that
     # list, thus the command drew the model alone and said nothing. The paths join the positional ones
     args.specpath = normalize_path_list([*makelist(args.specpath), *(args.refspecfiles or [])])
@@ -3015,8 +3081,12 @@ def sort_and_reduce_flux_contribution_list(
     arraylambda_angstroms: npt.NDArray[np.floating],
     fixedionlist: list[str] | None = None,
     hideother: bool = False,
+    arraydeltalambda: npt.NDArray[np.floating] | None = None,
 ) -> list[FluxContributionTuple]:
-    """Return the contributions sorted by flux, keeping at most maxseriescount and merging the rest into 'Other'."""
+    """Return the contributions sorted by flux, keeping at most maxseriescount and merging the rest into 'Other'.
+
+    arraydeltalambda gives the width of each wavelength bin of the packets, and print_contribution_table reads it.
+    """
     rowofname = {row.linelabel: row for row in contribution_list_in}
     # each plot gives its contributions to this function, thus this is the one warning for a missing item. The plot
     # shows only the first maxseriescount items, and the packet reader puts each item after them in "Other"
@@ -3037,7 +3107,7 @@ def sort_and_reduce_flux_contribution_list(
 
     color_list: list[mplt.ColorType] = remove_greys(rgb_candidates)
 
-    print_contribution_table(kept, other, arraylambda_angstroms)
+    print_contribution_table(kept, other, arraylambda_angstroms, arraydeltalambda)
 
     # a long -fixedionlist holds more entries than the colour list, thus the index wraps around
     contribution_list_out = [

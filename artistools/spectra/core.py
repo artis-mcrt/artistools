@@ -134,13 +134,29 @@ def timeshift_fluxscale_co56law(scaletoreftime: float, spectime: float) -> float
 def get_dfspectrum_x_y_with_units(
     dfspectrum: pl.DataFrame | pl.LazyFrame, xunit: str, yvariable: str, fluxdistance_mpc: float
 ) -> pl.LazyFrame:
-    """Add an x column in xunit and a y column for yvariable, scaled to an observer at fluxdistance_mpc."""
+    """Add an x column in xunit and a y column for yvariable, scaled to an observer at fluxdistance_mpc.
+
+    A spectrum with the column delta_lambda is a histogram of packets. On a frequency axis or an energy axis, the x of
+    a bin is then the mean of its two edges in that unit. The y of a bin times its width in that unit is the flux of
+    the bin. A spectrum with no column nu and no column delta_lambda, e.g. a reference spectrum, takes the frequency
+    c / lambda_angstroms of each point.
+    """
     dfspectrum = dfspectrum.lazy()
 
-    if "nu" not in dfspectrum.collect_schema().names():
-        dfspectrum = dfspectrum.with_columns((constants.c_ang_per_s / pl.col("lambda_angstroms")).alias("nu"))
-    if "f_nu" not in dfspectrum.collect_schema().names():
-        dfspectrum = dfspectrum.with_columns(f_nu=(pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")))
+    columns = dfspectrum.collect_schema().names()
+    if "nu" not in columns:
+        dfspectrum = dfspectrum.with_columns(
+            get_frequency_bin_exprs()
+            if "delta_lambda" in columns
+            else [(constants.c_ang_per_s / pl.col("lambda_angstroms")).alias("nu")]
+        )
+    if "f_nu" not in columns:
+        ispackethistogram = "delta_nu" in dfspectrum.collect_schema().names()
+        dfspectrum = dfspectrum.with_columns(
+            f_nu=pl.col("f_lambda") * pl.col("delta_lambda") / pl.col("delta_nu")
+            if ispackethistogram
+            else pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu")
+        )
 
     unit = get_xunit(xunit)
     # set dflux_on_dx_onempc in units of [erg/s/cm^2/xunit] at 1 Mpc distance
@@ -154,6 +170,17 @@ def get_dfspectrum_x_y_with_units(
     else:
         dfspectrum = dfspectrum.with_columns(x=h_ev_s * pl.col("nu") / unit.unit_in_base_units).with_columns(
             dflux_on_dx_onempc=pl.col("f_nu") * pl.col("nu") / pl.col("x")
+        )
+
+    if "delta_nu" in dfspectrum.collect_schema().names():
+        # delta_x is the width of each bin of a packet histogram in the x unit, thus dflux_on_dx_onempc delta_x is the
+        # flux of the bin
+        dfspectrum = dfspectrum.with_columns(
+            delta_x=pl.col("delta_lambda") / unit.unit_in_base_units
+            if unit.kind == "wavelength"
+            else pl.col("delta_nu")
+            if unit.kind == "frequency"
+            else h_ev_s * pl.col("delta_nu") / unit.unit_in_base_units
         )
 
     match yvariable.lower():
@@ -447,13 +474,33 @@ def scan_spectrum_at_time(
     )[dirbin]
 
 
+def get_frequency_bin_exprs() -> list[pl.Expr]:
+    """Return nu and delta_nu [Hz], the centre and the width in frequency of each bin of a packet histogram.
+
+    The columns lambda_angstroms and delta_lambda give the centre and the width of each bin [Å]. The frequency edges of
+    a bin are c / (lambda_angstroms ± delta_lambda / 2), and nu is their mean. Thus a frequency axis and an energy axis
+    put the centre between the edges of the bin, and f_nu delta_nu equals f_lambda delta_lambda.
+    """
+    nu_high = constants.c_ang_per_s / (pl.col("lambda_angstroms") - 0.5 * pl.col("delta_lambda"))
+    nu_low = constants.c_ang_per_s / (pl.col("lambda_angstroms") + 0.5 * pl.col("delta_lambda"))
+    return [(0.5 * (nu_low + nu_high)).alias("nu"), (nu_high - nu_low).alias("delta_nu")]
+
+
 def get_binned_lambda_frame(lambda_bin_edges: npt.NDArray[np.floating]) -> pl.DataFrame:
-    """Return the centre, the width and the frequency of each wavelength bin."""
+    """Return the centre and the width of each bin, in wavelength and in frequency."""
     edges = np.asarray(lambda_bin_edges, dtype=np.float64)
     return pl.DataFrame({
         "lambda_angstroms": 0.5 * (edges[:-1] + edges[1:]),
         "delta_lambda": edges[1:] - edges[:-1],
-    }).with_columns(nu=(constants.c_ang_per_s / pl.col("lambda_angstroms")))
+    }).with_columns(get_frequency_bin_exprs())
+
+
+def get_flux_of_bins(flambda: npt.NDArray[np.floating], delta_lambda: npt.NDArray[np.floating]) -> float:
+    """Return the flux of a packet histogram, which is the sum of f_lambda times the width of each wavelength bin.
+
+    f_lambda is the flux of the packets of a bin divided by its width, thus the sum gives the flux of all the bins.
+    """
+    return float(np.sum(flambda * delta_lambda))
 
 
 def select_dirbins(alldirbins: list[int], requested: Sequence[int] | None) -> list[int]:
@@ -536,9 +583,12 @@ def scan_spectra_from_packets(
     For the real packets, the key -1 is the average over all directions. The spectrum is the mean over the time range
     from timelowdays to timehighdays. Each LazyFrame has these columns:
 
-    - lambda_angstroms (Å), delta_lambda (Å), and nu (Hz), the centre, the width, and the frequency of the bin;
+    - lambda_angstroms and delta_lambda (Å), the centre and the width of the bin in wavelength;
+    - nu and delta_nu (Hz), the centre and the width of the bin in frequency. Each centre is the mean of the two edges
+      of the bin, thus nu is not c / lambda_angstroms;
     - packetcount, the number of packets in the bin;
-    - f_lambda (erg/s/cm^2/Å) and f_nu (erg/s/cm^2/Hz), the flux at a distance of 1 Mpc;
+    - f_lambda (erg/s/cm^2/Å) and f_nu (erg/s/cm^2/Hz), the flux densities at a distance of 1 Mpc. f_lambda delta_lambda
+      and f_nu delta_nu both give the flux of the bin;
     - with relnoise, relnoise = sqrt(sum(e^2)) / sum(e), where e is the energy of each packet in the bin.
 
     relnoise is the relative Monte Carlo noise, and it is null for a bin with no packet energy. The arguments are:
@@ -644,7 +694,7 @@ def scan_spectra_from_packets(
         dirbin_spectra[dirbin] = (
             dfbins
             .with_columns(pl.Series("packetcount", sums.packetcounts), *noisecolumns, pl.Series("f_lambda", f_lambda))
-            .with_columns(f_nu=pl.col("f_lambda") * pl.col("lambda_angstroms") / pl.col("nu"))
+            .with_columns(f_nu=pl.col("f_lambda") * pl.col("delta_lambda") / pl.col("delta_nu"))
             .lazy()
         )
 
@@ -2556,8 +2606,8 @@ def get_flux_contributions_from_packets(
         array_flambda_absorption = absorption_spectra.get(groupname, np.zeros_like(array_lambda, dtype=float))
         array_flambda_emission_total += array_flambda_emission
 
-        fluxcontribthisseries = abs(float(np.trapezoid(array_flambda_emission, x=array_lambda))) + abs(
-            float(np.trapezoid(array_flambda_absorption, x=array_lambda))
+        fluxcontribthisseries = abs(get_flux_of_bins(array_flambda_emission, array_delta_lambda)) + abs(
+            get_flux_of_bins(array_flambda_absorption, array_delta_lambda)
         )
 
         if fluxcontribthisseries > 0.0:
@@ -2603,15 +2653,21 @@ def print_contribution_table(
     kept: Sequence[FluxContributionTuple],
     other: Sequence[FluxContributionTuple],
     arraylambda_angstroms: npt.NDArray[np.floating],
+    arraydeltalambda: npt.NDArray[np.floating] | None = None,
 ) -> None:
     """Print one aligned line for each drawn series with its integrated flux and its share, and one line for Other.
 
     The share is a part of the emission or of the absorption of all the series. A series with no emission and no
     absorption gets no line of its own, thus a person and an agent can read the table at a glance.
+
+    arraydeltalambda gives the width of each wavelength bin of the packets, and the flux is then the sum of f_λ Δλ
+    over the bins. The emission files give only the bin centres, thus with None the flux uses the trapezoidal rule.
     """
 
     def integrate(values: npt.NDArray[np.floating]) -> float:
-        return abs(float(np.trapezoid(values, x=arraylambda_angstroms)))
+        if arraydeltalambda is None:
+            return abs(float(np.trapezoid(values, x=arraylambda_angstroms)))
+        return abs(get_flux_of_bins(values, arraydeltalambda))
 
     emission = {row.linelabel: integrate(row.array_flambda_emission) for row in [*kept, *other]}
     absorption = {row.linelabel: integrate(row.array_flambda_absorption) for row in [*kept, *other]}
@@ -2631,10 +2687,19 @@ def print_contribution_table(
     drawn = [row.linelabel for row in kept if emission[row.linelabel] > 0.0 or absorption[row.linelabel] > 0.0]
     othernames = [row.linelabel for row in other if row.linelabel != "Other"]
     labelwidth = max((len(label) for label in [*drawn, "Other"]), default=5)
-    print(
-        f"  Flux at 1 Mpc [erg/s/cm^2] of each series = ∫ f_λ dλ from {arraylambda_angstroms.min():.5g} to"
-        f" {arraylambda_angstroms.max():.5g} Å (trapezoidal rule), and its share of the sum of all the series:"
-    )
+    if arraydeltalambda is None:
+        methodtext = (
+            f"∫ f_λ dλ from {arraylambda_angstroms.min():.5g} to {arraylambda_angstroms.max():.5g} Å (trapezoidal rule)"
+        )
+    else:
+        lambdalow = float(np.min(arraylambda_angstroms - 0.5 * arraydeltalambda))
+        lambdahigh = float(np.max(arraylambda_angstroms + 0.5 * arraydeltalambda))
+        nbins = len(arraydeltalambda)
+        methodtext = (
+            f"Σ f_λ Δλ over {nbins} wavelength {'bin' if nbins == 1 else 'bins'} from {lambdalow:.5g} to"
+            f" {lambdahigh:.5g} Å"
+        )
+    print(f"  Flux at 1 Mpc [erg/s/cm^2] of each series = {methodtext}, and its share of the sum of all the series:")
     for label in drawn:
         print(f"    {label:<{labelwidth}}  {get_flux_text(label)}")
     if nodata := len(kept) - len(drawn):
@@ -2651,18 +2716,32 @@ def print_contribution_table(
 
 
 def print_integrated_flux(
-    arr_df_on_dx: npt.NDArray[np.floating] | pl.Series, arr_x: npt.NDArray[np.floating] | pl.Series
+    arr_df_on_dx: npt.NDArray[np.floating] | pl.Series,
+    arr_x: npt.NDArray[np.floating] | pl.Series,
+    arr_delta_x: npt.NDArray[np.floating] | pl.Series | None = None,
 ) -> float:
-    """Print and return the flux integrated over the given x range [erg/s/cm2 at 1 Mpc]."""
-    integrated_flux = abs(np.trapezoid(np.nan_to_num(arr_df_on_dx, nan=0.0), x=arr_x))
-    x_min = arr_x.min()
-    x_max = arr_x.max()
-    assert isinstance(x_min, int | float)
-    assert isinstance(x_max, int | float)
+    """Print and return the flux integrated over the given x range [erg/s/cm2 at 1 Mpc].
+
+    arr_delta_x gives the width of each bin of a packet histogram in the unit of arr_x. The flux is then the sum of
+    the flux density times the width of each bin, and the range goes from the first bin edge to the last bin edge.
+    With None, the flux is the trapezoidal integral over the points.
+    """
+    flux_density = np.nan_to_num(arr_df_on_dx, nan=0.0)
+    if arr_delta_x is None:
+        integrated_flux = abs(float(np.trapezoid(flux_density, x=arr_x)))
+        methodtext = "trapezoidal rule"
+    else:
+        integrated_flux = abs(float(np.sum(flux_density * np.asarray(arr_delta_x))))
+        methodtext = "sum of the flux density times the bin width"
+    # the flux of a packet histogram covers each bin from edge to edge
+    halfwidths = 0.0 if arr_delta_x is None else 0.5 * np.asarray(arr_delta_x)
+    x_min = float(np.min(np.asarray(arr_x) - halfwidths))
+    x_max = float(np.max(np.asarray(arr_x) + halfwidths))
 
     # x is the name of the axis in the code, and the line below it names the unit of that axis
-    print_detail(f"Integrated flux ({x_min:.1f} to {x_max:.1f}): {integrated_flux:.3e} erg/s/cm2 at 1 Mpc")
-    assert isinstance(integrated_flux, float)
+    print_detail(
+        f"Integrated flux ({x_min:.5g} to {x_max:.5g}, {methodtext}): {integrated_flux:.3e} erg/s/cm2 at 1 Mpc"
+    )
     return integrated_flux
 
 
@@ -2836,13 +2915,19 @@ def get_xy_spectrum(
     flambda_array: npt.NDArray[np.floating],
     arraylambda_angstroms: npt.NDArray[np.floating],
     *,
+    arraydeltalambda: npt.NDArray[np.floating] | None,
     xunit: str,
     yvariable: str,
     fluxdistance_mpc: float,
 ) -> pl.LazyFrame:
-    """Return the x series and the y series of one flux array, in the given units."""
+    """Return the x series and the y series of one flux array, in the given units.
+
+    arraydeltalambda gives the width of each wavelength bin of the packets, thus each bin converts as the bins of
+    scan_spectra_from_packets do. The emission files give only the bin centres, thus their widths are None.
+    """
+    widthcolumns = {} if arraydeltalambda is None else {"delta_lambda": arraydeltalambda}
     return get_dfspectrum_x_y_with_units(
-        pl.DataFrame({"f_lambda": flambda_array, "lambda_angstroms": arraylambda_angstroms}),
+        pl.DataFrame({"f_lambda": flambda_array, "lambda_angstroms": arraylambda_angstroms, **widthcolumns}),
         xunit=xunit,
         yvariable=yvariable,
         fluxdistance_mpc=fluxdistance_mpc,
@@ -2881,19 +2966,38 @@ def get_emission_contributions(
     shelledges: Sequence[float] | None,
     shellunit: t.Literal["kmps", "c", "ye"],
     velocityranges: Mapping[str, tuple[float, float]] | None,
-) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
-    """Return the flux contribution of each series, the total emitted flux, and the wavelength grid.
+) -> tuple[
+    list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating], npt.NDArray[np.floating] | None
+]:
+    """Return the flux contribution of each series, the total emitted flux, and the wavelength grid with its bin widths.
 
     With frompackets, the function reads the packets files. Without it, the function reads the emission file and the
     absorption file that ARTIS writes for each timestep. The total emitted flux is the net spectrum, thus a plot of the
-    absorption alone also reads the emission.
+    absorption alone also reads the emission. The packets give the width of each wavelength bin [Å]. The emission
+    files give only the bin centres, thus the widths are then None.
     """
+    lambda_bin_edges = (
+        np.sort(
+            get_lambda_bin_edges(
+                xmin,
+                xmax,
+                deltax=deltax,
+                deltalogx=deltalogx,
+                deltalambda=deltalambda,
+                xunit=xunit,
+                modelpath=modelpath,
+                gamma=gamma,
+            )
+        )
+        if frompackets
+        else None
+    )
 
     def read_contributions(
         getemission: bool, getabsorption: bool
     ) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
         """Return the contributions, the total emitted flux, and the wavelength grid of the selected processes."""
-        if not frompackets:
+        if lambda_bin_edges is None:
             assert not vpkt_match_emission_exclusion_to_opac
             # the emission files of exspec hold no sampled emission, thus resolve_frompackets selects the packets
             assert emissionevent != "sampled"
@@ -2920,16 +3024,7 @@ def get_emission_contributions(
             modelpath,
             timelowdays=timemin,
             timehighdays=timemax,
-            lambda_bin_edges=get_lambda_bin_edges(
-                xmin,
-                xmax,
-                deltax=deltax,
-                deltalogx=deltalogx,
-                deltalambda=deltalambda,
-                xunit=xunit,
-                modelpath=modelpath,
-                gamma=gamma,
-            ),
+            lambda_bin_edges=lambda_bin_edges,
             getemission=getemission,
             getabsorption=getabsorption,
             maxpacketfiles=maxpacketfiles,
@@ -2958,13 +3053,15 @@ def get_emission_contributions(
         # comes from this call
         _, array_flambda_emission_total, _ = read_contributions(getemission=True, getabsorption=False)
 
-    return contribution_list, array_flambda_emission_total, arraylambda_angstroms
+    arraydeltalambda = None if lambda_bin_edges is None else np.diff(lambda_bin_edges)
+    return contribution_list, array_flambda_emission_total, arraylambda_angstroms, arraydeltalambda
 
 
 def collect_emission_and_absorption(
     contributions: Sequence[FluxContributionTuple],
     arraylambda_angstroms: npt.NDArray[np.floating],
     *,
+    arraydeltalambda: npt.NDArray[np.floating] | None,
     showemission: bool,
     showabsorption: bool,
     xunit: str,
@@ -2983,7 +3080,12 @@ def collect_emission_and_absorption(
     )
     collected = pl.collect_all(
         get_xy_spectrum(
-            flambda_array, arraylambda_angstroms, xunit=xunit, yvariable=yvariable, fluxdistance_mpc=fluxdistance_mpc
+            flambda_array,
+            arraylambda_angstroms,
+            arraydeltalambda=arraydeltalambda,
+            xunit=xunit,
+            yvariable=yvariable,
+            fluxdistance_mpc=fluxdistance_mpc,
         )
         for flambda_array in [*emissionarrays, *absorptionarrays]
     )
