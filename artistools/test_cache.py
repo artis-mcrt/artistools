@@ -41,6 +41,70 @@ def test_cache_delete_keeps_the_lock_files_and_other_parquet_files(tmp_path: Pat
     assert sorted(str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*") if path.is_file()) == sorted(kept)
 
 
+def test_cache_delete_keeps_the_only_copy_of_the_packets(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Keep a packets cache whose text files are absent, because the cache is then the only copy of the packets.
+
+    The reader takes such a cache, e.g. in an archived model folder. The command deleted it with the other caches, and
+    it said that the next read converts the text files again.
+    """
+    from unittest import mock
+
+    from artistools.cache import main as cachemain
+
+    sourcemodel = at.get_path("testdata") / "test-classicmode_3d"
+    shutil.copy(sourcemodel / "input.txt", tmp_path)
+    (tmp_path / "packets").mkdir()
+    for rank in (0, 1):
+        shutil.copy(sourcemodel / "packets" / f"packets00_{rank:04d}.out.zst", tmp_path / "packets")
+
+    with mock.patch("artistools.packets.core.RANKS_PER_BATCH", 1):
+        _, caches = at.packets.get_packets_batch_parquet_paths(tmp_path)
+        assert len(caches) == 2
+        packetcount = at.packets.scan_packets(tmp_path)[1].select(pl.len()).collect().item()
+        (tmp_path / "packets" / "packets00_0001.out.zst").unlink()
+
+        cachemain(argsraw=["delete", "-f", str(tmp_path)])
+        assert not caches[0].exists()
+        assert caches[1].is_file()
+        assert f"{caches[1]} is the only copy of its data, because the text files of rank 1" in capsys.readouterr().err
+        assert at.packets.scan_packets(tmp_path)[1].select(pl.len()).collect().item() == packetcount
+
+        cachemain(argsraw=["delete", "-f", "--include-only-copies", str(tmp_path)])
+        assert not any((tmp_path / "packets").glob("packetsbatch*"))
+
+
+def test_cache_delete_keeps_the_only_copy_of_the_estimators_and_the_nlte_populations(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Keep a cache of a run folder whose text files are absent. The readers then take the cache as the only copy."""
+    from artistools.cache import main as cachemain
+
+    sourcemodel = at.get_path("testdata") / "test-classicmode_3d"
+    for filename in ("input.txt", "model.txt", "modelgridrankassignments.out"):
+        shutil.copy(sourcemodel / filename, tmp_path)
+    # the copy leaves out the caches of earlier runs of the tests
+    for runfolder in ("job0", "job1"):
+        shutil.copytree(
+            sourcemodel / runfolder, tmp_path / runfolder, ignore=shutil.ignore_patterns(".*", "*.parquet*")
+        )
+    at.estimators.scan_estimators(tmp_path).collect()
+    estimatorcaches = [tmp_path / runfolder / "estimators_allranks.out.parquet" for runfolder in ("job0", "job1")]
+    assert all(cachepath.is_file() for cachepath in estimatorcaches)
+    (tmp_path / "job0" / "estimators_0001.out.zst").unlink()
+    nltecache = tmp_path / "job1" / "nltepops_allranks.out.parquet"
+    pl.DataFrame({"timestep": [0]}).write_parquet(nltecache)
+
+    cachemain(argsraw=["delete", "-f", str(tmp_path)])
+
+    assert estimatorcaches[0].is_file()
+    assert not estimatorcaches[1].exists()
+    assert nltecache.is_file()
+    stderr = capsys.readouterr().err
+    assert "the text files of rank 1 are absent" in stderr
+    assert "the text files of ranks 0-1 are absent" in stderr
+    assert at.estimators.scan_estimators(tmp_path).select(pl.len()).collect().item() > 0
+
+
 def test_cache_make_reads_the_input_files_that_the_readers_take(tmp_path: Path) -> None:
     """The readers take a model.txt in data/ and an abundances.txt that sn3d reads, e.g. in artis/data/.
 

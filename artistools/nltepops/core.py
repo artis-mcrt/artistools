@@ -15,6 +15,7 @@ from artistools.atomic import get_ionstring
 from artistools.atomic import get_kept_levels
 from artistools.misc import clear_at_reload
 from artistools.misc import folder_holds_match
+from artistools.misc import get_rank_text_cache_missing_ranks
 from artistools.misc import is_remote_path
 from artistools.misc import on_model_host
 from artistools.misc import read_rank_outputfiles
@@ -188,6 +189,13 @@ def add_lte_pops(
 # the parquet cache of the NLTE text of a run folder. This name does not match the glob nlte_*.out* of the text files
 NLTE_CACHE_FILENAME = "nltepops_allranks.out.parquet"
 
+NLTE_RANK_FILENAME_FORMAT = "nlte_{mpirank:04d}.out"
+
+
+def get_nltepops_cache_missing_ranks(modelpath: Path, runfolder: Path) -> list[int]:
+    """Return each rank whose NLTE text a run folder does not hold, thus no conversion can replace its cache."""
+    return get_rank_text_cache_missing_ranks(modelpath, runfolder, NLTE_RANK_FILENAME_FORMAT)
+
 
 def read_nltepops(
     modelpath: str | Path,
@@ -245,7 +253,7 @@ def read_nltepops_cached(
     modelgridindex = list(cells) if isinstance(cells, tuple) else cells
     return read_rank_outputfiles(
         modelpath,
-        "nlte_{mpirank:04d}.out",
+        NLTE_RANK_FILENAME_FORMAT,
         timestep=list(timestep) if isinstance(timestep, tuple) else timestep,
         modelgridindex=modelgridindex,
         cachefilename=NLTE_CACHE_FILENAME,

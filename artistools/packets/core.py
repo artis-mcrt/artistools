@@ -862,6 +862,22 @@ def get_packets_text_change(parquetfilepath: Path, textstates: Sequence[PacketsT
     return None
 
 
+def get_packets_cache_missing_ranks(
+    modelpath: Path, parquetfilepath: Path, folderlistings: dict[Path, dict[str, os.DirEntry[str]]]
+) -> list[int]:
+    """Return each rank of a batch cache whose text file the reader does not find, thus no conversion can replace it.
+
+    The name of the cache gives its kind and its ranks, e.g. vpacketsbatch00_0000_0099.out.parquet. The text files
+    are in the folder that select_packets_textfolder gives for the ranks of input.txt.
+    """
+    virtual = parquetfilepath.name.startswith("vpackets")
+    firstrank, lastrank = (int(part) for part in parquetfilepath.name.split(".")[0].split("_")[1:3])
+    filenames = {get_packets_textfilename(rank, virtual): rank for rank in range(firstrank, lastrank + 1)}
+    textfolder, _ = select_packets_textfolder(modelpath, get_nprocs(modelpath), virtual, folderlistings)
+    textsources = find_packets_textsources(textfolder, list(filenames), folderlistings)
+    return [rank for filename, rank in filenames.items() if filename not in textsources]
+
+
 def get_packets_rankbatch_parquetpath(
     modelpath: Path, batch_mpiranks: Sequence[int], batchindex: int, virtual: bool
 ) -> Path:

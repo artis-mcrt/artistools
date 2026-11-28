@@ -1240,6 +1240,21 @@ def get_rank_text_state(textfiles: Sequence[Path]) -> tuple[float, int]:
     return max(filestat.st_mtime for filestat in filestats), sum(filestat.st_size for filestat in filestats)
 
 
+def get_rank_text_cache_missing_ranks(modelpath: Path, folderpath: Path, filenameformat: str) -> list[int]:
+    """Return each rank whose text file a run folder does not hold, thus no conversion can replace its rank cache.
+
+    scan_rank_text_cache converts the text of each rank with matter, or the file of all ranks. A rank whose cells all
+    hold no matter writes no file.
+    """
+    nonemptycounts = get_nonempty_cellcounts(modelpath)
+    ranks_with_matter = [
+        rank
+        for rank in get_mpiranklist(modelpath, only_ranks_withgridcells=True)
+        if nonemptycounts is None or nonemptycounts.get(rank) != 0
+    ]
+    return get_folder_text_files(folderpath, filenameformat, ranks_with_matter, selectscells=False)[1]
+
+
 def rank_text_cache_is_readable(folderpath: Path, cachefilename: str | None) -> bool:
     """Return True if a run folder holds a parquet cache of the current format, without a check against the text."""
     if cachefilename is None:

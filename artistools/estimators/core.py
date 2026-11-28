@@ -511,6 +511,25 @@ def get_estimator_textsource(
     return None, mtime, complete
 
 
+def get_estimator_cache_missing_ranks(modelpath: Path, parquetfilepath: Path) -> list[int]:
+    """Return each rank whose estimator file a run folder does not hold, thus no conversion can replace the cache.
+
+    A conversion reads the estimator file of all ranks, or the files of the ranks of the cache. The name of a batch
+    cache gives its ranks, e.g. estimbatch00_0000_0099.out.parquet. The cache of all the estimators holds each rank
+    with grid cells. A run folder with the file of all ranks gives no rank.
+    """
+    runfolder = parquetfilepath.parent
+    if get_allranks_textfile(runfolder) is not None:
+        return []
+    if parquetfilepath.name.startswith("estimbatch"):
+        nameparts = parquetfilepath.name.split("_")
+        mpiranks: Sequence[int] = range(int(nameparts[1]), int(nameparts[2].split(".")[0]) + 1)
+    else:
+        mpiranks = get_mpiranklist(modelpath, only_ranks_withgridcells=True)
+    rankfiles = get_rank_outputfiles(runfolder, RANK_TEXTFILENAME_FORMAT)
+    return [rank for rank in mpiranks if rank not in rankfiles]
+
+
 def folder_has_estimator_cache(folderpath: Path | str) -> bool:
     """Return True when a run folder holds a readable cache of all the estimators, or a batch cache."""
     return parquet_is_readable(get_allranks_parquetpath(folderpath)) or any(

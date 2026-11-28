@@ -187,6 +187,7 @@ from artistools.misc.modelinfo import get_nprocs as get_nprocs
 from artistools.misc.modelinfo import get_npts_model as get_npts_model
 from artistools.misc.modelinfo import get_nu_grid as get_nu_grid
 from artistools.misc.modelinfo import get_rank_outputfiles as get_rank_outputfiles
+from artistools.misc.modelinfo import get_rank_text_cache_missing_ranks as get_rank_text_cache_missing_ranks
 from artistools.misc.modelinfo import get_ranks_of_cells_in_layout as get_ranks_of_cells_in_layout
 from artistools.misc.modelinfo import get_run_subfolders as get_run_subfolders
 from artistools.misc.modelinfo import get_runfolder_timesteps as get_runfolder_timesteps
