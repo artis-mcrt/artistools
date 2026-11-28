@@ -16,8 +16,9 @@ run folder.
 - `artistools cache list mymodel` gives the caches and their sizes.
 - `artistools cache delete mymodel` deletes them. The readers of the packets, the estimators, and the NLTE populations
   can read a cache whose text files are absent. Such a cache is then the only copy of its data, e.g. in an archived
-  model folder. Thus `cache delete` keeps it, and a warning names the ranks of the absent text files. Give
-  `--include-only-copies` to delete it too.
+  model folder. Thus `cache delete` keeps it, and a warning names the ranks of the absent text files and their folder.
+  A packets cache keeps the path of the text file of each rank. Thus the text files of a different run folder are not
+  a copy of its data. Give `--include-only-copies` to delete it too.
 
 `cache make` does not convert the NLTE populations. A read of all the cells converts the text of each run folder that
 holds a timestep of the read to `nltepops_allranks.out.parquet` in that folder. A restarted model has more than one run

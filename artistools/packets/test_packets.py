@@ -517,6 +517,30 @@ def test_packets_source_index_matches_the_reader(tmp_path: Path) -> None:
     assert {filename: Path(entry.path) for filename, entry in textsources.items()} == expected
 
 
+def test_packets_folder_selection_omits_a_link_to_an_absent_file(tmp_path: Path) -> None:
+    """Select the folder of the text files that exist, because the reader does not read a link to an absent file.
+
+    The selection counted the names. Thus an earlier run folder of such links came before a later run folder with all
+    the files, and the reader then found no text file.
+    """
+    from artistools.packets.core import find_packets_textsources
+    from artistools.packets.core import select_packets_textfolder
+
+    filenames = [f"packets00_{rank:04d}.out" for rank in (0, 1)]
+    for runfolder in ("100.slurm", "200.slurm"):
+        (tmp_path / runfolder).mkdir()
+    for filename in filenames:
+        (tmp_path / "100.slurm" / filename).symlink_to(tmp_path / "archive" / filename)
+        (tmp_path / "200.slurm" / filename).touch()
+
+    folderlistings: dict[Path, dict[str, os.DirEntry[str]]] = {}
+    textfolder, rankcounts = select_packets_textfolder(tmp_path, 2, virtual=False, folderlistings=folderlistings)
+
+    assert rankcounts == {tmp_path / "200.slurm": 2}
+    assert textfolder == tmp_path / "200.slurm"
+    assert list(find_packets_textsources(textfolder, filenames, folderlistings)) == filenames
+
+
 def test_packets_reader_takes_the_text_files_of_one_run(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """Read the packets text files of all the ranks from one folder, thus a cache holds the packets of one run.
 

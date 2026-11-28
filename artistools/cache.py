@@ -212,19 +212,20 @@ def make_caches(modelfolder: Path) -> pl.DataFrame:
 
 def get_missing_text_ranks(
     modelfolder: Path, cachepath: Path, folderlistings: dict[Path, dict[str, os.DirEntry[str]]]
-) -> list[int]:
-    """Return each rank whose text file is absent, thus no conversion can make the cache again.
+) -> tuple[list[int], Path | None]:
+    """Return each rank whose text file is absent, and the folder of the text files of the cache.
 
-    The readers of the packets, the estimators, and the NLTE populations read their caches with no text files, e.g. in
-    an archived model folder. The readers of the other caches need the text file, thus such a cache gives no rank.
+    No conversion can make a cache with such a rank again. The readers of the packets, the estimators, and the NLTE
+    populations read their caches with no text files, e.g. in an archived model folder. The readers of the other
+    caches need the text file, thus such a cache gives no rank. The folder is None when no folder holds the text.
     """
     if cachepath.name.startswith(("packetsbatch", "vpacketsbatch")):
         return get_packets_cache_missing_ranks(modelfolder, cachepath, folderlistings)
     if cachepath.name.startswith(("estimbatch", "estimators_allranks")):
-        return get_estimator_cache_missing_ranks(modelfolder, cachepath)
+        return get_estimator_cache_missing_ranks(modelfolder, cachepath), cachepath.parent
     if cachepath.name == NLTE_CACHE_FILENAME:
-        return get_nltepops_cache_missing_ranks(modelfolder, cachepath.parent)
-    return []
+        return get_nltepops_cache_missing_ranks(modelfolder, cachepath.parent), cachepath.parent
+    return [], None
 
 
 def get_only_copies(modelfolder: Path, caches: Sequence[Path]) -> dict[Path, str]:
@@ -239,7 +240,7 @@ def get_only_copies(modelfolder: Path, caches: Sequence[Path]) -> dict[Path, str
         if not parquet_is_readable(cachepath):
             continue
         try:
-            missingranks = get_missing_text_ranks(modelfolder, cachepath, folderlistings)
+            missingranks, textfolder = get_missing_text_ranks(modelfolder, cachepath, folderlistings)
         except (OSError, ValueError) as exc:
             onlycopies[cachepath] = f"artistools cannot identify its text files ({type(exc).__name__}: {exc})"
             continue
@@ -247,7 +248,16 @@ def get_only_copies(modelfolder: Path, caches: Sequence[Path]) -> dict[Path, str
             ranktext = (
                 f"rank {missingranks[0]}" if len(missingranks) == 1 else f"ranks {format_range_list(missingranks)}"
             )
-            onlycopies[cachepath] = f"the text files of {ranktext} are absent"
+            # the folder shows that a different folder with files of the same ranks is not the source of the cache
+            if textfolder is None:
+                foldertext = ""
+            elif textfolder == modelfolder:
+                foldertext = " from the model folder"
+            elif textfolder.is_relative_to(modelfolder):
+                foldertext = f" from {textfolder.relative_to(modelfolder)}"
+            else:
+                foldertext = f" from {textfolder}"
+            onlycopies[cachepath] = f"the text files of {ranktext} are absent{foldertext}"
     return onlycopies
 
 

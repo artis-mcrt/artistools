@@ -725,9 +725,10 @@ def select_packets_textfolder(
     folder, then its subfolders in their natural order, e.g. by job number. The counts have a key for each folder that
     holds a file of one of the ranks, in that order. A model with no text file gives None.
 
-    The selection uses only the names in the folder listings, thus it makes no stat call. A caller that reads several
-    batches gives one folderlistings for all of them, thus each folder has one scan. For the 20 batches of a 3D
-    kilonova model, the scans took 0.2 s each time the code read packets.
+    The selection takes the entries of the folder listings. An entry makes a stat call only for a link, because the
+    reader does not read a link to an absent file. A caller that reads several batches gives one folderlistings for
+    all of them, thus each folder has one scan. For the 20 batches of a 3D kilonova model, the scans took 0.2 s each
+    time the code read packets.
     """
     filenames = [get_packets_textfilename(rank, virtual) for rank in range(nranks)]
     subfolders = sorted(
@@ -738,7 +739,11 @@ def select_packets_textfolder(
     for folder in (modelpath, *subfolders):
         entries = get_folder_listing(folder, folderlistings)
         rankcount = sum(
-            any(f"{filename}{suffix}" in entries for suffix in ("", *COMPRESSED_EXTENSIONS)) for filename in filenames
+            any(
+                (entry := entries.get(f"{filename}{suffix}")) is not None and entry.is_file()
+                for suffix in ("", *COMPRESSED_EXTENSIONS)
+            )
+            for filename in filenames
         )
         if rankcount > 0:
             rankcounts[folder] = rankcount
@@ -820,6 +825,24 @@ def get_packets_text_state(modelpath: Path, textfile: Path, filestat: os.stat_re
     )
 
 
+def read_packets_text_record(parquetfilepath: Path) -> list[PacketsTextState] | None:
+    """Return the state of the text file of each rank that a packets cache keeps as its record, or None.
+
+    A cache of an earlier artistools version has no record. A record that is not readable gives a ValueError.
+    """
+    record = pl.read_parquet_metadata(parquetfilepath).get("textsource_states")
+    if record is None:
+        return None
+    try:
+        return [
+            PacketsTextState(str(state["path"]), str(state["compression"]), float(state["mtime"]), int(state["size"]))
+            for state in json.loads(record)
+        ]
+    except (ValueError, TypeError, KeyError) as exc:
+        msg = "the record of the text files in the cache is not readable"
+        raise ValueError(msg) from exc
+
+
 def get_packets_text_change(parquetfilepath: Path, textstates: Sequence[PacketsTextState]) -> str | None:
     """Return the reason why the text files of a complete batch are not the text files of its cache, or None.
 
@@ -829,19 +852,13 @@ def get_packets_text_change(parquetfilepath: Path, textstates: Sequence[PacketsT
     of an earlier artistools version has no record, and the check then compares only the newest time.
     """
     try:
-        record = pl.read_parquet_metadata(parquetfilepath).get("textsource_states")
+        stampedstates = read_packets_text_record(parquetfilepath)
     except (FileNotFoundError, pl.exceptions.PolarsError, OSError) as exc:
         return f"the file is not a readable parquet file ({type(exc).__name__}: {exc})"
-    if record is None:
+    except ValueError as exc:
+        return str(exc)
+    if stampedstates is None:
         return None
-
-    try:
-        stampedstates = [
-            PacketsTextState(str(state["path"]), str(state["compression"]), float(state["mtime"]), int(state["size"]))
-            for state in json.loads(record)
-        ]
-    except (ValueError, TypeError, KeyError):
-        return "the record of the text files in the cache is not readable"
 
     if len(stampedstates) != len(textstates):
         return f"the cache has a record of {len(stampedstates)} text files, but the batch has {len(textstates)}"
@@ -864,18 +881,37 @@ def get_packets_text_change(parquetfilepath: Path, textstates: Sequence[PacketsT
 
 def get_packets_cache_missing_ranks(
     modelpath: Path, parquetfilepath: Path, folderlistings: dict[Path, dict[str, os.DirEntry[str]]]
-) -> list[int]:
-    """Return each rank of a batch cache whose text file is absent, thus no conversion can make the cache again.
+) -> tuple[list[int], Path | None]:
+    """Return each rank of a batch cache whose text file is absent, and the folder of the text files of the cache.
 
-    The name of the cache gives its kind and its ranks, e.g. vpacketsbatch00_0000_0099.out.parquet. The text files
-    are in the folder that select_packets_textfolder gives for the ranks of input.txt.
+    No conversion can make a cache with such a rank again. The name of the cache gives its kind and its ranks, e.g.
+    vpacketsbatch00_0000_0099.out.parquet. The record of the cache gives the text file of each rank. A different run
+    can hold the files of the same ranks in a different folder, and these files do not hold the packets of the cache.
+    The check takes only the existence of each file, because a file that changed in its place is the usual source of
+    a stale cache. A cache with no record takes the folder that select_packets_textfolder gives for the ranks of
+    input.txt, which is None for a model with no text file.
     """
     virtual = parquetfilepath.name.startswith("vpackets")
     firstrank, lastrank = (int(part) for part in parquetfilepath.name.split(".")[0].split("_")[1:3])
-    filenames = {get_packets_textfilename(rank, virtual): rank for rank in range(firstrank, lastrank + 1)}
-    textfolder, _ = select_packets_textfolder(modelpath, get_nprocs(modelpath), virtual, folderlistings)
-    textsources = find_packets_textsources(textfolder, list(filenames), folderlistings)
-    return [rank for filename, rank in filenames.items() if filename not in textsources]
+    ranks = range(firstrank, lastrank + 1)
+    recordstates = read_packets_text_record(parquetfilepath)
+    if recordstates is None:
+        filenames = {get_packets_textfilename(rank, virtual): rank for rank in ranks}
+        textfolder, _ = select_packets_textfolder(modelpath, get_nprocs(modelpath), virtual, folderlistings)
+        textsources = find_packets_textsources(textfolder, list(filenames), folderlistings)
+        return [rank for filename, rank in filenames.items() if filename not in textsources], textfolder
+
+    # the conversion reads all the files of a cache from one folder
+    recordpaths = [modelpath / state.path for state in recordstates]
+    recordfolders = {path.parent for path in recordpaths}
+    if len(recordpaths) != len(ranks) or len(recordfolders) != 1:
+        msg = "the record of the text files in the cache does not agree with the ranks of the cache"
+        raise ValueError(msg)
+    (recordfolder,) = recordfolders
+    textsources = find_packets_textsources(
+        recordfolder if recordfolder.is_dir() else None, [path.name for path in recordpaths], folderlistings
+    )
+    return [rank for rank, path in zip(ranks, recordpaths, strict=True) if path.name not in textsources], recordfolder
 
 
 def get_packets_rankbatch_parquetpath(
