@@ -307,7 +307,7 @@ def test_packets_cache_goes_stale_when_a_rank_file_changes_below_the_newest_time
     write_rank_file(textfiles[0], [packetlines[0], packetlines[2]], 100100.0)
     assert pl.read_parquet(get_cache()).height == 3
 
-    # a compression keeps the time and changes the size of the file, but the packets stay the same
+    # a tool that compresses a file keeps its time and changes its size, but the packets stay the same
     cachestate = at.misc.get_file_state(cachepath)
     compressedfile = textfiles[1].with_name(f"{textfiles[1].name}.xz")
     compressedfile.write_bytes(lzma.compress(textfiles[1].read_bytes()))
@@ -1006,7 +1006,7 @@ def test_scan_packets_gives_one_name_and_type_to_the_flag_of_the_particle_origin
 
     The cache keeps the name and the type of its text file. The text reader gives the older flag the type Boolean,
     and the current flag stays an integer. The scan of a batch of each format stopped with an InvalidOperationError,
-    because the conversion to Boolean came after the concatenation of the batches.
+    because the change of the type to Boolean came after the concatenation of the batches.
     """
     flagvalues_of_format: list[tuple[str, list[bool] | list[int]]] = [
         ("originated_from_positron", [True, False]),

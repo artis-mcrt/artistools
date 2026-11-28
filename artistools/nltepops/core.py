@@ -193,7 +193,7 @@ NLTE_RANK_FILENAME_FORMAT = "nlte_{mpirank:04d}.out"
 
 
 def get_nltepops_cache_missing_ranks(modelpath: Path, runfolder: Path) -> list[int]:
-    """Return each rank whose NLTE text a run folder does not hold, thus no conversion can replace its cache."""
+    """Return each rank whose NLTE text is absent from a run folder, thus no conversion can make the cache again."""
     return get_rank_text_cache_missing_ranks(modelpath, runfolder, NLTE_RANK_FILENAME_FORMAT)
 
 

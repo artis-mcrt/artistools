@@ -1241,7 +1241,7 @@ def get_rank_text_state(textfiles: Sequence[Path]) -> tuple[float, int]:
 
 
 def get_rank_text_cache_missing_ranks(modelpath: Path, folderpath: Path, filenameformat: str) -> list[int]:
-    """Return each rank whose text file a run folder does not hold, thus no conversion can replace its rank cache.
+    """Return each rank whose text file is absent from a run folder, thus no conversion can make the cache again.
 
     scan_rank_text_cache converts the text of each rank with matter, or the file of all ranks. A rank whose cells all
     hold no matter writes no file.

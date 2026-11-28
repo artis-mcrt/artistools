@@ -512,11 +512,11 @@ def get_estimator_textsource(
 
 
 def get_estimator_cache_missing_ranks(modelpath: Path, parquetfilepath: Path) -> list[int]:
-    """Return each rank whose estimator file a run folder does not hold, thus no conversion can replace the cache.
+    """Return each rank whose estimator file is absent from a run folder, thus no conversion can make the cache again.
 
     A conversion reads the estimator file of all ranks, or the files of the ranks of the cache. The name of a batch
     cache gives its ranks, e.g. estimbatch00_0000_0099.out.parquet. The cache of all the estimators holds each rank
-    with grid cells. A run folder with the file of all ranks gives no rank.
+    with cells. A run folder with the file of all ranks gives no rank.
     """
     runfolder = parquetfilepath.parent
     if get_allranks_textfile(runfolder) is not None:

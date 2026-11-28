@@ -230,8 +230,8 @@ def get_missing_text_ranks(
 def get_only_copies(modelfolder: Path, caches: Sequence[Path]) -> dict[Path, str]:
     """Return each cache that is the only copy of its data, with the text files that are absent.
 
-    A cache that polars cannot read holds no data. A cache whose text files artistools cannot find, e.g. because
-    input.txt is absent, is also an only copy, because the deletion must not lose data.
+    A cache that polars cannot read holds no data. If artistools cannot identify the text files of a cache, e.g.
+    because input.txt is absent, the cache is also an only copy. The deletion must not lose data.
     """
     folderlistings: dict[Path, dict[str, os.DirEntry[str]]] = {}
     onlycopies: dict[Path, str] = {}
@@ -241,7 +241,7 @@ def get_only_copies(modelfolder: Path, caches: Sequence[Path]) -> dict[Path, str
         try:
             missingranks = get_missing_text_ranks(modelfolder, cachepath, folderlistings)
         except (OSError, ValueError) as exc:
-            onlycopies[cachepath] = f"artistools cannot find its text files ({type(exc).__name__}: {exc})"
+            onlycopies[cachepath] = f"artistools cannot identify its text files ({type(exc).__name__}: {exc})"
             continue
         if missingranks:
             ranktext = (

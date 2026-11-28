@@ -722,10 +722,10 @@ def select_packets_textfolder(
 
     Each run writes the files of all its ranks, thus the reader reads the files of one folder and never mixes two
     runs. The folder is the first folder that holds the most of the ranks 0 to nranks - 1. The order is the model
-    folder, then its subfolders in their natural order, e.g. by job number. The count has each folder that holds a
-    file of one of the ranks, in that order. A model with no text file gives None.
+    folder, then its subfolders in their natural order, e.g. by job number. The counts have a key for each folder that
+    holds a file of one of the ranks, in that order. A model with no text file gives None.
 
-    The names in the folder listings decide, thus the selection makes no stat call. A caller that reads several
+    The selection uses only the names in the folder listings, thus it makes no stat call. A caller that reads several
     batches gives one folderlistings for all of them, thus each folder has one scan. For the 20 batches of a 3D
     kilonova model, the scans took 0.2 s each time the code read packets.
     """
@@ -765,7 +765,7 @@ def warn_of_other_packets_textfolders(
         + ", ".join(
             f"{get_foldername(folder)} ({rankcount} of {nranks} ranks)" for folder, rankcount in rankcounts.items()
         )
-        + ". Each run writes the files of all its ranks, thus artistools reads only the files in"
+        + ". Each run writes the files of all its ranks. Thus artistools reads only the files in"
         f" {get_foldername(textfolder)}, which is the first folder with the most ranks."
     )
 
@@ -824,9 +824,9 @@ def get_packets_text_change(parquetfilepath: Path, textstates: Sequence[PacketsT
     """Return the reason why the text files of a complete batch are not the text files of its cache, or None.
 
     The newest time of the batch does not show a change of an older file, e.g. by a copy that keeps the times. Thus
-    the cache keeps the state of the file of each rank. A compression keeps the time of a file and changes its size,
-    thus only a file with the compression of the record compares the sizes. A cache of an artistools version before
-    the record has no record, and the check of the newest time alone then applies.
+    the cache keeps the state of the file of each rank. A tool that compresses a file, e.g. zstd, keeps its time and
+    changes its size. Thus the check compares the sizes only when the file has the compression of its record. A cache
+    of an earlier artistools version has no record, and the check then compares only the newest time.
     """
     try:
         record = pl.read_parquet_metadata(parquetfilepath).get("textsource_states")
@@ -856,8 +856,8 @@ def get_packets_text_change(parquetfilepath: Path, textstates: Sequence[PacketsT
             )
         if current.compression == stamped.compression and current.size != stamped.size:
             return (
-                f"the text file {current.path} had {stamped.size} bytes at the write of the cache, but it now has"
-                f" {current.size} bytes"
+                f"the text file {current.path} had {stamped.size} bytes when artistools wrote the cache, but it now"
+                f" has {current.size} bytes"
             )
     return None
 
@@ -865,7 +865,7 @@ def get_packets_text_change(parquetfilepath: Path, textstates: Sequence[PacketsT
 def get_packets_cache_missing_ranks(
     modelpath: Path, parquetfilepath: Path, folderlistings: dict[Path, dict[str, os.DirEntry[str]]]
 ) -> list[int]:
-    """Return each rank of a batch cache whose text file the reader does not find, thus no conversion can replace it.
+    """Return each rank of a batch cache whose text file is absent, thus no conversion can make the cache again.
 
     The name of the cache gives its kind and its ranks, e.g. vpacketsbatch00_0000_0099.out.parquet. The text files
     are in the folder that select_packets_textfolder gives for the ranks of input.txt.
@@ -974,9 +974,9 @@ def get_packets_rankbatch_parquetfile(
 ) -> Path:
     """Return the path of the parquet file of the packets of a batch of MPI ranks.
 
-    If the file does not exist or is outdated, the function first makes it from the text files in textfolder. The
-    caller gives the folder of select_packets_textfolder for all the ranks of the read, thus the batches of one read
-    take the files of one run.
+    If the file does not exist or is stale, the function first makes it from the text files in textfolder. The caller
+    gives the folder that select_packets_textfolder returns for all the ranks of the read. Thus all the batches of one
+    read take the files of one run.
     """
     modelpath = Path(modelpath)
     parquetfilepath = get_packets_rankbatch_parquetpath(modelpath, batch_mpiranks, batchindex, virtual)
@@ -991,8 +991,9 @@ def get_packets_rankbatch_parquetfile(
     outdatedparquet: tuple[int, int] | None = None
     if parquetfilepath.is_file():
         parquetstat = parquetfilepath.stat()
-        # each file of the batch counts, because the file of one rank can change alone, e.g. while a copy of the run
-        # folder is not complete. The folder listings give each state with one stat call for each file and no new scan
+        # the check uses each file of the batch, because the file of one rank can change alone, e.g. while a copy of the
+        # run folder is not complete. The folder listings give each state with one stat call for each file and no new
+        # scan
         textsources = find_packets_textsources(textfolder, text_filenames, folderlistings)
         textstates = [
             get_packets_text_state(modelpath, Path(entry.path), entry.stat())
@@ -1044,7 +1045,7 @@ def get_packets_rankbatch_parquetfile(
         # the check of the cache scanned the folder one time, thus the scan gives the files. A search of each file
         # ran a glob of every subfolder for each rank. A file that the scan did not find gives the error of
         # firstexisting, which names each form of the file that it looked for. The error names the folder of the
-        # other ranks, because a file of a different run must not fill the gap
+        # other ranks, because the reader must not take the file of a rank from a different run
         textsources = find_packets_textsources(textfolder, text_filenames, folderlistings)
         text_file_paths = [
             Path(textsources[filename].path)
@@ -1116,8 +1117,8 @@ def get_packets_rankbatch_parquetfile(
             metadata={
                 "creationtimeutc": str(dt.datetime.now(dt.UTC)),
                 "cacheversion": str(VIRTUAL_CACHEVERSION if virtual else CACHEVERSION),
-                # the newest time of the batch, which an earlier artistools version and a batch with absent text
-                # files compare
+                # the newest time of the batch. An earlier artistools version and the check of a batch with absent
+                # text files use it
                 "textsource_mtime": str(max(state.mtime for state in textstates)),
                 "textsource_states": json.dumps([state._asdict() for state in textstates]),
             },
@@ -1175,8 +1176,8 @@ def get_packets_cache_fingerprint(
     The check of a batch reads every text file of the batch and the cache. This value holds only the first text
     file of each batch, because a stat of each file at each plot is slow on a network drive. Thus a change of only
     a later rank shows in a new process, or after Reload Data clears the result. The function returns None if a
-    folder of the last scan changed, or if a text file of the last scan does not exist now. The path counts, because
-    the files of a different run can have the same times.
+    folder of the last scan changed, or if a text file of the last scan does not exist now. The fingerprint holds the
+    path, because the files of a different run can have the same times.
     """
     firsttextfiles, foldermtimes = find_first_rank_textfiles(
         modelpath, tuple(batch_mpiranks[0] for _, batch_mpiranks in mpirank_groups), virtual
