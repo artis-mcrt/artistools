@@ -614,6 +614,30 @@ def test_packets_reader_and_filter_keep_the_only_cache_of_an_earlier_run(
     assert at.packets.core.has_packets_files(tmp_path)
 
 
+def test_packets_reader_takes_the_caches_of_one_folder_for_a_model_with_no_text_files(
+    tmp_path: Path, write_packets_runfolder: Callable[[Path, str, float], None]
+) -> None:
+    """Read all the batches from one folder when a later run folder holds the cache of only some batches.
+
+    A read of the first batch alone wrote that cache beside the text files of the later run. With no text files, a
+    read of all the batches took that cache and the cache of the earlier run for the other batch.
+    """
+    import shutil
+
+    with mock.patch("artistools.packets.core.RANKS_PER_BATCH", 1):
+        write_packets_runfolder(tmp_path, "100.slurm", 1e40)
+        _, earliercaches = at.packets.get_packets_batch_parquet_paths(tmp_path)
+        assert len(earliercaches) == 2
+        shutil.rmtree(tmp_path / "100.slurm")
+        write_packets_runfolder(tmp_path, "200.slurm", 2e40)
+        _, (latercache,) = at.packets.get_packets_batch_parquet_paths(tmp_path, maxpacketfiles=1)
+        assert latercache.parent == tmp_path / "200.slurm"
+        for textfile in (tmp_path / "200.slurm").glob("packets00_*.out*"):
+            textfile.unlink()
+
+        assert at.packets.get_packets_batch_parquet_paths(tmp_path)[1] == earliercaches
+
+
 def test_add_derived_columns_gives_the_timestep_of_the_thermal_emission() -> None:
     """The timestep of the last thermal emission must use the same bins as the timestep of the last interaction."""
     modelpath = at.get_path("testdata") / "testmodel"
