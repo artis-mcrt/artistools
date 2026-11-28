@@ -860,7 +860,7 @@ def test_firstexisting_and_the_packets_cache_take_one_folder_order(tmp_path: Pat
     firstexisting sorted the paths of the files, thus run2/x came before run/x, but the check sorted the
     folders. The cache then took the time stamp of a file that the conversion did not read.
     """
-    from artistools.packets.core import get_packets_textsource_mtimes
+    from artistools.packets.core import select_packets_textfolder
 
     for foldername, mtime in (("run", 1000.0), ("run2", 2000.0)):
         (tmp_path / foldername).mkdir()
@@ -869,7 +869,7 @@ def test_firstexisting_and_the_packets_cache_take_one_folder_order(tmp_path: Pat
         os.utime(packetsfile, (mtime, mtime))
 
     assert at.firstexisting("packets00_0000.out", folder=tmp_path) == tmp_path / "run" / "packets00_0000.out"
-    assert get_packets_textsource_mtimes(tmp_path, ["packets00_0000.out"]) == [1000.0]
+    assert select_packets_textfolder(tmp_path, nranks=1, virtual=False, folderlistings={})[0] == tmp_path / "run"
 
 
 def test_firstexisting_with_an_absolute_path(tmp_path: Path) -> None:

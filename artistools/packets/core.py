@@ -715,52 +715,89 @@ def get_folder_listing(
     return folderlistings[folder]
 
 
-def find_packets_textsources(
-    modelpath: Path, filenames: Sequence[str], folderlistings: dict[Path, dict[str, os.DirEntry[str]]] | None = None
-) -> dict[str, os.DirEntry[str]]:
-    """Return the text file that the reader reads for each file name, with at most one scan of each folder.
+def select_packets_textfolder(
+    modelpath: Path, nranks: int, virtual: bool, folderlistings: dict[Path, dict[str, os.DirEntry[str]]]
+) -> tuple[Path | None, dict[Path, int]]:
+    """Return the folder of the packets text files that the reader reads, and the count of the ranks in each folder.
 
-    A caller that reads several batches gives one folderlistings for all of them. Each folder then has one scan
-    for all the batches. For the 20 batches of a 3D kilonova model, the scans took 0.2 s each time the code read
-    packets. A scan with os.scandir gives the type of each entry with no stat call.
+    Each run writes the files of all its ranks, thus the reader reads the files of one folder and never mixes two
+    runs. The folder is the first folder that holds the most of the ranks 0 to nranks - 1. The order is the model
+    folder, then its subfolders in their natural order, e.g. by job number. The count has each folder that holds a
+    file of one of the ranks, in that order. A model with no text file gives None.
+
+    The names in the folder listings decide, thus the selection makes no stat call. A caller that reads several
+    batches gives one folderlistings for all of them, thus each folder has one scan. For the 20 batches of a 3D
+    kilonova model, the scans took 0.2 s each time the code read packets.
     """
-    if folderlistings is None:
-        folderlistings = {}
-
-    found: dict[str, os.DirEntry[str]] = {}
-    # firstexisting searches the subfolders in their natural order, e.g. by job number, and the
-    # conversion reads the file that it finds. A different order stamps the cache from another file
+    filenames = [get_packets_textfilename(rank, virtual) for rank in range(nranks)]
     subfolders = sorted(
         (Path(entry.path) for entry in get_folder_listing(modelpath, folderlistings).values() if entry.is_dir()),
         key=natural_sort_key,
     )
+    rankcounts: dict[Path, int] = {}
     for folder in (modelpath, *subfolders):
         entries = get_folder_listing(folder, folderlistings)
-        for filename in filenames:
-            if filename in found:
-                continue
-            # Use the same folder and compression order as the source reader.
-            for suffix in ("", *COMPRESSED_EXTENSIONS):
-                if (entry := entries.get(f"{filename}{suffix}")) is None:
-                    continue
-                # the reader does not find a link to a file that does not exist. The entry keeps the stat result
-                with contextlib.suppress(FileNotFoundError):
-                    entry.stat()
-                    found[filename] = entry
-                    break
-        if len(found) == len(filenames):
-            break
-    return found
+        rankcount = sum(
+            any(f"{filename}{suffix}" in entries for suffix in ("", *COMPRESSED_EXTENSIONS)) for filename in filenames
+        )
+        if rankcount > 0:
+            rankcounts[folder] = rankcount
+    # max gives the first folder of the largest count
+    return max(rankcounts, key=rankcounts.__getitem__, default=None), rankcounts
 
 
-def get_packets_textsource_mtimes(
-    modelpath: Path, filenames: Sequence[str], folderlistings: dict[Path, dict[str, os.DirEntry[str]]] | None = None
-) -> list[float]:
-    """Return the modification times of the text files that the reader reads.
+def warn_of_other_packets_textfolders(
+    modelpath: Path, textfolder: Path | None, rankcounts: Mapping[Path, int], nranks: int, virtual: bool
+) -> None:
+    """Print a warning that names each folder of packets text files that the reader does not read.
 
-    The function makes a maximum of one scan of each folder.
+    rankcounts and textfolder come from select_packets_textfolder for the ranks 0 to nranks - 1.
     """
-    return [entry.stat().st_mtime for entry in find_packets_textsources(modelpath, filenames, folderlistings).values()]
+    if textfolder is None or len(rankcounts) < 2:
+        return
+
+    def get_foldername(folder: Path) -> str:
+        return "the model folder" if folder == modelpath else str(folder.relative_to(modelpath))
+
+    strpackets = "virtual packets" if virtual else "packets"
+    print_warning(
+        f"More than one folder of {modelpath} holds {strpackets} text files: "
+        + ", ".join(
+            f"{get_foldername(folder)} ({rankcount} of {nranks} ranks)" for folder, rankcount in rankcounts.items()
+        )
+        + ". Each run writes the files of all its ranks, thus artistools reads only the files in"
+        f" {get_foldername(textfolder)}, which is the first folder with the most ranks."
+    )
+
+
+def find_packets_textsources(
+    textfolder: Path | None,
+    filenames: Sequence[str],
+    folderlistings: dict[Path, dict[str, os.DirEntry[str]]] | None = None,
+) -> dict[str, os.DirEntry[str]]:
+    """Return the text file of each file name in the folder that select_packets_textfolder gives.
+
+    The function gives no file for None or for a file name that the folder does not hold. A caller that reads several
+    batches gives one folderlistings for all of them, thus the folder has one scan.
+    """
+    if textfolder is None:
+        return {}
+    if folderlistings is None:
+        folderlistings = {}
+
+    entries = get_folder_listing(textfolder, folderlistings)
+    found: dict[str, os.DirEntry[str]] = {}
+    for filename in filenames:
+        # the compression order of the source reader
+        for suffix in ("", *COMPRESSED_EXTENSIONS):
+            if (entry := entries.get(f"{filename}{suffix}")) is None:
+                continue
+            # the reader does not find a link to a file that does not exist. The entry keeps the stat result
+            with contextlib.suppress(FileNotFoundError):
+                entry.stat()
+                found[filename] = entry
+                break
+    return found
 
 
 class PacketsTextState(t.NamedTuple):
@@ -852,8 +889,8 @@ def count_packets_textfiles(modelpath: Path) -> tuple[int, int]:
     nprocs = get_nprocs(modelpath)
     folderlistings: dict[Path, dict[str, os.DirEntry[str]]] = {}
     filenames = [get_packets_textfilename(rank, virtual=False) for rank in range(nprocs)]
-    readcount = len(find_packets_textsources(modelpath, filenames, folderlistings))
-    # the search stops at the first folder that holds every rank, thus the files of an earlier run need a scan here
+    textfolder, _ = select_packets_textfolder(modelpath, nprocs, virtual=False, folderlistings=folderlistings)
+    readcount = len(find_packets_textsources(textfolder, filenames, folderlistings))
     subfolders = [Path(entry.path) for entry in folderlistings[modelpath].values() if entry.is_dir()]
     # two earlier runs can each leave a file of one rank, thus the count takes each pair of folder and rank
     otherrankfiles = {
@@ -916,18 +953,21 @@ def get_packets_rankbatch_parquetfile(
     batch_mpiranks: Sequence[int],
     batchindex: int,
     virtual: bool,
+    textfolder: Path | None,
     folderlistings: dict[Path, dict[str, os.DirEntry[str]]] | None = None,
 ) -> Path:
     """Return the path of the parquet file of the packets of a batch of MPI ranks.
 
-    If the file does not exist or is outdated, the function first makes it from the text files.
+    If the file does not exist or is outdated, the function first makes it from the text files in textfolder. The
+    caller gives the folder of select_packets_textfolder for all the ranks of the read, thus the batches of one read
+    take the files of one run.
     """
     modelpath = Path(modelpath)
     parquetfilepath = get_packets_rankbatch_parquetpath(modelpath, batch_mpiranks, batchindex, virtual)
 
     text_filenames = [get_packets_textfilename(rank, virtual) for rank in batch_mpiranks]
 
-    # the check of the cache and the conversion use one scan of each folder
+    # the check of the cache and the conversion use one scan of the folder
     if folderlistings is None:
         folderlistings = {}
 
@@ -937,7 +977,7 @@ def get_packets_rankbatch_parquetfile(
         parquetstat = parquetfilepath.stat()
         # each file of the batch counts, because the file of one rank can change alone, e.g. while a copy of the run
         # folder is not complete. The folder listings give each state with one stat call for each file and no new scan
-        textsources = find_packets_textsources(modelpath, text_filenames, folderlistings)
+        textsources = find_packets_textsources(textfolder, text_filenames, folderlistings)
         textstates = [
             get_packets_text_state(modelpath, Path(entry.path), entry.stat())
             for filename in text_filenames
@@ -985,14 +1025,17 @@ def get_packets_rankbatch_parquetfile(
         time_start_load = time.perf_counter()
         print(f"  Generating {parquetfilepath.relative_to(modelpath)}...")
 
-        # the check of the cache scanned each folder one time, thus the scan gives the files. A search of each file
+        # the check of the cache scanned the folder one time, thus the scan gives the files. A search of each file
         # ran a glob of every subfolder for each rank. A file that the scan did not find gives the error of
-        # firstexisting, which names each form of the file that it looked for
-        textsources = find_packets_textsources(modelpath, text_filenames, folderlistings)
+        # firstexisting, which names each form of the file that it looked for. The error names the folder of the
+        # other ranks, because a file of a different run must not fill the gap
+        textsources = find_packets_textsources(textfolder, text_filenames, folderlistings)
         text_file_paths = [
             Path(textsources[filename].path)
             if filename in textsources
-            else firstexisting(filename, folder=modelpath, tryzipped=True, search_subfolders=True)
+            else firstexisting(
+                filename, folder=textfolder or modelpath, tryzipped=True, search_subfolders=textfolder is None
+            )
             for filename in text_filenames
         ]
         # a model with no text files must not get an empty cache folder, because a check for packets then finds it
@@ -1100,20 +1143,24 @@ def find_first_rank_textfiles(
     with os.scandir(modelpath) as entries:
         subfolders = [Path(entry.path) for entry in entries if entry.is_dir()]
     foldermtimes = tuple((folder, folder.stat().st_mtime_ns) for folder in (modelpath, *subfolders))
+    folderlistings: dict[Path, dict[str, os.DirEntry[str]]] = {}
+    textfolder, _ = select_packets_textfolder(modelpath, get_nprocs(modelpath), virtual, folderlistings)
     filenames = [get_packets_textfilename(rank, virtual) for rank in firstranks]
-    textfiles = tuple(Path(entry.path) for entry in find_packets_textsources(modelpath, filenames).values())
+    textsources = find_packets_textsources(textfolder, filenames, folderlistings)
+    textfiles = tuple(Path(entry.path) for entry in textsources.values())
     return textfiles, foldermtimes
 
 
 def get_packets_cache_fingerprint(
     modelpath: Path, mpirank_groups: Sequence[tuple[int, tuple[int, ...]]], virtual: bool
-) -> tuple[tuple[int, ...], tuple[tuple[int, int, int, int] | None, ...]] | None:
-    """Return the modification time of the first text file of each batch, and the state of each cache.
+) -> tuple[tuple[tuple[Path, int], ...], tuple[tuple[int, int, int, int] | None, ...]] | None:
+    """Return the path and the modification time of the first text file of each batch, and the state of each cache.
 
     The check of a batch reads every text file of the batch and the cache. This value holds only the first text
     file of each batch, because a stat of each file at each plot is slow on a network drive. Thus a change of only
     a later rank shows in a new process, or after Reload Data clears the result. The function returns None if a
-    folder of the last scan changed, or if a text file of the last scan does not exist now.
+    folder of the last scan changed, or if a text file of the last scan does not exist now. The path counts, because
+    the files of a different run can have the same times.
     """
     firsttextfiles, foldermtimes = find_first_rank_textfiles(
         modelpath, tuple(batch_mpiranks[0] for _, batch_mpiranks in mpirank_groups), virtual
@@ -1121,7 +1168,7 @@ def get_packets_cache_fingerprint(
     try:
         if any(folder.stat().st_mtime_ns != mtime for folder, mtime in foldermtimes):
             return None
-        textmtimes = tuple(path.stat().st_mtime_ns for path in firsttextfiles)
+        textmtimes = tuple((path, path.stat().st_mtime_ns) for path in firsttextfiles)
     except FileNotFoundError:
         return None
     cachestates: list[tuple[int, int, int, int] | None] = []
@@ -1172,7 +1219,7 @@ def check_packets_batch_parquet_paths(
     modelpath: Path,
     maxpacketfiles: int | None,
     virtual: bool,
-    fingerprint: tuple[tuple[int, ...], tuple[tuple[int, int, int, int] | None, ...]],  # ruff:ignore[unused-function-argument]
+    fingerprint: tuple[tuple[tuple[Path, int], ...], tuple[tuple[int, int, int, int] | None, ...]],  # ruff:ignore[unused-function-argument]
 ) -> tuple[int, tuple[Path, ...]]:
     """Return the number of ranks and the parquet caches of the batches, and make each outdated cache.
 
@@ -1187,14 +1234,18 @@ def check_packets_batch_parquet_paths(
     else:
         print(f"Reading packets from {nprocs} ranks")
 
-    # each batch reads the same folders, thus all the batches use one scan of each folder
+    # the selection takes all the ranks of input.txt, thus the batches of a read with maxpacketfiles take the folder of
+    # a full read. All the batches use one scan of each folder
     folderlistings: dict[Path, dict[str, os.DirEntry[str]]] = {}
+    textfolder, rankcounts = select_packets_textfolder(modelpath, nprocs, virtual, folderlistings)
+    warn_of_other_packets_textfolders(modelpath, textfolder, rankcounts, nprocs, virtual)
     parquetpacketsfiles = tuple(
         get_packets_rankbatch_parquetfile(
             modelpath,
             batch_mpiranks=batch_mpiranks,
             batchindex=batchindex,
             virtual=virtual,
+            textfolder=textfolder,
             folderlistings=folderlistings,
         )
         for batchindex, batch_mpiranks in mpirank_groups

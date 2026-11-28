@@ -16,7 +16,6 @@ from artistools.packets.core import get_modelgridindex_from_velocity_expr as get
 from artistools.packets.core import get_packets as get_packets
 from artistools.packets.core import get_packets_batch_parquet_paths as get_packets_batch_parquet_paths
 from artistools.packets.core import get_packets_column_names as get_packets_column_names
-from artistools.packets.core import get_packets_textsource_mtimes as get_packets_textsource_mtimes
 from artistools.packets.core import get_spherical_modelgridindex_expr as get_spherical_modelgridindex_expr
 from artistools.packets.core import get_virtual_packets as get_virtual_packets
 from artistools.packets.core import get_vpkt_in_spectrum_range_expr as get_vpkt_in_spectrum_range_expr

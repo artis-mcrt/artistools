@@ -24,9 +24,12 @@ from artistools.packets.core import get_packets_mpirank_groups
 from artistools.packets.core import get_packets_rankbatch_parquetpath
 from artistools.packets.core import get_packets_text_columns
 from artistools.packets.core import get_packets_textfilename
+from artistools.packets.core import select_packets_textfolder
 from artistools.packets.core import type_ids
+from artistools.packets.core import warn_of_other_packets_textfolders
 
 if t.TYPE_CHECKING:
+    import os
     from collections.abc import Sequence
 
 # the zstd level of the filtered files. A higher level gives a smaller file, but the compression takes more time
@@ -58,11 +61,20 @@ def format_size(size_bytes: float) -> str:
 
 
 def get_packets_files(modelfolder: Path) -> dict[int, Path]:
-    """Return the packets file of each rank that the packets reader reads."""
-    filenames = {get_packets_textfilename(rank, virtual=False): rank for rank in range(get_nprocs(modelfolder))}
+    """Return the packets file of each rank that the packets reader reads.
+
+    The reader reads the files of one folder, thus the filter changes no file in a different folder.
+    """
+    nprocs = get_nprocs(modelfolder)
+    filenames = {get_packets_textfilename(rank, virtual=False): rank for rank in range(nprocs)}
+    folderlistings: dict[Path, dict[str, os.DirEntry[str]]] = {}
+    textfolder, rankcounts = select_packets_textfolder(
+        modelfolder, nprocs, virtual=False, folderlistings=folderlistings
+    )
+    warn_of_other_packets_textfolders(modelfolder, textfolder, rankcounts, nprocs, virtual=False)
     return {
         filenames[filename]: Path(entry.path)
-        for filename, entry in find_packets_textsources(modelfolder, list(filenames)).items()
+        for filename, entry in find_packets_textsources(textfolder, list(filenames), folderlistings).items()
     }
 
 
