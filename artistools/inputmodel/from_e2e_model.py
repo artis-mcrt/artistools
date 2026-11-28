@@ -15,7 +15,6 @@ import numpy.typing as npt
 import polars as pl
 import polars.selectors as cs
 
-from artistools.atomic import get_atomic_number
 from artistools.atomic import get_elsymbol
 from artistools.constants import C_cm_per_s as CLIGHT
 from artistools.constants import day_to_s
@@ -25,6 +24,7 @@ from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import CELL_ID_FILE_NAMES
 from artistools.inputmodel.core import dimension_reduce_model
 from artistools.inputmodel.core import MODEL_FILE_NAMES
+from artistools.inputmodel.core import OTHERSTABLE_SUFFIX
 from artistools.inputmodel.core import remap_gridcontributions
 from artistools.inputmodel.core import require_no_ye_file_of_earlier_model
 from artistools.inputmodel.core import save_initelemabundances
@@ -603,6 +603,87 @@ def align_composition_columns(dfmain: pl.DataFrame, dfother: pl.DataFrame) -> tu
     return aligned[0], aligned[1]
 
 
+def mix_composition(
+    dfmodel: pl.DataFrame, dfelabundances: pl.DataFrame, dyn_model: pl.DataFrame, dyn_abunds: pl.DataFrame
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Return the cells and the element abundances with the mass fractions of the two models mixed by the weights.
+
+    dfmodel holds the cells of this model and the weights beta_2D and beta_3D of get_model_interpolation_weights. The
+    mixed mass fraction of a nuclide or an element is beta_3D X_dyn + beta_2D X. X_dyn is the value of the dynamical
+    ejecta, and X is the value of this model.
+
+    dyn_abunds gives the full element mass fractions of the dynamical ejecta, which include the stable isotopes that
+    have no nuclide column. Thus the mixture keeps that mass. The function does not normalise the nuclide columns to
+    the sum 1, because such a normalisation gives that mass to the other nuclides.
+    """
+    print(
+        "  A nuclide or an element gets the mass fraction beta_3D X_dyn + beta_2D X. X_dyn is the value of the"
+        " dynamical ejecta, and X is the value of this model. beta_3D and beta_2D are the shares of the cell density"
+        " of the two models. The element mass fractions of the dynamical ejecta come from its element abundances, thus"
+        " they include the stable isotopes that have no nuclide column"
+    )
+    # the element abundances of a version 2 model hold the mass of its otherstable columns
+    dyn_model = dyn_model.drop(cs.ends_with(OTHERSTABLE_SUFFIX))
+    # each model can hold a mass fraction column that the other does not. Both frames take the
+    # union of those columns, thus the interpolation below finds each one in both frames
+    X_union = {col for col in (*dfmodel.columns, *dyn_model.columns) if col.startswith("X_")}
+    dfmodel = dfmodel.with_columns(**{col: pl.lit(0.0) for col in X_union - set(dfmodel.columns)})
+    dyn_model = dyn_model.with_columns(**{col: pl.lit(0.0) for col in X_union - set(dyn_model.columns)})
+    # X_Fegroup is a sum of the other columns, thus the interpolation leaves it out
+    X_list = [col for col in dfmodel.columns if col.startswith("X_") and col != "X_Fegroup"]
+    # properly set mass fractions to zero in empty cells
+    dfmodel = dfmodel.with_columns([
+        pl.when(pl.col("rho") == 0.0).then(0.0).otherwise(pl.col(col)).alias(col) for col in X_list
+    ])
+    dyn_model = dyn_model.with_columns([
+        pl.when(pl.col("rho") == 0.0).then(0.0).otherwise(pl.col(col)).alias(col) for col in X_list
+    ])
+
+    dyn_model = dyn_model.rename({col: f"{col}_dyn" for col in X_list})
+
+    dfmodel = dfmodel.join(
+        dyn_model.select(["inputcellid"] + [f"{col}_dyn" for col in X_list]),
+        on="inputcellid",
+        how="left",
+        maintain_order="left",
+    )
+
+    dfmodel = dfmodel.with_columns([
+        (pl.col(f"{col}_dyn") * pl.col("beta_3D") + pl.col(col) * pl.col("beta_2D")).alias(col) for col in X_list
+    ]).drop(f"{col}_dyn" for col in X_list)
+
+    # threshold small values
+    dfmodel = dfmodel.with_columns([
+        pl.when(pl.col(col) < 1e-10).then(0.0).otherwise(pl.col(col)).alias(col) for col in X_list
+    ])
+
+    # each table has one row for each cell, thus each join keeps the number of cells
+    dfelabundances_aligned, dyn_abunds_aligned = (
+        df.with_columns(pl.col("inputcellid").cast(pl.Int32))
+        for df in align_composition_columns(dfelabundances, dyn_abunds)
+    )
+    elementcols = [col for col in dfelabundances_aligned.columns if col != "inputcellid"]
+    dfabundances = (
+        dfelabundances_aligned
+        .join(dyn_abunds_aligned, on="inputcellid", how="left", suffix="_dyn", validate="1:1", maintain_order="left")
+        .join(
+            dfmodel.select(pl.col("inputcellid").cast(pl.Int32), "beta_3D", "beta_2D"),
+            on="inputcellid",
+            how="left",
+            validate="1:1",
+            maintain_order="left",
+        )
+        .select(
+            "inputcellid",
+            *[
+                (pl.col(f"{col}_dyn") * pl.col("beta_3D") + pl.col(col) * pl.col("beta_2D")).alias(col)
+                for col in elementcols
+            ],
+        )
+    )
+    return dfmodel, dfabundances
+
+
 def z_reflect(arr: npt.NDArray[np.floating], sign: int = 1) -> npt.NDArray[np.floating]:
     """Flatten an array and add a reflection in z."""
     reflected = np.concatenate([sign * np.flip(arr[:, :], axis=1), arr[:, :]], axis=1)
@@ -959,58 +1040,7 @@ def map_to_artis(
                 extracols=dyn_extracols,
             )
 
-            # each model can hold a mass fraction column that the other does not. Both frames take the
-            # union of those columns, thus the interpolation below finds each one in both frames
-            X_union = {col for col in (*dfmodel.columns, *dyn_model.columns) if col.startswith("X_")}
-            dfmodel = dfmodel.with_columns(**{col: pl.lit(0.0) for col in X_union - set(dfmodel.columns)})
-            dyn_model = dyn_model.with_columns(**{col: pl.lit(0.0) for col in X_union - set(dyn_model.columns)})
-            # X_Fegroup is a sum of the other columns, thus the interpolation leaves it out
-            X_list = [col for col in dfmodel.columns if col.startswith("X_") and col != "X_Fegroup"]
-            # properly set mass fractions to zero in empty cells
-            dfmodel = dfmodel.with_columns([
-                pl.when(pl.col("rho") == 0.0).then(0.0).otherwise(pl.col(col)).alias(col) for col in X_list
-            ])
-            dyn_model = dyn_model.with_columns([
-                pl.when(pl.col("rho") == 0.0).then(0.0).otherwise(pl.col(col)).alias(col) for col in X_list
-            ])
-
-            dyn_model = dyn_model.rename({col: f"{col}_dyn" for col in X_list})
-
-            dfmodel = dfmodel.join(
-                dyn_model.select(["inputcellid"] + [f"{col}_dyn" for col in X_list]),
-                on="inputcellid",
-                how="left",
-                maintain_order="left",
-            )
-
-            dfmodel = dfmodel.with_columns([
-                (pl.col(f"{col}_dyn") * pl.col("beta_3D") + pl.col(col) * pl.col("beta_2D")).alias(col)
-                for col in X_list
-            ])
-
-            # threshold small values
-            dfmodel = dfmodel.with_columns([
-                pl.when(pl.col(col) < 1e-10).then(0.0).otherwise(pl.col(col)).alias(col) for col in X_list
-            ])
-
-            # calculate elemental mass fractions and scaling factors
-            dfmodel = dfmodel.with_columns([pl.sum_horizontal(*X_list).alias("X_el")])
-
-            dfmodel = dfmodel.with_columns([
-                (1.0 / pl.col("X_el")).replace([float("inf"), float("-inf")], 0.0).alias("X_scale")
-            ])
-
-            # scale all mass fractions with scaling factor
-            dfmodel = dfmodel.with_columns([(pl.col(col) * pl.col("X_scale")).alias(col) for col in X_list])
-            # determine elemental abundances for abundances.txt as before again (no interpolation)
-            dictelabunds = {"inputcellid": np.array(range(1, numb_cells + 1))}
-            for isot_str in X_list:
-                interpol_X_iso = dfmodel[isot_str].to_numpy()
-                elem_str = f"X_{get_elsymbol(get_atomic_number(isot_str))}"
-                dictelabunds[elem_str] = (
-                    dictelabunds[elem_str] + interpol_X_iso if elem_str in dictelabunds else interpol_X_iso
-                )
-            dfabundances = pl.DataFrame(dictelabunds).fill_null(0.0)
+            dfmodel, dfabundances = mix_composition(dfmodel, dfelabundances, dyn_model, dyn_abunds.collect())
         else:
             # replace above threshold
             print(f"Replace dynamical ejecta above dynamical ejecta fraction threshold using model {replacedyn}...")
@@ -1096,16 +1126,7 @@ def map_to_artis(
                 print(f"  New ejecta mass after replacing and rescaling: {M_rescaled} Msun")
                 dfmodel = dfmodel.drop("vel_r_mid_on_c")
 
-        superfluous_cols = [
-            "bin_state",
-            "vel_r_mid_on_c",
-            "volume",
-            "beta_3D",
-            "beta_2D",
-            "modelgridindex",
-            "X_el",
-            "X_scale",
-        ]
+        superfluous_cols = ["bin_state", "vel_r_mid_on_c", "volume", "beta_3D", "beta_2D", "modelgridindex"]
         dfmodel = dfmodel.drop(superfluous_cols, strict=False).drop(cs.contains("_dyn"))
         print("Done!")
 

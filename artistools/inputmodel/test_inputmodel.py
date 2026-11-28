@@ -3035,6 +3035,91 @@ def test_from_e2e_model_3d_equatorial_symmetry_with_nodyn(tmp_path: Path, capsys
     assert "wid_init" in modelmeta
 
 
+# the bin state of each cell of the 2x2x2 grid of map_grid_with_donor, in the order of the cell ids
+DONOR_TEST_BIN_STATES = [0.0, 0.25, 0.5, 0.75, 1.0, 0.5, 0.5, 0.5]
+
+
+def map_grid_with_donor(
+    tmp_path: Path, donorformatversion: int, interpolate: bool
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Return the cells and the element abundances of a 2x2x2 grid that map_to_artis mixes with a donor model.
+
+    Each cell of the grid holds He4 and Zn56 with mass fractions of 0.5. The donor holds He4 with 0.75, and its
+    element table gives O with 0.25. Each cell of the donor has the density of the grid, thus the weight of the donor
+    in a cell is the bin state of the cell.
+    """
+    from artistools.constants import C_cm_per_s
+    from artistools.inputmodel.from_e2e_model import map_to_artis
+    from artistools.inputmodel.from_e2e_model import t_model_init_s
+
+    vmax_on_c = 0.4
+    dims = np.array([2, 2, 2])
+    ncells = int(dims.prod())
+    # a Float32 value, thus the donor file holds the same density
+    rho = 2.0**-33
+    lzdonor, donormeta = get_empty_3d_model(2, vmax_on_c * C_cm_per_s, t_model_init_s / day_to_s)
+    donorfolder = tmp_path / "donor"
+    at.inputmodel.save_modeldata(
+        lzdonor.collect().with_columns(rho=pl.lit(rho), q=pl.lit(1e13), Ye=pl.lit(0.3), X_He4=pl.lit(0.75)),
+        modelmeta=donormeta,
+        outpath=donorfolder,
+        dfelabundances=pl.DataFrame({
+            "inputcellid": range(1, ncells + 1),
+            "X_He": [0.75] * ncells,
+            "X_O": [0.25] * ncells,
+        }),
+    )
+    if donorformatversion == 2:
+        at.inputmodel.makeartismodel.main(
+            argsraw=[], modelpath=[donorfolder], format_version=2, outputfile=tmp_path / "donor_v2"
+        )
+        donorfolder = tmp_path / "donor_v2"
+
+    corners = np.array([-vmax_on_c, 0.0]) * C_cm_per_s * t_model_init_s
+    x3d, y3d, z3d = np.meshgrid(corners, corners, corners, indexing="ij")
+    ones = np.ones(tuple(dims))
+    outputfolder = tmp_path / "out"
+    outputfolder.mkdir()
+    dfmodel, dfelabundances, _ = map_to_artis(
+        3,
+        dims,
+        vmax_on_c,
+        rho * ones,
+        np.array([0.5 * ones, 0.5 * ones]),
+        np.array([[2, 2], [26, 30]]),
+        1e13 * ones,
+        0.3 * ones,
+        1,
+        x3d=x3d,
+        y3d=y3d,
+        z3d=z3d,
+        # the first index of the grid changes fastest in the cell ids
+        bin_state=np.array(DONOR_TEST_BIN_STATES).reshape(tuple(dims), order="F"),
+        replacedyn=str(donorfolder),
+        interpolate=interpolate,
+        outputfolder=outputfolder,
+    )
+    return dfmodel, dfelabundances
+
+
+@pytest.mark.parametrize("donorformatversion", [1, 2])
+def test_from_e2e_model_interpolation_keeps_the_elements_of_the_donor(tmp_path: Path, donorformatversion: int) -> None:
+    """The interpolation with the donor of --replacedyn keeps an element of the donor that has no nuclide column.
+
+    The element mass fractions came from the nuclide columns alone, thus the output lost the oxygen of the donor. The
+    normalisation of the nuclide columns to a sum of 1 then gave the mass of the oxygen to the other nuclides.
+    """
+    dfmodel, dfelabundances = map_grid_with_donor(tmp_path, donorformatversion, interpolate=True)
+
+    donorweight = np.array(DONOR_TEST_BIN_STATES)
+    assert dfelabundances["inputcellid"].to_list() == list(range(1, donorweight.size + 1))
+    np.testing.assert_allclose(dfelabundances["X_O"], 0.25 * donorweight, rtol=1e-6)
+    np.testing.assert_allclose(dfelabundances["X_He"], 0.75 * donorweight + 0.5 * (1.0 - donorweight), rtol=1e-6)
+    np.testing.assert_allclose(dfelabundances["X_Zn"], 0.5 * (1.0 - donorweight), rtol=1e-6)
+    np.testing.assert_allclose(dfmodel["X_He4"], 0.75 * donorweight + 0.5 * (1.0 - donorweight), rtol=1e-6)
+    np.testing.assert_allclose(dfmodel["X_Zn56"], 0.5 * (1.0 - donorweight), rtol=1e-6)
+
+
 @pytest.mark.parametrize(("prefix", "suffix"), [(" ", ""), ("", " "), ("\t", "")])
 def test_scan_modeldata_1d_reads_a_line_with_one_leading_space(tmp_path: Path, prefix: str, suffix: str) -> None:
     """A model.txt whose lines start or end with a space must give the cell ids and the velocities.
