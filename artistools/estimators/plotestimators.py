@@ -792,11 +792,20 @@ def get_average_excitation_plans(
     **plotkwargs: t.Any,
 ) -> list[SeriesPlan]:
     """Return the series of the population-weighted mean level excitation energy of each requested ion."""
+    # artistools.lines.core imports from this package, thus an import at the top of the module makes an import cycle
+    from artistools.lines import get_excitation_temperature_column
+
     settings["ylabel"] = "Average excitation energy [eV]"
 
     estimatorcolumns = estimators.collect_schema().names()
-    # the superlevel population is spread over the levels it stands in for at the electron temperature
-    dftexc = estimators.select("timestep", "modelgridindex", T_exc=pl.col("Te"))
+    temperaturecolumn = get_excitation_temperature_column(
+        modelpath,
+        "auto",
+        usetext="averageexcitation spreads the population of each superlevel over its levels with the Boltzmann"
+        " factors at",
+        hasexctemperatureoption=False,
+    )
+    dftexc = estimators.select("timestep", "modelgridindex", T_exc=pl.col(temperaturecolumn))
 
     # one read serves every series of the subplot
     dfnltepops_allions = read_nltepops(modelpath, timestep=timestepslist, modelgridindex=mgilist)

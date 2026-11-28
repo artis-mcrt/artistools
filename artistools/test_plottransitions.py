@@ -24,14 +24,16 @@ def test_transitions(mockplot: mock.MagicMock, get_plot_xy: Callable[[t.Any], tu
     at.plottransitions.main(argsraw=[], modelpath=modelpath, outputfile=outputpath, timedays=300)
 
     assert len(mockplot.call_args_list) == 7
+    # the cell has no NLTE row of Ni II and Ni III, thus these ions take the LTE populations of their very small
+    # nnion_ estimators. The atol of 0 keeps such a small value in the comparison
     expected_integrals = [
         0.05309512674525126,
         376.57154726748985,
         422.3699041724463,
         11.76194204379188,
         48.772050822952906,
-        0.0,
-        0.0,
+        1.6244959787077242e-11,
+        2.688040057176372e-12,
     ]
     expected_maxima = [
         8.724265104752106e-05,
@@ -39,8 +41,8 @@ def test_transitions(mockplot: mock.MagicMock, get_plot_xy: Callable[[t.Any], tu
         1.079855927437704,
         0.016257895914721012,
         0.062324908090780305,
-        0.0,
-        0.0,
+        2.0995552060405343e-14,
+        5.121887816924996e-15,
     ]
     for callargs, expected_integral, expected_max in zip(
         mockplot.call_args_list, expected_integrals, expected_maxima, strict=True
@@ -48,8 +50,8 @@ def test_transitions(mockplot: mock.MagicMock, get_plot_xy: Callable[[t.Any], tu
         xarr, yarr = get_plot_xy(callargs)
         assert np.isclose(xarr[0], 3500.0, rtol=1e-4)
         assert np.isclose(xarr[-1], 7996.0, rtol=1e-4)
-        assert np.isclose(np.trapezoid(yarr, xarr), expected_integral, rtol=1e-4, atol=1e-8)
-        assert np.isclose(yarr.max(), expected_max, rtol=1e-4, atol=1e-8)
+        assert np.isclose(np.trapezoid(yarr, xarr), expected_integral, rtol=1e-4, atol=0.0)
+        assert np.isclose(yarr.max(), expected_max, rtol=1e-4, atol=0.0)
 
 
 def test_kurucz_transitions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -222,3 +224,42 @@ def test_transitions_take_the_model_excitation_temperature(tmp_path: Path, optio
     with mock.patch.object(at.plottransitions, "read_nltepops", return_value=nltepops):
         conditions = at.plottransitions.get_model_conditions(tmp_path, cell, [(26, 2)], [])
     assert conditions.vardict["T_exc"] == pytest.approx(expected)
+
+
+def test_transitions_of_an_ion_with_no_nlte_row_take_the_ion_density_estimator(tmp_path: Path) -> None:
+    """An ion with no NLTE row takes the LTE populations of its nnion_ estimator at T_exc.
+
+    The command took the sum of the NLTE rows of the ion as its population. ARTIS writes no NLTE row of an element with
+    no NLTE solution in the cell. Thus the population of such an ion was zero, and its lines were not in the plot.
+    """
+    (tmp_path / "artisoptions.h").write_text("constexpr bool LTEPOP_EXCITATION_USE_TJ = true;\n", encoding="utf-8")
+    nltepops = pl.DataFrame({
+        "modelgridindex": [0, 0],
+        "Z": [28, 28],
+        "ion_stage": [2, 2],
+        "level": [0, 1],
+        "n_NLTE": [5.0, 1.0],
+    })
+    cell = at.plottransitions.CellConditions(
+        modelgridindex=0,
+        timestep=0,
+        time_days=1.0,
+        velocity=1000.0,
+        estimators={"Te": 5000.0, "TR": 6000.0, "TJ": 8000.0, "nnion_Fe_II": 100.0, "nnion_Ni_II": 7.0},
+    )
+    with mock.patch.object(at.plottransitions, "read_nltepops", return_value=nltepops):
+        conditions = at.plottransitions.get_model_conditions(tmp_path, cell, [(26, 2), (28, 2)], [])
+    # Ni II keeps the sum of its NLTE rows, and not its estimator
+    assert conditions.ionpopdict == pytest.approx({(26, 2): 100.0, (28, 2): 6.0})
+
+    levels = pl.DataFrame({"levelindex": [0, 1, 2], "g": [10.0, 8.0, 6.0], "energy_ev": [0.0, 0.1, 1.0]})
+    transitions = pl.DataFrame({"upper": [1, 2], "flux_factor": [0.1, 1.0], "upper_pop_Te": [1.0, 1.0]})
+    result = at.plottransitions.add_nlte_pop(transitions, levels, conditions, (26, 2))
+    boltzmann = levels["g"].to_numpy() * np.exp(-levels["energy_ev"].to_numpy() / K_B_ev_per_K / 8000.0)
+    # the populations of all the levels sum to the estimator, and the upper levels take their part of it
+    ltepops = 100.0 * boltzmann / boltzmann.sum()
+    assert result["upper_pop_nlte"].to_numpy() == pytest.approx(ltepops[1:], rel=1e-12, abs=0.0)
+    assert (result["flux_factor_nlte"] > 0.0).all()
+
+    nickel = at.plottransitions.add_nlte_pop(transitions.head(1), levels, conditions, (28, 2))
+    assert nickel["upper_pop_nlte"].to_list() == [1.0]

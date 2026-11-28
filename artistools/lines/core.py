@@ -301,12 +301,17 @@ def get_artis_excitation_uses_tj(modelpath: Path | str) -> bool | None:
 
 
 def get_excitation_temperature_column(
-    modelpath: Path | str, selection: str, usetext: str = "The level populations are LTE populations at"
+    modelpath: Path | str,
+    selection: str,
+    usetext: str = "The level populations are LTE populations at",
+    *,
+    hasexctemperatureoption: bool = True,
 ) -> str:
     """Return the estimator column that gives T_exc, and log the column and the reason for it.
 
     A selection of "auto" takes the temperature that ARTIS used for the LTE level populations of the model. usetext
-    starts the log line, and it names what takes T_exc.
+    starts the log line, and it names what takes T_exc. A command with no --exctemperature option gives
+    hasexctemperatureoption=False, thus the warning does not tell the user to give that option.
     """
     if selection != "auto":
         column, reason = selection, f"--exctemperature {selection}"
@@ -314,7 +319,11 @@ def get_excitation_temperature_column(
         column, reason = "Te", "the default"
         print_warning(
             "The artisoptions.h of the model gives no LTEPOP_EXCITATION_USE_TJ, thus the level populations take Te."
-            " Give --exctemperature TJ or --exctemperature Te to select the temperature"
+            + (
+                " Give --exctemperature TJ or --exctemperature Te to select the temperature"
+                if hasexctemperatureoption
+                else ""
+            )
         )
     else:
         column = "TJ" if usestj else "Te"

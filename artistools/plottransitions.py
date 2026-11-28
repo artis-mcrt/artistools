@@ -472,7 +472,8 @@ def get_model_conditions(
 ) -> PlotConditions:
     """Return the NLTE populations and the temperatures of one cell of a model.
 
-    Each temperature of ltetemperatures gives an LTE series with the ion populations of the cell.
+    The population of an ion is the sum of its NLTE rows, or its nnion_ estimator for an ion with no NLTE row. Each
+    temperature of ltetemperatures gives an LTE series with the ion populations of the cell.
     """
     # get_ion_populations needs one row for each level, as get_cell_line_inputs of linecontributions gives it
     dfnltepops = read_nltepops(modelpath, modelgridindex=cell.modelgridindex, timestep=cell.timestep).unique(
@@ -492,7 +493,13 @@ def get_model_conditions(
         " superlevel takes the superlevel population (the row with level -1 in the NLTE file), multiplied by its weight"
         " g exp(-E / k T_exc) and divided by the sum of the weights of the superlevel. For an ion with NLTE rows and"
         " no superlevel, a level above the NLTE levels takes the ground-level population n_0 times"
-        " (g / g_0) exp(-(E - E_0) / k T_exc). An ion with no NLTE row has a population of zero"
+        " (g / g_0) exp(-(E - E_0) / k T_exc)"
+    )
+    print_detail(
+        "ARTIS writes no NLTE row of an element with no NLTE solution in the cell, e.g. an element with no NLTE"
+        " levels. An ion of such an element takes the LTE populations of its nnion_ estimator: n_ion g exp(-E / k"
+        " T_exc) / Z. Z is the partition function at T_exc of the levels that ARTIS keeps. An ion with no NLTE row and"
+        " no nnion_ estimator has a population of zero"
     )
     warn_about_autoionising_levels(modelpath)
     figure_title = (
@@ -502,10 +509,14 @@ def get_model_conditions(
     )
 
     ltenames = [f"T{index + 1}" for index in range(len(ltetemperatures))]
+    nltepopsumofion = {
+        (Z, ion_stage): float(n_NLTE)
+        for Z, ion_stage, n_NLTE in dfnltepops.group_by("Z", "ion_stage").agg(pl.col("n_NLTE").sum()).iter_rows()
+    }
     return PlotConditions(
         ionpopdict={
-            (Z, ion_stage): float(
-                dfnltepops.filter((pl.col("Z") == Z) & (pl.col("ion_stage") == ion_stage))["n_NLTE"].sum()
+            (Z, ion_stage): nltepopsumofion.get(
+                (Z, ion_stage), float(cell.estimators.get(f"nnion_{get_ionstring(Z, ion_stage, sep='_')}", 0.0))
             )
             for Z, ion_stage in ionlist
         },

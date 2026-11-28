@@ -1906,7 +1906,12 @@ def get_averageexcitation(
 
 
 def superlevel_energy(dfsuperlevel: pl.DataFrame, dflevels: pl.DataFrame, groupcols: list[str]) -> pl.DataFrame:
-    """Return the energy the superlevel population contributes, Boltzmann-distributed at T_exc."""
+    """Return the energy the superlevel population contributes, Boltzmann-distributed at T_exc.
+
+    The Boltzmann factors take the energy above the lowest level of the superlevel, as superlevel_boltzmann() of
+    ARTIS does. Thus a high superlevel at a low T_exc does not give zero for each factor. The mean takes the absolute
+    energies.
+    """
     schema: dict[str, pl.DataType] = {
         **{col: dfsuperlevel.schema[col] for col in groupcols},
         "energypopsum_sl": pl.Float64(),
@@ -1926,6 +1931,7 @@ def superlevel_energy(dfsuperlevel: pl.DataFrame, dflevels: pl.DataFrame, groupc
             continue
 
         dfsuperlevel_thislevel = dfsuperlevel.filter(pl.col("levelnumber_sl") == levelnumber_sl)
+        excitation_ev = pl.col("energy_ev") - dflevels_above["energy_ev"].min()
 
         # the cross join makes one row for each pair of superlevel row and level above it. A 3D
         # model with 100k NLTE cells and a few hundred levels would need tens of GB. Thus each
@@ -1936,7 +1942,7 @@ def superlevel_energy(dfsuperlevel: pl.DataFrame, dflevels: pl.DataFrame, groupc
             dfsuperlevel_thislevel
             .slice(batchstart, batchheight)
             .join(dflevels_above, how="cross", maintain_order="left")
-            .with_columns(boltzfac=get_boltzmann_factor_expr(pl.col("g"), pl.col("energy_ev"), pl.col("T_exc")))
+            .with_columns(boltzfac=get_boltzmann_factor_expr(pl.col("g"), excitation_ev, pl.col("T_exc")))
             .group_by(groupcols)
             .agg(
                 energypopsum_sl=pl.col("n_NLTE_sl").first()

@@ -5771,6 +5771,100 @@ def test_averageexcitation_spreads_the_superlevel_over_the_kept_levels(monkeypat
     assert avgexc == pytest.approx(0.5 * (ionlevels["energy_ev"][0] + meanenergy_superlevel), rel=1e-9, abs=0.0)
 
 
+def patch_ion_levels(monkeypatch: pytest.MonkeyPatch, energies_ev: Sequence[float], g: Sequence[float]) -> None:
+    """Give Fe II of each model the levels with energies_ev and g, and let ARTIS keep all of them."""
+
+    def get_ion_levels(_modelpath: Path, _atomic_number: int, _ion_stage: int) -> pl.DataFrame:
+        return pl.DataFrame({"levelindex": range(len(energies_ev)), "energy_ev": energies_ev, "g": g})
+
+    def get_kept_level_counts(_modelpath: Path | str) -> dict[int, int | None]:
+        return {26: None}
+
+    monkeypatch.setattr(at.estimators.core, "get_ion_levels", get_ion_levels)
+    monkeypatch.setattr(at.estimators.core, "get_kept_level_counts", get_kept_level_counts)
+
+
+@pytest.mark.parametrize("excitationusestj", [None, "false", "true"])
+def test_averageexcitation_takes_the_excitation_temperature_of_artis(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], excitationusestj: str | None
+) -> None:
+    """The superlevel takes the Boltzmann factors at TJ if artisoptions.h sets LTEPOP_EXCITATION_USE_TJ = true.
+
+    The plot always took Te. A model with no such option keeps Te. The warning names no option, because plotestimators
+    has no --exctemperature option.
+    """
+    energies_ev, g = [0.0, 1.0, 2.0], [1.0, 1.0, 3.0]
+    patch_ion_levels(monkeypatch, energies_ev, g)
+    dfnltepops = pl.DataFrame({
+        "Z": 26,
+        "ion_stage": 2,
+        "timestep": 0,
+        "modelgridindex": 0,
+        "level": [0, -1],
+        "n_NLTE": [1.0, 1.0],
+    })
+
+    def read_nltepops(*_args: t.Any, **_kwargs: t.Any) -> pl.DataFrame:
+        return dfnltepops
+
+    monkeypatch.setattr(plotestimators, "read_nltepops", read_nltepops)
+    if excitationusestj is not None:
+        (tmp_path / "artisoptions.h").write_text(
+            f"constexpr bool LTEPOP_EXCITATION_USE_TJ = {excitationusestj};\n", encoding="utf-8"
+        )
+    temperatures = {"Te": 5000.0, "TJ": 20000.0}
+    estimators = pl.LazyFrame({
+        "timestep": [0],
+        "modelgridindex": [0],
+        **{column: [value] for column, value in temperatures.items()},
+        "deltavol_deltat": [1.0],
+        "nnion_Fe_II": [1.0],
+    })
+
+    capsys.readouterr()
+    settings: plotestimators.SubplotSettings = {}
+    (plan,) = plotestimators.get_average_excitation_plans(settings, ["Fe II"], [0], [0], estimators, tmp_path)
+    avgexc = plan.dfseries.collect()["yvalue"].item()
+
+    temperaturecolumn = "TJ" if excitationusestj == "true" else "Te"
+    superlevelfactors = np.array(g[1:]) * np.exp(
+        -(np.array(energies_ev[1:]) - energies_ev[1]) / at.constants.K_B_ev_per_K / temperatures[temperaturecolumn]
+    )
+    superlevelenergy_ev = float((np.array(energies_ev[1:]) * superlevelfactors).sum() / superlevelfactors.sum())
+    # the ground level has an energy of zero, and it holds one half of the ion
+    assert avgexc == pytest.approx(0.5 * superlevelenergy_ev, rel=1e-12, abs=0.0)
+
+    output = capsys.readouterr()
+    assert f"T_exc = {temperaturecolumn}," in output.out
+    assert ("gives no LTEPOP_EXCITATION_USE_TJ" in output.err) == (excitationusestj is None)
+    assert "--exctemperature" not in output.err
+
+
+def test_averageexcitation_of_a_high_superlevel_at_a_low_temperature_is_finite(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The Boltzmann factors took the absolute energies, thus each was zero at 10 eV and 100 K, and the mean was NaN.
+
+    The ground level holds no population, thus the superlevel holds the full ion.
+    """
+    patch_ion_levels(monkeypatch, [0.0, 10.0, 11.0], [1.0, 2.0, 2.0])
+    dfnltepops = pl.LazyFrame({
+        "Z": 26,
+        "ion_stage": 2,
+        "timestep": 0,
+        "modelgridindex": 0,
+        "level": [0, -1],
+        "n_NLTE": [0.0, 1.0],
+    })
+    dftexc = pl.LazyFrame({"timestep": [0], "modelgridindex": [0], "T_exc": [100.0]})
+    avgexc = (
+        at.estimators
+        .get_averageexcitation(modelpath, 26, 2, dftexc, dfnltepops=dfnltepops)
+        .collect()["averageexcitation"]
+        .item()
+    )
+    # the Boltzmann factor of the level at 11 eV is exp(-1 eV / k 100 K) of the factor at 10 eV, which is below 1e-50
+    assert avgexc == pytest.approx(10.0, rel=1e-12, abs=0.0)
+
+
 def test_cumulative_population_does_not_change_with_the_x_range() -> None:
     """The cumulative count at an x starts at the centre of the model, thus -xmin must not change it.
 
