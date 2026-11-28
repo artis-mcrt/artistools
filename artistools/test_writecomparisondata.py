@@ -20,20 +20,39 @@ def test_writecomparisondata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     The default model path "." gave an empty model name, e.g. spectra__artisnebular.txt.
     The format labels the neutral stage 0, thus the stages below the lowest ion of an element hold zero.
     The header gave each column its ARTIS ion stage, which is 1 for the neutral stage, thus Co II took the label co2.
+    An export kept the files of an earlier export that it did not write again, e.g. the ion fractions of oxygen.
     """
     monkeypatch.chdir(modelpath)
+    # this export writes no edep file, no lbol_edep file, and no file for oxygen
+    for oldname in (
+        "edep_testmodel_artisnebular.txt",
+        "lbol_edep_testmodel_artisnebular.txt",
+        "ionfrac_o_testmodel_artisnebular.txt",
+    ):
+        (tmp_path / oldname).write_text("earlier export\n", encoding="utf-8")
+    # a file of a different model identifier, and a file that the export does not write, must stay
+    keptfiles = {
+        "phys_testmodelb_artisnebular.txt": "a different model\n",
+        "notes_testmodel_artisnebular.txt": "notes\n",
+    }
+    for keptname, text in keptfiles.items():
+        (tmp_path / keptname).write_text(text, encoding="utf-8")
+
     # CodSpeed runs a benchmark more than one time in one folder, thus the later runs find the files of the first
     at.writecomparisondata.main(
         argsraw=[], modelpath=Path(), outputpath=tmp_path, selected_timesteps=list(range(99)), force=True
     )
 
     # the test model holds no deposition_ column, thus the export writes no edep file
-    assert sorted(path.name for path in tmp_path.iterdir()) == [
+    assert sorted(path.name for path in tmp_path.iterdir()) == sorted([
         "ionfrac_co_testmodel_artisnebular.txt",
         "ionfrac_fe_testmodel_artisnebular.txt",
         "phys_testmodel_artisnebular.txt",
         "spectra_testmodel_artisnebular.txt",
-    ]
+        *keptfiles,
+    ])
+    for keptname, text in keptfiles.items():
+        assert (tmp_path / keptname).read_text(encoding="utf-8") == text
 
     from artistools.spectra.core import scan_spec
 
