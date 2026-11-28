@@ -3394,6 +3394,77 @@ def test_viewing_angle_table_gives_no_bin_that_the_file_does_not_name(capsys: py
     assert get_table_dirbins(dfdata, Path("old_viewing_angle_data.txt"), args) == [5, 10]
 
 
+PHILLIPS_RELATION_TEXT = (
+    "SN dm15(B) MB (B-V)Bmax err_(B-V)Bmax err_MB\nsn1 1.1 -19.2 0.05 0.02 0.10\nsn2 1.4 -18.9 0.12 0.03 0.15\n"
+)
+
+
+def run_colour_at_peak_plot(folder: Path, bands: list[str], dirbins: Sequence[int]) -> tuple[mplfig.Figure, Path]:
+    """Return the figure and the path of the plot that --colouratpeak makes from a data file of the first band.
+
+    The file holds the bins in the order of dirbins, and bin n has its peak of -19 + 0.001 n at 10 d. Each band of
+    bin n has the magnitude -18 - 0.01 n at each time. The mock fit returns the magnitudes that it receives, thus the
+    second band has that magnitude at the peak.
+    """
+    dataname = viewingangleanalysis.get_viewing_angle_data_names([modelpath])[0]
+    rows = "".join(f"{dirbin} {-19.0 + 0.001 * dirbin} 10.0 1.0\n" for dirbin in dirbins)
+    (folder / viewingangleanalysis.get_viewing_angle_data_filename(bands[0], dataname)).write_text(
+        f"dirbin peak_mag_polyfit risetime_polyfit deltam15_polyfit\n{rows}", encoding="utf-8"
+    )
+
+    def get_band_magnitudes_of_dirbin(
+        _modelpath: Path, filternames: Sequence[str], dirbin: int, _args: argparse.Namespace
+    ) -> dict[str, list[tuple[float, float]]]:
+        return {band: [(time, -18.0 - 0.01 * dirbin) for time in (5.0, 10.0, 15.0)] for band in filternames}
+
+    def fit_that_keeps_the_magnitudes(
+        time: Sequence[float], magnitude: npt.NDArray[np.floating]
+    ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.float64]]:
+        return magnitude, np.asarray(time, dtype=np.float64)
+
+    savedfigures: list[mplfig.Figure] = []
+
+    def save_figure_spy(fig: mplfig.Figure, *_args: t.Any, **_kwargs: t.Any) -> None:
+        savedfigures.append(fig)
+
+    with (
+        mock.patch.object(
+            viewingangleanalysis, "generate_band_lightcurve_data_for_args", side_effect=get_band_magnitudes_of_dirbin
+        ),
+        mock.patch.object(viewingangleanalysis, "lightcurve_polyfit", side_effect=fit_that_keeps_the_magnitudes),
+        mock.patch.object(viewingangleanalysis, "save_figure", side_effect=save_figure_spy),
+    ):
+        at.lightcurve.plot(
+            argsraw=[], modelpath=[modelpath], filter=bands, colouratpeak=True, write_data=True, outputfile=folder
+        )
+
+    (figure,) = savedfigures
+    return figure, folder / f"plotviewinganglecolour{bands[0]}-{bands[1]}.pdf"
+
+
+def test_colour_at_peak_reads_the_second_band_of_the_bin_of_each_row(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
+    """The second band of a row of the data file must come from the direction bin of that row.
+
+    The command read the second band of the bin with the number of the row. Thus a file in reverse order gave the row
+    of bin 99 the V magnitude of bin 0.
+    """
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "CfA3_Phillips.dat").write_text(PHILLIPS_RELATION_TEXT, encoding="utf-8")
+    colourtables: list[pl.DataFrame] = []
+    for foldername, dirbins in (("ascending", range(100)), ("reverse", range(99, -1, -1))):
+        folder = tmp_path / foldername
+        folder.mkdir()
+        _, plotpath = run_colour_at_peak_plot(folder, ["B", "V"], dirbins)
+        colourtables.append(read_data_file(plotpath.with_suffix(".txt")).select("dirbin", "peakcolour").sort("dirbin"))
+
+    pltest.assert_frame_equal(colourtables[0], colourtables[1])
+    assert colourtables[0]["dirbin"].to_list() == list(range(100))
+    # the colour of bin n is (-19 + 0.001 n) - (-18 - 0.01 n)
+    assert np.allclose(colourtables[0]["peakcolour"], -1.0 + 0.011 * np.arange(100), rtol=0.0, atol=1e-9)
+
+
 def test_lightcurve_tables_keep_two_models_of_one_name_apart(
     tmp_path: Path, read_data_file: Callable[[Path], pl.DataFrame]
 ) -> None:

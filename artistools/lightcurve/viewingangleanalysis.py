@@ -433,7 +433,7 @@ def get_datafile_dirbins(dfdata: pl.DataFrame, datafilename: Path, args: argpars
 
     if len(dirbins) != dfdata.height or -1 in dirbins:
         msg = (
-            f"The colour bar needs the direction bin of each row of {datafilename},"
+            f"The plot needs the direction bin of each row of {datafilename},"
             f" which has {dfdata.height} rows and gives {len(dirbins)} direction bins."
             " Write the file again with a --plotviewingangle selection, and give the same selection here."
         )
@@ -610,7 +610,11 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
         if len(data[f"time_{bands[0]}max"]) != 100:
             exit_with_error(f"{datafilename} does not hold all 100 direction bins")
 
-        second_band_brightness: t.Any = second_band_brightness_at_peak_first_band(data, bands, modelpath, args)
+        # the rows of the file can have a different order from the direction bins
+        dirbins = get_datafile_dirbins(viewing_angle_plot_data, datafilename, args)
+        second_band_brightness: t.Any = second_band_brightness_at_peak_first_band(
+            dirbins, data[f"time_{bands[0]}max"], bands[1], modelpath, args
+        )
 
         data[f"{bands[1]}at{bands[0]}max"] = second_band_brightness
 
@@ -630,7 +634,7 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
                 pl.lit(modelname).alias("model"),
                 pl.lit(str(modelpath)).alias("modelpath"),
                 pl.lit(linelabel).alias("label"),
-                pl.Series("dirbin", get_table_dirbins(viewing_angle_plot_data, datafilename, args), dtype=pl.Int64),
+                pl.Series("dirbin", dirbins, dtype=pl.Int64),
                 pl.all(),
             )
         )
@@ -667,19 +671,23 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
 
 
 def second_band_brightness_at_peak_first_band(
-    data: dict[str, npt.NDArray[np.float64]], bands: Sequence[str], modelpath: Path, args: argparse.Namespace
+    dirbins: Sequence[int],
+    first_band_peak_times: npt.NDArray[np.float64],
+    second_band: str,
+    modelpath: Path,
+    args: argparse.Namespace,
 ) -> list[float]:
     """Return the second band's magnitude at the time the first band peaks, for each direction bin."""
     second_band_brightness: list[float] = []
-    for anglenumber, _ in enumerate(data[f"time_{bands[0]}max"]):
-        lightcurve_data = generate_band_lightcurve_data_for_args(modelpath, args.filter, anglenumber, args)
+    for dirbin, first_band_peak_time in zip(dirbins, first_band_peak_times, strict=True):
+        lightcurve_data = generate_band_lightcurve_data_for_args(modelpath, args.filter, dirbin, args)
         time, brightness_in_mag = get_band_lightcurve(
-            lightcurve_data, bands[1], timemin=args.timemin, timemax=args.timemax
+            lightcurve_data, second_band, timemin=args.timemin, timemax=args.timemax
         )
 
         fxfit, xfit = lightcurve_polyfit(time, brightness_in_mag)
 
-        index_at_max = int(np.abs(np.asarray(xfit, dtype=float) - data[f"time_{bands[0]}max"][anglenumber]).argmin())
+        index_at_max = int(np.abs(np.asarray(xfit, dtype=float) - first_band_peak_time).argmin())
 
         brightness_in_second_band_at_first_band_peak = fxfit[index_at_max]
         print(brightness_in_second_band_at_first_band_peak)
