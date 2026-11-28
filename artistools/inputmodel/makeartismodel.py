@@ -29,12 +29,14 @@ from artistools.inputmodel.core import scan_initelemabundances
 from artistools.inputmodel.core import scan_modeldata
 from artistools.inputmodel.core import with_cell_ids_from_zero
 from artistools.inputmodel.core import with_ye_of_yefile
+from artistools.inputmodel.core import with_ye_that_sn3d_reads
 from artistools.inputmodel.downscale3dgrid import get_downscale_outputfolder
 from artistools.inputmodel.downscale3dgrid import make_downscaled_3d_grid
 from artistools.inputmodel.energyinputfiles import ENERGY_FILE_NAMES
 from artistools.inputmodel.energyinputfiles import make_energy_files
 from artistools.inputmodel.modelfromhydro import get_griddata_output_file_names
 from artistools.inputmodel.modelfromhydro import makemodelfromgriddata
+from artistools.inputmodel.rprocess_from_trajectory import delete_gridparticlecontributions
 from artistools.inputmodel.rprocess_from_trajectory import get_gridparticlecontributions_or_none
 from artistools.inputmodel.rprocess_from_trajectory import save_gridparticlecontributions
 from artistools.misc import addarg_darkmode
@@ -46,7 +48,6 @@ from artistools.misc import ALL_MODEL_EDGE_KEYS
 from artistools.misc import confirm_overwrite
 from artistools.misc import exit_with_error
 from artistools.misc import firstexisting_or_none
-from artistools.misc import get_file_copies
 from artistools.misc import get_model_coordinates
 from artistools.misc import has_mirror_plane
 from artistools.misc import normalize_path_list
@@ -458,15 +459,11 @@ def reduce_model_dimensions(
         msg = f"Cannot reduce {ndim_in}D model to {ndim_out}D"
         raise ValueError(msg)
 
-    sourcefolder = get_model_input_folder(modelpath)
     dfelabundances = scan_initelemabundances(modelpath)
     dfgridcontributions = get_gridparticlecontributions_or_none(get_gridcontributions_folder(modelpath))
-    yefilepath = find_ye_file(sourcefolder)
-    require_no_ye_file_of_version_2_model(yefilepath, modelmeta, sourcefolder)
-    if yefilepath is not None:
-        # sn3d takes the electron fractions of Ye.txt for the source model. Ye.txt has the cells of the source
-        # model, thus the reduced model gets these values in its column Ye, also in version 1
-        dfmodel = with_ye_of_yefile(dfmodel.collect(), yefilepath).lazy()
+    # Ye.txt has the cells of the source model, thus the reduced model gets its values in its column Ye, also in
+    # version 1
+    dfmodel = with_ye_that_sn3d_reads(dfmodel, modelpath, modelmeta)
 
     if sliceaxis is not None and radialaxis is not None:
         dfmodel_out, dfelabundances_out, dfgridcontributions_out, modelmeta_out = make_cylindrical_slice(
@@ -521,11 +518,7 @@ def reduce_model_dimensions(
     if dfgridcontributions_out is not None:
         save_gridparticlecontributions(dfgridcontributions_out, outdir / "gridcontributions.txt")
     else:
-        # the particle contributions of an earlier model do not go with the cells of the new model.txt
-        for oldfile in get_file_copies(outdir / "gridcontributions.txt"):
-            if oldfile.is_file():
-                oldfile.unlink()
-                print(f"  Deleted {oldfile}, which is a file of an earlier model in the output folder")
+        delete_gridparticlecontributions(outdir)
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:

@@ -24,6 +24,7 @@ from artistools.inputmodel.core import add_derived_cols_to_modeldata
 from artistools.inputmodel.core import get_middle_layer_lower_edge
 from artistools.inputmodel.core import get_spherical_image_cell_indices
 from artistools.inputmodel.core import scan_modeldata
+from artistools.inputmodel.core import with_ye_that_sn3d_reads
 from artistools.misc import addarg_darkmode
 from artistools.misc import addarg_data_output
 from artistools.misc import addarg_modelpath
@@ -37,7 +38,6 @@ from artistools.misc import import_optional
 from artistools.misc import output_data
 from artistools.misc import parse_cli_args
 from artistools.misc import positive_float_arg
-from artistools.misc import read_wsv
 from artistools.misc import require_cartesian3d_model
 from artistools.misc import resolve_outputfile
 from artistools.misc import resolve_positional_modelpath
@@ -250,28 +250,6 @@ def plot_slice_modelcolumn(
     return im
 
 
-def add_ye_from_yefile(lzdfmodel: pl.LazyFrame, modelpath: Path | str, modelmeta: dict[str, t.Any]) -> pl.LazyFrame:
-    """Add the Ye column of Ye.txt to a model whose model.txt holds no Ye column.
-
-    Ye.txt gives the number of lines first, and then the cell id and Ye of each cell. The ids are the ids of
-    model.txt, thus a join on the id is correct also for a file that holds only some of the cells. A model of
-    format version 2 has no Ye.txt, thus the function stops for such a model.
-    """
-    if modelmeta.get("formatversion", 1) == 2:
-        msg = (
-            f"The model.txt of {modelpath} has format version 2 and no column Ye. sn3d reads no Ye.txt for format"
-            " version 2"
-        )
-        raise ValueError(msg)
-    dfye = read_wsv(Path(modelpath) / "Ye.txt", has_header=False, skip_rows=1, new_columns=["inputcellid", "Ye"])
-    return lzdfmodel.join(
-        dfye.lazy().select(pl.col("inputcellid").cast(pl.Int32), pl.col("Ye").cast(pl.Float32)),
-        on="inputcellid",
-        how="left",
-        maintain_order="left",
-    )
-
-
 def get_colorbar_label(colname: str, logcolorscale: bool) -> str:
     """Return the label of the colour bar of one panel, which names the quantity of that panel."""
     if colname == "rho":
@@ -338,9 +316,8 @@ def plot_2d_initial_abundances(modelpath: Path | str, args: argparse.Namespace) 
         msg = f"plotinitialcomposition plots a 2D or a 3D model, but the model in {modelpath} is 1D"
         raise ValueError(msg)
 
-    if "Ye" in args.plotvars and "Ye" not in lzdfmodel.collect_schema().names():
-        # the model file can hold no Ye column, and then Ye.txt gives it, as for the 3D plot
-        lzdfmodel = add_ye_from_yefile(lzdfmodel, modelpath, modelmeta)
+    if "Ye" in args.plotvars:
+        lzdfmodel = with_ye_that_sn3d_reads(lzdfmodel, modelpath, modelmeta)
 
     modelcolumns = lzdfmodel.collect_schema().names()
     colnames = [plotvar if plotvar in modelcolumns else f"X_{plotvar.title()}" for plotvar in args.plotvars]
@@ -505,9 +482,8 @@ def make_3d_plot(modelpath: Path, args: argparse.Namespace) -> None:
     coloursurfaceby = plotvar if plotvar in {*plmodel.collect_schema().names(), "Ye"} else f"X_{plotvar.title()}"
     print(f"Colours set by {coloursurfaceby}")
     vmax = modelmeta["vmax_cmps"]
-    if "Ye" in args.plotvars and "Ye" not in plmodel.collect_schema().names():
-        # the model file can hold no Ye column, and then Ye.txt gives it
-        plmodel = add_ye_from_yefile(plmodel, modelpath, modelmeta)
+    if coloursurfaceby == "Ye":
+        plmodel = with_ye_that_sn3d_reads(plmodel, modelpath, modelmeta)
     model = plmodel.select(cs.by_name({"rho", coloursurfaceby}, require_all=False)).collect()
 
     # generate grid from data

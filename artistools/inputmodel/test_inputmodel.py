@@ -399,6 +399,55 @@ def test_scan_modeldata_refreshes_stale_cache(tmp_path: Path) -> None:
     assert pl.read_parquet_metadata(cachefilepath)["textsource_mtime"] == str(textfilepath.stat().st_mtime)
 
 
+def read_hydrogen_and_density(modelfolder: Path) -> tuple[float, float]:
+    """Return the hydrogen mass fraction and the density of the first cell of a model."""
+    dfmodel = get_derived_modeldata(modelfolder, get_elemabundances=True)[0].collect()
+    return float(dfmodel["X_H"].item(0)), float(dfmodel["rho"].item(0))
+
+
+def test_model_and_abundance_caches_find_an_edit_within_the_time_tolerance(tmp_path: Path) -> None:
+    """A new process reads the new values of model.txt and abundances.txt after an edit that adds 5 s to their times.
+
+    The check of a cache compared only the time of the text source, with a tolerance of MTIME_TOLERANCE_S. Thus the
+    cache gave the old density and the old mass fractions. A compression keeps the time and changes the size, thus
+    the cache of model.txt stays in use for model.txt.zst.
+    """
+    from artistools.inputmodel.core import get_parquet_cache_path
+
+    modelfolder = tmp_path / "model"
+    modelfolder.mkdir()
+    shutil.copy(modelpath / "model.txt", modelfolder)
+    (modelfolder / "abundances.txt").write_text("1 0.2 0.8\n", encoding="utf-8")
+    # a text file below 2 MiB gets a cache only if a cache file exists, thus the first read replaces these files
+    for textfilename in ("model.txt", "abundances.txt"):
+        get_parquet_cache_path(modelfolder / textfilename).write_bytes(b"")
+    assert read_hydrogen_and_density(modelfolder) == pytest.approx((0.2, 10**-0.18), rel=1e-6)
+
+    # each edit changes a physical value and the size of the file
+    edits = {"model.txt": ("-0.18", "-0.5"), "abundances.txt": ("0.2 0.8", "0.775 0.225")}
+    for textfilename, (oldtext, newtext) in edits.items():
+        textfilepath = modelfolder / textfilename
+        cachedmtime = textfilepath.stat().st_mtime
+        textfilepath.write_text(textfilepath.read_text(encoding="utf-8").replace(oldtext, newtext), encoding="utf-8")
+        os.utime(textfilepath, (cachedmtime + 5.0, cachedmtime + 5.0))
+
+    with ProcessPoolExecutor(max_workers=1, mp_context=multiprocessing.get_context("spawn")) as executor:
+        newvalues = executor.submit(read_hydrogen_and_density, modelfolder).result()
+    assert newvalues == pytest.approx((0.775, 10**-0.5), rel=1e-6)
+
+    # zstd keeps the time of the file, thus the copy of the same text uses the cache of model.txt
+    modeltextpath = modelfolder / "model.txt"
+    modelzstpath = modelfolder / "model.txt.zst"
+    with modelzstpath.open("wb") as fzst:
+        at.misc.fileio.write_zstd_lines(fzst, modeltextpath.read_text(encoding="utf-8").splitlines())
+    os.utime(modelzstpath, ns=(modeltextpath.stat().st_atime_ns, modeltextpath.stat().st_mtime_ns))
+    modeltextpath.unlink()
+    modelcachepath = get_parquet_cache_path(modelzstpath)
+    cacheidentity = at.misc.get_file_identity(modelcachepath)
+    assert read_hydrogen_and_density(modelfolder) == pytest.approx((0.775, 10**-0.5), rel=1e-6)
+    assert at.misc.get_file_identity(modelcachepath) == cacheidentity
+
+
 def test_downscale_3dmodel(tmp_path: Path) -> None:
     lzdfmodel, modelmeta = get_derived_modeldata(modelpath_3d, get_elemabundances=True)
     modelpath_3d_small = at.inputmodel.downscale3dgrid.make_downscaled_3d_grid(
@@ -2166,6 +2215,34 @@ def test_maketardismodel_maxatomicnumber_from_command_line(tmp_path: Path) -> No
     assert "Fe" in csvytext
     assert "Co" not in csvytext
     assert "Ni" not in csvytext
+
+
+def test_tardis_model_holds_the_inner_edge_and_each_artis_shell(tmp_path: Path) -> None:
+    """The TARDIS model starts at the inner edge of the innermost ARTIS shell, and it holds each shell.
+
+    TARDIS reads the velocity of the first row of the CSV part as the inner edge of the innermost shell. It discards
+    the cell values of that row. The file had one row for each shell, thus TARDIS lost the innermost shell. The model
+    of one shell gave no shell.
+    """
+    import yaml
+
+    at.inputmodel.to_tardis.main(argsraw=[str(modelpath), "-o", str(tmp_path)])
+
+    csvytext = (tmp_path / f"{at.get_model_name(modelpath)}.csvy").read_text(encoding="utf-8")
+    _, yamltext, csvtext = csvytext.split("---\n")
+    dfcsv = pl.read_csv(csvtext.encode())
+    assert [field["name"] for field in yaml.safe_load(yamltext)["datatype"]["fields"]] == dfcsv.columns
+    assert dfcsv["velocity"].to_list() == [0.0, 8000.0]
+
+    dfartis = get_derived_modeldata(modelpath, get_elemabundances=True)[0].collect()
+    elementcols = dfcsv.columns[4:]
+    assert "Ni" in elementcols
+    # the second row gives the density and the composition of the shell from 0 to 8000 km/s
+    assert dfcsv["density"][1] == pytest.approx(dfartis["rho"][0], rel=1e-4)
+    for element in elementcols:
+        assert dfcsv[element][1] == pytest.approx(dfartis[f"X_{element}"][0], rel=1e-4, abs=1e-12), element
+    # TARDIS discards the cell values of the first row, and the file gives them the values of the innermost shell
+    assert dfcsv.drop("velocity").row(0) == dfcsv.drop("velocity").row(1)
 
 
 def test_an_unreadable_model_cache_is_not_deleted(tmp_path: Path) -> None:
@@ -5278,6 +5355,87 @@ def test_abundances_and_old_ye_files_follow_the_search_of_sn3d(tmp_path: Path) -
         require_no_ye_file_of_earlier_model(modelfolder, tmp_path / "source")
 
 
+def write_3d_model_with_ye_file(modelfolder: Path) -> None:
+    """Write a 4^3 model of format version 1 with Ye = 0.2 in the column, and Ye.txt with 0.4 for the cells 43 and 54.
+
+    Cell 43 is on the positive x axis and in the layer above z = 0. The cone around the positive z axis holds the cells
+    54, 55, 58, and 59. Cell 54 has three times the mass of each other cell.
+    """
+    lzdfmodel, modelmeta = get_empty_3d_model(ncoordgrid=4, vmax=1.0e9, t_model_init_days=1.0)
+    dfmodel = lzdfmodel.collect().with_columns(
+        rho=pl.when(pl.col("inputcellid") == 54).then(3.0e-10).otherwise(1.0e-10),
+        X_Fegroup=pl.lit(1.0),
+        X_Ni56=pl.lit(1.0),
+        Ye=pl.lit(0.2),
+    )
+    at.inputmodel.save_modeldata(
+        dfmodel,
+        outpath=modelfolder,
+        modelmeta=modelmeta,
+        dfelabundances=pl.DataFrame({"inputcellid": dfmodel["inputcellid"], "X_Ni": 1.0}),
+    )
+    (modelfolder / "Ye.txt").write_text("2\n43 0.4\n54 0.4\n", encoding="utf-8")
+
+
+def test_slices_and_composition_plot_take_the_electron_fractions_of_ye_file(tmp_path: Path) -> None:
+    """The axis slice, the cone, and the composition plot take the electron fraction that sn3d takes for each cell.
+
+    sn3d reads Ye.txt after model.txt, thus a value of Ye.txt replaces the value of the column Ye. The two slices read
+    only the column. The plot read Ye.txt only for a model with no column Ye.
+    """
+    from artistools.inputmodel.core import with_ye_that_sn3d_reads
+    from artistools.inputmodel.make1dslicefrom3d import slice_3dmodel
+
+    modelfolder = tmp_path / "model"
+    write_3d_model_with_ye_file(modelfolder)
+
+    slice_3dmodel(modelfolder, tmp_path / "axisslice", "x")
+    dfaxisslice = at.inputmodel.scan_modeldata(tmp_path / "axisslice", printwarningsonly=True)[0].collect()
+    # the slice holds the cells 43 and 44, and only cell 43 has a value in Ye.txt
+    assert dfaxisslice["Ye"].to_list() == pytest.approx([0.4, 0.2], rel=1e-6)
+
+    at.inputmodel.slice1dfromconein3dmodel.main(
+        argsraw=[], modelpath=[modelfolder], outputpath=tmp_path / "cone", axis="+z", nshells=1, coneangle=60
+    )
+    dfcone = at.inputmodel.scan_modeldata(tmp_path / "cone" / "model_1d.txt", printwarningsonly=True)[0].collect()
+    massweightedye = np.average([0.4, 0.2, 0.2, 0.2], weights=[3.0, 1.0, 1.0, 1.0])
+    assert dfcone["Ye"].to_list() == pytest.approx([massweightedye], rel=1e-6)
+
+    with mock.patch.object(mplax.Axes, "imshow", side_effect=mplax.Axes.imshow, autospec=True) as mockimshow:
+        at.inputmodel.plotinitialcomposition.main(argsraw=["Ye", str(modelfolder), "-o", str(tmp_path)])
+    # the default image is the layer above z = 0, which holds the cells 33 to 48
+    expectedlayer = [0.4 if cellid == 43 else 0.2 for cellid in range(33, 49)]
+    assert np.asarray(mockimshow.call_args.args[1]).ravel().tolist() == pytest.approx(expectedlayer, rel=1e-6)
+
+    # the search of a model file of a remote model starts a server, thus the function keeps the column of such a model
+    lzremotemodel = pl.LazyFrame({"inputcellid": [1], "rho": [1.0e-10], "Ye": [0.2]})
+    dfremotemodel = with_ye_that_sn3d_reads(lzremotemodel, Path("somehost:/model"), {"formatversion": 1}).collect()
+    assert dfremotemodel["Ye"].to_list() == [0.2]
+
+
+def test_3d_composition_plot_takes_the_electron_fractions_of_ye_file(tmp_path: Path) -> None:
+    """The 3D plot takes the electron fraction that sn3d takes for each cell, and not only the column Ye.
+
+    The plot read Ye.txt only for a model with no column Ye.
+    """
+    pytest.importorskip("pyvista")
+    from artistools.inputmodel.plotinitialcomposition import get_3d_tables
+
+    modelfolder = tmp_path / "model"
+    write_3d_model_with_ye_file(modelfolder)
+
+    with (
+        mock.patch("pyvista.Plotter"),
+        mock.patch.object(
+            at.inputmodel.plotinitialcomposition, "get_3d_tables", side_effect=get_3d_tables, autospec=True
+        ) as mocktables,
+    ):
+        at.inputmodel.plotinitialcomposition.main(argsraw=["Ye", str(modelfolder), "--plot3d", "--print-data"])
+    # the axes of the values are x, y, and z, and the cell ids change x first
+    expectedcells = np.array([0.4 if cellid in {43, 54} else 0.2 for cellid in range(1, 65)])
+    assert np.allclose(mocktables.call_args.args[1], expectedcells.reshape((4, 4, 4), order="F"), rtol=1e-6, atol=0.0)
+
+
 @pytest.mark.parametrize(
     ("change", "match"),
     [
@@ -5528,6 +5686,48 @@ def test_reduction_and_downscale_write_the_format_version_of_the_prompt(
         at.inputmodel.makeartismodel.main(
             **downscaleargs, modelpath=[version2folder], format_version=1, outputfile=tmp_path / "small1"
         )
+
+
+def test_downscale_remaps_the_particle_contributions_with_the_cell_masses(tmp_path: Path) -> None:
+    """The downscale gives each coarse cell the particle contributions of its fine cells, weighted by their masses.
+
+    The downscale wrote no gridcontributions.txt. A new output folder thus had no gridcontributions.txt, and an output
+    folder of an earlier model kept the file of that model.
+    """
+    lzdfmodel, modelmeta = get_empty_3d_model(ncoordgrid=4, vmax=1.0e9, t_model_init_days=1.0)
+    # the fine cells 1 and 2 are the only cells with mass in the coarse cell of the corner. Cell 2 has three times the
+    # mass of cell 1
+    dfmodel = lzdfmodel.collect().with_columns(
+        rho=pl.col("inputcellid").replace_strict({1: 1.0e-10, 2: 3.0e-10}, default=0.0, return_dtype=pl.Float64),
+        X_Fegroup=pl.lit(1.0),
+        X_Ni56=pl.lit(1.0),
+    )
+    sourcefolder = tmp_path / "source"
+    at.inputmodel.save_modeldata(
+        dfmodel,
+        outpath=sourcefolder,
+        modelmeta=modelmeta,
+        dfelabundances=pl.DataFrame({"inputcellid": dfmodel["inputcellid"], "X_Ni": 1.0}),
+    )
+    (sourcefolder / "gridcontributions.txt").write_text(
+        "particleid cellindex frac_of_cellmass\n7 1 1.0\n8 2 1.0\n", encoding="utf-8"
+    )
+
+    downscaleargs: dict[str, t.Any] = {"argsraw": [], "downscale3dgrid": True, "outputgridsize": 2, "force": True}
+    for formatversion, cornercellid in ((1, 1), (2, 0)):
+        smallfolder = tmp_path / f"small{formatversion}"
+        at.inputmodel.makeartismodel.main(
+            **downscaleargs, modelpath=[sourcefolder], format_version=formatversion, outputfile=smallfolder
+        )
+        dfcontribs = at.inputmodel.rprocess_from_trajectory.get_gridparticlecontributions(smallfolder)
+        assert dfcontribs["particleid"].to_list() == [7, 8]
+        assert dfcontribs["cellindex"].to_list() == [cornercellid, cornercellid]
+        assert dfcontribs["frac_of_cellmass"].to_list() == pytest.approx([0.25, 0.75], rel=1e-6)
+
+    # the gridcontributions.txt of the earlier model does not agree with the cells of a model from a source with none
+    (sourcefolder / "gridcontributions.txt").unlink()
+    at.inputmodel.makeartismodel.main(**downscaleargs, modelpath=[sourcefolder], outputfile=tmp_path / "small1")
+    assert not list((tmp_path / "small1").glob("gridcontributions.txt*"))
 
 
 def test_version_2_edges_of_a_cartesian_grid_must_have_equal_steps() -> None:

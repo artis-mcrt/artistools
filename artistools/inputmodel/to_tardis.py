@@ -52,7 +52,14 @@ def addargs(parser: argparse.ArgumentParser) -> None:
 
 
 def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None = None, **kwargs: t.Any) -> None:
-    """Convert an ARTIS format model to TARDIS format."""
+    """Convert an ARTIS format model to TARDIS format.
+
+    TARDIS reads the velocity of the first row of the CSV part as the inner edge of the innermost shell. It reads the
+    velocity of each other row as the outer edge of a shell, and it discards the cell values of the first row. Thus
+    the first row holds the inner edge of the innermost ARTIS shell, which is 0 km/s for an ARTIS model. Its cell
+    values are a copy of the values of the innermost shell. Each other row holds the outer edge and the values of one
+    ARTIS shell.
+    """
     args = parse_cli_args(addargs, __doc__, args, argsraw, kwargs)
 
     temperature = args.temperature
@@ -74,9 +81,10 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
 
     dfmodel = (
         add_derived_cols_to_modeldata(pldfmodel, modelmeta=modelmeta)
-        .select("vel_r_max_kmps", "rho", cs.starts_with("X_"))
+        .select("vel_r_min_kmps", "vel_r_max_kmps", "rho", cs.starts_with("X_"))
         .collect()
     )
+    inneredge_kmps = float(dfmodel["vel_r_min_kmps"].item(0))
 
     # a nuclide column ends with a mass number, e.g. X_Ni56. An elemental column does not
     wantsnuclides = args.abundtype == "nuclear"
@@ -102,7 +110,14 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         "tardis_model_config_version": "v1.0",
         "datatype": {
             "fields": [
-                {"name": "velocity", "unit": "km/s", "desc": "velocities of shell outer boundaries"},
+                {
+                    "name": "velocity",
+                    "unit": "km/s",
+                    "desc": (
+                        "inner edge of the innermost shell in the first row,"
+                        " and outer edge of a shell in each other row"
+                    ),
+                },
                 {"name": "density", "unit": "g/cm^3", "desc": "density of shell"},
                 {"name": "t_rad", "unit": "K", "desc": "radiative temperature"},
                 {"name": "dilution_factor", "desc": "dilution factor of shell"},
@@ -116,13 +131,20 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
         """Format a column with four decimal digits in the scientific notation, e.g. 1.2345e-03."""
         return pl.Series(colname, np.char.mod("%.4e", dfmodel[colname].cast(pl.Float64).to_numpy()))
 
-    dfout = pl.DataFrame([
+    dfshells = pl.DataFrame([
         dfmodel["vel_r_max_kmps"].cast(pl.Float64).alias("velocity"),
         format_scientific("rho").alias("density"),
         pl.repeat(str(temperature), dfmodel.height, dtype=pl.String, eager=True).alias("t_rad"),
         pl.repeat(str(dilution_factor), dfmodel.height, dtype=pl.String, eager=True).alias("dilution_factor"),
         *[format_scientific(f"X_{strnuc}").alias(strnuc) for strnuc in listspecies],
     ])
+    # TARDIS discards the cell values of the first row, thus that row takes the valid values of the innermost shell
+    dfout = pl.concat([dfshells.head(1).with_columns(velocity=pl.lit(inneredge_kmps, dtype=pl.Float64)), dfshells])
+    print(
+        f"The first row gives the inner edge of the innermost shell at {inneredge_kmps} km/s. TARDIS discards the cell"
+        " values of that row, and the row holds a copy of the values of the innermost shell. Each other row gives the"
+        " outer edge and the values of one ARTIS shell (TARDIS documentation: Edge-Defined and Cell-Defined Values)."
+    )
 
     with outputfilepath.open("w", encoding="utf-8") as fileout:
         fileout.write("---\n")

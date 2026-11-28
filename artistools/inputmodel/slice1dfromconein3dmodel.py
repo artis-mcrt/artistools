@@ -21,6 +21,7 @@ from artistools.inputmodel.core import save_initelemabundances
 from artistools.inputmodel.core import save_modeldata
 from artistools.inputmodel.core import savetologfile
 from artistools.inputmodel.core import scan_modeldata
+from artistools.inputmodel.core import with_ye_that_sn3d_reads
 from artistools.misc import addarg_force
 from artistools.misc import addarg_modelpath
 from artistools.misc import addarg_output
@@ -193,6 +194,7 @@ def make_1d_profile(args: argparse.Namespace, logprint: Callable[..., None]) -> 
     require_cartesian3d_model(
         modelmeta, "A 1D model from a cone or an axis needs", "Give --dimensionreduce 1 to makeartismodel"
     )
+    pldfmodel = with_ye_that_sn3d_reads(pldfmodel, modelpath, modelmeta)
     args.t_model = modelmeta["t_model_init_days"]
     if args.makefromcone:
         logprint("From a cone")
