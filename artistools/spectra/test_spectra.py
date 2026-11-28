@@ -1531,6 +1531,16 @@ def test_packet_bin_keeps_the_packet_flux_in_each_x_unit(patch_scan_packets: Cal
         integratedflux = atspectra.print_integrated_flux(dfxy["dflux_on_dx_onempc"], dfxy["x"], dfxy["delta_x"])
         assert np.isclose(integratedflux, packetflux, rtol=1e-12, atol=0.0), xunit
 
+        # the trapezoidal rule gave a luminosity of zero for the one bin. Axis limits that hold three quarters of the
+        # bin give three quarters of its luminosity
+        for fractioninside in (1.0, 0.75):
+            summaryrows: list[dict[str, t.Any]] = []
+            xlimits = (min(x_edges), min(x_edges) + fractioninside * dfxy["delta_x"].item())
+            plotspectra.print_spectrum_summary("onebin", dfxy, xlimits, xunit, "flux", summaryrows=summaryrows)
+            assert np.isclose(
+                summaryrows[0]["luminosity_erg_per_s"], fractioninside / at.constants.day_to_s, rtol=1e-12, atol=0.0
+            ), (xunit, fractioninside)
+
         # the photon energy changed with the x axis, thus the photon rate of the one bin was different on each axis
         dfphotons = atspectra.get_dfspectrum_x_y_with_units(
             dfspectrum, xunit=xunit, yvariable="photoncount", fluxdistance_mpc=1.0

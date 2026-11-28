@@ -415,7 +415,9 @@ def print_spectrum_summary(
 
     The frame of a spectrum keeps the nearest row outside each end of the x range, and the axis does not show it. Thus
     the largest point comes from the rows inside the x range, and the integral uses f_lambda and lambda interpolated
-    linearly in x at each axis limit. The luminosity is 4 pi (1 Mpc)^2 times the integral of f_lambda at 1 Mpc, thus it
+    linearly in x at each axis limit. A packet histogram has the columns delta_lambda and delta_x, and its integral is
+    the sum of f_lambda delta_lambda over the bins, with the part of each end bin inside the axis limits. The
+    luminosity is 4 pi (1 Mpc)^2 times the integral of f_lambda at 1 Mpc, thus it
     does not depend on --distmpc or --normalised. The luminosity of the full spectrum needs all the wavelengths, e.g.
     all the packets, thus the summary does not give it. summaryrows takes the fields of the line.
     """
@@ -439,21 +441,41 @@ def print_spectrum_summary(
             f"peak_{yvariable}": peaky,
             f"x_at_peak_{xunit}": peakx,
         }
-    # np.interp gives the end value outside the data, thus a limit outside the data is the end of the data
-    xlimitsinside = [max(xlow, float(xvalues[0])), min(xhigh, float(xvalues[-1]))]
-    lambdaends = np.interp(xlimitsinside, xvalues, dfsorted["lambda_angstroms"].to_numpy())
-    flambdaends = np.interp(xlimitsinside, xvalues, dfsorted["f_lambda"].to_numpy())
-    lambdas = np.concatenate([lambdaends[:1], dfinrange["lambda_angstroms"].to_numpy(), lambdaends[1:]])
-    flambdas = np.concatenate([flambdaends[:1], dfinrange["f_lambda"].to_numpy(), flambdaends[1:]])
-    # the figure draws no segment with a NaN end, thus the integral leaves out such a segment
-    segmentintegrals = 0.5 * (flambdas[:-1] + flambdas[1:]) * np.diff(lambdas)
-    isdrawnsegment = np.isfinite(segmentintegrals)
+    if {"delta_lambda", "delta_x"}.issubset(dfsorted.columns):
+        # each row is a bin of a packet histogram, and f_lambda delta_lambda is the flux of the bin. A bin that an
+        # axis limit cuts gives the part of its flux inside the limits
+        binlow = xvalues - 0.5 * dfsorted["delta_x"].to_numpy()
+        binhigh = xvalues + 0.5 * dfsorted["delta_x"].to_numpy()
+        xlimitsinside = [max(xlow, float(binlow.min())), min(xhigh, float(binhigh.max()))]
+        fractioninside = np.clip(
+            np.minimum(binhigh, xlimitsinside[1]) - np.maximum(binlow, xlimitsinside[0]), 0.0, None
+        ) / (binhigh - binlow)
+        widthsinside = dfsorted["delta_lambda"].to_numpy() * fractioninside
+        binflambdas = dfsorted["f_lambda"].to_numpy()
+        hasvalue = np.isfinite(binflambdas)
+        integral = float((binflambdas[hasvalue] * widthsinside[hasvalue]).sum())
+        gapwidth = float(widthsinside[~hasvalue].sum())
+        lambdaends = np.array(convert_xlimits_to_lambda_range(xlimitsinside[0], xlimitsinside[1], xunit))
+        method = "sum of f_λ Δλ over the packet bins, with the part of each end bin inside the axis limits"
+    else:
+        # np.interp gives the end value outside the data, thus a limit outside the data is the end of the data
+        xlimitsinside = [max(xlow, float(xvalues[0])), min(xhigh, float(xvalues[-1]))]
+        lambdaends = np.interp(xlimitsinside, xvalues, dfsorted["lambda_angstroms"].to_numpy())
+        flambdaends = np.interp(xlimitsinside, xvalues, dfsorted["f_lambda"].to_numpy())
+        lambdas = np.concatenate([lambdaends[:1], dfinrange["lambda_angstroms"].to_numpy(), lambdaends[1:]])
+        flambdas = np.concatenate([flambdaends[:1], dfinrange["f_lambda"].to_numpy(), flambdaends[1:]])
+        # the figure draws no segment with a NaN end, thus the integral leaves out such a segment
+        segmentintegrals = 0.5 * (flambdas[:-1] + flambdas[1:]) * np.diff(lambdas)
+        isdrawnsegment = np.isfinite(segmentintegrals)
+        integral = float(segmentintegrals[isdrawnsegment].sum())
+        gapwidth = float(np.abs(np.diff(lambdas))[~isdrawnsegment].sum())
+        method = "trapezoidal rule, f_λ interpolated linearly at the axis limits"
     fields |= {
-        "luminosity_erg_per_s": abs(float(segmentintegrals[isdrawnsegment].sum())) * 4 * math.pi * megaparsec_to_cm**2,
+        "luminosity_erg_per_s": abs(integral) * 4 * math.pi * megaparsec_to_cm**2,
         "lambda_min_angstroms": float(lambdaends.min()),
         "lambda_max_angstroms": float(lambdaends.max()),
-        "method": "trapezoidal rule, f_λ interpolated linearly at the axis limits",
-        "gap_width_angstroms": float(np.abs(np.diff(lambdas))[~isdrawnsegment].sum()),
+        "method": method,
+        "gap_width_angstroms": gapwidth,
     }
     # a filter combines neighbouring bins, thus the noise of each bin is not the noise of the drawn value
     hasnoise = not (isfiltered and "relnoise" in dfinrange.columns)
@@ -476,7 +498,7 @@ def print_spectrum_summary(
         f"luminosity {fields['luminosity_erg_per_s']:.4g} erg/s = 4π (1 Mpc)² ∫ f_λ dλ from"
         f" {fields['lambda_min_angstroms']:.5g} to {fields['lambda_max_angstroms']:.5g} Å ({fields['method']})"
     )
-    if not isdrawnsegment.all():
+    if gapwidth > 0.0:
         parts.append(
             f"the integral leaves out {fields['gap_width_angstroms']:.4g} Å with no value of f_λ, e.g. a masked"
             " telluric band"
