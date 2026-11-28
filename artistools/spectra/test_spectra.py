@@ -1513,15 +1513,29 @@ def test_packet_bin_keeps_the_packet_flux_in_each_x_unit(patch_scan_packets: Cal
     # one packet of 1 erg in a time range of 1 day, at a distance of 1 Mpc
     packetflux = 1.0 / (at.constants.day_to_s * 4 * math.pi * at.constants.megaparsec_to_cm**2)
 
+    # the photon energy of the bin is h nu at the mean of its two frequency edges, which is 1.5 MeV
+    photonrate = 1.0 / at.constants.day_to_s / (at.constants.h_erg_s * dfspectrum["nu"].item())
+
     for xunit in ("angstrom", "hz", "mev"):
         dfxy = atspectra.get_dfspectrum_x_y_with_units(
             dfspectrum, xunit=xunit, yvariable="flux", fluxdistance_mpc=1.0
         ).collect()
         x_edges = atspectra.convert_angstroms_to_unit(lambda_bin_edges, xunit)
         assert np.isclose(dfxy["x"].item(), 0.5 * (x_edges[0] + x_edges[1]), rtol=1e-12, atol=0.0), xunit
-        assert np.isclose(dfxy["y"].item() * abs(x_edges[1] - x_edges[0]), packetflux, rtol=1e-12, atol=0.0), xunit
+        assert np.isclose(dfxy["delta_x"].item(), abs(x_edges[1] - x_edges[0]), rtol=1e-12, atol=0.0), xunit
+        assert np.isclose(dfxy["y"].item() * dfxy["delta_x"].item(), packetflux, rtol=1e-12, atol=0.0), xunit
         if xunit == "mev":
             assert np.isclose(dfxy["x"].item(), 1.5, rtol=1e-12, atol=0.0)
+
+        # the trapezoidal rule over the one bin centre gave an integrated flux of zero
+        integratedflux = atspectra.print_integrated_flux(dfxy["dflux_on_dx_onempc"], dfxy["x"], dfxy["delta_x"])
+        assert np.isclose(integratedflux, packetflux, rtol=1e-12, atol=0.0), xunit
+
+        # the photon energy changed with the x axis, thus the photon rate of the one bin was different on each axis
+        dfphotons = atspectra.get_dfspectrum_x_y_with_units(
+            dfspectrum, xunit=xunit, yvariable="photoncount", fluxdistance_mpc=1.0
+        ).collect()
+        assert np.isclose(dfphotons["y"].item() * dfphotons["delta_x"].item(), photonrate, rtol=1e-12, atol=0.0), xunit
 
         dfseries = atspectra.get_xy_spectrum(
             dfspectrum["f_lambda"].to_numpy(),

@@ -596,7 +596,8 @@ Possible errors:
 - Multiply the flux by `4 * math.pi * megaparsec_to_cm**2` to get a luminosity density. Integrate it over the
   wavelength or the frequency to get a luminosity. `megaparsec_to_cm` is in `artistools.constants`.
 - Integrate with the trapezoidal rule, e.g. `np.trapezoid`, as artistools does. A sum of the flux times the width of
-  each interval takes only one end of each interval.
+  each interval takes only one end of each interval. A spectrum from packets is different: each row is a bin with the
+  column `delta_lambda`, thus sum `f_lambda` times `delta_lambda`, as artistools does for the packets.
 
 Example: the mean spectrum from 10 to 12 days, the wavelength of its maximum in the range from 3000 to 10000 Å, and
 its luminosity.
