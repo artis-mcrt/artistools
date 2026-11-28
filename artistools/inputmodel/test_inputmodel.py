@@ -399,6 +399,55 @@ def test_scan_modeldata_refreshes_stale_cache(tmp_path: Path) -> None:
     assert pl.read_parquet_metadata(cachefilepath)["textsource_mtime"] == str(textfilepath.stat().st_mtime)
 
 
+def read_hydrogen_and_density(modelfolder: Path) -> tuple[float, float]:
+    """Return the hydrogen mass fraction and the density of the first cell of a model."""
+    dfmodel = get_derived_modeldata(modelfolder, get_elemabundances=True)[0].collect()
+    return float(dfmodel["X_H"].item(0)), float(dfmodel["rho"].item(0))
+
+
+def test_model_and_abundance_caches_find_an_edit_within_the_time_tolerance(tmp_path: Path) -> None:
+    """A new process reads the new values of model.txt and abundances.txt after an edit that adds 5 s to their times.
+
+    The check of a cache compared only the time of the text source, with a tolerance of MTIME_TOLERANCE_S. Thus the
+    cache gave the old density and the old mass fractions. A compression keeps the time and changes the size, thus
+    the cache of model.txt stays in use for model.txt.zst.
+    """
+    from artistools.inputmodel.core import get_parquet_cache_path
+
+    modelfolder = tmp_path / "model"
+    modelfolder.mkdir()
+    shutil.copy(modelpath / "model.txt", modelfolder)
+    (modelfolder / "abundances.txt").write_text("1 0.2 0.8\n", encoding="utf-8")
+    # a text file below 2 MiB gets a cache only if a cache file exists, thus the first read replaces these files
+    for textfilename in ("model.txt", "abundances.txt"):
+        get_parquet_cache_path(modelfolder / textfilename).write_bytes(b"")
+    assert read_hydrogen_and_density(modelfolder) == pytest.approx((0.2, 10**-0.18), rel=1e-6)
+
+    # each edit changes a physical value and the size of the file
+    edits = {"model.txt": ("-0.18", "-0.5"), "abundances.txt": ("0.2 0.8", "0.775 0.225")}
+    for textfilename, (oldtext, newtext) in edits.items():
+        textfilepath = modelfolder / textfilename
+        cachedmtime = textfilepath.stat().st_mtime
+        textfilepath.write_text(textfilepath.read_text(encoding="utf-8").replace(oldtext, newtext), encoding="utf-8")
+        os.utime(textfilepath, (cachedmtime + 5.0, cachedmtime + 5.0))
+
+    with ProcessPoolExecutor(max_workers=1, mp_context=multiprocessing.get_context("spawn")) as executor:
+        newvalues = executor.submit(read_hydrogen_and_density, modelfolder).result()
+    assert newvalues == pytest.approx((0.775, 10**-0.5), rel=1e-6)
+
+    # zstd keeps the time of the file, thus the copy of the same text uses the cache of model.txt
+    modeltextpath = modelfolder / "model.txt"
+    modelzstpath = modelfolder / "model.txt.zst"
+    with modelzstpath.open("wb") as fzst:
+        at.misc.fileio.write_zstd_lines(fzst, modeltextpath.read_text(encoding="utf-8").splitlines())
+    os.utime(modelzstpath, ns=(modeltextpath.stat().st_atime_ns, modeltextpath.stat().st_mtime_ns))
+    modeltextpath.unlink()
+    modelcachepath = get_parquet_cache_path(modelzstpath)
+    cacheidentity = at.misc.get_file_identity(modelcachepath)
+    assert read_hydrogen_and_density(modelfolder) == pytest.approx((0.775, 10**-0.5), rel=1e-6)
+    assert at.misc.get_file_identity(modelcachepath) == cacheidentity
+
+
 def test_downscale_3dmodel(tmp_path: Path) -> None:
     lzdfmodel, modelmeta = get_derived_modeldata(modelpath_3d, get_elemabundances=True)
     modelpath_3d_small = at.inputmodel.downscale3dgrid.make_downscaled_3d_grid(

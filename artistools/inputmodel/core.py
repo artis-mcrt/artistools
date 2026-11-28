@@ -46,6 +46,7 @@ from artistools.misc import get_model_format_version
 from artistools.misc import get_parquet_cache_name
 from artistools.misc import get_phi_expr
 from artistools.misc import get_phibin_expr
+from artistools.misc import get_text_compression
 from artistools.misc import has_mirror_plane
 from artistools.misc import is_remote_path
 from artistools.misc import MODEL_EDGE_KEYS
@@ -710,18 +711,37 @@ CACHEVERSION = 8
 
 
 def scan_parquet_cache(
-    parquetfilepath: Path, textsource_mtime: float, metadatakeys: Sequence[str] = (), printwarningsonly: bool = False
+    parquetfilepath: Path,
+    textsource_mtime: float,
+    metadatakeys: Sequence[str] = (),
+    printwarningsonly: bool = False,
+    textsource_size: int | None = None,
+    textsource_compression: str | None = None,
 ) -> tuple[pl.LazyFrame, dict[str, str]] | None:
     """Return the cached table and its metadata, or None if the cache is absent, stale, or unreadable.
 
     A cache without one of metadatakeys is stale. A rejected cache stays in place: the caller rewrites
     it through write_parquet_atomic(), which replaces only the exact file that this check saw. A
     deletion here could remove the fresh cache that a rival process installed after this check.
+
+    The time comparison has the tolerance MTIME_TOLERANCE_S, because a file system can move the time of a file with
+    no write. Thus an edit within MTIME_TOLERANCE_S of the stamp gives a time that matches. The size of the text
+    source must then show the edit. textsource_compression is the compression of the text source (see
+    get_text_compression). zstd keeps the time of a file and changes its size, thus the size counts only for a cache
+    with the same compression stamp. A cache with no such stamp uses the time alone.
     """
     if not parquetfilepath.is_file():
         return None
 
     pqmetadata, stalereason = read_parquet_cache_metadata(parquetfilepath, CACHEVERSION, textsource_mtime)
+    if (
+        pqmetadata is not None
+        and textsource_size is not None
+        and pqmetadata.get("textsource_compression") == textsource_compression
+    ):
+        pqmetadata, stalereason = read_parquet_cache_metadata(
+            parquetfilepath, CACHEVERSION, textsource_mtime, textsource_size=textsource_size
+        )
     if pqmetadata is not None and (missingkey := next((key for key in metadatakeys if key not in pqmetadata), None)):
         pqmetadata, stalereason = None, f"the file has no {missingkey} stamp"
 
@@ -779,13 +799,20 @@ def get_text_source_cached(
     """
     textsource_stat = textfilepath.stat()
     textsource_mtime = textsource_stat.st_mtime
+    # model.txt and model.txt.zst share a cache, and the size of one does not show an edit of the other
+    textsource_compression = get_text_compression([textfilepath])
     parquetfilepath = get_parquet_cache_path(textfilepath)
     # the identity of the cache that a rewrite replaces, from the same moment as the existence check
     outdatedparquet = get_file_identity(parquetfilepath)
     hadcachefile = outdatedparquet is not None
 
     cached = scan_parquet_cache(
-        parquetfilepath, textsource_mtime, metadatakeys=metadatakeys, printwarningsonly=printwarningsonly
+        parquetfilepath,
+        textsource_mtime,
+        metadatakeys=metadatakeys,
+        printwarningsonly=printwarningsonly,
+        textsource_size=textsource_stat.st_size,
+        textsource_compression=textsource_compression,
     )
     if cached is not None:
         if validate_metadata is None:
@@ -831,6 +858,8 @@ def get_text_source_cached(
             "creationtimeutc": str(dt.datetime.now(dt.UTC)),
             "cacheversion": str(CACHEVERSION),
             "textsource_mtime": str(textsource_mtime),
+            "textsource_size": str(textsource_stat.st_size),
+            "textsource_compression": textsource_compression,
         }
         | extrametadata,
     )
