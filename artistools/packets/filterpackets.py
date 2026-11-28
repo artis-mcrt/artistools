@@ -21,12 +21,15 @@ from artistools.misc import write_zstd_lines
 from artistools.misc import zopen
 from artistools.packets.core import find_packets_textsources
 from artistools.packets.core import get_packets_mpirank_groups
-from artistools.packets.core import get_packets_rankbatch_parquetpath
 from artistools.packets.core import get_packets_text_columns
 from artistools.packets.core import get_packets_textfilename
+from artistools.packets.core import select_packets_rankbatch_parquetpath
+from artistools.packets.core import select_packets_textfolder
 from artistools.packets.core import type_ids
+from artistools.packets.core import warn_of_other_packets_textfolders
 
 if t.TYPE_CHECKING:
+    import os
     from collections.abc import Sequence
 
 # the zstd level of the filtered files. A higher level gives a smaller file, but the compression takes more time
@@ -58,11 +61,20 @@ def format_size(size_bytes: float) -> str:
 
 
 def get_packets_files(modelfolder: Path) -> dict[int, Path]:
-    """Return the packets file of each rank that the packets reader reads."""
-    filenames = {get_packets_textfilename(rank, virtual=False): rank for rank in range(get_nprocs(modelfolder))}
+    """Return the packets file of each rank that the packets reader reads.
+
+    The reader reads the files of one folder, thus the filter changes no file in a different folder.
+    """
+    nprocs = get_nprocs(modelfolder)
+    filenames = {get_packets_textfilename(rank, virtual=False): rank for rank in range(nprocs)}
+    folderlistings: dict[Path, dict[str, os.DirEntry[str]]] = {}
+    textfolder, rankcounts = select_packets_textfolder(
+        modelfolder, nprocs, virtual=False, folderlistings=folderlistings
+    )
+    warn_of_other_packets_textfolders(modelfolder, textfolder, rankcounts, nprocs, virtual=False)
     return {
         filenames[filename]: Path(entry.path)
-        for filename, entry in find_packets_textsources(modelfolder, list(filenames)).items()
+        for filename, entry in find_packets_textsources(textfolder, list(filenames), folderlistings).items()
     }
 
 
@@ -124,10 +136,16 @@ def get_rebuildable_packets_caches(modelfolder: Path, packetsfiles: dict[int, Pa
 
     The readers compare the times of the text files with a tolerance. Thus a cache from a time just before the filter
     can stay in use, and the filter must remove it. A batch that has no text file for a rank is not in the result,
-    because only its cache holds the packets of that rank.
+    because only its cache holds the packets of that rank. The path is the path that the reader reads. Thus the
+    filter keeps a cache that is the only copy of the packets of a different folder.
     """
+    folderlistings: dict[Path, dict[str, os.DirEntry[str]]] = {}
+    # get_packets_files gives the files of one folder
+    textfolder = next((path.parent for path in packetsfiles.values()), None)
     return {
-        rank: get_packets_rankbatch_parquetpath(modelfolder, batch_mpiranks, batchindex, virtual=False)
+        rank: select_packets_rankbatch_parquetpath(
+            modelfolder, batch_mpiranks, batchindex, virtual=False, textfolder=textfolder, folderlistings=folderlistings
+        )
         for batchindex, batch_mpiranks in get_packets_mpirank_groups(modelfolder, maxpacketfiles=None)
         if all(rank in packetsfiles for rank in batch_mpiranks)
         for rank in batch_mpiranks

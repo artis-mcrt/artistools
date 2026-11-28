@@ -860,7 +860,7 @@ def test_firstexisting_and_the_packets_cache_take_one_folder_order(tmp_path: Pat
     firstexisting sorted the paths of the files, thus run2/x came before run/x, but the check sorted the
     folders. The cache then took the time stamp of a file that the conversion did not read.
     """
-    from artistools.packets.core import get_packets_textsource_mtimes
+    from artistools.packets.core import select_packets_textfolder
 
     for foldername, mtime in (("run", 1000.0), ("run2", 2000.0)):
         (tmp_path / foldername).mkdir()
@@ -869,7 +869,7 @@ def test_firstexisting_and_the_packets_cache_take_one_folder_order(tmp_path: Pat
         os.utime(packetsfile, (mtime, mtime))
 
     assert at.firstexisting("packets00_0000.out", folder=tmp_path) == tmp_path / "run" / "packets00_0000.out"
-    assert get_packets_textsource_mtimes(tmp_path, ["packets00_0000.out"]) == [1000.0]
+    assert select_packets_textfolder(tmp_path, nranks=1, virtual=False, folderlistings={})[0] == tmp_path / "run"
 
 
 def test_firstexisting_with_an_absolute_path(tmp_path: Path) -> None:
@@ -1663,7 +1663,7 @@ def test_server_protocol_changes_with_the_readers(package_modules: list[Path]) -
     digest = hashlib.sha256("\n".join(hashedlines).encode()).hexdigest()[:16]
 
     # each release keeps its server protocol, thus give each new digest a new number
-    assert (remote.SERVER_PROTOCOL, digest) == (31, "2f90ff8610321935"), (
+    assert (remote.SERVER_PROTOCOL, digest) == (32, "2f90ff8610321935"), (
         f"The readers on the server have the digest {digest}. Increase SERVER_PROTOCOL in remote.py. Then write the"
         " new number and the digest in this test"
     )

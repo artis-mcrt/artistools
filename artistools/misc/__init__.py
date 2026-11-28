@@ -187,6 +187,7 @@ from artistools.misc.modelinfo import get_nprocs as get_nprocs
 from artistools.misc.modelinfo import get_npts_model as get_npts_model
 from artistools.misc.modelinfo import get_nu_grid as get_nu_grid
 from artistools.misc.modelinfo import get_rank_outputfiles as get_rank_outputfiles
+from artistools.misc.modelinfo import get_rank_text_cache_only_copy_state as get_rank_text_cache_only_copy_state
 from artistools.misc.modelinfo import get_ranks_of_cells_in_layout as get_ranks_of_cells_in_layout
 from artistools.misc.modelinfo import get_run_subfolders as get_run_subfolders
 from artistools.misc.modelinfo import get_runfolder_timesteps as get_runfolder_timesteps
@@ -220,6 +221,7 @@ from artistools.misc.modelpaths import path_is_file as path_is_file
 from artistools.misc.modelpaths import path_is_reference_data as path_is_reference_data
 from artistools.misc.modelpaths import require_reference_data_file as require_reference_data_file
 from artistools.misc.modelpaths import resolve_modelpath as resolve_modelpath
+from artistools.misc.parquetcache import format_mtime as format_mtime
 from artistools.misc.parquetcache import get_file_identity as get_file_identity
 from artistools.misc.parquetcache import get_file_state as get_file_state
 from artistools.misc.parquetcache import get_parquet_cache_name as get_parquet_cache_name

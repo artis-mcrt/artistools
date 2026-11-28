@@ -1240,6 +1240,37 @@ def get_rank_text_state(textfiles: Sequence[Path]) -> tuple[float, int]:
     return max(filestat.st_mtime for filestat in filestats), sum(filestat.st_size for filestat in filestats)
 
 
+def get_rank_text_cache_only_copy_state(
+    modelpath: Path, folderpath: Path, filenameformat: str, cachefilename: str
+) -> tuple[list[int], bool]:
+    """Return each rank with no text file in a run folder, and whether the text is older than the cache.
+
+    No conversion can make the cache again in each of the two cases. scan_rank_text_cache converts the text of each
+    rank with matter, or the file of all ranks. A rank whose cells all hold no matter writes no file. The search of
+    the files takes their names, thus a link to an absent file needs a separate test. The reader keeps a cache when
+    the text is older than the text of the cache, because older text cannot hold newer data.
+    """
+    nonemptycounts = get_nonempty_cellcounts(modelpath)
+    ranks_with_matter = [
+        rank
+        for rank in get_mpiranklist(modelpath, only_ranks_withgridcells=True)
+        if nonemptycounts is None or nonemptycounts.get(rank) != 0
+    ]
+    textfiles, missingranks = get_folder_text_files(folderpath, filenameformat, ranks_with_matter, selectscells=False)
+    if not missingranks and len(textfiles) == len(ranks_with_matter):
+        missingranks = [
+            rank for rank, textfile in zip(ranks_with_matter, textfiles, strict=True) if not textfile.is_file()
+        ]
+    if missingranks or not textfiles:
+        return missingranks, False
+    pqmetadata = read_parquet_cache_metadata(folderpath / cachefilename, RANK_CACHE_VERSION, None)[0]
+    stampedmtime = (pqmetadata or {}).get("textsource_mtime")
+    textisolder = (
+        stampedmtime is not None and get_rank_text_state(textfiles)[0] < float(stampedmtime) - MTIME_TOLERANCE_S
+    )
+    return [], textisolder
+
+
 def rank_text_cache_is_readable(folderpath: Path, cachefilename: str | None) -> bool:
     """Return True if a run folder holds a parquet cache of the current format, without a check against the text."""
     if cachefilename is None:

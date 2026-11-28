@@ -254,7 +254,9 @@ def test_packets_cache_goes_stale_when_any_rank_file_changes(tmp_path: Path) -> 
     textfiles = [tmp_path / f"packets00_{rank:04d}.out.zst" for rank in (0, 1)]
 
     def get_stamp() -> float:
-        parquetpath = get_packets_rankbatch_parquetfile(tmp_path, batch_mpiranks=[0, 1], batchindex=0, virtual=False)
+        parquetpath = get_packets_rankbatch_parquetfile(
+            tmp_path, batch_mpiranks=[0, 1], batchindex=0, virtual=False, textfolder=tmp_path
+        )
         return float(pl.read_parquet_metadata(parquetpath)["textsource_mtime"])
 
     assert np.isclose(get_stamp(), max(path.stat().st_mtime for path in textfiles), rtol=0.0, atol=1e-3)
@@ -267,6 +269,52 @@ def test_packets_cache_goes_stale_when_any_rank_file_changes(tmp_path: Path) -> 
     oldtime = newtime - 1000.0
     os.utime(laterrankfile, (oldtime, oldtime))
     assert np.isclose(get_stamp(), textfiles[0].stat().st_mtime, rtol=0.0, atol=1e-3)
+
+
+def test_packets_cache_goes_stale_when_a_rank_file_changes_below_the_newest_time(tmp_path: Path) -> None:
+    """A change of a rank file that stays older than the newest file of the batch makes the cache stale.
+
+    The cache kept only the newest modification time of the batch. A copy that keeps the times, e.g. cp -p, can
+    change an older file and keep that time, thus the cache gave the old packets.
+    """
+    import lzma
+
+    from artistools.packets.core import get_packets_rankbatch_parquetfile
+
+    sourcefile = at.get_path("testdata") / "test-classicmode_3d" / "packets" / "packets00_0000.out.zst"
+    with at.zopen(sourcefile, mode="rt", encoding="utf-8") as fsource:
+        headerline, *packetlines = (fsource.readline() for _ in range(4))
+    textfiles = [tmp_path / f"packets00_{rank:04d}.out" for rank in (0, 1)]
+
+    def write_rank_file(textfile: Path, lines: list[str], mtime: float) -> None:
+        textfile.write_text(headerline + "".join(lines), encoding="utf-8")
+        os.utime(textfile, (mtime, mtime))
+
+    def get_cache() -> Path:
+        return get_packets_rankbatch_parquetfile(
+            tmp_path, batch_mpiranks=[0, 1], batchindex=0, virtual=False, textfolder=tmp_path
+        )
+
+    write_rank_file(textfiles[0], packetlines[:1], 100000.0)
+    write_rank_file(textfiles[1], packetlines[1:2], 100200.0)
+    cachepath = get_cache()
+    assert pl.read_parquet(cachepath).height == 2
+
+    cachestate = at.misc.get_file_state(cachepath)
+    assert get_cache() == cachepath
+    assert at.misc.get_file_state(cachepath) == cachestate
+
+    write_rank_file(textfiles[0], [packetlines[0], packetlines[2]], 100100.0)
+    assert pl.read_parquet(get_cache()).height == 3
+
+    # a tool that compresses a file keeps its time and changes its size, but the packets stay the same
+    cachestate = at.misc.get_file_state(cachepath)
+    compressedfile = textfiles[1].with_name(f"{textfiles[1].name}.xz")
+    compressedfile.write_bytes(lzma.compress(textfiles[1].read_bytes()))
+    os.utime(compressedfile, (100200.0, 100200.0))
+    textfiles[1].unlink()
+    assert get_cache() == cachepath
+    assert at.misc.get_file_state(cachepath) == cachestate
 
 
 def test_cut_rank_file_of_a_batch_gives_an_error_that_names_the_file(tmp_path: Path) -> None:
@@ -284,7 +332,9 @@ def test_cut_rank_file_of_a_batch_gives_an_error_that_names_the_file(tmp_path: P
     cutfile.write_bytes(cutfile.read_bytes()[: cutfile.stat().st_size // 2])
 
     with pytest.raises(pl.exceptions.PanicException) as excinfo:
-        get_packets_rankbatch_parquetfile(tmp_path, batch_mpiranks=[0, 1], batchindex=0, virtual=False)
+        get_packets_rankbatch_parquetfile(
+            tmp_path, batch_mpiranks=[0, 1], batchindex=0, virtual=False, textfolder=tmp_path
+        )
 
     assert any(str(cutfile) in note for note in excinfo.value.__notes__ or [])
 
@@ -304,7 +354,9 @@ def test_virtual_packets_file_with_no_data_lines_gives_no_rows(tmp_path: Path) -
         headerline = sourcefile.readline()
     (tmp_path / "vpackets_0001.out").write_text(headerline, encoding="utf-8")
 
-    parquetpath = get_packets_rankbatch_parquetfile(tmp_path, batch_mpiranks=[0, 1], batchindex=0, virtual=True)
+    parquetpath = get_packets_rankbatch_parquetfile(
+        tmp_path, batch_mpiranks=[0, 1], batchindex=0, virtual=True, textfolder=tmp_path
+    )
     dfvpkt = pl.read_parquet(parquetpath)
 
     assert dfvpkt.height == 9402
@@ -323,7 +375,7 @@ def test_read_of_absent_packets_makes_no_cache_folder(tmp_path: Path, virtual: b
     from artistools.packets.core import get_packets_rankbatch_parquetfile
 
     with pytest.raises(FileNotFoundError):
-        get_packets_rankbatch_parquetfile(tmp_path, batch_mpiranks=[0], batchindex=0, virtual=virtual)
+        get_packets_rankbatch_parquetfile(tmp_path, batch_mpiranks=[0], batchindex=0, virtual=virtual, textfolder=None)
 
     assert list(tmp_path.iterdir()) == []
 
@@ -344,7 +396,9 @@ def test_packets_cache_without_stamps_is_stale_when_the_text_files_exist(tmp_pat
     cachepath = tmp_path / "packets" / "packetsbatch00_0000_0001.out.parquet.tmp"
     pl.DataFrame({"unstampedcolumn": [0]}).write_parquet(cachepath)
 
-    parquetpath = get_packets_rankbatch_parquetfile(tmp_path, batch_mpiranks=[0, 1], batchindex=0, virtual=False)
+    parquetpath = get_packets_rankbatch_parquetfile(
+        tmp_path, batch_mpiranks=[0, 1], batchindex=0, virtual=False, textfolder=tmp_path
+    )
 
     assert parquetpath == cachepath
     assert "unstampedcolumn" not in pl.read_parquet_schema(parquetpath)
@@ -378,7 +432,9 @@ def test_packets_cache_scans_each_folder_once(tmp_path: Path, virtual: bool) -> 
     firstwrite = cachepath.stat().st_mtime_ns
 
     with mock.patch("os.scandir", wraps=os.scandir) as scandir:
-        result = get_packets_rankbatch_parquetfile(tmp_path, batch_mpiranks=range(32), batchindex=0, virtual=virtual)
+        result = get_packets_rankbatch_parquetfile(
+            tmp_path, batch_mpiranks=range(32), batchindex=0, virtual=virtual, textfolder=sourcefolder
+        )
 
     assert result == cachepath
     assert result.stat().st_mtime_ns == firstwrite
@@ -420,8 +476,8 @@ def test_packets_cache_check_stays_in_memory(tmp_path: Path) -> None:
         assert get_packets_batch_parquet_paths(tmp_path) == (32, [cachepath])
         assert scandir.call_count > 0
 
-        # the reader searches the model folder before run1, thus a new text file there needs a new scan. The file is
-        # older than the stamp, thus the cache stays current
+        # a new text file in the model folder can change the folder that the reader reads, thus it needs a new scan.
+        # run1 holds more ranks, thus the reader still reads run1 and the cache stays current
         scandir.reset_mock()
         newtextfile = tmp_path / "packets00_0000.out"
         newtextfile.touch()
@@ -431,7 +487,10 @@ def test_packets_cache_check_stays_in_memory(tmp_path: Path) -> None:
 
 
 def test_packets_source_index_matches_the_reader(tmp_path: Path) -> None:
-    """Use the source reader's order for folders and compressed files, and omit absent sources."""
+    """Take the folder with the most ranks, use the compression order of the source reader, and omit absent sources."""
+    from artistools.packets.core import find_packets_textsources
+    from artistools.packets.core import select_packets_textfolder
+
     sourcefolder = tmp_path / "run1"
     sourcefolder.mkdir()
     filenames = [f"packets00_{rank:04d}.out" for rank in (0, 1, 10000)]
@@ -443,13 +502,140 @@ def test_packets_source_index_matches_the_reader(tmp_path: Path) -> None:
         sourcefolder / f"{filenames[2]}.xz",
         sourcefolder / "packets00_note.out",
     ]
-    for index, path in enumerate(paths):
+    for path in paths:
         path.touch()
-        os.utime(path, (1000 + index, 1000 + index))
 
-    mtimes = at.packets.get_packets_textsource_mtimes(tmp_path, [*filenames, "packets00_0002.out"])
-    expected = [at.firstexisting(filename, folder=tmp_path).stat().st_mtime for filename in filenames]
-    assert sorted(mtimes) == pytest.approx(sorted(expected))
+    folderlistings: dict[Path, dict[str, os.DirEntry[str]]] = {}
+    textfolder, rankcounts = select_packets_textfolder(tmp_path, 10001, virtual=False, folderlistings=folderlistings)
+    assert textfolder == sourcefolder
+    assert rankcounts == {tmp_path: 1, sourcefolder: 3}
+
+    textsources = find_packets_textsources(textfolder, [*filenames, "packets00_0002.out"], folderlistings)
+    expected = {
+        filename: at.firstexisting(filename, folder=sourcefolder, search_subfolders=False) for filename in filenames
+    }
+    assert {filename: Path(entry.path) for filename, entry in textsources.items()} == expected
+
+
+def test_packets_folder_selection_omits_a_link_to_an_absent_file(tmp_path: Path) -> None:
+    """Select the folder of the text files that exist.
+
+    The reader does not read a link to an absent file. The selection counted the names. Thus an earlier run folder of
+    such links came before a later run folder with all the files. The reader then found no text file.
+    """
+    from artistools.packets.core import find_packets_textsources
+    from artistools.packets.core import select_packets_textfolder
+
+    filenames = [f"packets00_{rank:04d}.out" for rank in (0, 1)]
+    for runfolder in ("100.slurm", "200.slurm"):
+        (tmp_path / runfolder).mkdir()
+    for filename in filenames:
+        (tmp_path / "100.slurm" / filename).symlink_to(tmp_path / "archive" / filename)
+        (tmp_path / "200.slurm" / filename).touch()
+
+    folderlistings: dict[Path, dict[str, os.DirEntry[str]]] = {}
+    textfolder, rankcounts = select_packets_textfolder(tmp_path, 2, virtual=False, folderlistings=folderlistings)
+
+    assert rankcounts == {tmp_path / "200.slurm": 2}
+    assert textfolder == tmp_path / "200.slurm"
+    assert list(find_packets_textsources(textfolder, filenames, folderlistings)) == filenames
+
+
+def test_packets_reader_takes_the_text_files_of_one_run(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], write_packets_runfolder: Callable[[Path, str, float], None]
+) -> None:
+    """Read the packets text files of all the ranks from one folder, thus a cache holds the packets of one run.
+
+    The search took the first file of each rank. A rank that the first run folder did not hold thus came from a later
+    run, and two complete sets gave no message. The packets of each run here have a different energy.
+    """
+    write_packets_runfolder(tmp_path, "100.slurm", 1e40)
+    write_packets_runfolder(tmp_path, "200.slurm", 2e40)
+    assert at.misc.get_nprocs(tmp_path) == 2
+
+    def get_energies() -> list[float]:
+        _, dfpackets = at.packets.scan_packets(tmp_path)
+        return sorted(dfpackets.select(pl.col("e_rf").unique()).collect()["e_rf"].to_list())
+
+    assert get_energies() == pytest.approx([1e40], rel=1e-6)
+    assert "100.slurm (2 of 2 ranks), 200.slurm (2 of 2 ranks)" in capsys.readouterr().err
+
+    (tmp_path / "100.slurm" / "packets00_0001.out").unlink()
+    assert get_energies() == pytest.approx([2e40], rel=1e-6)
+
+
+def test_packets_reader_and_filter_keep_the_only_cache_of_an_earlier_run(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], write_packets_runfolder: Callable[[Path, str, float], None]
+) -> None:
+    """Keep a packets cache with absent text files when a later run folder holds files of the same ranks.
+
+    The reader put the cache of the later run at the same path, and filterpackets removed the cache at that path.
+    Thus no file then held the packets of the earlier run. The cache of the later run is now beside its text files.
+    The reader also reads that cache after a user deletes these text files.
+    """
+    import shutil
+
+    from artistools.packets.core import check_packets_batch_parquet_paths
+    from artistools.packets.core import find_first_rank_textfiles
+
+    def get_cache_energies(cachepath: Path) -> list[float]:
+        return pl.read_parquet(cachepath)["e_rf"].unique().to_list()
+
+    write_packets_runfolder(tmp_path, "100.slurm", 1e40)
+    _, (earliercache,) = at.packets.get_packets_batch_parquet_paths(tmp_path)
+    shutil.rmtree(tmp_path / "100.slurm")
+    write_packets_runfolder(tmp_path, "200.slurm", 2e40)
+
+    _, (latercache,) = at.packets.get_packets_batch_parquet_paths(tmp_path)
+    assert latercache == tmp_path / "200.slurm" / earliercache.name
+    assert get_cache_energies(latercache) == pytest.approx([2e40], rel=1e-6)
+    assert get_cache_energies(earliercache) == pytest.approx([1e40], rel=1e-6)
+    assert f"{earliercache.name} is the only copy" in capsys.readouterr().err
+
+    # a new check of the caches converts no text file
+    find_first_rank_textfiles.cache_clear()
+    check_packets_batch_parquet_paths.cache_clear()
+    assert at.packets.get_packets_batch_parquet_paths(tmp_path)[1] == [latercache]
+    assert "Generating" not in capsys.readouterr().out
+
+    at.packets.filterpackets.main(argsraw=[str(tmp_path), "-f"])
+    assert "the filter removes" in capsys.readouterr().out
+    assert not latercache.exists()
+    assert get_cache_energies(earliercache) == pytest.approx([1e40], rel=1e-6)
+
+    # with no text files, the reader still reads the cache of the later run, also when it is the only cache
+    assert at.packets.get_packets_batch_parquet_paths(tmp_path)[1] == [latercache]
+    for textfile in (tmp_path / "200.slurm").glob("packets00_*.out*"):
+        textfile.unlink()
+    assert at.packets.get_packets_batch_parquet_paths(tmp_path)[1] == [latercache]
+    assert "does not read the caches in packets" in capsys.readouterr().err
+    earliercache.unlink()
+    assert at.packets.get_packets_batch_parquet_paths(tmp_path)[1] == [latercache]
+    assert at.packets.core.has_packets_files(tmp_path)
+
+
+def test_packets_reader_takes_the_caches_of_one_folder_for_a_model_with_no_text_files(
+    tmp_path: Path, write_packets_runfolder: Callable[[Path, str, float], None]
+) -> None:
+    """Read all the batches from one folder when a later run folder holds the cache of only some batches.
+
+    A read of the first batch alone wrote that cache beside the text files of the later run. With no text files, a
+    read of all the batches took that cache and the cache of the earlier run for the other batch.
+    """
+    import shutil
+
+    with mock.patch("artistools.packets.core.RANKS_PER_BATCH", 1):
+        write_packets_runfolder(tmp_path, "100.slurm", 1e40)
+        _, earliercaches = at.packets.get_packets_batch_parquet_paths(tmp_path)
+        assert len(earliercaches) == 2
+        shutil.rmtree(tmp_path / "100.slurm")
+        write_packets_runfolder(tmp_path, "200.slurm", 2e40)
+        _, (latercache,) = at.packets.get_packets_batch_parquet_paths(tmp_path, maxpacketfiles=1)
+        assert latercache.parent == tmp_path / "200.slurm"
+        for textfile in (tmp_path / "200.slurm").glob("packets00_*.out*"):
+            textfile.unlink()
+
+        assert at.packets.get_packets_batch_parquet_paths(tmp_path)[1] == earliercaches
 
 
 def test_add_derived_columns_gives_the_timestep_of_the_thermal_emission() -> None:
@@ -902,31 +1088,33 @@ def test_a_1d_velocity_at_the_edges_of_the_grid_gets_the_right_cell() -> None:
     assert cells == [0, 0, 1, 2, None, None, None]
 
 
-@pytest.mark.parametrize(
-    ("columnname", "values"),
-    [("originated_from_positron", [True, False]), ("originated_from_particlenotgamma", [1, 0])],
-)
-def test_scan_packets_gives_one_name_and_type_to_the_flag_of_the_particle_origin(
-    tmp_path: Path, columnname: str, values: list[bool] | list[int]
-) -> None:
+def test_scan_packets_gives_one_name_and_type_to_the_flag_of_the_particle_origin(tmp_path: Path) -> None:
     """An older ARTIS writes originated_from_positron, and the current ARTIS writes originated_from_particlenotgamma.
 
-    The cache keeps the name and the type of its text file, thus the two formats gave two names and two types.
+    The cache keeps the name and the type of its text file. The text reader gives the older flag the type Boolean,
+    and the current flag stays an integer. The scan of a batch of each format stopped with an InvalidOperationError,
+    because the change of the type to Boolean came after the concatenation of the batches.
     """
-    cachepath = tmp_path / "packetsbatch00_0000_0000.out.parquet.tmp"
-    pl.DataFrame({
-        "type_id": [32, 32],
-        "dirx": [1.0, 0.0],
-        "diry": [0.0, 1.0],
-        "dirz": [0.0, 0.0],
-        columnname: values,
-    }).write_parquet(cachepath)
+    flagvalues_of_format: list[tuple[str, list[bool] | list[int]]] = [
+        ("originated_from_positron", [True, False]),
+        ("originated_from_particlenotgamma", [1, 0]),
+    ]
+    cachepaths = []
+    for batchindex, (columnname, values) in enumerate(flagvalues_of_format):
+        cachepaths.append(tmp_path / f"packetsbatch{batchindex:02d}_{batchindex:04d}_{batchindex:04d}.out.parquet")
+        pl.DataFrame({
+            "type_id": [32, 32],
+            "dirx": [1.0, 0.0],
+            "diry": [0.0, 1.0],
+            "dirz": [0.0, 0.0],
+            columnname: values,
+        }).write_parquet(cachepaths[-1])
 
-    with mock.patch("artistools.packets.core.get_packets_batch_parquet_paths", return_value=(1, [cachepath])):
+    with mock.patch("artistools.packets.core.get_packets_batch_parquet_paths", return_value=(2, cachepaths)):
         _, dfpackets = at.packets.scan_packets(tmp_path)
 
     dfflag = dfpackets.select("originated_from_particlenotgamma").collect()
-    pltest.assert_frame_equal(dfflag, pl.DataFrame({"originated_from_particlenotgamma": [True, False]}))
+    pltest.assert_frame_equal(dfflag, pl.DataFrame({"originated_from_particlenotgamma": [True, False, True, False]}))
 
 
 def test_scan_packets_reads_a_batch_of_each_cache_version(tmp_path: Path) -> None:
@@ -943,7 +1131,9 @@ def test_scan_packets_reads_a_batch_of_each_cache_version(tmp_path: Path) -> Non
     sourcedir = at.get_path("testdata") / "test-classicmode_3d" / "packets"
     for rank in (0, 1):
         shutil.copy(sourcedir / f"packets00_{rank:04d}.out.zst", tmp_path)
-    newcache = get_packets_rankbatch_parquetfile(tmp_path, batch_mpiranks=[0, 1], batchindex=0, virtual=False)
+    newcache = get_packets_rankbatch_parquetfile(
+        tmp_path, batch_mpiranks=[0, 1], batchindex=0, virtual=False, textfolder=tmp_path
+    )
     assert pl.read_parquet_metadata(newcache)["cacheversion"] == "2"
     newcolumns = list(pl.read_parquet_schema(newcache))
     assert {"dirbin_costheta10_phi10", "phi"} <= set(newcolumns)

@@ -3,10 +3,13 @@
 A reader of artistools converts a text file to a parquet cache when it first reads the file. Later commands read the
 cache. "make" does all the conversions at one time, e.g. in the job script after a run of ARTIS. Each later command
 then reads its data quickly. "list" gives the caches and their sizes. "delete" deletes the caches and the leftover
-files, which are the temporary files and folders of a conversion that stopped.
+files, which are the temporary files and folders of a conversion that stopped. A cache whose text files are absent, or
+older than the text of the cache, is the only copy of its data. "delete" keeps it unless the user gives
+--include-only-copies.
 """
 
 import argparse
+import os
 import re
 import shutil
 import typing as t
@@ -16,6 +19,7 @@ from pathlib import Path
 import polars as pl
 
 from artistools.atomic import scan_linelist
+from artistools.estimators import get_estimator_cache_only_copy_state
 from artistools.estimators import scan_estimators
 from artistools.inputmodel import find_abundance_file
 from artistools.inputmodel import get_model_file_path
@@ -28,8 +32,10 @@ from artistools.misc import check_local_path
 from artistools.misc import confirm_deletion
 from artistools.misc import exit_with_error
 from artistools.misc import firstexisting_or_none
+from artistools.misc import format_range_list
 from artistools.misc import get_model_folder
 from artistools.misc import get_runfolders
+from artistools.misc import parquet_is_readable
 from artistools.misc import parse_cli_args
 from artistools.misc import path_is_dir
 from artistools.misc import print_detail
@@ -38,7 +44,10 @@ from artistools.misc import print_warning
 from artistools.misc import require_action
 from artistools.misc import resolve_table_outputfile
 from artistools.misc import SN3D_INPUT_FOLDERS
+from artistools.nltepops import get_nltepops_cache_only_copy_state
+from artistools.nltepops import NLTE_CACHE_FILENAME
 from artistools.packets import get_packets_batch_parquet_paths
+from artistools.packets import get_packets_cache_missing_ranks
 
 if t.TYPE_CHECKING:
     from collections.abc import Callable
@@ -202,12 +211,91 @@ def make_caches(modelfolder: Path) -> pl.DataFrame:
     return pl.DataFrame(rows, schema={"data": pl.String, "status": pl.String, "detail": pl.String}, orient="row")
 
 
-def delete_caches(modelfolder: Path, force: bool) -> None:
-    """Delete the caches and the leftover files of the model after the user agrees."""
+class TextFilesState(t.NamedTuple):
+    """The state of the text files of a cache, which shows if a conversion can make the cache again."""
+
+    missingranks: list[int]
+    # None when no folder holds the text files of the cache
+    textfolder: Path | None
+    # the reader then keeps the cache, because older text cannot hold newer data
+    text_is_older: bool
+
+
+def get_text_files_state(
+    modelfolder: Path, cachepath: Path, folderlistings: dict[Path, dict[str, os.DirEntry[str]]]
+) -> TextFilesState:
+    """Return each rank whose text file is absent, the folder of the text files, and whether the text is older.
+
+    No conversion can make a cache with an absent rank or with older text again. The readers of the packets, the
+    estimators, and the NLTE populations read their caches with no text files, e.g. in an archived model folder. The
+    readers of the other caches need the text file, thus such a cache gives no rank and no folder.
+    """
+    if cachepath.name.startswith(("packetsbatch", "vpacketsbatch")):
+        missingranks, textfolder = get_packets_cache_missing_ranks(modelfolder, cachepath, folderlistings)
+        return TextFilesState(missingranks, textfolder, text_is_older=False)
+    if cachepath.name.startswith(("estimbatch", "estimators_allranks")):
+        missingranks, text_is_older = get_estimator_cache_only_copy_state(modelfolder, cachepath)
+        return TextFilesState(missingranks, cachepath.parent, text_is_older)
+    if cachepath.name == NLTE_CACHE_FILENAME:
+        missingranks, text_is_older = get_nltepops_cache_only_copy_state(modelfolder, cachepath.parent)
+        return TextFilesState(missingranks, cachepath.parent, text_is_older)
+    return TextFilesState([], None, text_is_older=False)
+
+
+def get_only_copies(modelfolder: Path, caches: Sequence[Path]) -> dict[Path, str]:
+    """Return each cache that is the only copy of its data, with the reason.
+
+    The text files of such a cache are absent, or they are older than the text of the cache. A cache that polars
+    cannot read holds no data. If artistools cannot identify the text files of a cache, e.g. because input.txt is
+    absent, the cache is also an only copy. The deletion must not lose data.
+    """
+    folderlistings: dict[Path, dict[str, os.DirEntry[str]]] = {}
+    onlycopies: dict[Path, str] = {}
+    for cachepath in caches:
+        if not parquet_is_readable(cachepath):
+            continue
+        try:
+            missingranks, textfolder, text_is_older = get_text_files_state(modelfolder, cachepath, folderlistings)
+        except (OSError, ValueError) as exc:
+            onlycopies[cachepath] = f"artistools cannot identify its text files ({type(exc).__name__}: {exc})"
+            continue
+        if missingranks:
+            ranktext = (
+                f"rank {missingranks[0]}" if len(missingranks) == 1 else f"ranks {format_range_list(missingranks)}"
+            )
+            # the folder shows that a different folder with files of the same ranks is not the source of the cache
+            if textfolder is None:
+                foldertext = ""
+            elif textfolder == modelfolder:
+                foldertext = " from the model folder"
+            elif textfolder.is_relative_to(modelfolder):
+                foldertext = f" from {textfolder.relative_to(modelfolder)}"
+            else:
+                foldertext = f" from {textfolder}"
+            onlycopies[cachepath] = f"the text files of {ranktext} are absent{foldertext}"
+        elif text_is_older:
+            onlycopies[cachepath] = "its text files are older than the text of the cache and cannot hold newer data"
+    return onlycopies
+
+
+def delete_caches(modelfolder: Path, force: bool, include_only_copies: bool) -> None:
+    """Delete the caches and the leftover files of the model after the user agrees.
+
+    A cache that is the only copy of its data stays, unless include_only_copies is True, as git clean keeps an ignored
+    file without -x. force skips only the question, as rm -f does.
+    """
     caches, leftovers = find_cache_files(modelfolder)
-    paths = [*caches, *leftovers]
+    onlycopies = get_only_copies(modelfolder, caches)
+    for cachepath, reason in onlycopies.items():
+        print_warning(f"{cachepath} is the only copy of its data, because {reason}")
+    if onlycopies and not include_only_copies:
+        print_warning(
+            "artistools does not delete an only copy. Give --include-only-copies to delete the only copies too. Their"
+            " data is then lost"
+        )
+    paths = [*(path for path in caches if include_only_copies or path not in onlycopies), *leftovers]
     if not paths:
-        print(f"{modelfolder} holds no cache")
+        print(f"{modelfolder} holds no other cache" if onlycopies else f"{modelfolder} holds no cache")
         return
     confirm_deletion(paths, force)
     for path in paths:
@@ -216,6 +304,8 @@ def delete_caches(modelfolder: Path, force: bool) -> None:
         else:
             path.unlink(missing_ok=True)
     print(f"Deleted {len(paths)} files. The next command that reads each kind of data converts the text files again")
+    if include_only_copies and onlycopies:
+        print_warning(f"{len(onlycopies)} of the deleted files were the only copies of their data")
 
 
 def addargs(parser: argparse.ArgumentParser) -> None:
@@ -225,10 +315,19 @@ def addargs(parser: argparse.ArgumentParser) -> None:
         choices=["make", "list", "delete"],
         helptext=(
             "make: convert the text output to the parquet caches. list: give the caches and their sizes. delete:"
-            " delete the caches and the leftover files of the conversions that stopped"
+            " delete the caches and the leftover files of the conversions that stopped. delete keeps each cache that"
+            " is the only copy of its data"
         ),
     )
     addarg_modelpath(parser, positional=True, default=Path())
+    parser.add_argument(
+        "--include-only-copies",
+        action="store_true",
+        help=(
+            "With delete: also delete each cache that is the only copy of its data, because its text files are absent"
+            " or older than the text of the cache. The data is then lost"
+        ),
+    )
     addarg_table_output(parser)
 
 
@@ -254,4 +353,4 @@ def main(args: argparse.Namespace | None = None, argsraw: Sequence[str] | None =
             if (dftable["kind"] == "leftover").any():
                 print_warning("A conversion stopped and left files. Run `artistools cache delete` to delete them")
         case "delete":
-            delete_caches(modelfolder, args.force)
+            delete_caches(modelfolder, args.force, args.include_only_copies)
