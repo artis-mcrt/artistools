@@ -217,7 +217,8 @@ def get_missing_text_ranks(
 
     No conversion can make a cache with such a rank again. The readers of the packets, the estimators, and the NLTE
     populations read their caches with no text files, e.g. in an archived model folder. The readers of the other
-    caches need the text file, thus such a cache gives no rank. The folder is None when no folder holds the text.
+    caches need the text file, thus such a cache gives no rank and no folder. The folder is also None when no folder
+    holds the text files of the cache.
     """
     if cachepath.name.startswith(("packetsbatch", "vpacketsbatch")):
         return get_packets_cache_missing_ranks(modelfolder, cachepath, folderlistings)

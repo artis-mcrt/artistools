@@ -518,10 +518,10 @@ def test_packets_source_index_matches_the_reader(tmp_path: Path) -> None:
 
 
 def test_packets_folder_selection_omits_a_link_to_an_absent_file(tmp_path: Path) -> None:
-    """Select the folder of the text files that exist, because the reader does not read a link to an absent file.
+    """Select the folder of the text files that exist.
 
-    The selection counted the names. Thus an earlier run folder of such links came before a later run folder with all
-    the files, and the reader then found no text file.
+    The reader does not read a link to an absent file. The selection counted the names. Thus an earlier run folder of
+    such links came before a later run folder with all the files. The reader then found no text file.
     """
     from artistools.packets.core import find_packets_textsources
     from artistools.packets.core import select_packets_textfolder
@@ -541,28 +541,17 @@ def test_packets_folder_selection_omits_a_link_to_an_absent_file(tmp_path: Path)
     assert list(find_packets_textsources(textfolder, filenames, folderlistings)) == filenames
 
 
-def test_packets_reader_takes_the_text_files_of_one_run(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_packets_reader_takes_the_text_files_of_one_run(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], write_packets_runfolder: Callable[[Path, str, float], None]
+) -> None:
     """Read the packets text files of all the ranks from one folder, thus a cache holds the packets of one run.
 
     The search took the first file of each rank. A rank that the first run folder did not hold thus came from a later
     run, and two complete sets gave no message. The packets of each run here have a different energy.
     """
-    import shutil
-
-    shutil.copy(at.get_path("testdata") / "test-classicmode_3d" / "input.txt", tmp_path)
+    write_packets_runfolder(tmp_path, "100.slurm", 1e40)
+    write_packets_runfolder(tmp_path, "200.slurm", 2e40)
     assert at.misc.get_nprocs(tmp_path) == 2
-    sourcefile = at.get_path("testdata") / "test-classicmode_3d" / "packets" / "packets00_0000.out.zst"
-    with at.zopen(sourcefile, mode="rt", encoding="utf-8") as fsource:
-        headerline, packetline = fsource.readline(), fsource.readline()
-    energycolumn = headerline.lstrip("#").split().index("e_rf")
-    for runfolder, energy in (("100.slurm", 1e40), ("200.slurm", 2e40)):
-        (tmp_path / runfolder).mkdir()
-        values = packetline.split()
-        values[energycolumn] = str(energy)
-        for rank in (0, 1):
-            (tmp_path / runfolder / f"packets00_{rank:04d}.out").write_text(
-                headerline + " ".join(values) + "\n", encoding="utf-8"
-            )
 
     def get_energies() -> list[float]:
         _, dfpackets = at.packets.scan_packets(tmp_path)
@@ -573,6 +562,45 @@ def test_packets_reader_takes_the_text_files_of_one_run(tmp_path: Path, capsys: 
 
     (tmp_path / "100.slurm" / "packets00_0001.out").unlink()
     assert get_energies() == pytest.approx([2e40], rel=1e-6)
+
+
+def test_packets_reader_and_filter_keep_the_only_cache_of_an_earlier_run(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], write_packets_runfolder: Callable[[Path, str, float], None]
+) -> None:
+    """Keep a packets cache with absent text files when a later run folder holds files of the same ranks.
+
+    The reader put the cache of the later run at the same path, and filterpackets removed the cache at that path.
+    Thus the packets of the earlier run were lost. The cache of the later run is now beside its text files.
+    """
+    import shutil
+
+    from artistools.packets.core import check_packets_batch_parquet_paths
+    from artistools.packets.core import find_first_rank_textfiles
+
+    def get_cache_energies(cachepath: Path) -> list[float]:
+        return pl.read_parquet(cachepath)["e_rf"].unique().to_list()
+
+    write_packets_runfolder(tmp_path, "100.slurm", 1e40)
+    _, (earliercache,) = at.packets.get_packets_batch_parquet_paths(tmp_path)
+    shutil.rmtree(tmp_path / "100.slurm")
+    write_packets_runfolder(tmp_path, "200.slurm", 2e40)
+
+    _, (latercache,) = at.packets.get_packets_batch_parquet_paths(tmp_path)
+    assert latercache == tmp_path / "200.slurm" / earliercache.name
+    assert get_cache_energies(latercache) == pytest.approx([2e40], rel=1e-6)
+    assert get_cache_energies(earliercache) == pytest.approx([1e40], rel=1e-6)
+    assert f"{earliercache.name} is the only copy" in capsys.readouterr().err
+
+    # a new check of the caches converts no text file
+    find_first_rank_textfiles.cache_clear()
+    check_packets_batch_parquet_paths.cache_clear()
+    assert at.packets.get_packets_batch_parquet_paths(tmp_path)[1] == [latercache]
+    assert "Generating" not in capsys.readouterr().out
+
+    at.packets.filterpackets.main(argsraw=[str(tmp_path), "-f"])
+    assert "the filter removes" in capsys.readouterr().out
+    assert not latercache.exists()
+    assert get_cache_energies(earliercache) == pytest.approx([1e40], rel=1e-6)
 
 
 def test_add_derived_columns_gives_the_timestep_of_the_thermal_emission() -> None:

@@ -139,6 +139,42 @@ def copy_model_inputs() -> "Callable[[Path, Path, Sequence[str]], None]":
 
 
 @pytest.fixture
+def write_packets_runfolder() -> "Callable[[Path, str, float], None]":
+    """Return a function that writes the packets text files of a run of two ranks into a run folder of a model.
+
+    The caller gives the model folder, the name of the run folder, and the e_rf value of each packet. A different
+    value for each run shows which run a cache holds. The function also copies an input.txt of two ranks to a model
+    folder that has none.
+    """
+    import shutil
+
+    from artistools.misc import zopen
+    from artistools.paths import get_path
+
+    def write_packets_runfolder(modelfolder: Path, runfolder: str, energy: float) -> None:
+        testdatapath = get_path("testdata")
+        assert isinstance(testdatapath, Path)
+        sourcemodel = testdatapath / "test-classicmode_3d"
+        if not (modelfolder / "input.txt").exists():
+            shutil.copy(sourcemodel / "input.txt", modelfolder)
+        with zopen(sourcemodel / "packets" / "packets00_0000.out.zst", mode="rt", encoding="utf-8") as fsource:
+            headerline, *sourcelines = fsource.readlines()
+        # the file has the packets in the order of their types, thus a step of 100 lines gives packets of each type
+        packetlines = sourcelines[::100]
+        energycolumn = headerline.lstrip("#").split().index("e_rf")
+        (modelfolder / runfolder).mkdir()
+        for rank in (0, 1):
+            with (modelfolder / runfolder / f"packets00_{rank:04d}.out").open("w", encoding="utf-8") as fpackets:
+                fpackets.write(headerline)
+                for packetline in packetlines:
+                    values = packetline.split()
+                    values[energycolumn] = str(energy)
+                    fpackets.write(" ".join(values) + "\n")
+
+    return write_packets_runfolder
+
+
+@pytest.fixture
 def copy_vpktcontrib_model() -> "Callable[[Path, str, str], Path]":
     """Return a function that copies the vpktcontrib model, with a new time window and new wavelength ranges.
 

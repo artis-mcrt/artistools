@@ -1,4 +1,5 @@
 import shutil
+from collections.abc import Callable
 from pathlib import Path
 
 import polars as pl
@@ -74,39 +75,23 @@ def test_cache_delete_keeps_the_only_copy_of_the_packets(tmp_path: Path, capsys:
 
 
 def test_cache_delete_keeps_a_packets_cache_of_a_run_whose_text_files_are_absent(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], write_packets_runfolder: Callable[[Path, str, float], None]
 ) -> None:
-    """Keep a packets cache when its text files are absent and a different run holds text files of the same ranks.
+    """Keep a packets cache with absent text files when a different run folder holds files of the same ranks.
 
     The check took the folder that the reader reads now. The files of the later run there are not the source of the
     cache, but the command deleted the cache as a copy of them. The packets of each run here have a different energy.
     """
     from artistools.cache import main as cachemain
 
-    sourcemodel = at.get_path("testdata") / "test-classicmode_3d"
-    shutil.copy(sourcemodel / "input.txt", tmp_path)
-    with at.zopen(sourcemodel / "packets" / "packets00_0000.out.zst", mode="rt", encoding="utf-8") as fsource:
-        headerline, packetline = fsource.readline(), fsource.readline()
-    energycolumn = headerline.lstrip("#").split().index("e_rf")
-
-    def write_run(runfolder: str, energy: float) -> None:
-        (tmp_path / runfolder).mkdir()
-        values = packetline.split()
-        values[energycolumn] = str(energy)
-        for rank in (0, 1):
-            (tmp_path / runfolder / f"packets00_{rank:04d}.out").write_text(
-                headerline + " ".join(values) + "\n", encoding="utf-8"
-            )
-
-    write_run("100.slurm", 1e40)
+    write_packets_runfolder(tmp_path, "100.slurm", 1e40)
     _, (cachepath,) = at.packets.get_packets_batch_parquet_paths(tmp_path)
     shutil.rmtree(tmp_path / "100.slurm")
-    write_run("200.slurm", 2e40)
+    write_packets_runfolder(tmp_path, "200.slurm", 2e40)
 
     cachemain(argsraw=["delete", "-f", str(tmp_path)])
 
-    # a read with scan_packets makes the cache again from 200.slurm, thus the test reads the file
-    assert pl.read_parquet(cachepath)["e_rf"].to_list() == pytest.approx([1e40, 1e40], rel=1e-6)
+    assert pl.read_parquet(cachepath)["e_rf"].unique().to_list() == pytest.approx([1e40], rel=1e-6)
     assert "the text files of ranks 0-1 are absent from 100.slurm" in capsys.readouterr().err
 
 
