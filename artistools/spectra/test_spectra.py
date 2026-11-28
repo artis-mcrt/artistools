@@ -362,18 +362,14 @@ def get_contributions_classic_3d(
         (
             "ion",
             10,
-            [
-                ("Co II", 1.541452039348011e-08),
-                ("free-free", 5.6865311711303595e-09),
-                ("Co III", 6.196070067481124e-10),
-            ],
+            [("Co II", 1.576267984808799e-08), ("free-free", 5.743977239757294e-09), ("Co III", 6.42728956796956e-10)],
         ),
         (
             "line",
             776,
             [
-                ("free-free", 5.6865311711303595e-09),
-                ("Co II λ3755 69-25", 4.2743896083241423e-10),
+                ("free-free", 5.743977239757294e-09),
+                ("Co II λ3755 69-25", 4.3202887112558606e-10),
                 ("Co II λ4161 69-31", 3.974052796767683e-10),
             ],
         ),
@@ -484,6 +480,57 @@ def test_spectra_gamma_element_contributions(
     assert set(fractions) == {"Ni", "Co", "initial energy"}
     for label, energy in (("Ni", 5.0), ("Co", 2.0), ("initial energy", 8.0)):
         assert np.isclose(fractions[label], energy / 15.0, rtol=1e-12, atol=0.0)
+
+
+def test_packet_contribution_of_one_bin_is_the_flux_density_times_the_bin_width(
+    monkeypatch: pytest.MonkeyPatch,
+    patch_scan_packets: Callable[[pl.DataFrame], None],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The flux of a series of packets is the sum of f_lambda times the width of each wavelength bin.
+
+    The trapezoidal rule over the bin centres gave zero for one bin, thus the reader dropped the series. With more bins,
+    that rule left out half of each end bin. The contribution table uses the same sum.
+    """
+    patch_scan_packets(
+        pl.DataFrame({
+            "e_rf": [1.0],
+            "t_arrive_d": [2.0],
+            "pellet_nucindex": [0],
+            "nu_rf": [at.constants.c_ang_per_s / 5000.0],
+        })
+    )
+
+    def scan_nuclides(modelpath: Path | str) -> pl.LazyFrame:
+        del modelpath
+        return pl.LazyFrame({"pellet_nucindex": [0], "elsymbol": ["Ni"], "nucname": ["Ni56"]})
+
+    monkeypatch.setattr(atspectra, "scan_nuclides", scan_nuclides)
+    lambda_bin_edges = np.array([4000.0, 6000.0])
+    contributions, array_flambda_emission_total, array_lambda = atspectra.get_flux_contributions_from_packets(
+        modelpath=Path(),
+        timelowdays=1.5,
+        timehighdays=2.5,
+        lambda_bin_edges=lambda_bin_edges,
+        getabsorption=False,
+        groupby="nuc",
+        gamma=True,
+    )
+
+    assert [contribution.linelabel for contribution in contributions] == ["Ni56"]
+    totalflux = float(array_flambda_emission_total[0]) * 2000.0
+    # one packet of 1 erg in a time range of 1 day, at a distance of 1 Mpc
+    packetflux = 1.0 / (at.constants.day_to_s * 4 * math.pi * at.constants.megaparsec_to_cm**2)
+    assert np.isclose(totalflux, packetflux, rtol=1e-12, atol=0.0)
+    assert np.isclose(contributions[0].fluxcontrib, totalflux, rtol=1e-12, atol=0.0)
+
+    capsys.readouterr()
+    plotspectra.sort_and_reduce_flux_contribution_list(
+        contributions, 14, array_lambda, arraydeltalambda=np.diff(lambda_bin_edges)
+    )
+    table = capsys.readouterr().out
+    assert "Σ f_λ Δλ over 1 wavelength bin from 4000 to 6000 Å" in table
+    assert re.search(rf"Ni56\s+emission {packetflux:.2e} \(100.0%\)", table)
 
 
 def test_spectra_emission_text_files_fill_the_plot_range() -> None:
@@ -1388,8 +1435,14 @@ def test_spectra_contribution_plot_forwards_packet_time(
     expected_use_time: str,
 ) -> None:
     """The contribution plot must use the packet time that the command selects."""
-    contribution_list: list[atspectra.FluxContributionTuple] = []
-    mockgetcontributions.return_value = (contribution_list, np.zeros(2), np.array([4000.0, 5000.0]))
+
+    def get_no_contributions(
+        *_args: t.Any, lambda_bin_edges: npt.NDArray[np.floating], **_kwargs: t.Any
+    ) -> tuple[list[atspectra.FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
+        # the plot reads the bin widths from the same edges, thus the arrays have one value for each bin
+        return [], np.zeros(len(lambda_bin_edges) - 1), 0.5 * (lambda_bin_edges[:-1] + lambda_bin_edges[1:])
+
+    mockgetcontributions.side_effect = get_no_contributions
 
     at.spectra.plot(
         argsraw=[],

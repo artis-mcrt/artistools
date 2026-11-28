@@ -1314,6 +1314,7 @@ def order_and_color_shells(
     contributions: list[FluxContributionTuple],
     arraylambda_angstroms: npt.NDArray[np.floating],
     args: argparse.Namespace,
+    arraydeltalambda: npt.NDArray[np.floating] | None = None,
 ) -> list[FluxContributionTuple]:
     """Return the shells from the lowest edge to the highest one, with the colours of a sequential map.
 
@@ -1336,7 +1337,12 @@ def order_and_color_shells(
         ]
 
     contributions_sorted_reduced = sort_and_reduce_flux_contribution_list(
-        contributions, args.maxseriescount, arraylambda_angstroms, fixedionlist=fixedionlist, hideother=args.hideother
+        contributions,
+        args.maxseriescount,
+        arraylambda_angstroms,
+        fixedionlist=fixedionlist,
+        hideother=args.hideother,
+        arraydeltalambda=arraydeltalambda,
     )
 
     shells = [
@@ -1654,7 +1660,7 @@ def make_emissionabsorption_plot(
 
     dirbin = args.plotviewingangle[0] if args.plotviewingangle else args.plotvspecpol[0] if args.plotvspecpol else None
 
-    contribution_list, array_flambda_emission_total, arraylambda_angstroms = get_emission_contributions(
+    contribution_list, array_flambda_emission_total, arraylambda_angstroms, delta_lambda = get_emission_contributions(
         modelpath,
         frompackets=args.frompackets,
         showemission=args.showemission,
@@ -1697,7 +1703,9 @@ def make_emissionabsorption_plot(
     print_integrated_flux(array_flambda_emission_total, arraylambda_angstroms)
 
     if args.groupby in SHELLCOLUMNS:
-        contributions_sorted_reduced = order_and_color_shells(contribution_list, arraylambda_angstroms, args)
+        contributions_sorted_reduced = order_and_color_shells(
+            contribution_list, arraylambda_angstroms, args, arraydeltalambda=delta_lambda
+        )
     else:
         contributions_sorted_reduced = sort_and_reduce_flux_contribution_list(
             contribution_list,
@@ -1705,6 +1713,7 @@ def make_emissionabsorption_plot(
             arraylambda_angstroms,
             fixedionlist=args.fixedionlist,
             hideother=args.hideother,
+            arraydeltalambda=delta_lambda,
         )
 
     plotobjectlabels: list[str] = []
@@ -3024,8 +3033,12 @@ def sort_and_reduce_flux_contribution_list(
     arraylambda_angstroms: npt.NDArray[np.floating],
     fixedionlist: list[str] | None = None,
     hideother: bool = False,
+    arraydeltalambda: npt.NDArray[np.floating] | None = None,
 ) -> list[FluxContributionTuple]:
-    """Return the contributions sorted by flux, keeping at most maxseriescount and merging the rest into 'Other'."""
+    """Return the contributions sorted by flux, keeping at most maxseriescount and merging the rest into 'Other'.
+
+    arraydeltalambda gives the width of each wavelength bin of the packets, and print_contribution_table reads it.
+    """
     rowofname = {row.linelabel: row for row in contribution_list_in}
     # each plot gives its contributions to this function, thus this is the one warning for a missing item. The plot
     # shows only the first maxseriescount items, and the packet reader puts each item after them in "Other"
@@ -3046,7 +3059,7 @@ def sort_and_reduce_flux_contribution_list(
 
     color_list: list[mplt.ColorType] = remove_greys(rgb_candidates)
 
-    print_contribution_table(kept, other, arraylambda_angstroms)
+    print_contribution_table(kept, other, arraylambda_angstroms, arraydeltalambda)
 
     # a long -fixedionlist holds more entries than the colour list, thus the index wraps around
     contribution_list_out = [

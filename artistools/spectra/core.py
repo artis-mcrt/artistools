@@ -456,6 +456,14 @@ def get_binned_lambda_frame(lambda_bin_edges: npt.NDArray[np.floating]) -> pl.Da
     }).with_columns(nu=(constants.c_ang_per_s / pl.col("lambda_angstroms")))
 
 
+def get_flux_of_bins(flambda: npt.NDArray[np.floating], delta_lambda: npt.NDArray[np.floating]) -> float:
+    """Return the flux of a packet histogram, which is the sum of f_lambda times the width of each wavelength bin.
+
+    f_lambda is the flux of the packets of a bin divided by its width, thus the sum gives the flux of all the bins.
+    """
+    return float(np.sum(flambda * delta_lambda))
+
+
 def select_dirbins(alldirbins: list[int], requested: Sequence[int] | None) -> list[int]:
     """Return the requested direction bins. Return all the available direction bins if the caller requests none."""
     if requested is None:
@@ -2556,8 +2564,8 @@ def get_flux_contributions_from_packets(
         array_flambda_absorption = absorption_spectra.get(groupname, np.zeros_like(array_lambda, dtype=float))
         array_flambda_emission_total += array_flambda_emission
 
-        fluxcontribthisseries = abs(float(np.trapezoid(array_flambda_emission, x=array_lambda))) + abs(
-            float(np.trapezoid(array_flambda_absorption, x=array_lambda))
+        fluxcontribthisseries = abs(get_flux_of_bins(array_flambda_emission, array_delta_lambda)) + abs(
+            get_flux_of_bins(array_flambda_absorption, array_delta_lambda)
         )
 
         if fluxcontribthisseries > 0.0:
@@ -2603,15 +2611,21 @@ def print_contribution_table(
     kept: Sequence[FluxContributionTuple],
     other: Sequence[FluxContributionTuple],
     arraylambda_angstroms: npt.NDArray[np.floating],
+    arraydeltalambda: npt.NDArray[np.floating] | None = None,
 ) -> None:
     """Print one aligned line for each drawn series with its integrated flux and its share, and one line for Other.
 
     The share is a part of the emission or of the absorption of all the series. A series with no emission and no
     absorption gets no line of its own, thus a person and an agent can read the table at a glance.
+
+    arraydeltalambda gives the width of each wavelength bin of the packets, and the flux is then the sum of f_λ Δλ
+    over the bins. The emission files give only the bin centres, thus with None the flux uses the trapezoidal rule.
     """
 
     def integrate(values: npt.NDArray[np.floating]) -> float:
-        return abs(float(np.trapezoid(values, x=arraylambda_angstroms)))
+        if arraydeltalambda is None:
+            return abs(float(np.trapezoid(values, x=arraylambda_angstroms)))
+        return abs(get_flux_of_bins(values, arraydeltalambda))
 
     emission = {row.linelabel: integrate(row.array_flambda_emission) for row in [*kept, *other]}
     absorption = {row.linelabel: integrate(row.array_flambda_absorption) for row in [*kept, *other]}
@@ -2631,10 +2645,19 @@ def print_contribution_table(
     drawn = [row.linelabel for row in kept if emission[row.linelabel] > 0.0 or absorption[row.linelabel] > 0.0]
     othernames = [row.linelabel for row in other if row.linelabel != "Other"]
     labelwidth = max((len(label) for label in [*drawn, "Other"]), default=5)
-    print(
-        f"  Flux at 1 Mpc [erg/s/cm^2] of each series = ∫ f_λ dλ from {arraylambda_angstroms.min():.5g} to"
-        f" {arraylambda_angstroms.max():.5g} Å (trapezoidal rule), and its share of the sum of all the series:"
-    )
+    if arraydeltalambda is None:
+        methodtext = (
+            f"∫ f_λ dλ from {arraylambda_angstroms.min():.5g} to {arraylambda_angstroms.max():.5g} Å (trapezoidal rule)"
+        )
+    else:
+        lambdalow = float(np.min(arraylambda_angstroms - 0.5 * arraydeltalambda))
+        lambdahigh = float(np.max(arraylambda_angstroms + 0.5 * arraydeltalambda))
+        nbins = len(arraydeltalambda)
+        methodtext = (
+            f"Σ f_λ Δλ over {nbins} wavelength {'bin' if nbins == 1 else 'bins'} from {lambdalow:.5g} to"
+            f" {lambdahigh:.5g} Å"
+        )
+    print(f"  Flux at 1 Mpc [erg/s/cm^2] of each series = {methodtext}, and its share of the sum of all the series:")
     for label in drawn:
         print(f"    {label:<{labelwidth}}  {get_flux_text(label)}")
     if nodata := len(kept) - len(drawn):
@@ -2881,19 +2904,38 @@ def get_emission_contributions(
     shelledges: Sequence[float] | None,
     shellunit: t.Literal["kmps", "c", "ye"],
     velocityranges: Mapping[str, tuple[float, float]] | None,
-) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
-    """Return the flux contribution of each series, the total emitted flux, and the wavelength grid.
+) -> tuple[
+    list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating], npt.NDArray[np.floating] | None
+]:
+    """Return the flux contribution of each series, the total emitted flux, and the wavelength grid with its bin widths.
 
     With frompackets, the function reads the packets files. Without it, the function reads the emission file and the
     absorption file that ARTIS writes for each timestep. The total emitted flux is the net spectrum, thus a plot of the
-    absorption alone also reads the emission.
+    absorption alone also reads the emission. The packets give the width of each wavelength bin [Å]. The emission
+    files give only the bin centres, thus the widths are then None.
     """
+    lambda_bin_edges = (
+        np.sort(
+            get_lambda_bin_edges(
+                xmin,
+                xmax,
+                deltax=deltax,
+                deltalogx=deltalogx,
+                deltalambda=deltalambda,
+                xunit=xunit,
+                modelpath=modelpath,
+                gamma=gamma,
+            )
+        )
+        if frompackets
+        else None
+    )
 
     def read_contributions(
         getemission: bool, getabsorption: bool
     ) -> tuple[list[FluxContributionTuple], npt.NDArray[np.floating], npt.NDArray[np.floating]]:
         """Return the contributions, the total emitted flux, and the wavelength grid of the selected processes."""
-        if not frompackets:
+        if lambda_bin_edges is None:
             assert not vpkt_match_emission_exclusion_to_opac
             # the emission files of exspec hold no sampled emission, thus resolve_frompackets selects the packets
             assert emissionevent != "sampled"
@@ -2920,16 +2962,7 @@ def get_emission_contributions(
             modelpath,
             timelowdays=timemin,
             timehighdays=timemax,
-            lambda_bin_edges=get_lambda_bin_edges(
-                xmin,
-                xmax,
-                deltax=deltax,
-                deltalogx=deltalogx,
-                deltalambda=deltalambda,
-                xunit=xunit,
-                modelpath=modelpath,
-                gamma=gamma,
-            ),
+            lambda_bin_edges=lambda_bin_edges,
             getemission=getemission,
             getabsorption=getabsorption,
             maxpacketfiles=maxpacketfiles,
@@ -2958,7 +2991,8 @@ def get_emission_contributions(
         # comes from this call
         _, array_flambda_emission_total, _ = read_contributions(getemission=True, getabsorption=False)
 
-    return contribution_list, array_flambda_emission_total, arraylambda_angstroms
+    arraydeltalambda = None if lambda_bin_edges is None else np.diff(lambda_bin_edges)
+    return contribution_list, array_flambda_emission_total, arraylambda_angstroms, arraydeltalambda
 
 
 def collect_emission_and_absorption(
