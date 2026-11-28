@@ -433,7 +433,7 @@ def get_datafile_dirbins(dfdata: pl.DataFrame, datafilename: Path, args: argpars
 
     if len(dirbins) != dfdata.height or -1 in dirbins:
         msg = (
-            f"The colour bar needs the direction bin of each row of {datafilename},"
+            f"The plot needs the direction bin of each row of {datafilename},"
             f" which has {dfdata.height} rows and gives {len(dirbins)} direction bins."
             " Write the file again with a --plotviewingangle selection, and give the same selection here."
         )
@@ -588,12 +588,15 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
             "--colouratpeak plots the colour of two bands, and --filter must name two bands",
             "Give two bands, e.g. --filter B V",
         )
-    # the package holds no copy of the observed data, thus look for the file before the slow fits
-    sn_data, label = get_phillips_relation_data()
+    bands = [args.filter[0], args.filter[1]]
+    # the observed data give B-V at B maximum and the peak B magnitude, thus only the axes of these values show them.
+    # The package holds no copy of the observed data, thus look for the file before the slow fits
+    observations = get_phillips_relation_data() if bands == ["B", "V"] else None
+    if observations is None:
+        print(f"The observed data give B-V at B maximum, thus the plot of {bands[0]}-{bands[1]} shows no observed data")
     fig, axesgrid = make_frame_figure(args)
     ax = axesgrid[0][0]
     dfplotted: list[pl.DataFrame] = []
-    bands = [args.filter[0], args.filter[1]]
 
     datanames = get_viewing_angle_data_names(args.modelpath)
     for modelnumber, modelpath in enumerate(args.modelpath):
@@ -610,7 +613,11 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
         if len(data[f"time_{bands[0]}max"]) != 100:
             exit_with_error(f"{datafilename} does not hold all 100 direction bins")
 
-        second_band_brightness: t.Any = second_band_brightness_at_peak_first_band(data, bands, modelpath, args)
+        # the rows of the file can have a different order from the direction bins
+        dirbins = get_datafile_dirbins(viewing_angle_plot_data, datafilename, args)
+        second_band_brightness: t.Any = second_band_brightness_at_peak_first_band(
+            dirbins, data[f"time_{bands[0]}max"], bands[1], modelpath, args
+        )
 
         data[f"{bands[1]}at{bands[0]}max"] = second_band_brightness
 
@@ -630,24 +637,26 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
                 pl.lit(modelname).alias("model"),
                 pl.lit(str(modelpath)).alias("modelpath"),
                 pl.lit(linelabel).alias("label"),
-                pl.Series("dirbin", get_table_dirbins(viewing_angle_plot_data, datafilename, args), dtype=pl.Int64),
+                pl.Series("dirbin", dirbins, dtype=pl.Int64),
                 pl.all(),
             )
         )
 
-    ax.errorbar(
-        x=sn_data["(B-V)Bmax"],
-        y=sn_data["MB"],
-        xerr=sn_data["err_(B-V)Bmax"],
-        yerr=sn_data["err_MB"],
-        color="k",
-        alpha=0.9,
-        marker=".",
-        capsize=2,
-        label=label,
-        ls="None",
-        zorder=-1,
-    )
+    if observations is not None:
+        sn_data, label = observations
+        ax.errorbar(
+            x=sn_data["(B-V)Bmax"],
+            y=sn_data["MB"],
+            xerr=sn_data["err_(B-V)Bmax"],
+            yerr=sn_data["err_MB"],
+            color="k",
+            alpha=0.9,
+            marker=".",
+            capsize=2,
+            label=label,
+            ls="None",
+            zorder=-1,
+        )
 
     set_legend(ax, args, loc="upper right")
     ax.set_xlabel(f"{bands[0]}-{bands[1]} at {bands[0]}max")
@@ -657,29 +666,32 @@ def make_peak_colour_viewing_angle_plot(args: argparse.Namespace) -> None:
         get_viewing_angle_data_folder(args)
         / f"plotviewinganglecolour{get_filename_part(bands[0])}-{get_filename_part(bands[1])}.pdf"
     )
-    # the observations have their own columns, thus they go in a second table
-    output_data(
-        args,
-        {"": pl.concat(dfplotted) if dfplotted else pl.DataFrame(), "_observations": pl.DataFrame(sn_data)},
-        plotname,
-    )
+    tables = {"": pl.concat(dfplotted) if dfplotted else pl.DataFrame()}
+    if observations is not None:
+        # the observed data have their own columns, thus they go in a second table
+        tables["_observations"] = observations[0]
+    output_data(args, tables, plotname)
     save_figure(fig, plotname, format="pdf", args=args)
 
 
 def second_band_brightness_at_peak_first_band(
-    data: dict[str, npt.NDArray[np.float64]], bands: Sequence[str], modelpath: Path, args: argparse.Namespace
+    dirbins: Sequence[int],
+    first_band_peak_times: npt.NDArray[np.float64],
+    second_band: str,
+    modelpath: Path,
+    args: argparse.Namespace,
 ) -> list[float]:
     """Return the second band's magnitude at the time the first band peaks, for each direction bin."""
     second_band_brightness: list[float] = []
-    for anglenumber, _ in enumerate(data[f"time_{bands[0]}max"]):
-        lightcurve_data = generate_band_lightcurve_data_for_args(modelpath, args.filter, anglenumber, args)
+    for dirbin, first_band_peak_time in zip(dirbins, first_band_peak_times, strict=True):
+        lightcurve_data = generate_band_lightcurve_data_for_args(modelpath, args.filter, dirbin, args)
         time, brightness_in_mag = get_band_lightcurve(
-            lightcurve_data, bands[1], timemin=args.timemin, timemax=args.timemax
+            lightcurve_data, second_band, timemin=args.timemin, timemax=args.timemax
         )
 
         fxfit, xfit = lightcurve_polyfit(time, brightness_in_mag)
 
-        index_at_max = int(np.abs(np.asarray(xfit, dtype=float) - data[f"time_{bands[0]}max"][anglenumber]).argmin())
+        index_at_max = int(np.abs(np.asarray(xfit, dtype=float) - first_band_peak_time).argmin())
 
         brightness_in_second_band_at_first_band_peak = fxfit[index_at_max]
         print(brightness_in_second_band_at_first_band_peak)

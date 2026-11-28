@@ -27,6 +27,7 @@ from matplotlib.container import ErrorbarContainer
 from pytest_codspeed.plugin import BenchmarkFixture
 
 import artistools as at
+from artistools.constants import day_to_s
 from artistools.constants import Lsun_to_erg_per_s
 from artistools.constants import Mbol_sun
 from artistools.lightcurve import interactive
@@ -2702,6 +2703,40 @@ def test_light_curve_of_the_initial_energy_reads_its_packets() -> None:
     pltest.assert_frame_equal(dfinitialenergy[-1].collect(), dfall[-1].collect())
 
 
+@pytest.mark.parametrize("use_pellet_decay_time", [False, True])
+def test_top_nuclides_count_only_the_packets_in_the_time_range(use_pellet_decay_time: bool) -> None:
+    """--topnucs sums the energy of the packets from --timemin to --timemax, and of no other packet.
+
+    The sum also included the packet nearest to each limit outside the range. Thus Ni56 with a packet at 1 d was the
+    first nuclide from 4 d to 6 d, where it has no packet.
+    """
+    from artistools.lightcurve import core as lightcurvecore
+
+    nuclides = pl.LazyFrame({"pellet_nucindex": [0, 1], "nucname": ["Ni56", "Co56"]})
+    selectedtimes_days = [1.0, 5.0, 9.0]
+    # the time that the test does not select puts each packet in the range, thus a sum with that time gives Ni56
+    othertimes_days = [5.0, 5.0, 5.0]
+    arrivaltimes_days, decaytimes_days = (
+        (othertimes_days, selectedtimes_days) if use_pellet_decay_time else (selectedtimes_days, othertimes_days)
+    )
+    packets = pl.LazyFrame({
+        "pellet_nucindex": [0, 1, 1],
+        "e_rf": [100.0, 1.0, 3.0],
+        "t_arrive_d": arrivaltimes_days,
+        "tdecay": [time_days * day_to_s for time_days in decaytimes_days],
+    })
+    with (
+        mock.patch.object(lightcurvecore, "scan_nuclides", return_value=nuclides),
+        mock.patch.object(lightcurvecore, "scan_packets", return_value=(1, packets)),
+    ):
+        dftopnuclides = lightcurvecore.get_top_nuclides(
+            modelpath, "TYPE_RPKT", 1, None, 4.0, 6.0, use_pellet_decay_time=use_pellet_decay_time
+        )
+
+    assert dftopnuclides["nucname"].to_list() == ["Co56"]
+    assert np.isclose(dftopnuclides["e_rf_sum"].item(), 1.0, rtol=1e-12, atol=0.0)
+
+
 @mock.patch.object(mplax.Axes, "plot", side_effect=mplax.Axes.plot, autospec=True)
 def test_nuclide_light_curve_label_keeps_the_model_name(mockplot: mock.MagicMock) -> None:
     """The label of the light curve of one nuclide holds the model name and the gamma marker.
@@ -3392,6 +3427,115 @@ def test_viewing_angle_table_gives_no_bin_that_the_file_does_not_name(capsys: py
     assert "has no dirbin column" in capsys.readouterr().err
     args.plotviewingangle = [5, 10]
     assert get_table_dirbins(dfdata, Path("old_viewing_angle_data.txt"), args) == [5, 10]
+
+
+PHILLIPS_RELATION_TEXT = (
+    "SN dm15(B) MB (B-V)Bmax err_(B-V)Bmax err_MB\nsn1 1.1 -19.2 0.05 0.02 0.10\nsn2 1.4 -18.9 0.12 0.03 0.15\n"
+)
+
+
+def run_colour_at_peak_plot(folder: Path, bands: list[str], dirbins: Sequence[int]) -> tuple[mplfig.Figure, Path]:
+    """Return the figure and the path of the plot that --colouratpeak makes from a data file of the first band.
+
+    The file holds the bins in the order of dirbins, and bin n has its peak of -19 + 0.001 n at 10 d. Each band of
+    bin n has the magnitude -18 - 0.01 n at each time. The mock fit returns the magnitudes that it receives, thus the
+    second band has that magnitude at the peak.
+    """
+    dataname = viewingangleanalysis.get_viewing_angle_data_names([modelpath])[0]
+    rows = "".join(f"{dirbin} {-19.0 + 0.001 * dirbin} 10.0 1.0\n" for dirbin in dirbins)
+    (folder / viewingangleanalysis.get_viewing_angle_data_filename(bands[0], dataname)).write_text(
+        f"dirbin peak_mag_polyfit risetime_polyfit deltam15_polyfit\n{rows}", encoding="utf-8"
+    )
+
+    def get_band_magnitudes_of_dirbin(
+        _modelpath: Path, filternames: Sequence[str], dirbin: int, _args: argparse.Namespace
+    ) -> dict[str, list[tuple[float, float]]]:
+        return {band: [(time, -18.0 - 0.01 * dirbin) for time in (5.0, 10.0, 15.0)] for band in filternames}
+
+    def fit_that_keeps_the_magnitudes(
+        time: Sequence[float], magnitude: npt.NDArray[np.floating]
+    ) -> tuple[npt.NDArray[np.floating], npt.NDArray[np.float64]]:
+        return magnitude, np.asarray(time, dtype=np.float64)
+
+    savedfigures: list[mplfig.Figure] = []
+
+    def save_figure_spy(fig: mplfig.Figure, *_args: t.Any, **_kwargs: t.Any) -> None:
+        savedfigures.append(fig)
+
+    with (
+        mock.patch.object(
+            viewingangleanalysis, "generate_band_lightcurve_data_for_args", side_effect=get_band_magnitudes_of_dirbin
+        ),
+        mock.patch.object(viewingangleanalysis, "lightcurve_polyfit", side_effect=fit_that_keeps_the_magnitudes),
+        mock.patch.object(viewingangleanalysis, "save_figure", side_effect=save_figure_spy),
+    ):
+        at.lightcurve.plot(
+            argsraw=[], modelpath=[modelpath], filter=bands, colouratpeak=True, write_data=True, outputfile=folder
+        )
+
+    (figure,) = savedfigures
+    return figure, folder / f"plotviewinganglecolour{bands[0]}-{bands[1]}.pdf"
+
+
+def test_colour_at_peak_reads_the_second_band_of_the_bin_of_each_row(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, read_data_file: Callable[[Path], pl.DataFrame]
+) -> None:
+    """The second band of a row of the data file must come from the direction bin of that row.
+
+    The command read the second band of the bin with the number of the row. Thus a file in reverse order gave the row
+    of bin 99 the V magnitude of bin 0.
+    """
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "CfA3_Phillips.dat").write_text(PHILLIPS_RELATION_TEXT, encoding="utf-8")
+    colourtables: list[pl.DataFrame] = []
+    for foldername, dirbins in (("ascending", range(100)), ("reverse", range(99, -1, -1))):
+        folder = tmp_path / foldername
+        folder.mkdir()
+        _, plotpath = run_colour_at_peak_plot(folder, ["B", "V"], dirbins)
+        colourtables.append(read_data_file(plotpath.with_suffix(".txt")).select("dirbin", "peakcolour").sort("dirbin"))
+
+    pltest.assert_frame_equal(colourtables[0], colourtables[1])
+    assert colourtables[0]["dirbin"].to_list() == list(range(100))
+    # the colour of bin n is (-19 + 0.001 n) - (-18 - 0.01 n)
+    assert np.allclose(colourtables[0]["peakcolour"], -1.0 + 0.011 * np.arange(100), rtol=0.0, atol=1e-9)
+
+
+@mock.patch.object(mplax.Axes, "errorbar", side_effect=mplax.Axes.errorbar, autospec=True)
+def test_colour_at_peak_shows_the_observations_only_for_b_minus_v_at_b_maximum(
+    mockerrorbar: mock.MagicMock,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    read_data_file: Callable[[Path], pl.DataFrame],
+) -> None:
+    """The observed data give B-V at B maximum and the peak B magnitude. Thus only the axes of these values show them.
+
+    The command drew and wrote the observed data for each pair of bands, and it needed the observation file for each
+    pair.
+    """
+    monkeypatch.chdir(tmp_path)
+    # the working folder holds no observation file, thus a command that reads it stops
+    for bands in (["U", "R"], ["V", "B"]):
+        folder = tmp_path / "-".join(bands)
+        folder.mkdir()
+        figure, plotpath = run_colour_at_peak_plot(folder, bands, range(100))
+        assert figure.axes[0].get_xlabel() == f"{bands[0]}-{bands[1]} at {bands[0]}max"
+        assert figure.axes[0].get_ylabel() == f"{bands[0]}max"
+        assert {f"{bands[0]}max", f"{bands[1]}at{bands[0]}max"} <= set(
+            read_data_file(plotpath.with_suffix(".txt")).columns
+        )
+        assert not mockerrorbar.called
+        assert not plotpath.with_name(f"{plotpath.stem}_observations.txt").exists()
+
+    (tmp_path / "CfA3_Phillips.dat").write_text(PHILLIPS_RELATION_TEXT, encoding="utf-8")
+    folder = tmp_path / "B-V"
+    folder.mkdir()
+    _, plotpath = run_colour_at_peak_plot(folder, ["B", "V"], range(100))
+    mockerrorbar.assert_called_once()
+    drawnvalues = [list(mockerrorbar.call_args.kwargs[key]) for key in ("x", "y", "xerr", "yerr")]
+    assert np.allclose(drawnvalues, [[0.05, 0.12], [-19.2, -18.9], [0.02, 0.03], [0.10, 0.15]], rtol=1e-12, atol=0.0)
+    dfobservations = read_data_file(plotpath.with_name(f"{plotpath.stem}_observations.txt"))
+    assert np.allclose(dfobservations["(B-V)Bmax"], [0.05, 0.12], rtol=1e-12, atol=0.0)
+    assert np.allclose(dfobservations["err_MB"], [0.10, 0.15], rtol=1e-12, atol=0.0)
 
 
 def test_lightcurve_tables_keep_two_models_of_one_name_apart(

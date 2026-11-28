@@ -40,6 +40,7 @@ from artistools.misc import get_metadata_label
 from artistools.misc import get_metadata_path
 from artistools.misc import get_viewingdirectionbincount
 from artistools.misc import get_vpkt_config
+from artistools.misc import is_in_range
 from artistools.misc import on_model_host
 from artistools.misc import parse_metadata_redshift
 from artistools.misc import path_is_reference_data
@@ -387,17 +388,16 @@ def get_top_nuclides(
 ) -> pl.DataFrame:
     """Return the nuclides whose decays give the most energy to the escaped packets, with the energy of each one.
 
-    The host of a remote model reads the packets, and only the table of the nuclides comes back.
+    The sum includes each packet with a time from timemindays to timemaxdays, and no other packet. The time is the
+    pellet decay time with use_pellet_decay_time, and the arrival time otherwise. The host of a remote model reads the
+    packets, and only the table of the nuclides comes back.
     """
     dfnuclides = scan_nuclides(modelpath=modelpath)
     _, dfpackets = scan_packets(modelpath, maxpacketfiles, packet_type="TYPE_ESCAPE", escape_type=escape_type)
     return (
-        df_filter_minmax_bracketed(
-            dfpackets.with_columns(tdecay_d=pl.col("tdecay") / day_to_s),
-            "tdecay_d" if use_pellet_decay_time else "t_arrive_d",
-            timemindays,
-            timemaxdays,
-        )
+        dfpackets
+        .with_columns(tdecay_d=pl.col("tdecay") / day_to_s)
+        .filter(is_in_range("tdecay_d" if use_pellet_decay_time else "t_arrive_d", timemindays, timemaxdays))
         .group_by("pellet_nucindex")
         .agg(pl.sum("e_rf").alias("e_rf_sum"))
         .top_k(by="e_rf_sum", k=count)
