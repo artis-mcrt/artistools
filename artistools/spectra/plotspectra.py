@@ -2872,6 +2872,15 @@ def resolve_plot_args(args: argparse.Namespace) -> None:
         not args.plotvspecpol or not args.plotviewingangle
     )  # choose either virtual packet directions or real packet direction bins
 
+    # ARTIS makes the virtual packets from the r-packets. For an observer, a read draws the r-packets as gamma rays or
+    # stops at an assertion, thus the check comes before the read
+    if args.gamma and args.plotvspecpol is not None:
+        exit_with_error(
+            "ARTIS makes the virtual packets from the r-packets, thus an observer of --plotvspecpol has no gamma-ray"
+            " spectrum",
+            "Remove --plotvspecpol or --gamma. For a direction bin of the gamma packets, give --plotviewingangle",
+        )
+
     # -obsspec named a reference spectrum before a positional path could name one. Nothing read that
     # list, thus the command drew the model alone and said nothing. The paths join the positional ones
     args.specpath = normalize_path_list([*makelist(args.specpath), *(args.refspecfiles or [])])

@@ -259,3 +259,32 @@ def test_vspecpol_rank_files_come_from_the_newest_run_folder_with_each_rank(tmp_
         runfolders[1] / "vspecpol_0000.out",
         runfolders[1] / "vspecpol_0001.out",
     ]
+
+
+@pytest.mark.parametrize("hasgammaspecfile", [True, False])
+def test_plotvspecpol_refuses_gamma_before_it_reads_a_spectrum(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], hasgammaspecfile: bool
+) -> None:
+    """--gamma with --plotvspecpol stops before the read, because ARTIS makes the virtual packets from the r-packets.
+
+    With gamma_spec.out, the command read vspecpol_total-0.out and drew the r-packet spectrum. With no gamma_spec.out,
+    it read the packets and stopped at an assertion.
+    """
+    modelfolder = tmp_path / "vspecpolmodel"
+    shutil.copytree(at.get_path("testdata") / "vspecpolmodel", modelfolder)
+    if hasgammaspecfile:
+        # the command must stop before a read of the file, thus an empty file is sufficient
+        (modelfolder / "gamma_spec.out").touch()
+
+    with (
+        mock.patch.object(
+            at.spectra.plotspectra, "read_dirbin_spectra", side_effect=AssertionError("read a spectrum")
+        ) as mockread,
+        pytest.raises(SystemExit),
+    ):
+        at.spectra.plot(argsraw=[str(modelfolder), "--gamma", "--plotvspecpol", "0", "-t", "11.5", "-o", str(tmp_path)])
+
+    mockread.assert_not_called()
+    stderr = capsys.readouterr().err
+    assert "--gamma" in stderr
+    assert "virtual packets from the r-packets" in stderr
